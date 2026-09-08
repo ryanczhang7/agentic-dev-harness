@@ -37,12 +37,28 @@ down in `docs/wiki/environment.md`, and `bash scripts/doctor.sh` verifies it.
 The same seven steps every time. Nothing here is improvised, and you should not
 have to ask how to set a project up.
 
-**1. Clone the harness and detach it from this history.**
+**1. Get a copy that is its own repository.** Every project must be a separate
+repo, so that project work never lands back on the harness.
+
+*Preferred, on GitHub:* mark this repository as a template (Settings, General,
+"Template repository"), then use **Use this template, Create a new repository**.
+The new repo starts with no shared history and no fork relationship, so there is
+no remote pointing back here to push to by accident.
+
+*Without GitHub:*
 
 ```bash
-git clone <this repo> my-project && cd my-project
+git clone https://github.com/<you>/agentic-dev-harness my-project && cd my-project
 rm -rf .git && git init && git add -A && git commit -m "harness baseline"
+git remote add origin <your new empty repo>
 ```
+
+Either way, check `git remote -v` before your first push. If it still says
+`agentic-dev-harness`, stop and fix it.
+
+Improvements you make to the harness while working on a project do not flow back
+automatically. When you find one worth keeping, copy the file into this
+repository deliberately.
 
 **2. Check the machine.** `bash scripts/doctor.sh` — at this point it should
 report the harness is fine and there is no toolchain configured yet. That is the
