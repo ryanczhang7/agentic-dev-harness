@@ -21,3 +21,42 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# --- Ecosystem dependency and build output ---------------------------------
+# Installed or generated, never authored. The bootstrap story should add
+# anything specific to the chosen stack; these are the common ones, present up
+# front so that a `pnpm install` or `uv sync` before bootstrap does not bury you
+# in untracked files.
+
+# Node
+node_modules/
+.pnpm-store/
+.next/
+.svelte-kit/
+.turbo/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+*.egg-info/
+
+# Rust
+target/
+
+# Godot
+.godot/
+*.import
+
+# Build output and coverage
+dist/
+build/
+out/
+coverage/
+htmlcov/
+.coverage

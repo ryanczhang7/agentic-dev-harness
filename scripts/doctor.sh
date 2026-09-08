@@ -77,6 +77,32 @@ if [ "$found_any" = 0 ]; then
 fi
 
 printf '\n'
+printf '\nProject dependencies\n'
+# A global toolchain on PATH is not the same as this project's libraries being
+# installed. Checked by manifest: if the manifest exists, its install directory
+# must too. Only Node and Python are checked - cargo fetches on build, and Godot
+# addons are committed with the project.
+#
+# Limitation: a monorepo with per-workspace node_modules is not detected here.
+dep_found=0
+dep_check() { # <manifest> <install dir> <label>
+  [ -e "$ROOT/$1" ] || return 0
+  dep_found=1
+  if [ -e "$ROOT/$2" ]; then
+    printf '  ok       %-10s %s present\n' "$3" "$2"
+  else
+    printf '  MISSING  %-10s %s exists but %s/ is not installed\n' "$3" "$1" "$2"
+    printf '  %-10s run: bash scripts/task.sh install\n' ""
+    missing=$((missing+1))
+  fi
+}
+dep_check package.json      node_modules node
+dep_check pyproject.toml    .venv        python
+dep_check requirements.txt  .venv        python
+[ "$dep_found" = 0 ] && printf '  (no dependency manifests found yet)\n'
+printf '
+'
+
 if [ "$missing" -gt 0 ]; then
   printf '%d thing(s) missing.\n' "$missing"
   [ -f "$ROOT/docs/wiki/environment.md" ] \

@@ -200,6 +200,44 @@ Coverage defaults to a 100% threshold, set in the gate command where it is
 visible. Mutation testing is available but optional — it is the bar above the
 bar, not the daily requirement.
 
+## Environments, and why there is no Docker
+
+Two layers, and only one is global.
+
+**The toolchain is global** — `uv`, `node` + `pnpm`, `cargo`, the Godot binary.
+Installed once on your machine, shared by every project. `/setup-environment`
+walks you through it; `bash scripts/doctor.sh` verifies it.
+
+**The libraries are per-project.** Python gets a real `.venv/`, Node gets
+`node_modules/`, Rust resolves per project through `Cargo.lock`, Godot addons
+are vendored into the repo. A virtualenv is not a special case — it is the shape
+every one of these ecosystems already uses, and the harness relies on it rather
+than inventing anything.
+
+Gate commands are written to be environment-aware for that reason: `uv run
+pytest`, not `pytest`; `pnpm exec vitest`, not `vitest`. There is no "activate
+the venv first" step to forget, and an agent cannot accidentally shell out to
+your system interpreter and get a meaningless pass.
+
+`doctor.sh` checks both layers — the executables on PATH, and whether this
+project's dependencies are actually installed.
+
+**Docker is deliberately not part of this.** The harness must work on a machine
+with nothing installed, containers add nothing to the dev loop for a browser or
+CLI project, and bind-mount hot reload through a container is slow and fragile
+on Windows. Containerisation is a deployment concern, and deployment is yours.
+
+It remains a per-project choice: a project that genuinely needs Postgres, Redis
+and three services should have its bootstrap story write a `docker-compose.yml`
+and set `task | dev | - | . | docker compose up`. Nothing else changes, because
+every command routes through `project.conf`.
+
+**There is no sandbox.** Agents run on your machine with your permissions. The
+above is dependency isolation, not a security boundary — use a dev container or
+a VM if you want the real thing.
+
+Full detail: `.claude/skills/stack-profiles/reference/environments.md`.
+
 ## CI
 
 - **`gates.yml`** runs the gate manifest on every PR. Add your stack's toolchain

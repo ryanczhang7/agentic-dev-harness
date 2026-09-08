@@ -19,6 +19,10 @@ commands are, where tests live, and what the bootstrap story must produce.
 | `godot` | 2D/3D games and interactive tools in Godot 4 | `reference/godot.md` |
 | `web-static` | No-build or minimal-build browser projects | `reference/web-static.md` |
 
+`reference/environments.md` covers where dependencies actually live, why
+gate commands must be environment-aware, the `vendor` path category, and why
+this harness is not built around Docker.
+
 If none fits, `reference/new-profile.md` says what a profile must contain and
 how to verify it before the bootstrap story depends on it.
 

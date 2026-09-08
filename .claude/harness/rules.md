@@ -23,6 +23,7 @@ bash -c '. .claude/hooks/lib.sh; classify "src/app/main.ts"'
 
 | Phase | May write | Meaning |
 |---|---|---|
+| any | vendor | installed deps and build output are always writable |
 | `PLANNED` | docs, harness | story is being written |
 | `RED` | tests, docs, harness | failing tests only; source frozen |
 | `GREEN` | source, config, docs, harness | make them pass; tests frozen |
