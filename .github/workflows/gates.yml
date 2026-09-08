@@ -1,0 +1,38 @@
+name: gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The harness itself needs nothing but bash. Add the toolchain your
+      # project.conf gate commands actually invoke - the bootstrap story should
+      # add the setup step for the chosen stack here.
+      #
+      # - uses: actions/setup-python@v5
+      #   with: { python-version: "3.12" }
+      # - uses: astral-sh/setup-uv@v5
+      #
+      # - uses: pnpm/action-setup@v4
+      # - uses: actions/setup-node@v4
+      #   with: { node-version: "22", cache: pnpm }
+
+      - name: Show configured gates
+        run: bash scripts/gates.sh --list
+
+      - name: Run gates
+        run: bash scripts/gates.sh
+
+      - name: Upload gate logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-logs
+          path: .claude/state/gate-logs/
+          if-no-files-found: ignore

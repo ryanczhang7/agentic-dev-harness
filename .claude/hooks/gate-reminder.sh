@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Stop hook: refuse to call a story finished on assertion alone.
+#
+# If the story is in GREEN or GATES and the gate suite has not been run since
+# the last change to tracked files, block the stop and say so. Cheap, and
+# self-clearing: running the gates updates the stamp.
+
+set -uo pipefail
+HOOK_INPUT="$(cat)"
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh" 2>/dev/null || exit 0
+
+# Never loop on ourselves.
+json_is_true stop_hook_active && exit 0
+
+load_state
+case "$PHASE" in GREEN|GATES) ;; *) exit 0 ;; esac
+
+reason=""
+if [ ! -f "$GATE_STAMP" ]; then
+  reason="The gate suite has not been run for story ${STORY_ID}."
+else
+  newer="$(find "$HARNESS_ROOT" \
+      -path "$HARNESS_ROOT/.git" -prune -o \
+      -path "$HARNESS_ROOT/.claude/state" -prune -o \
+      -path "$HARNESS_ROOT/node_modules" -prune -o \
+      -path "$HARNESS_ROOT/docs" -prune -o \
+      -type f -newer "$GATE_STAMP" -print -quit 2>/dev/null)"
+  [ -n "$newer" ] && reason="Code has changed since the last gate run (e.g. ${newer#"$HARNESS_ROOT"/})."
+fi
+
+if [ -z "$reason" ] && grep -q "^RESULT=fail" "$GATE_STAMP" 2>/dev/null; then
+  reason="The last gate run for story ${STORY_ID} FAILED."
+fi
+
+[ -z "$reason" ] && exit 0
+
+printf '{"decision":"block","reason":"%s"}\n' "$(json_escape "$reason Run the gates before reporting this story complete:
+
+  bash scripts/gates.sh
+
+If a gate fails, fix it or move the story back to RED — do not report GREEN on unverified code. If you are intentionally stopping mid-story, say so explicitly and move the story to a phase that reflects reality.")"
+exit 0
