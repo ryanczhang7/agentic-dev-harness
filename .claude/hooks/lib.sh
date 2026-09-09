@@ -238,16 +238,18 @@ is_ignored() {
 }
 
 # classify_stdin   One repo-relative path per input line -> "<category>\t<path>"
-# per output line. Same rules and precedence as classify, but one awk pass
-# instead of one process per path; use it for anything beyond a handful.
+# per output line. THE implementation of the paths.conf rules; classify() is a
+# single-path wrapper around it. One awk process for any number of paths,
+# because spawning one per rule cost whole seconds on Windows.
 #
 # It does NOT consult git for the `ignored` category, and does not need to: its
 # callers feed it paths that git already tracks (a diff, a tree listing, an
-# index), and a tracked path is never ignored.
+# index), and a tracked path is never ignored. classify() adds that check.
 #
-# One process in total: the glob-to-regex conversion is the same character scan
-# as glob_to_regex, done inside awk, because spawning it per rule costs seconds
-# on Windows. ENVIRON rather than -v for the path: -v processes backslashes.
+# The glob-to-regex conversion is a character scan rather than sed, because sed
+# bracket expressions are a minefield here (POSIX treats "[." and "[]" as
+# collating-symbol openers). ENVIRON rather than -v for the conf path: -v
+# processes backslashes.
 classify_stdin() {
   PATHS_CONF="$HARNESS_DIR/paths.conf" awk '
     function g2r(s,   out, i, n, c) {

@@ -107,9 +107,11 @@ clean_log() {
 # looks like. The consequence is that a regex which stops mid-number - the
 # `[1-9]` in `test result: ok\. [1-9]` - measures a truncated count; widen it
 # to cover the whole number if you want a floor on that gate.
+# Parenthesised, so that an evidence regex using top-level alternation
+# (`a|b`) does not bind the trailing `.*` to its last branch alone.
 work_count() {
   clean_log "$1" \
-    | grep -oE -m1 -- "$2.*" 2>/dev/null | head -1 \
+    | grep -oE -m1 -- "($2).*" 2>/dev/null | head -1 \
     | grep -oE '[0-9]+' 2>/dev/null | head -1
 }
 

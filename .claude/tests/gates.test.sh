@@ -78,6 +78,19 @@ EOF
 out="$(gates --audit)"
 assert_contains "a floor that is not a number" "is not a number" "$out"
 
+describe "floor: an evidence regex that uses alternation"
+
+# `a|b` at the top level would otherwise bind the trailing `.*` to the last
+# branch alone, so a count that follows the matched text is invisible.
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests passed: 47\n'
+evidence | unit | Tests passed:|Examples passed:
+floor    | unit | 40
+EOF
+out="$(gates)"
+assert_contains "counts what follows the branch that matched" "observed 47" "$out"
+assert_contains "so the gate passes" "PASS         unit" "$out"
+
 describe "the count is reported even with no floor"
 
 write_conf "$FIX" <<'EOF'
