@@ -174,7 +174,10 @@ phase violation. When no story is active the lock is off entirely: it protects a
 cycle in flight, it is not a general permission system.
 
 The lock has its own regression suite, since it is the mechanism everything
-else rests on:
+else rests on, and so do the gate machinery and the stack profiles - the
+profile suite asserts that every shipped profile obeys the rules
+`new-profile.md` sets, because a profile is copied verbatim into a real
+project and a bad line arrives pre-installed:
 
 ```bash
 bash scripts/selftest.sh                   # the harness's own tests

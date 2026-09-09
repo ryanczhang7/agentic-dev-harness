@@ -35,6 +35,12 @@ work, not that it succeeded.
     evidence | lint        | Checked [1-9][0-9]* files      # biome
     # eslint prints nothing on success; use `--format unix` and count, or `-`.
 
+    # UNVERIFIED - `pnpm build` delegates to whatever your build script is, so
+    # this is the line most likely to need changing. Vite and esbuild print
+    # `built in 1.23s`; `tsc -b` prints nothing at all on success, in which case
+    # use `-` and say why in the bootstrap story rather than inventing a match.
+    evidence | build       | built in [0-9]
+
 Verified against vitest 5 and typescript 5 on Windows. Vitest prints
 `Tests  2 passed (2)` with ANSI colour and, on Windows, CRLF; `gates.sh` strips
 both before matching, so write the regex against the plain text.
