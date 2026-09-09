@@ -51,7 +51,11 @@ split it.
 
 `.claude/hooks/phase-guard.sh` refuses writes that violate the current phase. It
 covers `Write`/`Edit`/`MultiEdit`/`NotebookEdit` and shell redirects alike. When
-no story is active it is off entirely.
+no story is active it is off entirely. Quoted arguments and heredoc bodies are
+data, not syntax, and anything `.gitignore` covers is always writable. If it
+still blocks a command that writes nothing, that is a bug in the guard: add the
+case to `.claude/tests/phase-guard.test.sh` and fix it there, which is the one
+form of "working around the lock" that is allowed.
 
 ```bash
 bash scripts/phase.sh show                 # what is active, what may be written
@@ -77,6 +81,7 @@ Never guess a build command. Every project-specific command lives in
 
 ```bash
 bash scripts/doctor.sh           # is the toolchain installed?
+bash scripts/selftest.sh         # the harness's own tests (bash + git only)
 bash scripts/gates.sh            # all gates
 bash scripts/gates.sh --gate unit
 bash scripts/task.sh dev         # run the app

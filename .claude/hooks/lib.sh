@@ -56,28 +56,121 @@ json_is_true() {
 }
 
 
-# --- Paths ------------------------------------------------------------------
+# --- Shell command text -----------------------------------------------------
+#
+# The Bash branch of the phase guard extracts write targets from a command
+# STRING, with grep and awk, which know nothing about shell quoting. Left to
+# themselves they read the inside of a quoted argument as syntax: the `|`
+# delimiters in `sed -i 's|a|b|' f.txt` truncate the match so the target looks
+# like `s`, and the `>` in `awk '/RED -> GREEN/' story.md` looks like a
+# redirect. Both were observed blocking correct commands, one of which wrote
+# nothing at all. A lock with false positives teaches the agent that blocks are
+# noise, which is the exact instinct the lock exists to suppress.
+#
+# mask_shell_quotes rewrites every operator and whitespace character that is
+# inside a quoted span, inside a heredoc body, or escaped by a backslash, into
+# a control character. Such a span then survives extraction as one opaque token
+# containing no operators, so the extractors see the command's structure and
+# not its data. The mapping is reversible: a candidate that genuinely came from
+# a quoted argument - `> "my file.ts"` - is restored by unmask_shell_quotes
+# before it is classified.
+#
+#   |  -> \001   &  -> \002   ;  -> \003   >  -> \004
+#   <  -> \005   SP -> \006   TAB-> \007   LF -> \010
+#
+# Control characters are used because no real command line contains them, so
+# the round trip cannot corrupt a path that had one of them already.
 
-# glob_to_regex <glob>   ** spans path segments, * stays within one.
-# Implemented as a character scan: sed bracket expressions are a minefield here
-# (POSIX treats "[." and "[]" as collating-symbol openers).
-glob_to_regex() {
-  printf '%s' "$1" | awk '{
-    s = $0; out = ""; i = 1; n = length(s)
-    while (i <= n) {
-      c = substr(s, i, 1)
-      if (c == "*") {
-        if (substr(s, i, 3) == "**/") { out = out "(.*/)?"; i += 3; continue }
-        if (substr(s, i, 2) == "**")  { out = out ".*";     i += 2; continue }
-        out = out "[^/]*"; i++; continue
-      }
-      if (c == "?") { out = out "[^/]"; i++; continue }
-      if (index(".^$+(){}|[]\\", c) > 0) { out = out "\\" c; i++; continue }
-      out = out c; i++
+mask_shell_quotes() {
+  awk '
+    function maskchar(c) {
+      if (c == "|")  return "\001"
+      if (c == "&")  return "\002"
+      if (c == ";")  return "\003"
+      if (c == ">")  return "\004"
+      if (c == "<")  return "\005"
+      if (c == " ")  return "\006"
+      if (c == "\t") return "\007"
+      return c
     }
-    printf "%s", out
-  }'
+    function maskstr(t,   k, o) {
+      o = ""
+      for (k = 1; k <= length(t); k++) o = o maskchar(substr(t, k, 1))
+      return o
+    }
+    BEGIN {
+      Q  = sprintf("%c", 39)     # a single quote, without writing one here
+      BS = sprintf("%c", 92)     # a backslash, for the same reason
+      # <<WORD, <<-WORD, <<"WORD", <<\x27WORD\x27 - the heredoc opener.
+      HD = "^<<-?[ \t]*(\"[^\"]+\"|" Q "[^" Q "]+" Q "|[A-Za-z_][A-Za-z0-9_.-]*)"
+    }
+    { line[NR] = $0 }
+    END {
+      state = "none"; delim = ""; out = ""
+      for (i = 1; i <= NR; i++) {
+        s = line[i]
+
+        # Inside a heredoc body: everything is data until the delimiter line.
+        if (delim != "") {
+          t = s; gsub(/^[ \t]+|[ \t]+$/, "", t)
+          if (t == delim) { out = out s; delim = "" } else out = out maskstr(s)
+          if (i < NR) out = out "\n"
+          continue
+        }
+
+        pending = ""; cont = 0
+        j = 1; n = length(s)
+        while (j <= n) {
+          c = substr(s, j, 1)
+
+          if (state == "single") {
+            if (c == Q) { out = out c; state = "none" } else out = out maskchar(c)
+            j++; continue
+          }
+          if (state == "double") {
+            if (c == BS) {
+              if (j == n) { cont = 1; j++; continue }
+              out = out maskchar(substr(s, j + 1, 1)); j += 2; continue
+            }
+            if (c == "\"") { out = out c; state = "none" } else out = out maskchar(c)
+            j++; continue
+          }
+
+          # Unquoted.
+          if (c == BS) {
+            if (j == n) { cont = 1; j++; continue }     # line continuation
+            out = out maskchar(substr(s, j + 1, 1)); j += 2; continue
+          }
+          if (c == Q)    { out = out c; state = "single"; j++; continue }
+          if (c == "\"") { out = out c; state = "double"; j++; continue }
+          if (c == "<" && substr(s, j + 1, 1) == "<") {
+            rest = substr(s, j)
+            if (match(rest, HD)) {
+              w = substr(rest, RSTART, RLENGTH)
+              out = out w
+              sub(/^<<-?[ \t]*/, "", w)
+              gsub("[\"" Q "]", "", w)
+              pending = w
+              j += RLENGTH
+              continue
+            }
+          }
+          out = out c; j++
+        }
+        if (pending != "") delim = pending
+        # A newline inside an unterminated quote, or after a continuation, is
+        # part of one token rather than a command separator.
+        if (i < NR) out = out ((state == "none" && cont == 0) ? "\n" : "\010")
+      }
+      printf "%s", out
+    }'
 }
+
+unmask_shell_quotes() {
+  tr '\001\002\003\004\005\006\007\010' '|&;>< \t\n'
+}
+
+# --- Paths ------------------------------------------------------------------
 
 # to_rel <path>   Repo-relative, forward slashes. Empty output means "outside
 # this repository", and therefore not the harness's business.
@@ -109,32 +202,48 @@ to_rel() {
   printf '%s' "${p#./}"
 }
 
-# classify <relpath>   -> harness | docs | test | config | source
+# classify <relpath>   -> vendor | harness | docs | test | config | ignored | source
+#
+# One path. Delegates the rule matching to classify_stdin so that the rules
+# have exactly one implementation, and so that a single call costs one process
+# rather than one per rule in paths.conf - which, at ninety-odd rules, cost
+# whole seconds per checked path on Windows and made the guard feel like a
+# hang.
 classify() {
-  local rel="$1" line cat glob re
+  local rel="$1" cat
   [ -z "$rel" ] && { printf 'outside'; return; }
-  while IFS= read -r line; do
-    line="${line%%$'\r'}"
-    case "$line" in ''|'#'*) continue ;; esac
-    case "$line" in *'|'*) ;; *) continue ;; esac
-    cat="${line%%|*}"
-    glob="${line#*|}"
-    cat="$(printf '%s' "$cat" | tr -d '[:space:]')"
-    glob="$(printf '%s' "$glob" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-    [ -z "$cat" ] && continue
-    [ -z "$glob" ] && continue
-    re="$(glob_to_regex "$glob")"
-    if printf '%s' "$rel" | grep -qiE "^$re$"; then
-      printf '%s' "$cat"
-      return
-    fi
-  done < "$HARNESS_DIR/paths.conf"
-  printf 'source'
+  cat="$(printf '%s\n' "$rel" | classify_stdin | awk -F'\t' 'NR == 1 { print $1 }')"
+  [ -z "$cat" ] && cat=source
+  [ "$cat" = "source" ] && is_ignored "$rel" && cat=ignored
+  printf '%s' "$cat"
+}
+
+# is_ignored <relpath>   True when the project's own .gitignore covers it.
+#
+# A path git ignores is generated rather than authored: a test runner's scratch
+# directory, a report, a build artefact. Deleting one is not a phase violation,
+# and consulting git covers every future tool's scratch directory without a new
+# rule in paths.conf. `check-ignore` consults the index, so a TRACKED file is
+# never reported as ignored even when a rule would match it.
+#
+# The trailing-slash retry is not decoration: a directory rule (`.vitest/`)
+# does not match the path `.vitest` unless that directory already exists, and
+# the case that matters - `rm -rf .vitest` - is exactly the one where the agent
+# may be naming a directory git has never seen.
+is_ignored() {
+  [ -n "${1:-}" ] || return 1
+  git -C "$HARNESS_ROOT" check-ignore -q -- "$1"  2>/dev/null && return 0
+  git -C "$HARNESS_ROOT" check-ignore -q -- "$1/" 2>/dev/null && return 0
+  return 1
 }
 
 # classify_stdin   One repo-relative path per input line -> "<category>\t<path>"
 # per output line. Same rules and precedence as classify, but one awk pass
 # instead of one process per path; use it for anything beyond a handful.
+#
+# It does NOT consult git for the `ignored` category, and does not need to: its
+# callers feed it paths that git already tracks (a diff, a tree listing, an
+# index), and a tracked path is never ignored.
 #
 # One process in total: the glob-to-regex conversion is the same character scan
 # as glob_to_regex, done inside awk, because spawning it per rule costs seconds

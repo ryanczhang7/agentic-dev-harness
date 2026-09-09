@@ -161,8 +161,21 @@ violate the story's current phase:
 
 It covers `Write`, `Edit` and `MultiEdit`, and inspects shell commands too —
 redirects, `tee`, `sed -i`, `cp`, `mv` — because an agent that cannot use Edit
-will reach for `cat > file`. When no story is active it is off entirely: the lock
-protects a cycle in flight, it is not a general permission system.
+will reach for `cat > file`. Quoted arguments and heredoc bodies are masked
+before that inspection, so a `|` inside `sed 's|a|b|'` and an arrow inside
+`awk '/A -> B/'` stay data: a lock that fires on the contents of a string
+teaches the agent that blocks are noise, which is the one thing it cannot
+afford. Anything the project's `.gitignore` covers is classified `ignored` and
+writable in every phase, so deleting a test runner's scratch directory is not a
+phase violation. When no story is active the lock is off entirely: it protects a
+cycle in flight, it is not a general permission system.
+
+The lock has its own regression suite, since it is the mechanism everything
+else rests on:
+
+```bash
+bash scripts/selftest.sh                   # the harness's own tests
+```
 
 ```bash
 bash scripts/phase.sh show                 # what is active, what may be written
@@ -290,6 +303,7 @@ CLAUDE.md                     standing rules, in context every turn
     stack-profiles/           per-ecosystem command sets
     design-system/            tokens, states, accessibility floor
   hooks/                      phase guard, state injection, gate reminder
+  tests/                      the harness's own tests (scripts/selftest.sh)
   harness/
     project.conf              how to build and test THIS project
     paths.conf                which paths are test / source / config
@@ -299,7 +313,8 @@ CLAUDE.md                     standing rules, in context every turn
 docs/
   wiki/                       brief, stack, architecture, design, audits
   backlog/{epics,stories}/    the work
-scripts/                      doctor, gates, phase, task, new-story, check-boundaries
+scripts/                      doctor, gates, phase, task, new-story, selftest,
+                              check-boundaries
 ```
 
 ## Notes on the design

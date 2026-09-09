@@ -53,19 +53,29 @@ case "$TOOL" in
   Bash)
     CMD="$(json_get_string command || true)"
     [ -z "$CMD" ] && exit 0
+    # Quoted spans, heredoc bodies and backslash escapes are DATA, not shell
+    # syntax. Masking them first is what stops a sed script's `|` or an arrow
+    # inside an awk program from being read as an operator; see lib.sh. The
+    # extractors below run against the masked text, and each candidate is
+    # unmasked again before it is classified.
+    MASKED="$(printf '%s' "$CMD" | mask_shell_quotes)"
     # Candidate write targets. Deliberately conservative: we only look at
     # constructs that unambiguously name a destination file.
     CANDIDATES="$(
       {
-        printf '%s\n' "$CMD" | grep -oE '>>?[[:space:]]*[^|&;><[:space:]]+'      | sed -E 's/^>>?[[:space:]]*//'
-        printf '%s\n' "$CMD" | grep -oE '\btee\b([[:space:]]+-a)?[[:space:]]+[^|&;><[:space:]]+' | awk '{print $NF}'
-        printf '%s\n' "$CMD" | grep -oE '\bsed\b[^|&;]*-i[^|&;]*'                | awk '{print $NF}'
-        printf '%s\n' "$CMD" | grep -oE '\b(cp|mv)\b[[:space:]]+[^|&;]+'         | awk '{print $NF}'
-        printf '%s\n' "$CMD" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;]+'      | tr ' ' '\n' | grep -vE '^(rm|touch|-.*)$'
+        printf '%s\n' "$MASKED" | grep -oE '>>?[[:space:]]*[^|&;><[:space:]]+'      | sed -E 's/^>>?[[:space:]]*//'
+        printf '%s\n' "$MASKED" | grep -oE '\btee\b([[:space:]]+-a)?[[:space:]]+[^|&;><[:space:]]+' | awk '{print $NF}'
+        printf '%s\n' "$MASKED" | grep -oE '\bsed\b[^|&;]*-i[^|&;]*'                | awk '{print $NF}'
+        printf '%s\n' "$MASKED" | grep -oE '\b(cp|mv)\b[[:space:]]+[^|&;]+'         | awk '{print $NF}'
+        printf '%s\n' "$MASKED" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;]+'      | tr ' ' '\n' | grep -vE '^(rm|touch|-.*)$'
       } 2>/dev/null | tr -d '"'"'" | grep -vE '^\s*$|^-|\$|\*|^/dev/' | sort -u
     )"
     while IFS= read -r target; do
       [ -z "$target" ] && continue
+      target="$(printf '%s' "$target" | unmask_shell_quotes)"
+      # A restored candidate spanning a newline is not a filename; a guard that
+      # cannot say what it is looking at does not block. Fail open, as ever.
+      case "$target" in *$'\n'*) continue ;; esac
       check_path "$target"
     done <<< "$CANDIDATES"
     ;;
