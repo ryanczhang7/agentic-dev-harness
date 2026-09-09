@@ -74,6 +74,39 @@ EOF
   printf '%s' "$d"
 }
 
+# make_project_fixture   A fixture that can RUN the harness, not merely be
+# classified by it: the real scripts and hooks copied in, so that gates.sh,
+# phase.sh and doctor.sh execute against a throwaway project.conf. Echoes its
+# path. The gate commands a suite writes into that conf should be `printf`s -
+# these tests are about the gate machinery, not about any real toolchain.
+make_project_fixture() {
+  local d
+  d="$(make_fixture)"
+  cp -r "$REPO_ROOT/scripts"        "$d/scripts"
+  cp -r "$REPO_ROOT/.claude/hooks"  "$d/.claude/hooks"
+  git -C "$d" add -A >/dev/null 2>&1
+  git -C "$d" -c user.email=t@t -c user.name=t commit -qm fixture >/dev/null 2>&1
+  printf '%s' "$d"
+}
+
+# write_conf <fixture>   project.conf body on stdin, with BOOTSTRAPPED=yes so
+# the fixture behaves like a project whose stack is real.
+write_conf() {
+  { printf 'BOOTSTRAPPED=yes\n'; cat; } > "$1/.claude/harness/project.conf"
+}
+
+# story <fixture> <id> <phase>   A minimal story file, plus any extra
+# frontmatter lines on stdin.
+story() {
+  local extra; extra="$(cat)"
+  mkdir -p "$1/docs/backlog/stories"
+  {
+    printf -- '---\nid: %s\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: %s\nbranch: story/%s-fixture\n' "$2" "$3" "$2"
+    [ -n "$extra" ] && printf '%s\n' "$extra"
+    printf -- '---\n\n## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Gate results\n\n## Notes\n'
+  } > "$1/docs/backlog/stories/$2.md"
+}
+
 # set_phase <fixture> <PHASE>   Activates a story in the fixture. An empty
 # phase clears it, which is how "no active story" is tested.
 set_phase() {

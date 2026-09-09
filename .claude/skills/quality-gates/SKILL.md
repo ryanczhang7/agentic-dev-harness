@@ -76,6 +76,64 @@ adopt late; once `BOOTSTRAPPED=yes`, a required gate without one is reported as
 a warning. `bash scripts/gates.sh --audit` lists what is missing without running
 anything. Canonical regexes per ecosystem are in the `stack-profiles` skill.
 
+### The gate that shrank
+
+`evidence` catches a gate that did *nothing*. It does not catch one that
+quietly started doing much less — a workspace member dropped from the include
+list, a suite that went from 47 tests to 3. Both still match the regex. So a
+gate can also declare a floor:
+
+    evidence | unit | Tests +[1-9][0-9]* passed
+    floor    | unit | 40
+
+The number is read out of the evidence match, so a floor needs an evidence line
+whose regex covers the whole number; `--audit` refuses one that does not, or a
+floor that is not a number. Every full run prints `observed <n>` for any gate
+with an evidence line, so the count is visible before anyone commits to a
+floor.
+
+Raise a floor in the story that adds the tests. **Never lower one to make a
+gate pass** — that is the gate equivalent of deleting a failing test. A
+legitimate drop (a suite genuinely split in two) is a change to explain in the
+story, like any other.
+
+### The directory nobody was testing
+
+A coverage threshold on a glob that matches nothing is satisfied silently, and
+a test written in a directory no project includes is committed and never runs.
+Neither is visible in the configuration — reading the configuration is how it
+stays invisible. It is visible immediately if you ask the runner what it can
+see, so `project.conf` carries commands that do exactly that:
+
+    discovery | platform | . | pnpm exec vitest list | grep -q "src/platform/"
+
+`bash scripts/doctor.sh` runs them. Add one for every directory carrying a
+coverage threshold and every workspace member whose tests must run. **A claim
+about what a runner discovers is verified by running the runner**, never by
+reading its globs — this was found the hard way, by a probe test that turned
+out to be absent from `vitest list`.
+
+## A gate the story requires of itself
+
+`integration` is optional for the repo because it needs a browser, and a busy
+laptop should not block unrelated stories on it. But a story whose central
+claims are only ever checked *there* — "the canvas draws a non-blank first
+frame", "the device pixel ratio survives a resize" — can pass every required
+gate with its actual evidence unrun, and law 3 reads as satisfied.
+
+So a story can escalate a gate for itself, in its frontmatter:
+
+    required_gates: [integration]
+
+`gates.sh` treats it as required while that story is active, and says
+`required by story WORLD-003` wherever it reports it. Optional for the repo,
+binding for the story that depends on it. A waiver cannot silence it — that is
+a bypass, refused the same way it is on any required gate — and
+`check-boundaries.sh` refuses a PR whose recorded run has no PASS for a gate
+the story requires.
+
+Use it whenever an acceptance criterion is verified only in an optional gate.
+
 ## WARN must mean something changed
 
 Optional gates report rather than block, which is not the same as ignorable -
@@ -151,7 +209,8 @@ probe before moving on, and say in the story that you did.
    deleting its `evidence` line. Fix the command so it does the work, or - if
    the regex is genuinely wrong for this tool version - correct the regex and
    say so in the story. Removing the line is the gate equivalent of deleting a
-   failing test.
+   failing test. The same holds for lowering a `floor`, dropping a `discovery`
+   line, or removing a gate from a story's `required_gates`.
 
 `reference/triage.md` has the per-gate playbook, including what a coverage
 failure actually tells you and when a suppression is legitimate.

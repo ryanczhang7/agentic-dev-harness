@@ -216,6 +216,16 @@ exits 0 its output must match its regex, or it fails with *ran but produced no
 evidence of work*. The regex asserts volume of work, never success — success is
 the exit code's job. Gates without an `evidence` line behave exactly as before.
 
+A `floor` line goes one further: `evidence` catches a gate that did nothing, a
+floor catches one that started doing much less — a suite that went from 47
+tests to 3 exits 0 and matches its regex just as happily. And because a
+coverage threshold on a glob matching nothing is satisfied *silently*,
+`discovery` lines in the same file ask the runner what it can actually see, and
+`doctor.sh` runs them: a claim about what a runner discovers is verified by
+running the runner, never by reading its globs. A story whose evidence lives in
+an optional gate escalates it for itself with `required_gates: [integration]`
+in its frontmatter — optional for the repo, binding for that story.
+
 Two more things `gates.sh` does that a plain test runner does not. A `waiver`
 line names an optional gate that is known to fail and why, so it reports as
 `KNOWN` and `WARN` stays reserved for something that changed. And a full run

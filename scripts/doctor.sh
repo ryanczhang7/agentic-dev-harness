@@ -68,7 +68,7 @@ while IFS= read -r line; do
   check "$exe" "$kind '$id'"
 done < "$CONF"
 
-if [ "$found_any" = 0 ]; then
+if [ "$found_any" = 0 ] && ! grep -qE '^[[:space:]]*discovery[[:space:]]*\|' "$CONF"; then
   printf '  (nothing configured yet)\n'
   printf '\nproject.conf has no commands, so there is no toolchain to check.\n'
   printf 'This is expected before /plan-product has chosen a stack.\n'
@@ -100,6 +100,38 @@ dep_check package.json      node_modules node
 dep_check pyproject.toml    .venv        python
 dep_check requirements.txt  .venv        python
 [ "$dep_found" = 0 ] && printf '  (no dependency manifests found yet)\n'
+
+printf '\nTest discovery\n'
+# A test runner discovers files by glob, and a glob that stops matching says
+# nothing: a coverage threshold on a directory no project includes is satisfied
+# vacuously, a workspace member dropped from the include list takes its whole
+# suite with it, and both look exactly like a clean run. A real instance cost a
+# project a directory whose every test was silently never executed.
+#
+# The rule that catches it: a claim about what a runner DISCOVERS is verified by
+# running the runner, never by reading its configuration - reading the config is
+# how it stayed invisible. Each `discovery` line in project.conf is such a
+# command, and it must exit 0.
+disc_found=0
+while IFS= read -r line; do
+  case "$(trim "$line")" in ''|'#'*) continue ;; esac
+  case "$line" in *'|'*) ;; *) continue ;; esac
+  kind=$(trim "$(printf '%s' "$line" | cut -d'|' -f1)")
+  [ "$kind" = "discovery" ] || continue
+  id=$(trim  "$(printf '%s' "$line" | cut -d'|' -f2)")
+  cwd=$(trim "$(printf '%s' "$line" | cut -d'|' -f3)"); [ -z "$cwd" ] && cwd="."
+  cmd=$(trim "$(printf '%s' "$line" | cut -d'|' -f4-)")
+  [ -n "$cmd" ] || continue
+  disc_found=1
+  if ( cd "$ROOT/$cwd" 2>/dev/null && eval "$cmd" ) >/dev/null 2>&1; then
+    printf '  ok       %-12s discovered\n' "$id"
+  else
+    printf '  MISSING  %-12s nothing discovered by: %s\n' "$id" "$cmd"
+    printf '  %-10s   tests under it would be committed and never run\n' ""
+    missing=$((missing+1))
+  fi
+done < "$CONF"
+[ "$disc_found" = 0 ] && printf '  (none declared; see the discovery format in project.conf)\n'
 printf '
 '
 

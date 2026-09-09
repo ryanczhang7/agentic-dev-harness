@@ -49,13 +49,7 @@ has_content() {
 }
 
 # story_field <file|-> <key>   A frontmatter value.
-story_field() {
-  awk -v k="$2" '
-    NR==1 && $0 ~ /^---/ { inf=1; next }
-    inf && /^---/ { exit }
-    inf { if (index($0, k ":") == 1) { sub(/^[^:]*:[[:space:]]*/, ""); sub(/[[:space:]]*#.*/, ""); print; exit } }
-  ' "$1"
-}
+story_field() { frontmatter_value "$1" "$2"; }   # lib.sh
 
 # --- 1. Story files are well formed ----------------------------------------
 story_fail_start=$fail
@@ -189,6 +183,18 @@ case "$ph:$story_type" in
       else
         problem "story $sid: gates were recorded against tree '${rec:-none}' but $where is '$now'. Source, test or config changed after the last full gate run; run 'bash scripts/gates.sh' again and commit the result."
       fi
+
+      # A gate the story escalated must appear in the record as having passed.
+      # gates.sh enforces this while it runs; this catches the record written
+      # before the escalation was added, where the gate is optional again by
+      # the time anyone looks.
+      for g in $(frontmatter_list "$sfile" required_gates); do
+        if printf '%s\n' "$gr" | grep -qE "^[[:space:]]*PASS[[:space:]]+$g( |\(|$)"; then
+          ok "story-required gate '$g' passed in the recorded run"
+        else
+          problem "story $sid: frontmatter requires gate '$g', but the recorded run has no PASS for it. Run 'bash scripts/gates.sh' again."
+        fi
+      done
     fi ;;
 esac
 

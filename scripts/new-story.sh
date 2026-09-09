@@ -21,7 +21,8 @@ type: $type
 status: todo
 phase: PLANNED
 branch: story/$id-$slug
-depends_on: []   # story ids; phase.sh refuses to start this story until they are DONE
+depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
+required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
 ## Context

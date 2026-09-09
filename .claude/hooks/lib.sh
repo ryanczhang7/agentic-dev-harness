@@ -343,6 +343,48 @@ gate_tree_hash_of() {
     | _hash_blob_listing
 }
 
+# --- Story frontmatter ------------------------------------------------------
+#
+# One reader, used by phase.sh, gates.sh and check-boundaries.sh. Three
+# implementations of "read a key out of the frontmatter" is how the three come
+# to disagree about what a story says.
+
+# frontmatter_value <file> <key>   The scalar value, trailing comment stripped.
+frontmatter_value() {
+  awk -v k="$2" '
+    NR == 1 && $0 ~ /^---/ { inf = 1; next }
+    inf && /^---/ { exit }
+    inf {
+      if (index($0, k ":") == 1) {
+        sub(/^[^:]*:[[:space:]]*/, ""); sub(/[[:space:]]*#.*/, ""); print; exit
+      }
+    }
+  ' "$1"
+}
+
+# frontmatter_list <file> <key>   The values, one per line. Accepts both the
+# inline form the story template writes (`[A-1, A-2]`) and a YAML block list.
+frontmatter_list() {
+  awk -v k="$2" '
+    NR == 1 && /^---/ { inf = 1; next }
+    inf && /^---/ { exit }
+    inf && index($0, k ":") == 1 {
+      inlist = 1; v = $0
+      sub(/^[^:]*:[[:space:]]*/, "", v); sub(/#.*/, "", v)
+      gsub(/[][,]/, " ", v); acc = acc " " v; next
+    }
+    inlist && /^[[:space:]]*-[[:space:]]*/ {
+      v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); sub(/#.*/, "", v)
+      acc = acc " " v; next
+    }
+    inlist { inlist = 0 }
+    END {
+      n = split(acc, a, /[ \t]+/)
+      for (i = 1; i <= n; i++) if (a[i] != "") print a[i]
+    }
+  ' "$1"
+}
+
 # --- Story state ------------------------------------------------------------
 
 # load_state   sets STORY_ID, STORY_SLUG, PHASE, STORY_TYPE, BRANCH.
