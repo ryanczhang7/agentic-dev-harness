@@ -20,3 +20,13 @@ chore. Do not re-run product planning.
 4. If it does not fit one RED→GREEN cycle, split it into several stories and say
    why.
 5. Report the story id and the command to start it.
+
+Most of the template's sections are filled in by later phases. Two are yours and
+are easy to leave empty by default:
+
+- `## Out of scope` — often the most valuable section in the file, because it is
+  the only thing that tells the Feature Developer where to stop.
+- `## Model guidance` — optional, but if a phase of this story is worth running
+  on a different model, write it before that phase starts and give it a success
+  condition that could come out either way. The verdict gets recorded when the
+  phase ends; without one the choice becomes folklore.

@@ -165,7 +165,10 @@ will reach for `cat > file`. Quoted arguments and heredoc bodies are masked
 before that inspection, so a `|` inside `sed 's|a|b|'` and an arrow inside
 `awk '/A -> B/'` stay data: a lock that fires on the contents of a string
 teaches the agent that blocks are noise, which is the one thing it cannot
-afford. Anything the project's `.gitignore` covers is classified `ignored` and
+afford. Relative paths are resolved against the directory the command will
+actually run in, so `cd /tmp/scratch && rm -rf logs` names no repo path at all
+and `cd src && echo x > main.ts` names `src/main.ts` rather than a file at the
+root. Anything the project's `.gitignore` covers is classified `ignored` and
 writable in every phase, so deleting a test runner's scratch directory is not a
 phase violation. When no story is active the lock is off entirely: it protects a
 cycle in flight, it is not a general permission system.
@@ -306,14 +309,29 @@ Full detail: `.claude/skills/stack-profiles/reference/environments.md`.
 
 ## CI
 
-- **`gates.yml`** runs the gate manifest on every PR. Add your stack's toolchain
-  setup step; the harness itself needs nothing.
-- **`boundaries.yml`** re-checks the invariants on the diff, where the hook was
-  never in the loop: story frontmatter is valid, runtime state is not committed,
-  production code did not arrive without tests, and the story is in a phase that
-  justifies a PR.
+Two required jobs, and between them they run more than `gates.sh` does.
+
+- **`gates.yml`** runs the harness's own self-test (`selftest.sh`), prints the
+  configured gates, audits the manifest (`gates.sh --audit` — which fails a
+  `floor` with no evidence line, or a `slow` line with no reason or naming no
+  gate), then runs the gates. Add your stack's toolchain setup step; the harness
+  itself needs nothing.
+- **`boundaries.yml`** re-checks on the diff what the hook could not see, either
+  because it was never in the loop or because the invariant is about a story
+  file over time rather than one write: frontmatter is valid, runtime state is
+  not committed, production code did not arrive without tests (or is named in
+  `## Scaffold inventory`), the story is in a phase that justifies a PR, the
+  branch matches its frontmatter, acceptance criteria have not changed since the
+  base branch without an `## Amendments` entry, `## Handoff` is filled in, and
+  the `## Gate results` block was written by `gates.sh` against the *same tree*
+  being merged — including a PASS for any gate the story escalated with
+  `required_gates`.
 - **`deploy.yml.template`** is deliberately inert. Agents can write deploy
   configuration; they should not run it. You pull that trigger.
+
+Run both locally before pushing: `bash scripts/gates.sh` and
+`bash scripts/check-boundaries.sh`. "All gates pass" is not "CI will pass" —
+they judge different things, the code and the commit.
 
 ## Layout
 
@@ -340,7 +358,7 @@ CLAUDE.md                     standing rules, in context every turn
 docs/
   wiki/                       brief, stack, architecture, design, audits
   backlog/{epics,stories}/    the work
-scripts/                      doctor, gates, phase, task, new-story, selftest,
+scripts/                      doctor, gates, phase, task, dev, new-story, selftest,
                               check-boundaries
 ```
 

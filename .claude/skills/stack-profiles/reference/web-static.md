@@ -41,6 +41,32 @@ honest and re-check it whenever the tree is reorganised.
 
 See `node-typescript.md` for the vitest and tsc notes, which apply unchanged.
 
+## What the runner can see
+
+    # UNVERIFIED - correct the grep targets against your own layout.
+    discovery | tests | . | pnpm exec vitest list | grep -q "src/"
+
+`vitest list` prints the test files it would run. A `test.include` that stopped
+matching, or a directory moved out from under a coverage threshold, is invisible
+in the configuration and obvious here. Add one line per directory carrying a
+threshold; see `node-typescript.md`, where a 100% threshold on a directory no
+project included went unnoticed because every glob looked right.
+
+## What `--fast` should leave out
+
+    slow | integration | playwright needs a browser; minutes, not seconds
+
+Only that one. `vite build` on a static site is seconds, so marking it `slow`
+would buy nothing and would hide a broken build from RED and GREEN - a gate is
+fast unless it is genuinely expensive, not unless it is conceivably skippable.
+Compare `node-typescript.md`, where `build` *is* marked slow because it is a
+bundle rather than a static copy. The judgement is per stack, and the reason on
+the line is what makes it reviewable.
+
+`coverage` stays in, as everywhere: it runs the same tests under v8
+instrumentation, and vitest's 5,000 ms default `testTimeout` was measured
+against the plain run. See `node-typescript.md` for the numbers.
+
 ## Layout
 
     index.html

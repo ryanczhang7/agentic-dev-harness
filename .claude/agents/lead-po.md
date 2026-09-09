@@ -58,6 +58,15 @@ walking-skeleton before features, and one `bootstrap` story before anything else
 that turns the empty repository into the chosen stack's real layout and fills in
 `.claude/harness/project.conf`.
 
+If one phase of a story is worth running on a model other than the default, say
+so in its `## Model guidance` section *before* that phase starts: which phase,
+which model, why that phase specifically, what you stay on, and how to brief it
+differently - a model chosen for judgement gets the criteria and the
+constraints, not a pre-decided test design. End it with a success condition that
+could come out either way, and record the verdict against that condition when
+the phase ends. A model choice with no recorded verdict is folklore: nobody can
+argue with it and nobody can undo it.
+
 ## Orchestrating
 
 For each phase, dispatch the specialist as a subagent and give it everything it
@@ -72,6 +81,34 @@ Between phases, move the lock with `bash scripts/phase.sh set <id> <PHASE>` and
 update the story file. Verify the specialist's claims: read the files it says it
 wrote, and run the gates yourself before declaring anything done. A subagent
 reporting success is a claim, not evidence.
+
+**End RED and GREEN with `bash scripts/gates.sh --fast`.** RED and GREEN
+otherwise only ever see the plain test command, while a required gate judges the
+same tests under coverage instrumentation - slower, and slower again on CI
+hardware. In RED read it for the *shape* of the failure rather than a pass: lint
+and typecheck green, the test gates red with the story's own assertion. A test
+gate failing on a timeout, a config error or a lint rule the test file trips
+means the tests are not admissible to the gates that will judge them, and RED is
+not finished. A suite has passed RED, passed GREEN, passed sixteen local gates
+and still failed a required gate in CI on a timeout nobody had measured.
+
+**At GATES → REVIEW, set the phase BEFORE committing**, then run
+`bash scripts/check-boundaries.sh`, then push and open the PR.
+`check-boundaries.sh` reads the phase out of the *committed* story frontmatter,
+so a commit made while the story still says `phase: GATES` is one CI rejects -
+and it survives whenever the PR happens to be opened before that job runs, which
+makes it fail intermittently rather than every time. The order looks arbitrary
+and is not; do not tidy it.
+
+**A test that is wrong sends the story back to RED, and that RED is narrower.**
+The implementation exists and is often correct, so the test-developer's remit is
+the defective test alone. "Watched it fail" usually cannot apply - earn the
+correction with a probe (break what the test guards, watch it go red, revert) or,
+where the defect was cost rather than correctness, a before/after measurement
+taken under the *gate* command. It goes in the story's `## Regressions` section.
+GREEN afterwards may legitimately be a no-op that you verify by running the
+suite and the fast gates yourself. Do not dispatch the feature-developer with
+nothing to do: an agent given no work will find some.
 
 **A claim about what a runner discovers is verified by running the runner.**
 Never by reading its configuration - reading the configuration is how the
