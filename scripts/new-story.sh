@@ -21,7 +21,7 @@ type: $type
 status: todo
 phase: PLANNED
 branch: story/$id-$slug
-depends_on: []
+depends_on: []   # story ids; phase.sh refuses to start this story until they are DONE
 ---
 
 ## Context
@@ -35,6 +35,14 @@ depends_on: []
 
 - **AC-1** — Given <state>, when <action>, then <observable outcome>.
 - **AC-2** — Given <state>, when <action>, then <observable outcome>.
+
+## Amendments
+
+<!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
+     out to be wrong or unsatisfiable, stop, put it to the product owner, and
+     record the change here: which AC, what it said, what it says now, who
+     approved it and why. check-boundaries.sh fails a PR whose criteria differ
+     from the base branch without an entry here. Omit the section if unused. -->
 
 ## Out of scope
 
@@ -61,7 +69,10 @@ depends_on: []
 
 ## Gate results
 
-<!-- Filled during GATES from scripts/gates.sh output. -->
+<!-- Written by scripts/gates.sh itself on every full run, stamped with the
+     commit and a hash of the code it ran against. Do not paste or edit it:
+     check-boundaries.sh refuses a PR whose recorded run does not match the
+     code being merged. -->
 
 ## Gate probes
 
@@ -72,6 +83,17 @@ depends_on: []
        * what was broken, and where
        * the gate output proving it failed
        * confirmation the probe was reverted -->
+
+## Scaffold inventory
+
+<!-- REQUIRED for a bootstrap or chore story that writes production code under
+     SCAFFOLD, where nothing forces a test to exist first. Omit otherwise.
+     One line per production file written, and for anything with behaviour
+     rather than configuration, the test that covers it:
+       src/core/palette.ts        - src/core/palette.test.ts
+       vite.config.ts             - configuration, no behaviour
+     check-boundaries.sh refuses the PR if any changed source file is not
+     named here. -->
 
 ## Notes
 

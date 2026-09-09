@@ -16,8 +16,12 @@ because they want to inspect the result before the next phase runs.
 Read `docs/backlog/stories/$1.md` first. Then, based on its current phase:
 
 **PLANNED → RED.** Confirm the acceptance criteria are testable; fix them with
-the user if they are not. Create and switch to the story's branch
-(`story/<id>-<slug>`) if it does not exist. Set the phase, then dispatch the
+the user if they are not — this is the last phase in which they may change
+without an `## Amendments` entry. Create and switch to the story's branch
+(`story/<id>-<slug>`) if it does not exist. Set the phase; `phase.sh` refuses
+if a `depends_on` story is not DONE or the checkout is on another branch, and
+either refusal is a reason to stop and tell the user, not to reach for
+`--force`. Then dispatch the
 **test-developer** subagent with the story path, the criteria restated in full,
 the relevant constraints from `docs/wiki/`, and the exact test command from
 `.claude/harness/project.conf`. When it returns, verify: read the test files it
@@ -29,10 +33,12 @@ it is not, the RED phase is not finished. Set the phase, then dispatch the
 **feature-developer** subagent with the story path, the handoff, and the test
 command. When it returns, run the tests yourself.
 
-**GREEN → GATES.** Set the phase and run `bash scripts/gates.sh`. On failure,
-dispatch the **feature-developer** to fix it, unless the failure means a test is
-wrong — in which case move the story back to RED, record why in the story file,
-and tell the user.
+**GREEN → GATES.** Set the phase and run `bash scripts/gates.sh`. It writes
+its own summary into the story's `## Gate results`; never paste or edit one.
+On failure, dispatch the **feature-developer** to fix it, unless the failure
+means a test is wrong — in which case move the story back to RED, record why in
+the story file, and tell the user. A `WARN` on an optional gate is read, not
+skipped; a known permanent failure gets a `waiver` line with its reason.
 
 **GATES → REVIEW.** Only when every required gate passes. If this story added or
 changed a gate, `## Gate probes` must record it having been observed to fail —

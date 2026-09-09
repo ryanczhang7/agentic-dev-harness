@@ -8,9 +8,14 @@ and test this project. Format, one entry per line:
 `kind` is `gate` or `task`. `cwd` is relative to the repository root. An empty
 command marks the gate unconfigured.
 
-Each gate also gets a liveness assertion:
+Each gate also gets a liveness assertion, and an optional gate that is known to
+fail gets a waiver naming why:
 
     evidence | <gate id> | <extended regex>
+    waiver   | <gate id> | <why this optional gate is expected to fail>
+
+A waiver turns that gate's failure from `WARN` into `KNOWN` so that `WARN`
+always means something changed. It is refused on required gates.
 
 ## Rules
 

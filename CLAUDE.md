@@ -29,11 +29,17 @@ split it.
 2. **Tests are frozen during GREEN.** If a test is wrong, go back to RED and say
    so in the story file. Never edit a test to make it pass.
 3. **Done means the gates pass.** `bash scripts/gates.sh` — not "should pass",
-   not "passes locally in principle". Run it and paste the result. And a gate
-   that has never been observed to fail is not a gate: when a story adds or
-   changes one, break the thing it guards, watch it fail, record that in
+   not "passes locally in principle". Run it; it records its own result in the
+   story, stamped with the code it ran against, and CI refuses a PR where that
+   record does not match the code being merged. Never paste a summary by hand.
+   And a gate that has never been observed to fail is not a gate: when a story
+   adds or changes one, break the thing it guards, watch it fail, record that in
    `## Gate probes`, and revert. Exit 0 only means the tool did not complain,
    and a tool with nothing to do never complains.
+6. **Acceptance criteria are frozen once a story leaves PLANNED**, for the same
+   reason tests are frozen during GREEN. If one is wrong, stop, put it to the
+   user, and record the change under `## Amendments`. CI fails a PR whose
+   criteria changed without one.
 4. **Full coverage of the behaviour the story claims.** Coverage of lines is the
    floor, not the goal; every acceptance criterion has a test that fails when
    that criterion is broken.

@@ -28,6 +28,16 @@ regions" is a split that produces two stories neither of which can be
 demonstrated. "Regions persist across reload" and "Regions render with distinct
 colours" is a split that produces two demonstrable behaviours.
 
+The rule above is framed around RED→GREEN. The bootstrap story runs under
+SCAFFOLD instead, where nothing forces a test to exist, so over-sizing it is
+both easier and more expensive: keep it to the toolchain and the gates, and
+put every project-specific piece in a story of its own afterwards. See
+`reference/bootstrap-story.md`, Sizing.
+
+Order matters as well as size. `depends_on` in the frontmatter is enforced:
+`phase.sh set` refuses to start a story while a dependency is not DONE. Use it
+whenever a spike decides something a later story builds on.
+
 ## Acceptance criteria
 
 Each one is a behaviour observable from outside the code, phrased so that a test
