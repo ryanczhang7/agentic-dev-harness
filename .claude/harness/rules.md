@@ -8,7 +8,7 @@ themselves and checked in CI by `scripts/check-boundaries.sh`.
 |---|---|---|
 | **Lead PO** | `docs/wiki/**`, `docs/backlog/**`, `.claude/harness/project.conf` | any source or test file |
 | **Test Developer** | test paths (see `paths.conf`), the story's `## Test plan` and `## Handoff` | production source, config |
-| **Feature Developer** | source and config paths, the story's `## Gate results` | any test file |
+| **Feature Developer** | source and config paths, the story's `## Gate results` and `## Gate probes` | any test file |
 | **Lead Designer** | `docs/wiki/design/**`, the story's `## Design notes` | source, tests, config |
 | **Mutation Tester** | `docs/wiki/audits/**`, new story files | source, tests, config |
 
@@ -39,8 +39,14 @@ is not a general permission system.
 
 - A test that has never been observed to fail is not a test. Run it in RED and
   record the failure output in the story's `## Handoff`.
+- A gate that has never been observed to fail is not a gate. When a story adds
+  or changes one, break what it guards, watch it fail, and record that in the
+  story's `## Gate probes`. Exit 0 means only that the tool did not complain,
+  and a tool with nothing to do does not complain.
 - Do not weaken an assertion, add a `skip`, widen a tolerance, or delete a case
-  to reach green. Any of these means going back to RED.
+  to reach green. Any of these means going back to RED. The same applies to a
+  gate: do not delete an `evidence` line, drop `--workspace`, or add
+  `--passWithNoTests` to make a gate stop complaining.
 - Do not commit `.claude/state/**`. It is machine-local.
 - Agentic scaffolding (`.claude/`, `docs/`, `scripts/`, `.github/`) never ships
   in a production image. Keep `.dockerignore` honest.

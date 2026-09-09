@@ -180,21 +180,35 @@ Gate *names* are stable across every project; the *commands* are per-stack and
 live in one file, `.claude/harness/project.conf`:
 
 ```
-gate | unit     | required | . | uv run pytest -q
-gate | coverage | required | . | uv run pytest --cov=src --cov-fail-under=100
-task | dev      | -        | . | uv run uvicorn app:api --reload
+gate     | unit     | required | . | uv run pytest -q
+evidence | unit     | [1-9][0-9]* passed
+gate     | coverage | required | . | uv run pytest --cov=src --cov-fail-under=100
+evidence | coverage | TOTAL +[0-9]+ +[0-9]+
+task     | dev      | -        | . | uv run uvicorn app:api --reload
 ```
 
 ```bash
 bash scripts/gates.sh              # all of them
 bash scripts/gates.sh --gate unit  # one
+bash scripts/gates.sh --audit      # check the manifest, run nothing
 bash scripts/task.sh dev           # run the app
 ```
 
+The `evidence` lines exist because **exit 0 does not mean a gate did anything**.
+`cargo test` at a workspace root tests the root package and skips every member;
+`mypy` over a target that resolves empty reports "no issues found in 0 source
+files"; a linter aimed at a directory that moved checks nothing. All exit 0, and
+a harness that treats exit 0 as proof will report `PASS` forever. After a gate
+exits 0 its output must match its regex, or it fails with *ran but produced no
+evidence of work*. The regex asserts volume of work, never success — success is
+the exit code's job. Gates without an `evidence` line behave exactly as before.
+
 That indirection is what lets the same agents drive a Python service, a
-TypeScript app and a Godot game. `.claude/skills/stack-profiles/` holds verified
-command sets for Python, TypeScript, Rust, Godot and static web, plus a template
-for writing a profile for anything else.
+TypeScript app and a Godot game. `.claude/skills/stack-profiles/` holds command
+sets for Python, TypeScript, Rust, Godot and static web, plus a template for
+writing a profile for anything else. Lines that have not been run on a real
+toolchain are marked `# UNVERIFIED`; the bootstrap story's job is to execute
+every one of them and correct what has moved.
 
 Coverage defaults to a 100% threshold, set in the gate command where it is
 visible. Mutation testing is available but optional — it is the bar above the

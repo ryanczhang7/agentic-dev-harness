@@ -21,6 +21,10 @@ running a command:
   gate, and `BOOTSTRAPPED=yes`.
 - **AC-7** - `.claude/harness/paths.conf` classifies this stack's test files as
   `test` and its build configuration as `config`.
+- **AC-8** - `bash scripts/gates.sh --audit` passes: every required gate has a
+  command, an existing `cwd`, and an `evidence` line.
+- **AC-9** - Each required gate has been observed to fail. Moving the test
+  directory aside makes the `unit` gate fail; putting it back makes it pass.
 
 ## What it must deliver
 
@@ -30,7 +34,9 @@ running a command:
 - linter, formatter and type checker configured
 - a `.gitignore` for the ecosystem, and `.dockerignore` if containerised - both
   excluding `.claude/`, `docs/` and `scripts/` from production images
-- `project.conf` filled in and `BOOTSTRAPPED=yes`
+- `project.conf` filled in, with an `evidence` line per gate, and
+  `BOOTSTRAPPED=yes`
+- a `## Gate probes` section recording each gate observed failing
 
 ## Verifying it
 
@@ -38,3 +44,21 @@ Do not accept the story on the strength of the files existing. Run every gate
 and the dev task yourself. A bootstrap story that lands with a wrong test
 command poisons every story after it, because the next agent will trust
 `project.conf` without re-deriving it.
+
+**Do not trust a gate that passed.** The gate commands arrive from
+`docs/wiki/stack.md`, which is researched and unexecuted by construction; this
+story is where they are executed for the first time. A gate that passes quickly
+and quietly is the thing to be suspicious of, because a command that does no
+work exits 0 too. `cargo test` at a workspace root, `mypy` over a target that
+resolves empty and a linter aimed at a moved directory all pass while testing
+nothing.
+
+So for each required gate, run it, then break what it guards and run it again:
+
+    bash scripts/gates.sh --gate unit     # passes
+    mv tests tests.probe && bash scripts/gates.sh --gate unit   # must fail
+    mv tests.probe tests
+
+Paste both outputs into `## Gate probes`. That is what turns sixteen researched
+command lines into sixteen gates, and it is the only work in this story that
+cannot be redone cheaply later.

@@ -13,7 +13,8 @@ gate fails.
 ## You write
 
 Production source and configuration, as classified by
-`.claude/harness/paths.conf`, plus the story's `## Gate results` section.
+`.claude/harness/paths.conf`, plus the story's `## Gate results` and
+`## Gate probes` sections.
 
 You must not modify test files. Not to fix a typo, not to relax a tolerance, not
 to add a skip. If a test is genuinely wrong, stop and say so: the story returns
@@ -31,8 +32,14 @@ to route around it with shell redirects.
 4. When they pass, run the full suite — you may have broken something the story
    did not mention.
 5. Run `bash scripts/gates.sh`. Fix what it reports. Paste the summary into the
-   story's `## Gate results`.
-6. Refactor once green, with the tests as your safety net, if the code you just
+   story's `## Gate results`. Be suspicious of a required gate that passes
+   surprisingly fast — a command with no work to do exits 0 in silence. If a
+   gate reports `ran but produced no evidence of work`, the command is testing
+   nothing; fix the command, never the `evidence` line.
+6. If this story added or changed a gate, break what it guards, watch it fail,
+   paste that into `## Gate probes`, and revert the probe. A gate that has never
+   been observed to fail is not a gate.
+7. Refactor once green, with the tests as your safety net, if the code you just
    wrote would embarrass you in review.
 
 ## Honesty

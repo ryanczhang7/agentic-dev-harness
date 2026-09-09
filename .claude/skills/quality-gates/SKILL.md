@@ -14,6 +14,7 @@ coverage gate"; the manifest knows whether that means `pytest --cov`,
     bash scripts/gates.sh --list       # what is configured
     bash scripts/gates.sh --gate unit  # one gate
     bash scripts/gates.sh --required   # required only
+    bash scripts/gates.sh --audit      # check the manifest itself, run nothing
 
 Failures write their output to `.claude/state/gate-logs/<gate>.log`.
 
@@ -34,6 +35,68 @@ A gate marked required with no command configured is a warning before the
 bootstrap story lands (`BOOTSTRAPPED=no`) and a hard failure after it. That is
 deliberate: an unconfigured gate must never silently look like a passing one.
 
+## The vacuous pass
+
+**Exit 0 is not proof that a gate did anything.** It is the absence of a
+complaint, and a tool with nothing to do does not complain. A gate can run, exit
+0, be recorded as `PASS`, be pasted into a story as evidence, and have tested
+nothing whatsoever.
+
+This has happened for real. A `cargo test` in a workspace whose root is also a
+package tests only the root package and skips every member crate; the gate ran
+in under a second, printed `running 0 tests`, exited 0, and passed. The crate it
+skipped was the one holding the product's data-integrity code.
+
+Which tools are honest about having no work is not guessable:
+
+| Gate command | With zero work to do | Safe? |
+|---|---|---|
+| `cargo test` at a workspace root | exit 0, `running 0 tests` | **no** |
+| `biome lint <dir with no source>` | exit 0, "Checked 1 file" | **no** |
+| `mypy <target resolving empty>` | exit 0, "no issues found in 0 source files" | **no** |
+| Coverage threshold on a glob matching no files | satisfied silently | **no** |
+| Anything with `--passWithNoTests` | exit 0 | **no** |
+| `vitest run` with no matching test files | non-zero | yes |
+| `pytest` collecting nothing | exit 5 | yes |
+| `tsc --noEmit` with an empty `include` | exit 2, `TS18003` | yes |
+| `playwright test` with no specs | non-zero | yes |
+
+So each gate declares what evidence of work it must produce, in `project.conf`:
+
+    gate     | unit | required | . | cargo test --workspace
+    evidence | unit | test result: ok\. [1-9]
+
+After a gate exits 0, its captured output must match its regex or it fails with
+`ran but produced no evidence of work`, at the gate's own severity. The regex
+asserts **volume of work observed, never success** - success is the exit code's
+job, and conflating the two makes the regexes fragile against tool versions.
+
+A gate with no `evidence` line behaves exactly as before, so this is safe to
+adopt late; once `BOOTSTRAPPED=yes`, a required gate without one is reported as
+a warning. `bash scripts/gates.sh --audit` lists what is missing without running
+anything. Canonical regexes per ecosystem are in the `stack-profiles` skill.
+
+## A gate that has never been observed to fail is not a gate
+
+The first law says no production code without a failing test that demanded it,
+and `rules.md` says a test never observed to fail is not a test. The same
+applies to the gates themselves - they are the mechanism the whole discipline
+rests on, and they are code like anything else.
+
+**When a story adds or changes a gate: break the thing it guards, watch the gate
+fail, record the output, and revert.** This is RED, applied to a gate. Write it
+into the story's `## Gate probes` section.
+
+It is not ceremony. A lint rule forbidding `core/` from importing `ui/` was
+probed this way and turned out to catch the aliased import `@ui/App` but not the
+relative `../../ui/App` - which is the form somebody actually crosses a boundary
+with by accident. Nothing but breaking it on purpose would have found that.
+
+What to break, per gate: delete or rename the test files (`unit`); remove a test
+covering a branch (`coverage`); write the violation the rule forbids (`lint`);
+introduce a type error (`typecheck`); break an import (`build`). Revert every
+probe before moving on, and say in the story that you did.
+
 ## Rules for triage
 
 1. Read the actual output before forming a theory. It is in the log file.
@@ -44,6 +107,12 @@ deliberate: an unconfigured gate must never silently look like a passing one.
    the rule itself is wrong, and it is recorded in the story.
 4. If a gate failure means a **test** is wrong, the story returns to RED. Say so
    and record why.
+
+5. A gate that fails because it produced no evidence of work is **not** fixed by
+   deleting its `evidence` line. Fix the command so it does the work, or - if
+   the regex is genuinely wrong for this tool version - correct the regex and
+   say so in the story. Removing the line is the gate equivalent of deleting a
+   failing test.
 
 `reference/triage.md` has the per-gate playbook, including what a coverage
 failure actually tells you and when a suppression is legitimate.

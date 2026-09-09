@@ -26,6 +26,12 @@ jobs:
       - name: Show configured gates
         run: bash scripts/gates.sh --list
 
+      # Catches a gate whose command was emptied, whose cwd was moved away, or
+      # whose evidence line was dropped - none of which the gate run itself can
+      # report, because a gate that no longer does anything still exits 0.
+      - name: Audit the gate manifest
+        run: bash scripts/gates.sh --audit
+
       - name: Run gates
         run: bash scripts/gates.sh
 
