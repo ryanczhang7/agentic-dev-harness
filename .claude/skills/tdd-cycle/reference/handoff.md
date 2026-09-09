@@ -6,7 +6,7 @@ for someone who has read nothing.
 
 ## Filling in `## Handoff: RED -> GREEN`
 
-Four things, always:
+Five things, always:
 
 **1. The exact command.** Copy-pasteable, taken from
 `.claude/harness/project.conf`, not from memory. Include any filter that runs
@@ -21,19 +21,51 @@ block. The next agent needs to recognise the same output when they run it.
 |---|---|---|
 | `rejects a region whose borders do not close` | validation error naming the open edge | AC-2 |
 
-**4. Notes for the implementer.** Anything discovered that should change the
+**4. The export shape the tests already pin.** The highest-value block in the
+whole handoff, and the one most often left out. The tests import specific
+modules, names and signatures; the Feature Developer starts with an empty
+context and would otherwise *guess* them, then discover the guess was wrong
+one compile error at a time. Write them down, and say plainly that they are not
+up for negotiation:
+
+> Nothing below is a suggestion. Each name and signature is already imported by
+> a test, so getting it wrong is a compile error rather than a debate.
+>
+>     src/render/facade.ts
+>       export function createSurface(canvas: HTMLCanvasElement): Surface
+>       export type Surface = { resize(w: number, h: number): void; dispose(): void }
+>
+>     src/render/errors.ts
+>       export class ContextLostError extends Error
+
+Include every module the tests import, the exact exported names, their
+signatures, and any type the assertions destructure. Where the tests do *not*
+constrain something - internal structure, algorithm, file layout below the
+imported module - say that too: it is the Feature Developer's to choose, and
+saying so prevents a different guess, that the handoff is an implementation
+plan.
+
+**5. Notes for the implementer.** Anything discovered that should change the
 approach: a constraint in the architecture doc, an existing helper worth
 reusing, an edge case the acceptance criteria did not anticipate, a place where
-the criteria and the design notes disagree.
+the criteria and the design notes disagree. Also flag any test that **passed on
+arrival** - a regression guard for an earlier story's invariant - naming the
+probe or negative control that earns it (see `red-phase.md`), so that a green
+test is not mistaken for a forgotten one.
 
 Also state, in one sentence, **why this is the right failure** - which assertion
 is unsatisfied, and why that assertion is the behaviour the story asks for.
 
-## Filling in `## Gate results`
+## `## Gate results` is not yours to write
 
-The `bash scripts/gates.sh` summary block, verbatim, with the date. Then a line
-for anything skipped or any optional gate that failed, and why that is
-acceptable. If you cannot justify it, it is not acceptable.
+`bash scripts/gates.sh` writes that section itself on every full run, stamped
+with the commit and a hash of the code it ran against. Do not paste a summary
+into it and do not edit what it wrote: `check-boundaries.sh` refuses a PR whose
+record was not written by the tool or does not match the code being merged.
+
+Anything that needs saying *about* the run - an optional gate that failed and
+why that is acceptable - goes in `## Notes`. If you cannot justify it there, it
+is not acceptable.
 
 ## What not to write
 

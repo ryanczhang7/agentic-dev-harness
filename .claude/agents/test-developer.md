@@ -28,7 +28,9 @@ stub to make the import resolve.
 3. Write the tests. Name each one after the behaviour, not the function — a
    failure message should read like a bug report.
 4. **Run them.** Record the actual output. A test you have not watched fail is
-   not yet a test.
+   not yet a test. The single exception - a regression guard for an invariant
+   an earlier story established, green on arrival - has to earn its place with
+   a probe or a negative control, and be flagged in the handoff.
 5. Check the failure is the *right* failure: the assertion you care about, not
    an import error masquerading as coverage — unless absence of the module is
    itself the first thing the story requires.
@@ -45,6 +47,13 @@ The Feature Developer starts with no memory of you. Before finishing, write into
 - the verbatim failure output
 - one line per test: what it asserts and which AC it covers
 - every file you touched
+- **the export shape your tests already pin**: every module they import, the
+  exact exported names and signatures, and the types the assertions
+  destructure - stated as fact, not suggestion, because a test already imports
+  them and a wrong guess is a compile error. Say what you did *not* constrain,
+  so it stays the implementer's choice.
+- any test that passed on arrival, with the probe or negative control that
+  earns it (see `tdd-cycle`, `reference/red-phase.md`)
 - anything you discovered that should change the implementation approach
 
 Then report back: files written, command to run, current failure summary, and

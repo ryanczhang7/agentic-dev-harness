@@ -46,11 +46,39 @@ already loud. `vitest run` with no matching test files is likewise non-zero.
 **Never add `--passWithNoTests`** - it converts the safe case into the unsafe
 one, which is the whole failure this mechanism exists to catch.
 
+## How much work, and where
+
+    floor | unit     | 40      # raise it in the story that adds the tests
+    floor | coverage | 40
+
+The floor is read out of the evidence match, so keep the whole number inside
+the regex (`Tests +[1-9][0-9]* passed` does; a regex ending in `[1-9]` would
+measure one digit). Never lower one to make a gate pass.
+
 The real trap in this stack is per-directory coverage thresholds. A
 `vitest.config.ts` carrying `"src/platform/**": { lines: 100 }` for a directory
-that does not exist yet is satisfied vacuously and reports nothing. The
-`coverage` evidence line above catches an empty run but not that; check globs
-against the tree when you add one.
+no project's `include` matches is satisfied vacuously and reports nothing - a
+test written there is committed and never runs. This has happened, and the
+`coverage` evidence line does not catch it: the run is not empty, it is merely
+blind in one place.
+
+Reading the globs is how it stays hidden. Ask the runner instead, and record
+the answer:
+
+    discovery | platform | . | pnpm exec vitest list | grep -q "src/platform/"
+    discovery | e2e      | . | pnpm exec playwright test --list | grep -q "e2e/"
+
+`bash scripts/doctor.sh` runs these. Add one for every directory carrying a
+threshold, and check `vitest list` yourself whenever you add a project or a
+threshold - the config that produced the bug looked correct.
+
+## Biome through stdin is not the gate
+
+`biome lint --stdin-file-path=<path>` does **not** apply `overrides`. A file
+that the real gate rejects is reported clean, exit 0 - a silent wrong answer
+rather than an error. Any test asserting on a path-scoped Biome rule (an
+`import/no-restricted-paths`-style boundary, for instance) must write a real
+file at a real path, run the real gate command, and delete it afterwards.
 
 ## Layout
 
@@ -65,6 +93,20 @@ against the tree when you add one.
 
 Defaults cover `*.test.*`, `*.spec.*`, `__tests__/` and the config files. If you
 use `e2e/` for Playwright, add `e2e/**` to the `test` section.
+
+## .gitignore additions
+
+The runners write into the tree, and what they write is generated, not
+authored. The repo's `.gitignore` already carries these; keep them if you
+prune it:
+
+    .vitest/              # vitest browser-mode failure screenshots
+    playwright-report/
+    test-results/
+    .playwright/
+
+Missing entries cost twice: untracked noise, and a phase lock that classifies
+the directory as `source` and refuses to let you delete it.
 
 ## Notes for the bootstrap story
 

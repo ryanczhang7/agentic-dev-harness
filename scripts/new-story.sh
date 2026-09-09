@@ -65,7 +65,14 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
      to the Feature Developer, whose context is fresh. Must contain:
        * the exact command that runs the new tests
        * the failure output, and why it is the RIGHT failure
-       * every file touched
+       * every file touched, and which AC each test covers
+       * the EXPORT SHAPE the tests already pin: every module they import, the
+         exact exported names and signatures, and the types the assertions
+         destructure. Not a suggestion - a test already imports them, so a
+         wrong guess is a compile error. Say what the tests do NOT constrain
+         too, so it stays the implementer's choice.
+       * any test that passed on arrival, and the probe or negative control
+         that earns it
        * anything discovered that changes the approach -->
 
 ## Gate results

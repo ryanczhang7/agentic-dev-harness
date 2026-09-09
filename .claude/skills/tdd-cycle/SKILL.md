@@ -17,6 +17,10 @@ specific way software goes wrong.
 ## Non-negotiables
 
 1. The test is written first and is **observed failing**. Paste the failure.
+   The one exception is a regression guard for an invariant an earlier story
+   established, which is green on arrival by definition; it survives only with
+   a probe or a negative control, and only if the handoff says which. See
+   `reference/red-phase.md`.
 2. The failure must be the *right* failure - your assertion, not an unrelated
    error that happens to be red.
 3. During GREEN the tests are frozen. A test that is wrong sends the story back
