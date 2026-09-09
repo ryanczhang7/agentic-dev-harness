@@ -41,6 +41,17 @@ confirming the gate fails.
 `build` is `-` because an export prints little that is reliably countable;
 verify the artefact exists as a separate acceptance criterion instead.
 
+## What the runner can see
+
+    # UNVERIFIED - gdUnit4's flags move between versions; check yours.
+    discovery | tests | . | godot --headless --path . -s addons/gdUnit4/bin/GdUnitCmdTool.gd -a test/ | grep -qE "[1-9][0-9]* test.?s?"
+
+This is the weakest `discovery` line of any profile here, because gdUnit4 has no
+list-only mode: the only way to ask what it can see is to run it, which makes
+the line a duplicate of the `unit` gate rather than an independent check. Say so
+in the bootstrap story rather than pretending otherwise, and treat the `unit`
+gate's `floor` as the real guard against a suite quietly shrinking.
+
 ## The coverage problem
 
 There is no reliable line-coverage tool for GDScript. Do not fake one, and do
@@ -56,6 +67,16 @@ not silently drop the requirement. Two honest options:
 
 The second is strongly preferred for a world-building or simulation project: the
 interesting behaviour is exactly the part that does not need a scene tree.
+
+## What `--fast` should leave out
+
+    slow | build | an export-release template build; RED and GREEN have no use for it
+
+Nothing else. This profile has no `integration` or `mutation` gate, and its
+`coverage` gate is unconfigured (see above), so `--fast` here is lint, typecheck
+and unit. That is a smaller subset than in other stacks, and it is honest about
+it: the instrumented test run that `--fast` exists to protect does not exist in
+this ecosystem, which is a weakness of the profile rather than a saving.
 
 ## Layout
 

@@ -42,6 +42,33 @@ matching after a refactor.
 resolves empty, and exits 0. That is the vacuous pass in this stack, and the
 `[1-9]` in the typecheck regex is what catches it.
 
+## What the runner can see
+
+`doctor.sh` runs `discovery` lines; the gates do not. One per place tests are
+expected to live, and one for every directory carrying a coverage threshold - a
+`--cov=src` that no longer resolves to anything is satisfied silently.
+
+    # UNVERIFIED - correct the grep targets against your own layout.
+    discovery | tests | . | uv run pytest --collect-only -q | grep -q "tests/"
+    discovery | src   | . | uv run pytest --collect-only -q | grep -qE "[1-9][0-9]* tests? collected"
+
+`pytest --collect-only -q` prints the collected node ids and a count. A
+`testpaths` entry that stopped matching, or a package that lost its `__init__`,
+shows up here and nowhere else: the run still exits 0 with a smaller number.
+
+## What `--fast` should leave out
+
+    slow | build    | packaging a wheel and sdist, which RED and GREEN never use
+    slow | mutation | mutmut re-runs the suite once per mutant
+
+`coverage` stays in the fast subset deliberately, even though it is the slowest
+of what remains. `pytest --cov` runs the same tests through `coverage.py`'s
+tracer, and that instrumented run is the one that judges the story - keeping it
+out of RED and GREEN is exactly how a suite reaches CI never having been
+measured under it. Python has no default per-test timeout, so the failure mode
+here is a slow *suite* rather than a timed-out test; if you add
+`pytest-timeout`, set its value against the `--cov` run, not the plain one.
+
 ## Layout
 
     src/<package>/          production code

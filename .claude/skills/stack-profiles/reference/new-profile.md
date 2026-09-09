@@ -36,6 +36,27 @@ story will depend on it, and so will every story after that.
 7. **Testing notes** - the idiomatic runner, the assertion style, how to fake
    time and randomness, and which kinds of test are theatre in this ecosystem.
 
+## These rules are enforced
+
+`.claude/tests/profiles.test.sh` checks every profile in this directory against
+the list above, and `scripts/selftest.sh` runs it in CI. A profile is any file
+here carrying a `gate |` line, so a new one is picked up the moment it is
+written - there is no list to add yourself to.
+
+It asserts what `gates.sh --audit` asserts about a real `project.conf`, because
+a profile is copied verbatim into one: every required gate is configured; every
+required gate with a command has an `evidence` line; no `evidence`, `floor` or
+`slow` line names a gate the profile does not configure; every `floor` has an
+evidence line to measure out of; every `slow` line carries a reason; the
+`## What --fast should leave out` section exists; and there is at least one
+`discovery` line.
+
+This suite exists because the rules above went unenforced and drifted within a
+single round: the change that added the `--fast` requirement left four of the
+five shipped profiles violating it, and three had been missing the `discovery`
+requirement since it was written. A requirement that only the template knows
+about is a suggestion.
+
 ## Verify before you rely on it
 
 Run every command you write down, in this repository, before the bootstrap story

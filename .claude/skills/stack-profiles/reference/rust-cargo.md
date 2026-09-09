@@ -67,6 +67,17 @@ than the command being a no-op or a broken alias; it cannot prove the crate set
 was right. For those gates the protection comes from `--workspace` being correct
 in the first place, and from the `unit` gate failing loudly if it is not.
 
+## What `--fast` should leave out
+
+    slow | build    | a release build of the whole workspace; minutes, and RED has no use for it
+    slow | mutation | cargo mutants re-runs the suite once per mutant
+
+`coverage` stays in, and in this stack that is the expensive call: `cargo
+llvm-cov` recompiles the workspace with instrumentation, so it does not share
+`cargo test`'s cache and it is not a marginal cost on top of `unit`. Keep it
+anyway. It is the command that judges the story, and a story that never runs it
+until GATES finds out about it on a CI runner instead of a desktop.
+
 ## Layout
 
     src/                    production code, unit tests in-module
