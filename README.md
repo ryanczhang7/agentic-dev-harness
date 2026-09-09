@@ -203,6 +203,18 @@ exits 0 its output must match its regex, or it fails with *ran but produced no
 evidence of work*. The regex asserts volume of work, never success — success is
 the exit code's job. Gates without an `evidence` line behave exactly as before.
 
+Two more things `gates.sh` does that a plain test runner does not. A `waiver`
+line names an optional gate that is known to fail and why, so it reports as
+`KNOWN` and `WARN` stays reserved for something that changed. And a full run
+writes its own summary into the story's `## Gate results`, stamped with the
+commit and a hash of the code it ran against; nobody pastes it, and
+`check-boundaries.sh` refuses a PR whose recorded run does not match the code
+being merged. That script also freezes acceptance criteria once a story leaves
+PLANNED (changes need an `## Amendments` entry), requires a filled-in handoff,
+and requires a scaffold story to name every source file it wrote. `phase.sh`
+refuses to start a story whose `depends_on` are not DONE or from the wrong
+branch.
+
 That indirection is what lets the same agents drive a Python service, a
 TypeScript app and a Godot game. `.claude/skills/stack-profiles/` holds command
 sets for Python, TypeScript, Rust, Godot and static web, plus a template for

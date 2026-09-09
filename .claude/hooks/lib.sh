@@ -12,6 +12,11 @@ HARNESS_DIR="$HARNESS_ROOT/.claude/harness"
 STATE_FILE="$HARNESS_ROOT/.claude/state/current-story.env"
 GATE_STAMP="$HARNESS_ROOT/.claude/state/last-gate-run"
 
+# First line of the block gates.sh writes into a story's ## Gate results.
+# check-boundaries.sh looks for it to tell a tool-written record from a pasted
+# one.
+GATE_MARKER='<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->'
+
 # --- JSON -------------------------------------------------------------------
 
 # json_get_string <key>   reads $HOOK_INPUT, prints the first string value for
@@ -125,6 +130,108 @@ classify() {
     fi
   done < "$HARNESS_DIR/paths.conf"
   printf 'source'
+}
+
+# classify_stdin   One repo-relative path per input line -> "<category>\t<path>"
+# per output line. Same rules and precedence as classify, but one awk pass
+# instead of one process per path; use it for anything beyond a handful.
+#
+# One process in total: the glob-to-regex conversion is the same character scan
+# as glob_to_regex, done inside awk, because spawning it per rule costs seconds
+# on Windows. ENVIRON rather than -v for the path: -v processes backslashes.
+classify_stdin() {
+  PATHS_CONF="$HARNESS_DIR/paths.conf" awk '
+    function g2r(s,   out, i, n, c) {
+      out = ""; i = 1; n = length(s)
+      while (i <= n) {
+        c = substr(s, i, 1)
+        if (c == "*") {
+          if (substr(s, i, 3) == "**/") { out = out "(.*/)?"; i += 3; continue }
+          if (substr(s, i, 2) == "**")  { out = out ".*";     i += 2; continue }
+          out = out "[^/]*"; i++; continue
+        }
+        if (c == "?") { out = out "[^/]"; i++; continue }
+        if (index(".^$+(){}|[]\\", c) > 0) { out = out "\\" c; i++; continue }
+        out = out c; i++
+      }
+      return out
+    }
+    BEGIN {
+      n = 0; conf = ENVIRON["PATHS_CONF"]
+      while ((getline line < conf) > 0) {
+        sub(/\r$/, "", line)
+        if (line ~ /^[[:space:]]*(#|$)/) continue
+        if (index(line, "|") == 0) continue
+        cat = line; sub(/\|.*/, "", cat); gsub(/[[:space:]]/, "", cat)
+        glob = line; sub(/^[^|]*\|/, "", glob)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", glob)
+        if (cat == "" || glob == "") continue
+        n++; rc[n] = cat; rr[n] = "^" tolower(g2r(glob)) "$"
+      }
+      close(conf)
+    }
+    {
+      path = $0; sub(/\r$/, "", path); sub(/^\.\//, "", path)
+      if (path == "") next
+      lp = tolower(path); c = "source"
+      for (i = 1; i <= n; i++) if (lp ~ rr[i]) { c = rc[i]; break }
+      print c "\t" path
+    }'
+}
+
+# --- Gate tree hash ---------------------------------------------------------
+#
+# One id for "the code the gates ran against". gates.sh records it in the
+# story's ## Gate results; check-boundaries.sh recomputes it and refuses a PR
+# whose recorded gate run does not match the code being merged.
+#
+# Included: every source, test, config and harness path. Excluded: docs (the
+# story file that records the hash cannot be part of it), vendor, ignored
+# files, and harness runtime state. Blob ids are of LF-normalised content, so a
+# Windows working tree and a Linux checkout of the same content agree.
+
+# Reads "blob\tpath" lines; prints the hash.
+_hash_blob_listing() {
+  local listing
+  listing="$(cat)"
+  [ -n "$listing" ] || { printf 'unavailable'; return 1; }
+  {
+    printf '%s\n' "$listing" | awk -F'\t' '{ print "B\t" $1 "\t" $2 }'
+    printf '%s\n' "$listing" | cut -f2- | classify_stdin | awk -F'\t' '{ print "C\t" $1 "\t" $2 }'
+  } | awk -F'\t' '
+      $1 == "B" { blob[$3] = $2; next }
+      $1 == "C" { cat[$3] = $2 }
+      END {
+        for (p in blob) {
+          c = cat[p]
+          if (c != "source" && c != "test" && c != "config" && c != "harness") continue
+          if (index(p, ".claude/state/") == 1) continue
+          print blob[p] "  " p
+        }
+      }' | LC_ALL=C sort | git hash-object --stdin
+}
+
+# gate_tree_hash   The working tree as it is right now, tracked or not.
+gate_tree_hash() {
+  local idx
+  idx="$HARNESS_ROOT/.claude/state/.tree-index.$$"
+  mkdir -p "$HARNESS_ROOT/.claude/state"; rm -f "$idx"
+  ( cd "$HARNESS_ROOT" \
+      && GIT_INDEX_FILE="$idx" git add -A . >/dev/null 2>&1 \
+      && GIT_INDEX_FILE="$idx" git ls-files -s ) \
+    | awk -F'\t' '{ split($1, a, " "); print a[2] "\t" $2 }' \
+    | _hash_blob_listing
+  local rc=$?
+  rm -f "$idx"
+  return $rc
+}
+
+# gate_tree_hash_of <commit>   The same hash for a committed tree - what CI
+# uses, where the checkout may be a merge commit rather than the PR head.
+gate_tree_hash_of() {
+  git -C "$HARNESS_ROOT" ls-tree -r "$1" 2>/dev/null \
+    | awk -F'\t' '{ split($1, a, " "); if (a[2] == "blob") print a[3] "\t" $2 }' \
+    | _hash_blob_listing
 }
 
 # --- Story state ------------------------------------------------------------

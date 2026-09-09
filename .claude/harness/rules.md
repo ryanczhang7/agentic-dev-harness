@@ -12,6 +12,18 @@ themselves and checked in CI by `scripts/check-boundaries.sh`.
 | **Lead Designer** | `docs/wiki/design/**`, the story's `## Design notes` | source, tests, config |
 | **Mutation Tester** | `docs/wiki/audits/**`, new story files | source, tests, config |
 
+**The bootstrap exception.** A `bootstrap` story - and a `chore` that uses
+SCAFFOLD - is one indivisible derivation: the test runner, the configuration,
+the scaffold and the gate commands all depend on each other, and none of them
+can be written test-first before the others exist. So the Lead PO drives it and
+writes source, tests and config directly, under SCAFFOLD. That is the only time
+the Lead PO writes outside docs and `project.conf`, and it is not free: every
+production file written must be named in the story's `## Scaffold inventory`,
+with the test that covers it, and `check-boundaries.sh` refuses the PR if a
+changed source file is missing from that list. A table that quietly contradicts
+the command that invokes it teaches agents the table is advisory; this
+paragraph is here so that it does not.
+
 Categories are decided by `.claude/harness/paths.conf`, not by intuition. To see
 how a path is classified:
 
@@ -29,7 +41,7 @@ bash -c '. .claude/hooks/lib.sh; classify "src/app/main.ts"'
 | `GREEN` | source, config, docs, harness | make them pass; tests frozen |
 | `GATES` | source, config, docs, harness | fix lint/type/build; tests frozen |
 | `REVIEW` | docs, harness | PR is open |
-| `SCAFFOLD` | everything | bootstrap/chore stories only |
+| `SCAFFOLD` | everything | bootstrap/chore stories only; every source file named in `## Scaffold inventory` |
 | `DONE` | docs, harness | closed |
 
 No active story means no restrictions. The lock protects a cycle in flight; it
@@ -47,6 +59,20 @@ is not a general permission system.
   to reach green. Any of these means going back to RED. The same applies to a
   gate: do not delete an `evidence` line, drop `--workspace`, or add
   `--passWithNoTests` to make a gate stop complaining.
+- Acceptance criteria are frozen once a story leaves PLANNED, for the same
+  reason tests are frozen during GREEN: they are what the tests are for. If one
+  is wrong or unsatisfiable, stop, put it to the product owner, and record the
+  change under `## Amendments` - which AC, what it said, what it says now, who
+  approved it and why. `check-boundaries.sh` fails a PR whose criteria differ
+  from the base branch without an entry there.
+- `## Gate results` is written by `scripts/gates.sh`, never by hand. It carries
+  the commit and a hash of the code the gates ran against, and
+  `check-boundaries.sh` refuses a PR where that hash does not match the code
+  being merged. A pasted summary is not evidence of anything.
+- `depends_on` and `branch` in a story's frontmatter are enforced by
+  `phase.sh set`, which refuses to move a story past PLANNED while a dependency
+  is not DONE or the checkout is on the wrong branch. `--force` overrides
+  either, and prints that it did; record why in `## Notes`.
 - Do not commit `.claude/state/**`. It is machine-local.
 - Agentic scaffolding (`.claude/`, `docs/`, `scripts/`, `.github/`) never ships
   in a production image. Keep `.dockerignore` honest.

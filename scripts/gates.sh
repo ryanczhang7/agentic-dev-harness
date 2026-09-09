@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Run the project's quality gates as declared in .claude/harness/project.conf.
 #
-#   bash scripts/gates.sh              run every gate
-#   bash scripts/gates.sh --list       show what is configured
-#   bash scripts/gates.sh --gate unit  run one gate
-#   bash scripts/gates.sh --required   required gates only
-#   bash scripts/gates.sh --audit      check the manifest itself, run nothing
+#   bash scripts/gates.sh                  run every gate; record the result in the active story
+#   bash scripts/gates.sh --story WORLD-3  ... and record it in that story instead
+#   bash scripts/gates.sh --list           show what is configured
+#   bash scripts/gates.sh --gate unit      run one gate  (not recorded: a partial run is not evidence)
+#   bash scripts/gates.sh --required       required gates only  (not recorded)
+#   bash scripts/gates.sh --audit          check the manifest itself, run nothing
 #
 # The gate NAMES are stable across every project ("the coverage gate"); the
 # COMMANDS behind them are per-stack. That indirection is what lets the same
@@ -13,8 +14,13 @@
 #
 # Exit 0 is not proof that a gate did any work: a test runner that discovers no
 # tests, or a linter pointed at an empty directory, exits 0 with nothing to say.
-# `evidence` lines assert that work was OBSERVED, not that it succeeded - see
-# the quality-gates skill.
+# `evidence` lines assert that work was OBSERVED, not that it succeeded.
+# `waiver` lines name an optional gate that is known to fail, and why, so that
+# WARN in the summary always means something changed. Both are described in the
+# quality-gates skill.
+#
+# A full run writes its own summary into the story's ## Gate results, stamped
+# with the commit and a hash of the code it ran against. Nobody pastes it.
 
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,20 +28,24 @@ CONF="$ROOT/.claude/harness/project.conf"
 LOGDIR="$ROOT/.claude/state/gate-logs"
 STAMP="$ROOT/.claude/state/last-gate-run"
 
+export CLAUDE_PROJECT_DIR="$ROOT"
+. "$ROOT/.claude/hooks/lib.sh"
+
 [ -f "$CONF" ] || { printf 'error: missing %s\n' "$CONF" >&2; exit 1; }
 mkdir -p "$LOGDIR"
 
 BOOTSTRAPPED="$(grep -E '^BOOTSTRAPPED=' "$CONF" | head -1 | cut -d= -f2- | tr -d '[:space:]')"
 [ -z "$BOOTSTRAPPED" ] && BOOTSTRAPPED=no
 
-ONLY=""; REQUIRED_ONLY=0; LIST=0; AUDIT=0
+ONLY=""; REQUIRED_ONLY=0; LIST=0; AUDIT=0; STORY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --list) LIST=1 ;;
     --gate) shift; ONLY="${1:-}" ;;
     --required) REQUIRED_ONLY=1 ;;
     --audit) AUDIT=1 ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    --story) shift; STORY="${1:-}" ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) printf 'unknown option: %s\n' "$1" >&2; exit 2 ;;
   esac
   shift
@@ -46,33 +56,37 @@ trim() { printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
 TAB=$(printf '\t')
 ESC=$(printf '\033')
 
-# --- evidence table ---------------------------------------------------------
-# Read every `evidence` line up front, so that --gate <id> still finds its own.
-# Stored as "<id><TAB><regex>" lines; no associative arrays, for bash 3.2.
-EVIDENCE=""
+# --- evidence and waiver tables ---------------------------------------------
+# Read up front, so that --gate <id> still finds its own lines. Stored as
+# "<id><TAB><value>" lines; no associative arrays, for bash 3.2.
+EVIDENCE=""; WAIVERS=""
 while IFS= read -r line; do
   line="${line%%$'\r'}"
   case "$(trim "$line")" in ''|'#'*) continue ;; esac
   case "$line" in *'|'*) ;; *) continue ;; esac
-  [ "$(trim "$(printf '%s' "$line" | cut -d'|' -f1)")" = "evidence" ] || continue
-  eid=$(trim "$(printf '%s' "$line" | cut -d'|' -f2)")
+  kind=$(trim "$(printf '%s' "$line" | cut -d'|' -f1)")
+  case "$kind" in evidence|waiver) ;; *) continue ;; esac
+  tid=$(trim "$(printf '%s' "$line" | cut -d'|' -f2)")
   # -f3- so that a regex containing `|` (alternation) survives the split.
-  ere=$(trim "$(printf '%s' "$line" | cut -d'|' -f3-)")
-  [ -n "$eid" ] || continue
-  EVIDENCE="$EVIDENCE$eid$TAB$ere
+  tval=$(trim "$(printf '%s' "$line" | cut -d'|' -f3-)")
+  [ -n "$tid" ] || continue
+  if [ "$kind" = "evidence" ]; then
+    EVIDENCE="$EVIDENCE$tid$TAB$tval
 "
+  else
+    WAIVERS="$WAIVERS$tid$TAB$tval
+"
+  fi
 done < "$CONF"
 
-# Echo the regex for a gate id, or "-" if liveness was deliberately declared
-# unassertable. Returns 1 when the gate has no evidence line at all.
-# Exact string comparison, never a regex match: a gate id containing `.` or `*`
-# must not silently adopt a different gate's line. The here-string keeps the
-# loop in this shell so `return` works.
-evidence_lookup() {
+# table_lookup <table> <id>   Echoes the value. Exact string comparison, never
+# a regex match: a gate id containing `.` or `*` must not silently adopt a
+# different gate's line. Returns 1 when the id has no line.
+table_lookup() {
   local eid ere
   while IFS="$TAB" read -r eid ere; do
-    if [ "$eid" = "$1" ]; then printf '%s' "$ere"; return 0; fi
-  done <<< "$EVIDENCE"
+    if [ "$eid" = "$2" ]; then printf '%s' "$ere"; return 0; fi
+  done <<< "$1"
   return 1
 }
 
@@ -81,7 +95,36 @@ clean_log() {
   sed -e "s/${ESC}\[[0-9;]*[a-zA-Z]//g" -e 's/\r$//' "$1"
 }
 
-fails=0; unconfigured=0; ran=0; noevidence=0
+# --- recording ----------------------------------------------------------------
+# Replace the body of the story's "## Gate results" section with a block this
+# script wrote: the marker check-boundaries.sh looks for, the UTC time, the
+# commit, the tree hash of the code the gates saw, and the summary. If the
+# section is missing (an older story file) it is appended.
+record_in_story() { # <story-file> <result-text> <summary-lines>
+  local f="$1" res="$2" body="$3" commit dirty tree block
+  commit="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || printf 'no commit')"
+  dirty=""
+  [ -z "$(git -C "$ROOT" status --porcelain -- . ':!docs' 2>/dev/null)" ] || dirty=" (working tree had uncommitted changes)"
+  tree="$(gate_tree_hash)"
+  block="$(printf '%s\n' \
+    "$GATE_MARKER" \
+    "" \
+    "    run:    $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "    commit: $commit$dirty" \
+    "    tree:   $tree" \
+    "    result: $res" \
+    "" \
+    "$(printf '%s\n' "$body" | sed -e '/^[[:space:]]*$/d' -e 's/^/    /')")"
+  grep -q '^## Gate results' "$f" || printf '\n## Gate results\n' >> "$f"
+  # ENVIRON rather than -v: the block contains regexes with backslashes.
+  BLK="$block" awk '
+    /^## Gate results/ { print; print ""; print ENVIRON["BLK"]; print ""; skip=1; next }
+    skip && /^## / { skip=0 }
+    !skip { print }
+  ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+}
+
+fails=0; warns=0; known=0; unconfigured=0; ran=0; noevidence=0
 results=""
 
 while IFS= read -r line; do
@@ -100,12 +143,25 @@ while IFS= read -r line; do
   [ -n "$ONLY" ] && [ "$ONLY" != "$id" ] && continue
   [ "$REQUIRED_ONLY" = 1 ] && [ "$req" != "required" ] && continue
 
-  exp=$(evidence_lookup "$id") || exp="<none>"
+  exp=$(table_lookup "$EVIDENCE" "$id") || exp="<none>"
+  waiver=$(table_lookup "$WAIVERS" "$id") || waiver=""
+  logrel=".claude/state/gate-logs/$id.log"
 
   if [ "$LIST" = 1 ]; then
     printf '%-12s %-9s %-6s %s\n' "$id" "$req" "$cwd" "${cmd:-<unconfigured>}"
     printf '%-12s %-9s %-6s evidence: %s\n' "" "" "" "$exp"
+    [ -n "$waiver" ] && printf '%-12s %-9s %-6s waiver:   %s\n' "" "" "" "$waiver"
     continue
+  fi
+
+  # A waiver on a required gate is a bypass, not a waiver.
+  if [ -n "$waiver" ] && [ "$req" = "required" ]; then
+    if [ "$AUDIT" = 1 ]; then
+      printf 'FAIL %-12s has a waiver but is required; waivers are for optional gates only\n' "$id"
+    else
+      results="$results\nFAIL         $id (has a waiver but is required; waivers are for optional gates only)"
+    fi
+    fails=$((fails+1)); continue
   fi
 
   if [ "$AUDIT" = 1 ]; then
@@ -129,6 +185,7 @@ while IFS= read -r line; do
     else
       printf 'ok   %-12s evidence: %s\n' "$id" "$exp"
     fi
+    [ -n "$waiver" ] && printf '     %-12s waiver: %s\n' "" "$waiver"
     continue
   fi
 
@@ -151,35 +208,45 @@ while IFS= read -r line; do
   dur=$(( $(date +%s) - start ))
   ran=$((ran+1))
 
-  # Liveness: only ever consulted for a gate that already exited 0. Success is
-  # the exit code's job; this asks the separate question of whether the command
-  # had anything to do. A gate that fails keeps failing for its own reason,
-  # with its own message.
-  if [ "$rc" -eq 0 ] && [ "$exp" != "<none>" ] && [ "$exp" != "-" ]; then
-    if ! clean_log "$log" | grep -Eq -- "$exp"; then
-      if [ "$req" = "required" ]; then
-        results="$results\nFAIL         $id (${dur}s, ran but produced no evidence of work: expected /$exp/) -> .claude/state/gate-logs/$id.log"
-        fails=$((fails+1))
-      else
-        results="$results\nWARN         $id (${dur}s, ran but produced no evidence of work: expected /$exp/, optional)"
-      fi
-      continue
-    fi
+  # Three outcomes. Liveness is only ever consulted for a gate that already
+  # exited 0: success is the exit code's job, and this asks the separate
+  # question of whether the command had anything to do. A gate that fails keeps
+  # failing for its own reason, with its own message.
+  outcome=pass
+  if [ "$rc" -ne 0 ]; then
+    outcome=fail
+  elif [ "$exp" != "<none>" ] && [ "$exp" != "-" ] && ! clean_log "$log" | grep -Eq -- "$exp"; then
+    outcome=noevidence
   fi
 
-  if [ "$rc" -eq 0 ]; then
-    if [ "$exp" = "<none>" ] && [ "$BOOTSTRAPPED" = "yes" ] && [ "$req" = "required" ]; then
-      results="$results\nPASS         $id (${dur}s) -- no evidence line: a vacuous pass would go unnoticed"
-      noevidence=$((noevidence+1))
-    else
-      results="$results\nPASS         $id (${dur}s)"
-    fi
-  elif [ "$req" = "required" ]; then
-    results="$results\nFAIL         $id (${dur}s, exit $rc) -> .claude/state/gate-logs/$id.log"
-    fails=$((fails+1))
-  else
-    results="$results\nWARN         $id (${dur}s, exit $rc, optional) -> .claude/state/gate-logs/$id.log"
-  fi
+  case "$outcome" in
+    pass)
+      if [ -n "$waiver" ]; then
+        results="$results\nPASS         $id (${dur}s) -- waiver no longer needed, remove it: $waiver"
+      elif [ "$exp" = "<none>" ] && [ "$BOOTSTRAPPED" = "yes" ] && [ "$req" = "required" ]; then
+        results="$results\nPASS         $id (${dur}s) -- no evidence line: a vacuous pass would go unnoticed"
+        noevidence=$((noevidence+1))
+      else
+        results="$results\nPASS         $id (${dur}s)"
+      fi ;;
+    noevidence)
+      why="ran but produced no evidence of work: expected /$exp/"
+      if [ "$req" = "required" ]; then
+        results="$results\nFAIL         $id (${dur}s, $why) -> $logrel"; fails=$((fails+1))
+      elif [ -n "$waiver" ]; then
+        results="$results\nKNOWN        $id (${dur}s, $why; $waiver)"; known=$((known+1))
+      else
+        results="$results\nWARN         $id (${dur}s, $why, optional)"; warns=$((warns+1))
+      fi ;;
+    fail)
+      if [ "$req" = "required" ]; then
+        results="$results\nFAIL         $id (${dur}s, exit $rc) -> $logrel"; fails=$((fails+1))
+      elif [ -n "$waiver" ]; then
+        results="$results\nKNOWN        $id (${dur}s, exit $rc; $waiver) -> $logrel"; known=$((known+1))
+      else
+        results="$results\nWARN         $id (${dur}s, exit $rc, optional) -> $logrel"; warns=$((warns+1))
+      fi ;;
+  esac
 done < "$CONF"
 
 [ "$LIST" = 1 ] && exit 0
@@ -210,12 +277,40 @@ if [ "$noevidence" -gt 0 ]; then
   printf '  evidence | <id> | <regex proving the tool did work>\n'
 fi
 
+if [ "$warns" -gt 0 ]; then
+  printf '\n%d optional gate(s) WARNed. A WARN means something changed since the last run:\n' "$warns"
+  printf 'read it. A failure that is known and permanent belongs in a waiver, so that the\n'
+  printf 'next WARN is not buried next to it:\n'
+  printf '  waiver | <id> | <why this optional gate is expected to fail, and where that is recorded>\n'
+fi
+
 if [ "$fails" -gt 0 ]; then
+  result="fail ($fails required gate(s) failed)"
   printf 'RESULT=fail\nWHEN=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STAMP"
+else
+  result="pass ($ran ran, $unconfigured unconfigured, $known known)"
+  printf 'RESULT=pass\nWHEN=%s\nRAN=%d\nUNCONFIGURED=%d\nNOEVIDENCE=%d\nKNOWN=%d\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ran" "$unconfigured" "$noevidence" "$known" > "$STAMP"
+fi
+
+# --- record -----------------------------------------------------------------
+# Only a full run is evidence. `--gate unit` passing says nothing about lint.
+if [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ]; then
+  printf '\n(not recorded in the story: a partial run is not evidence of anything)\n'
+else
+  if [ -z "$STORY" ]; then load_state; STORY="$STORY_ID"; fi
+  if [ -z "$STORY" ]; then
+    printf '\n(not recorded: no active story; use --story <id> to record it in one)\n'
+  elif [ ! -f "$ROOT/docs/backlog/stories/$STORY.md" ]; then
+    printf '\n(not recorded: no story file at docs/backlog/stories/%s.md)\n' "$STORY"
+  else
+    record_in_story "$ROOT/docs/backlog/stories/$STORY.md" "$result" "$(printf '%b' "$results")"
+    printf '\nrecorded in docs/backlog/stories/%s.md (## Gate results)\n' "$STORY"
+  fi
+fi
+
+if [ "$fails" -gt 0 ]; then
   printf '\n%d required gate(s) failed.\n' "$fails"
   exit 1
 fi
-
-printf 'RESULT=pass\nWHEN=%s\nRAN=%d\nUNCONFIGURED=%d\nNOEVIDENCE=%d\n' \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ran" "$unconfigured" "$noevidence" > "$STAMP"
-printf '\nAll required gates passed (%d ran, %d unconfigured).\n' "$ran" "$unconfigured"
+printf '\nAll required gates passed (%d ran, %d unconfigured, %d known).\n' "$ran" "$unconfigured" "$known"

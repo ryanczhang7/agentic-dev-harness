@@ -31,11 +31,15 @@ to route around it with shell redirects.
 3. Run the tests after each meaningful step, not once at the end.
 4. When they pass, run the full suite — you may have broken something the story
    did not mention.
-5. Run `bash scripts/gates.sh`. Fix what it reports. Paste the summary into the
-   story's `## Gate results`. Be suspicious of a required gate that passes
+5. Run `bash scripts/gates.sh`. Fix what it reports. It writes the summary into
+   the story's `## Gate results` itself, stamped with the code it ran against —
+   do not paste one, and do not touch what it wrote; CI refuses a PR whose
+   record does not match the code. Be suspicious of a required gate that passes
    surprisingly fast — a command with no work to do exits 0 in silence. If a
    gate reports `ran but produced no evidence of work`, the command is testing
-   nothing; fix the command, never the `evidence` line.
+   nothing; fix the command, never the `evidence` line. A `WARN` on an optional
+   gate means something changed: read it. If it is a known, permanent failure,
+   it belongs in a `waiver` line with the reason, not in your memory.
 6. If this story added or changed a gate, break what it guards, watch it fail,
    paste that into `## Gate probes`, and revert the probe. A gate that has never
    been observed to fail is not a gate.

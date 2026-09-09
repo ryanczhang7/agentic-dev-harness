@@ -23,7 +23,9 @@ specific way software goes wrong.
    to RED; it is never edited into passing.
 4. Never reach green by weakening: no relaxed tolerance, no skipped case, no
    deleted case, no assertion narrowed to what the code already does.
-5. Done means `bash scripts/gates.sh` was run and passed. Paste the summary.
+5. Done means `bash scripts/gates.sh` was run and passed. It writes its own
+   summary into the story, stamped with the code it ran against; do not paste
+   one, and do not edit what it wrote.
 6. The same discipline applies to the gates themselves: a gate that has never
    been observed to fail is not a gate. When a story adds or changes one, break
    what it guards, watch it fail, record it in `## Gate probes`, and revert.

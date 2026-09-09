@@ -4,9 +4,14 @@
 # the human-readable frontmatter in the story file, so the two cannot drift.
 #
 #   bash scripts/phase.sh show
-#   bash scripts/phase.sh set  WORLD-014 RED
+#   bash scripts/phase.sh set  WORLD-014 RED [--force]
 #   bash scripts/phase.sh clear
 #   bash scripts/phase.sh board
+#
+# `set` refuses to move a story past PLANNED while any story in its
+# `depends_on` is not DONE, or while the checkout is not on the story's branch.
+# Both refusals can be overridden with --force, which prints what was overridden
+# so that the override is visible in the transcript.
 
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -47,6 +52,61 @@ set_frontmatter() { # <file> <key> <value>
   fi
 }
 
+# story_deps <file>   The ids in depends_on, space-separated. Accepts the
+# inline form the template writes (`[A-1, A-2]`) and the block-list form.
+story_deps() {
+  awk '
+    NR==1 && /^---/ { inf=1; next }
+    inf && /^---/ { exit }
+    inf && /^depends_on:/ {
+      indeps=1; v=$0; sub(/^depends_on:[[:space:]]*/, "", v); sub(/#.*/, "", v)
+      gsub(/[][,]/, " ", v); printf "%s ", v; next
+    }
+    indeps && /^[[:space:]]*-[[:space:]]*/ {
+      v=$0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); sub(/#.*/, "", v); printf "%s ", v; next
+    }
+    indeps { indeps=0 }
+  ' "$1"
+}
+
+# guard_transition <id> <file> <target-phase> <branch> <force>
+# The checks that make `depends_on` and `branch` mean something. Refuse rather
+# than warn: the next agent starts with an empty context and will trust
+# whatever state this writes.
+guard_transition() {
+  local id="$1" file="$2" phase="$3" branch="$4" force="$5"
+  case "$phase" in PLANNED|DONE) return 0 ;; esac
+
+  local d dp blocked=""
+  for d in $(story_deps "$file"); do
+    if [ ! -f "$STORIES/$d.md" ]; then blocked="$blocked $d (no story file)"; continue; fi
+    dp="$(frontmatter "$STORIES/$d.md" phase)"
+    [ "$dp" = "DONE" ] || blocked="$blocked $d ($dp)"
+  done
+  if [ -n "$blocked" ]; then
+    if [ "$force" = 1 ]; then
+      printf 'warning: --force overrides unmet dependencies:%s\n' "$blocked"
+    else
+      die "$id depends on stories that are not DONE:$blocked
+Finish them first. If starting anyway is a deliberate decision, record why in the
+story's ## Notes and run:  bash scripts/phase.sh set $id $phase --force"
+    fi
+  fi
+
+  local cur
+  cur="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [ -n "$cur" ] && [ "$cur" != "$branch" ]; then
+    if [ "$force" = 1 ]; then
+      printf 'warning: --force overrides branch check (on %s, story expects %s)\n' "$cur" "$branch"
+    else
+      die "checkout is on '$cur' but $id belongs on '$branch'.
+  git checkout -b $branch        # first time
+  git checkout $branch           # if it already exists
+If working on '$cur' is deliberate:  bash scripts/phase.sh set $id $phase --force"
+    fi
+  fi
+}
+
 cmd_show() {
   if [ ! -f "$STATE" ]; then
     printf 'No active story. The phase lock is off.\n'
@@ -74,8 +134,9 @@ cmd_board() {
 }
 
 cmd_set() {
-  local id="${1:-}" phase="${2:-}"
-  [ -n "$id" ] && [ -n "$phase" ] || die "usage: phase.sh set <story-id> <PHASE>"
+  local id="${1:-}" phase="${2:-}" force=0
+  [ "${3:-}" = "--force" ] && force=1
+  [ -n "$id" ] && [ -n "$phase" ] || die "usage: phase.sh set <story-id> <PHASE> [--force]"
   phase="$(printf '%s' "$phase" | tr 'a-z' 'A-Z')"
   valid_phase "$phase" || die "unknown phase '$phase'. Known: $(awk -F'|' '!/^#|^$/{gsub(/ /,"",$1); printf "%s ", $1}' "$PHASES")"
 
@@ -87,6 +148,8 @@ cmd_set() {
   [ -z "$slug" ] && slug="$(frontmatter "$file" title | tr 'A-Z' 'a-z' | tr -cs 'a-z0-9' '-' | sed -e 's/^-//' -e 's/-$//' | cut -c1-40)"
   type="$(frontmatter "$file" type)"; [ -z "$type" ] && type="feature"
   branch="$(frontmatter "$file" branch)"; [ -z "$branch" ] && branch="story/$id-$slug"
+
+  guard_transition "$id" "$file" "$phase" "$branch" "$force"
 
   mkdir -p "$(dirname "$STATE")"
   cat > "$STATE" <<EOF

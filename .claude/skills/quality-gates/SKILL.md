@@ -76,6 +76,45 @@ adopt late; once `BOOTSTRAPPED=yes`, a required gate without one is reported as
 a warning. `bash scripts/gates.sh --audit` lists what is missing without running
 anything. Canonical regexes per ecosystem are in the `stack-profiles` skill.
 
+## WARN must mean something changed
+
+Optional gates report rather than block, which is not the same as ignorable -
+a WARN on `integration` has to be read. That only works if WARN is rare. An
+optional gate that is *known* to fail - a mutation tool the stack cannot run
+yet, an end-to-end suite waiting on a service - would otherwise WARN on every
+run for the life of the project, the next agent learns to skip past WARNs, and
+the day `integration` regresses its WARN sits in a list next to one that has
+been noise for sixty stories.
+
+So a known failure is declared, with its reason, in `project.conf`:
+
+    gate   | mutation | optional | . | pnpm exec stryker run
+    waiver | mutation | stryker needs a TS compiler API TS 7 lacks; stack.md s4
+
+`gates.sh` then reports it as `KNOWN`, with the reason inline, and `WARN` is
+reserved for a failure nobody declared. A waived gate still runs; when it
+passes, the summary says the waiver is no longer needed and to remove it.
+Waivers are refused on required gates - that would be a bypass with a nicer
+name. Leaving a gate unconfigured is not an alternative: a required gate with
+no command fails once `BOOTSTRAPPED=yes`, deliberately.
+
+## The gate record is written by the tool
+
+A full run of `gates.sh` writes its own summary into the active story's
+`## Gate results` (or `--story <id>`): a marker line, the UTC time, the commit,
+a hash of every source, test, config and harness file as it was on disk when
+the gates ran, and the summary. `--gate` and `--required` runs are not recorded,
+because a partial run is not evidence that the story passes its gates.
+
+Nobody pastes it and nobody edits it. `check-boundaries.sh` refuses a PR whose
+section has no marker, whose recorded result is not `pass`, or whose recorded
+hash does not match the code being merged - which means changing source after
+the last full run forces another full run before the PR is acceptable. In CI
+the hash is recomputed at the PR head commit, so base-branch drift does not
+false-fail it. That turns law 3 from "run it and paste the result" - a step an
+agent motivated to finish could fake without anything noticing - into a record
+the tool wrote and the code has to match.
+
 ## A gate that has never been observed to fail is not a gate
 
 The first law says no production code without a failing test that demanded it,

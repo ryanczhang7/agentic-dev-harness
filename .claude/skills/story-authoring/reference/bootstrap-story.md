@@ -37,6 +37,26 @@ running a command:
 - `project.conf` filled in, with an `evidence` line per gate, and
   `BOOTSTRAPPED=yes`
 - a `## Gate probes` section recording each gate observed failing
+- a `## Scaffold inventory` naming every production file written and, for
+  anything with behaviour, the test that covers it. SCAFFOLD is the one phase
+  where nothing forces a test to exist first; this is where you show you wrote
+  them anyway. `check-boundaries.sh` refuses the PR if a changed source file is
+  missing from it.
+
+## Sizing
+
+The one-cycle rule in `CLAUDE.md` is framed around RED→GREEN and says nothing
+about SCAFFOLD, which is where over-sizing costs the most: the story every
+other story depends on, done in one pass, with no test forcing any of it.
+
+A bootstrap story is **the toolchain and the gates, green on a walking
+skeleton** - and nothing else. Eight or nine criteria, the ones listed above.
+Anything project-specific that the plan wants at the start - a colour-palette
+validator, a benchmark runner, an architectural-boundary lint rule - is its own
+story, run through RED→GREEN like everything else, *after* bootstrap has
+landed. It will get a failing test first that way, which is the whole reason
+the harness exists. If the bootstrap story's criteria run past AC-10, or its
+inventory past a couple of dozen files, split it there.
 
 ## Verifying it
 
