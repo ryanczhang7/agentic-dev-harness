@@ -19,6 +19,9 @@ STATE="$ROOT/.claude/state/current-story.env"
 STORIES="$ROOT/docs/backlog/stories"
 PHASES="$ROOT/.claude/harness/phases.conf"
 
+export CLAUDE_PROJECT_DIR="$ROOT"
+. "$ROOT/.claude/hooks/lib.sh"
+
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 
 valid_phase() {
@@ -35,13 +38,7 @@ status_for_phase() {
   esac
 }
 
-frontmatter() { # <file> <key>
-  awk -v k="$2" '
-    NR==1 && $0 ~ /^---/ { inf=1; next }
-    inf && /^---/ { exit }
-    inf { if (index($0, k ":") == 1) { sub(/^[^:]*:[[:space:]]*/, ""); print; exit } }
-  ' "$1"
-}
+frontmatter() { frontmatter_value "$1" "$2"; }   # lib.sh
 
 set_frontmatter() { # <file> <key> <value>
   local f="$1" k="$2" v="$3"
@@ -52,22 +49,8 @@ set_frontmatter() { # <file> <key> <value>
   fi
 }
 
-# story_deps <file>   The ids in depends_on, space-separated. Accepts the
-# inline form the template writes (`[A-1, A-2]`) and the block-list form.
-story_deps() {
-  awk '
-    NR==1 && /^---/ { inf=1; next }
-    inf && /^---/ { exit }
-    inf && /^depends_on:/ {
-      indeps=1; v=$0; sub(/^depends_on:[[:space:]]*/, "", v); sub(/#.*/, "", v)
-      gsub(/[][,]/, " ", v); printf "%s ", v; next
-    }
-    indeps && /^[[:space:]]*-[[:space:]]*/ {
-      v=$0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); sub(/#.*/, "", v); printf "%s ", v; next
-    }
-    indeps { indeps=0 }
-  ' "$1"
-}
+# story_deps <file>   The ids in depends_on, space-separated.
+story_deps() { frontmatter_list "$1" depends_on; }   # lib.sh
 
 # guard_transition <id> <file> <target-phase> <branch> <force>
 # The checks that make `depends_on` and `branch` mean something. Refuse rather

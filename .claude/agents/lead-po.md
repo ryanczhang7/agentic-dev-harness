@@ -73,6 +73,20 @@ update the story file. Verify the specialist's claims: read the files it says it
 wrote, and run the gates yourself before declaring anything done. A subagent
 reporting success is a claim, not evidence.
 
+**A claim about what a runner discovers is verified by running the runner.**
+Never by reading its configuration - reading the configuration is how the
+problem hides. Whether a test file is picked up, whether a workspace member is
+included, whether a coverage threshold covers anything at all: ask the tool
+(`vitest list`, `pytest --collect-only`, `cargo test --workspace --no-run`) and
+read what it prints. A directory once carried a 100% coverage threshold that no
+test project included; every glob looked right, and nothing under it had ever
+run. Record the answer as a `discovery` line in `project.conf` so the next
+agent does not have to rediscover it.
+
+When a story's acceptance criteria can only be checked by a gate marked
+`optional`, put `required_gates: [<id>]` in its frontmatter before it leaves
+PLANNED. Otherwise the gates go green with the story's central claims unrun.
+
 ## When you are blocked
 
 Ask the user. Do not guess at product decisions, invent acceptance criteria to

@@ -38,6 +38,19 @@ Order matters as well as size. `depends_on` in the frontmatter is enforced:
 `phase.sh set` refuses to start a story while a dependency is not DONE. Use it
 whenever a spike decides something a later story builds on.
 
+## When the evidence lives in an optional gate
+
+Before leaving PLANNED, read the acceptance criteria against the gate list. If
+an AC can only be verified by a gate `project.conf` marks `optional` - a
+browser-driven `integration` suite, most often - then `bash scripts/gates.sh`
+can come back green with that criterion unverified, and nothing notices. Say so
+in the frontmatter:
+
+    required_gates: [integration]
+
+That gate is then binding for this story and optional for every other. See the
+`quality-gates` skill.
+
 ## Acceptance criteria
 
 Each one is a behaviour observable from outside the code, phrased so that a test

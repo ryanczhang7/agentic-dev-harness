@@ -24,6 +24,23 @@ changed source file is missing from that list. A table that quietly contradicts
 the command that invokes it teaches agents the table is advisory; this
 paragraph is here so that it does not.
 
+**`.gitignore` has no single owner.** It classifies as `harness`, so the lock
+permits it in every phase, and that is deliberate: whoever introduces a tool
+that writes into the tree adds the line for its output, in the phase they
+discover it - the Test Developer in RED for a test runner's scratch directory,
+the Feature Developer in GREEN for a build artefact, the Lead PO during
+bootstrap. Ignoring *generated* output is never a phase violation, and it now
+has a second effect: `git check-ignore` is what makes the phase lock classify a
+path as `ignored` rather than `source`. Every other edit to it - ignoring
+something authored, a secret, or a committed artefact - belongs to the Lead PO.
+
+**Portability.** Harness scripts, hooks and skill examples stay in bash, awk and
+coreutils. Do not reach for python: on Windows a bare `python` hits the
+Microsoft Store alias shim and exits 49 without running anything, so a script
+that depends on it fails on a machine where python is genuinely installed.
+Node is available only once a stack has chosen it, which the harness cannot
+assume.
+
 Categories are decided by `.claude/harness/paths.conf`, not by intuition. To see
 how a path is classified:
 
@@ -35,7 +52,7 @@ bash -c '. .claude/hooks/lib.sh; classify "src/app/main.ts"'
 
 | Phase | May write | Meaning |
 |---|---|---|
-| any | vendor | installed deps and build output are always writable |
+| any | vendor, ignored | installed dependencies, build output, and anything the project's `.gitignore` covers — generated, not authored |
 | `PLANNED` | docs, harness | story is being written |
 | `RED` | tests, docs, harness | failing tests only; source frozen |
 | `GREEN` | source, config, docs, harness | make them pass; tests frozen |

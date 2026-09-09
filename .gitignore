@@ -27,6 +27,11 @@ Thumbs.db
 # anything specific to the chosen stack; these are the common ones, present up
 # front so that a `pnpm install` or `uv sync` before bootstrap does not bury you
 # in untracked files.
+#
+# This list is also what the phase lock consults: a path git ignores classifies
+# as `ignored` rather than `source`, and is writable in every phase. So when a
+# tool starts writing somewhere new, add it here in the phase you find it -
+# see rules.md.
 
 # Node
 node_modules/
@@ -34,6 +39,10 @@ node_modules/
 .next/
 .svelte-kit/
 .turbo/
+.vitest/
+playwright-report/
+test-results/
+.playwright/
 
 # Python
 .venv/

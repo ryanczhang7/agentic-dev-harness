@@ -13,6 +13,13 @@ story will depend on it, and so will every story after that.
 3. **The coverage story.** Name the tool and how the threshold is enforced. If
    the ecosystem has no coverage tooling, say so explicitly and say what replaces
    it - never leave it implied.
+3b. **A `discovery` command per place tests are expected to live** - the command
+   that asks the runner what it can see (`vitest list`,
+   `pytest --collect-only`, `cargo test --workspace --no-run`), and what its
+   output looks like when a directory has silently fallen out of scope. Every
+   ecosystem has a way for a suite to vanish while the run stays green; name
+   this one's. Where the runner reports a count, say whether a `floor` line can
+   read it - i.e. whether the evidence regex covers the whole number.
 4. **Layout** - where production code, tests and configuration live.
 5. **`paths.conf` additions** - the globs that make the phase lock classify this
    stack's files correctly. Get this right or the lock will block the wrong

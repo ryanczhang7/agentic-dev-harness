@@ -161,8 +161,21 @@ violate the story's current phase:
 
 It covers `Write`, `Edit` and `MultiEdit`, and inspects shell commands too —
 redirects, `tee`, `sed -i`, `cp`, `mv` — because an agent that cannot use Edit
-will reach for `cat > file`. When no story is active it is off entirely: the lock
-protects a cycle in flight, it is not a general permission system.
+will reach for `cat > file`. Quoted arguments and heredoc bodies are masked
+before that inspection, so a `|` inside `sed 's|a|b|'` and an arrow inside
+`awk '/A -> B/'` stay data: a lock that fires on the contents of a string
+teaches the agent that blocks are noise, which is the one thing it cannot
+afford. Anything the project's `.gitignore` covers is classified `ignored` and
+writable in every phase, so deleting a test runner's scratch directory is not a
+phase violation. When no story is active the lock is off entirely: it protects a
+cycle in flight, it is not a general permission system.
+
+The lock has its own regression suite, since it is the mechanism everything
+else rests on:
+
+```bash
+bash scripts/selftest.sh                   # the harness's own tests
+```
 
 ```bash
 bash scripts/phase.sh show                 # what is active, what may be written
@@ -202,6 +215,16 @@ a harness that treats exit 0 as proof will report `PASS` forever. After a gate
 exits 0 its output must match its regex, or it fails with *ran but produced no
 evidence of work*. The regex asserts volume of work, never success — success is
 the exit code's job. Gates without an `evidence` line behave exactly as before.
+
+A `floor` line goes one further: `evidence` catches a gate that did nothing, a
+floor catches one that started doing much less — a suite that went from 47
+tests to 3 exits 0 and matches its regex just as happily. And because a
+coverage threshold on a glob matching nothing is satisfied *silently*,
+`discovery` lines in the same file ask the runner what it can actually see, and
+`doctor.sh` runs them: a claim about what a runner discovers is verified by
+running the runner, never by reading its globs. A story whose evidence lives in
+an optional gate escalates it for itself with `required_gates: [integration]`
+in its frontmatter — optional for the repo, binding for that story.
 
 Two more things `gates.sh` does that a plain test runner does not. A `waiver`
 line names an optional gate that is known to fail and why, so it reports as
@@ -290,6 +313,7 @@ CLAUDE.md                     standing rules, in context every turn
     stack-profiles/           per-ecosystem command sets
     design-system/            tokens, states, accessibility floor
   hooks/                      phase guard, state injection, gate reminder
+  tests/                      the harness's own tests (scripts/selftest.sh)
   harness/
     project.conf              how to build and test THIS project
     paths.conf                which paths are test / source / config
@@ -299,7 +323,8 @@ CLAUDE.md                     standing rules, in context every turn
 docs/
   wiki/                       brief, stack, architecture, design, audits
   backlog/{epics,stories}/    the work
-scripts/                      doctor, gates, phase, task, new-story, check-boundaries
+scripts/                      doctor, gates, phase, task, new-story, selftest,
+                              check-boundaries
 ```
 
 ## Notes on the design

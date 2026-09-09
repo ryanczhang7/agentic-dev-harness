@@ -47,6 +47,18 @@ All but the coverage line were run against cargo 1.98 on Windows.
 the `unit` regex is strong: it fails on precisely the vacuous-workspace bug
 above, and it does not fail spuriously.
 
+A `floor` on `unit` is worth having, but not against this regex: `test result:
+ok\. [1-9]` stops after one digit, so it would measure `1` where cargo printed
+`12`. Widen it to `test result: ok\. [1-9][0-9]*` first, then add the floor.
+
+The vacuous-workspace bug also has a direct check, which does not depend on
+anyone reading `--workspace` correctly in a diff:
+
+    discovery | crates | . | cargo test --workspace --no-run 2>&1 | grep -q "world-core"
+
+Name a crate whose tests must run. `bash scripts/doctor.sh` runs it, and it
+fails the moment that crate stops being compiled into the test run.
+
 The three `Finished` regexes are **weak on purpose**. `cargo check`, `clippy`
 and `build` print one `Compiling`/`Checking` line per crate on a cold build and
 *nothing but `Finished`* on a warm one, so a `Checking [1-9]` regex would fail

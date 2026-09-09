@@ -5,8 +5,13 @@ Written by different agents at different times. Each has one owner.
 ## Frontmatter - Lead PO
 
 `id`, `title`, `slug`, `epic`, `type`, `status`, `phase`, `branch`,
-`depends_on`. Only `scripts/phase.sh` should change `phase`, `status` and
-`branch` once the story is in flight.
+`depends_on`, `required_gates`. Only `scripts/phase.sh` should change `phase`,
+`status` and `branch` once the story is in flight.
+
+`required_gates` names gates that are optional for the repo but binding for
+this story - use it when an acceptance criterion is only ever verified by one
+of them. `gates.sh` enforces it while the story is active and
+`check-boundaries.sh` refuses a PR whose recorded run has no PASS for it.
 
 ## Context - Lead PO
 
