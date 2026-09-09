@@ -31,8 +31,8 @@ how to verify it before the bootstrap story depends on it.
 1. During `/plan-product`, pick the profile that matches the stack the brief
    actually calls for. Record the choice and the pinned versions in
    `docs/wiki/stack.md`.
-2. Copy its gate commands into `.claude/harness/project.conf`, adjusting `cwd`
-   for the layout you chose.
+2. Copy its gate commands, `evidence` lines and `slow` lines into
+   `.claude/harness/project.conf`, adjusting `cwd` for the layout you chose.
 3. Copy its test and config globs into `.claude/harness/paths.conf` so the phase
    lock classifies this stack's files correctly.
 4. Run `/setup-environment`, which turns the profile's Prerequisites section

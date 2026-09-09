@@ -6,6 +6,7 @@
 #   bash scripts/gates.sh --list           show what is configured
 #   bash scripts/gates.sh --gate unit      run one gate  (not recorded: a partial run is not evidence)
 #   bash scripts/gates.sh --required       required gates only  (not recorded)
+#   bash scripts/gates.sh --fast           every gate not marked `slow`  (not recorded)
 #   bash scripts/gates.sh --audit          check the manifest itself, run nothing
 #
 # The gate NAMES are stable across every project ("the coverage gate"); the
@@ -21,6 +22,13 @@
 # name an optional gate that is known to fail, and why, so that WARN in the
 # summary always means something changed. All three are described in the
 # quality-gates skill.
+#
+# `slow` lines name the gates a --fast run leaves out. --fast exists so that RED
+# and GREEN can ask the gates whether the tests are even ADMISSIBLE - lint, types,
+# and the instrumented test command they will actually be judged by - without
+# paying for a release bundle on every loop. A gate is fast unless something says
+# otherwise, so the subset is right by default and wrong only where someone said
+# so out loud. A --fast run is never recorded: it is not a full run.
 #
 # A full run writes its own summary into the story's ## Gate results, stamped
 # with the commit and a hash of the code it ran against. Nobody pastes it.
@@ -40,15 +48,16 @@ mkdir -p "$LOGDIR"
 BOOTSTRAPPED="$(grep -E '^BOOTSTRAPPED=' "$CONF" | head -1 | cut -d= -f2- | tr -d '[:space:]')"
 [ -z "$BOOTSTRAPPED" ] && BOOTSTRAPPED=no
 
-ONLY=""; REQUIRED_ONLY=0; LIST=0; AUDIT=0; STORY=""
+ONLY=""; REQUIRED_ONLY=0; LIST=0; AUDIT=0; STORY=""; FAST=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --list) LIST=1 ;;
     --gate) shift; ONLY="${1:-}" ;;
     --required) REQUIRED_ONLY=1 ;;
+    --fast) FAST=1 ;;
     --audit) AUDIT=1 ;;
     --story) shift; STORY="${1:-}" ;;
-    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
     *) printf 'unknown option: %s\n' "$1" >&2; exit 2 ;;
   esac
   shift
@@ -59,17 +68,23 @@ trim() { printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
 TAB=$(printf '\t')
 ESC=$(printf '\033')
 
-# --- evidence, floor and waiver tables ---------------------------------------
+# --- evidence, floor, waiver and slow tables --------------------------------
 # Read up front, so that --gate <id> still finds its own lines. Stored as
 # "<id><TAB><value>" lines; no associative arrays, for bash 3.2.
-EVIDENCE=""; WAIVERS=""; FLOORS=""
+EVIDENCE=""; WAIVERS=""; FLOORS=""; SLOWS=""; GATE_IDS=""
 while IFS= read -r line; do
   line="${line%%$'\r'}"
   case "$(trim "$line")" in ''|'#'*) continue ;; esac
   case "$line" in *'|'*) ;; *) continue ;; esac
   kind=$(trim "$(printf '%s' "$line" | cut -d'|' -f1)")
-  case "$kind" in evidence|waiver|floor) ;; *) continue ;; esac
   tid=$(trim "$(printf '%s' "$line" | cut -d'|' -f2)")
+  # Every gate id, so that --audit can tell a `slow` line naming a real gate
+  # from one naming a typo. That distinction matters more here than for the
+  # other tables: a misspelt `evidence` id makes its gate report "no evidence
+  # line", and a misspelt `floor` id fails the audit outright, but a misspelt
+  # `slow` id is silent - the gate it meant to exclude simply stays in --fast.
+  [ "$kind" = "gate" ] && { GATE_IDS="$GATE_IDS $tid"; continue; }
+  case "$kind" in evidence|waiver|floor|slow) ;; *) continue ;; esac
   # -f3- so that a regex containing `|` (alternation) survives the split.
   tval=$(trim "$(printf '%s' "$line" | cut -d'|' -f3-)")
   [ -n "$tid" ] || continue
@@ -79,6 +94,8 @@ while IFS= read -r line; do
     waiver)   WAIVERS="$WAIVERS$tid$TAB$tval
 " ;;
     floor)    FLOORS="$FLOORS$tid$TAB$tval
+" ;;
+    slow)     SLOWS="$SLOWS$tid$TAB$tval
 " ;;
   esac
 done < "$CONF"
@@ -161,7 +178,7 @@ if [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
   STORY_REQUIRES=" $(frontmatter_list "$STORY_FILE" required_gates) "
 fi
 
-fails=0; warns=0; known=0; unconfigured=0; ran=0; noevidence=0
+fails=0; warns=0; known=0; unconfigured=0; ran=0; noevidence=0; skipped=""
 results=""
 
 while IFS= read -r line; do
@@ -190,8 +207,18 @@ while IFS= read -r line; do
   [ -n "$ONLY" ] && [ "$ONLY" != "$id" ] && continue
   [ "$REQUIRED_ONLY" = 1 ] && [ "$req" != "required" ] && continue
 
+  # --fast leaves out the gates a `slow` line names. It is a deliberate subset,
+  # not a cheaper full run: it is never recorded, and a gate the story escalated
+  # is skipped here like any other. The full run before REVIEW is what judges
+  # the story; --fast only answers whether the tests are admissible to it.
+  if [ "$FAST" = 1 ] && [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ] \
+     && table_lookup "$SLOWS" "$id" >/dev/null; then
+    skipped="$skipped $id"; continue
+  fi
+
   exp=$(table_lookup "$EVIDENCE" "$id") || exp="<none>"
   waiver=$(table_lookup "$WAIVERS" "$id") || waiver=""
+  slowwhy=$(table_lookup "$SLOWS" "$id"); is_slow=$?
   floor=$(table_lookup "$FLOORS" "$id") || floor=""
   logrel=".claude/state/gate-logs/$id.log"
 
@@ -200,8 +227,20 @@ while IFS= read -r line; do
     printf '%-12s %-9s %-6s evidence: %s\n' "" "" "" "$exp"
     [ -n "$floor" ]  && printf '%-12s %-9s %-6s floor:    %s\n' "" "" "" "$floor"
     [ -n "$waiver" ] && printf '%-12s %-9s %-6s waiver:   %s\n' "" "" "" "$waiver"
+    [ "$is_slow" = 0 ] && printf '%-12s %-9s %-6s slow:     %s (left out of --fast)\n' "" "" "" "${slowwhy:-no reason given}"
     [ -n "$escalated" ] && printf '%-12s %-9s %-6s optional for the repo,%s\n' "" "" "" "$escalated"
     continue
+  fi
+
+  # A `slow` line with no reason is how a gate quietly leaves the fast subset
+  # and nobody remembers why. The reason is the whole value of the line.
+  if [ "$is_slow" = 0 ] && [ -z "$slowwhy" ]; then
+    if [ "$AUDIT" = 1 ]; then
+      printf 'FAIL %-12s marked slow with no reason; say what makes it too slow for --fast\n' "$id"
+    else
+      results="$results\nFAIL         $id (marked slow with no reason in project.conf)"
+    fi
+    fails=$((fails+1)); continue
   fi
 
   # A floor is measured out of the evidence match, so it needs one, and it has
@@ -258,6 +297,7 @@ while IFS= read -r line; do
       printf 'ok   %-12s evidence: %s\n' "$id" "$exp"
     fi
     [ -n "$floor" ]  && printf '     %-12s floor:  %s\n' "" "$floor"
+    [ "$is_slow" = 0 ] && printf '     %-12s slow:   %s\n' "" "$slowwhy"
     [ -n "$waiver" ] && printf '     %-12s waiver: %s\n' "" "$waiver"
     continue
   fi
@@ -342,6 +382,14 @@ done < "$CONF"
 [ "$LIST" = 1 ] && exit 0
 
 if [ "$AUDIT" = 1 ]; then
+  # A `slow` line naming a gate that does not exist excludes nothing, silently.
+  while IFS="$TAB" read -r sid _; do
+    [ -n "$sid" ] || continue
+    case " $GATE_IDS " in
+      *" $sid "*) ;;
+      *) printf 'FAIL %-12s a `slow` line names no configured gate\n' "$sid"; fails=$((fails+1)) ;;
+    esac
+  done <<< "$SLOWS"
   if [ "$noevidence" -gt 0 ]; then
     printf '\n%d required gate(s) have no evidence line. Add one per gate:\n' "$noevidence"
     printf '  evidence | <id> | <regex proving the tool did work>\n'
@@ -383,9 +431,20 @@ else
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ran" "$unconfigured" "$noevidence" "$known" > "$STAMP"
 fi
 
+if [ "$FAST" = 1 ]; then
+  if [ -n "$skipped" ]; then
+    printf '\n--fast skipped:%s\n' "$skipped"
+  else
+    printf '\n--fast skipped nothing: no gate carries a `slow` line, so this was a full run\n'
+    printf 'in everything but the record. Mark the expensive gates:\n'
+    printf '  slow | <id> | <why it is too slow to run every loop>\n'
+  fi
+  printf 'This is a subset, not a verdict. The full run before REVIEW is what judges the story.\n'
+fi
+
 # --- record -----------------------------------------------------------------
 # Only a full run is evidence. `--gate unit` passing says nothing about lint.
-if [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ]; then
+if [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ]; then
   printf '\n(not recorded in the story: a partial run is not evidence of anything)\n'
 else
   if [ -z "$STORY" ]; then
@@ -403,3 +462,9 @@ if [ "$fails" -gt 0 ]; then
   exit 1
 fi
 printf '\nAll required gates passed (%d ran, %d unconfigured, %d known).\n' "$ran" "$unconfigured" "$known"
+if [ "$FAST" = 0 ] && [ -z "$ONLY" ] && [ "$REQUIRED_ONLY" = 0 ]; then
+  printf 'CI runs one more script that this does not: bash scripts/check-boundaries.sh\n'
+  printf 'It is not a gate because it judges the COMMIT rather than the code - the phase in\n'
+  printf 'the committed frontmatter, the criteria against the base branch, and whether this\n'
+  printf 'very record still matches the tree. Run it after committing, before the PR.\n'
+fi

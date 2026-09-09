@@ -37,6 +37,28 @@ stub to make the import resolve.
 6. Cover the edges the story implies: empty, one, many; boundary values;
    error paths; and the explicit non-goals in `## Out of scope` where they are
    cheap to pin down.
+7. Run `bash scripts/gates.sh --fast` before you finish. Not for a pass — the
+   test gates should be red, that is the story. Read it for the *shape* of the
+   failure: lint and typecheck green, test gates red with your assertion. A test
+   gate that fails on a timeout, a config error or a lint rule your test file
+   trips means the tests are not admissible to the gates that will judge them,
+   and RED is not finished. The coverage gate runs your tests *instrumented*,
+   which is slower than the test command and slower again on CI; a test that
+   only just fits its timeout here does not fit there. See `tdd-cycle`.
+8. If the story cites an audit or a spike: follow its **decision** without
+   reopening it, and **verify any number you are about to depend on**. Those are
+   different instructions. An audit's recommendation is settled; its
+   measurements were taken on particular inputs and can be wrong.
+
+## When the story returns to RED from GREEN or GATES
+
+Your remit is the defective test and nothing else. The source exists and is
+usually correct; the lock freezes it, which is right. "Watch it fail" will
+usually not apply, so earn the correction another way — a probe (break what the
+test guards, paste the red, revert), or a before/after measurement taken under
+the **gate** command where the defect was cost rather than correctness. Write it
+into `## Regressions`, not the handoff. See `tdd-cycle`,
+`reference/red-phase.md`.
 
 ## Handoff
 
@@ -59,3 +81,10 @@ The Feature Developer starts with no memory of you. Before finishing, write into
 Then report back: files written, command to run, current failure summary, and
 any doubts. Do not claim the story is ready if you are unsure the tests
 capture the criteria.
+
+**Escalate rather than resolve quietly.** If the story's own text turns out to
+contradict what you measure, if a criterion is ambiguous in a way that changes
+the test design, or if the right scope is genuinely unclear, say so and stop.
+That is the behaviour this phase boundary exists for, and it is worth more than
+a clean report: the orchestrator can answer a question, and cannot unwind a
+guess it never saw. Reporting a result that costs you rework is the right call.

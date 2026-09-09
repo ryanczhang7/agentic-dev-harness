@@ -1,7 +1,7 @@
 ---
 description: Drive one story from its current phase all the way to a merged-ready PR
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -14,6 +14,21 @@ REVIEW without stopping for approval between phases. Follow exactly the same
 per-phase procedure as `/advance-story` — the phases, the dispatches, the
 verification and the rules are identical. The only difference is that you keep
 going.
+
+Two steps in that procedure are ordered for a reason, and running without
+approval between phases is exactly when they get quietly reordered:
+
+- **RED and GREEN each end with `bash scripts/gates.sh --fast`.** Not for a
+  pass — in RED the test gates should be red — but to see whether the tests are
+  admissible to the gates that will judge them. The coverage gate runs the same
+  tests instrumented, which is slower than the test command and slower again on
+  CI. A suite can pass RED, pass GREEN, pass every local gate, and still fail a
+  required gate in CI on a timeout nobody measured.
+- **GATES → REVIEW sets the phase before committing**, then runs
+  `bash scripts/check-boundaries.sh`, then pushes and opens the PR.
+  `check-boundaries.sh` reads the phase out of the *committed* frontmatter, so
+  a commit made while the story still says `phase: GATES` is one CI rejects —
+  intermittently, depending on when that job runs, which is worse than always.
 
 Stop and ask the user only when:
 

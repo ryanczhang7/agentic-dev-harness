@@ -20,6 +20,13 @@ story will depend on it, and so will every story after that.
    ecosystem has a way for a suite to vanish while the run stays green; name
    this one's. Where the runner reports a count, say whether a `floor` line can
    read it - i.e. whether the evidence regex covers the whole number.
+3c. **Which gates `--fast` should leave out**, as `slow` lines with reasons, and
+   - the part that is easy to get wrong - which slow-looking gate must stay in.
+   The instrumented test run belongs in the fast subset however slow it is:
+   it is the command that judges the tests, and keeping it out of RED and GREEN
+   is exactly how a suite reaches CI having never been measured under it. Note
+   too whether this ecosystem's default test timeout is measured against the
+   plain run rather than the instrumented one; most are.
 4. **Layout** - where production code, tests and configuration live.
 5. **`paths.conf` additions** - the globs that make the phase lock classify this
    stack's files correctly. Get this right or the lock will block the wrong

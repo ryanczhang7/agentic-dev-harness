@@ -31,6 +31,19 @@ recorded here: which AC, what it said, what it says now, who approved it and
 why. `check-boundaries.sh` fails a PR whose criteria differ from the base branch
 without an entry. Omit when unused.
 
+## Model guidance - Lead PO
+
+Optional, and written *before* the phase it applies to. Use it when one phase of
+a story is worth running on a model other than the default: which phase, which
+model, why that phase specifically, what the orchestrator stays on, and how to
+brief it differently - a model chosen for judgement is given the criteria and
+the constraints, not a pre-decided test design.
+
+End it with a success condition that could come out either way, and record the
+**verdict** against that condition when the phase ends, with evidence. The
+verdict is the part that gets skipped, and a model choice with no verdict is
+folklore: nobody can argue with it and nobody can undo it.
+
 ## Out of scope - Lead PO
 
 The explicit non-goals. This is how the Feature Developer knows where to stop,
@@ -51,6 +64,25 @@ during RED, before or as the tests are written.
 
 The only channel to the Feature Developer. See the `tdd-cycle` skill,
 `reference/handoff.md`.
+
+## Regressions - Test Developer, with the Lead PO
+
+Required for any story that returned to RED after GREEN or GATES; omitted
+otherwise. One block per return: which test, what was wrong with it, how that
+was found, what it asserts now, and what earns the correction.
+
+That last part is the whole section. On a return, "watched it fail" usually
+cannot apply - the implementation exists and is often correct, so the corrected
+test may be green the moment it is written. It earns its place the same way a
+green-on-arrival test does: a **probe** (break what it guards, paste the red,
+confirm the revert), or - where the defect was cost rather than correctness, a
+test too slow for its timeout - a **before and after measurement taken under the
+gate command**, which is the instrumented one, not the plain test command.
+
+Record too whether GREEN was a no-op, with the output proving the source was
+untouched and still passes. A no-op GREEN is a legitimate outcome that the
+orchestrator verifies rather than delegates; dispatching an implementer with
+nothing to do invites them to find some.
 
 ## Gate results - scripts/gates.sh, nobody else
 

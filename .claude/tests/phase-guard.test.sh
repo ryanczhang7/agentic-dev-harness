@@ -73,6 +73,62 @@ r="$(guard "$FIX" Edit file_path "$FIX/src/main.ts")"
 assert_contains "Edit tool is blocked on an absolute path" "category: source" "$r"
 
 # ---------------------------------------------------------------------------
+describe "RED: the seven false positives reported from the field"
+set_phase "$FIX" RED
+
+# Every one of these was blocked in a single real story, across three agents.
+# Three of them contain the harness's OWN phase vocabulary, which is exactly
+# what the loop asks agents to grep for; a lock that fires on its own idiom is
+# the fastest way to teach agents that blocks are noise.
+assert_allowed "$FIX" "sed -n '/## Handoff: RED -> GREEN/,/## Gate results/p' docs/notes.md" \
+  'sed -n over a phase-named range'
+assert_allowed "$FIX" 'grep -n "GATES -> REVIEW" -A 6 docs/notes.md' \
+  'grep for a phase transition'
+assert_allowed "$FIX" "awk 'NR>=55 && NR<=80' docs/notes.md" \
+  'awk line range with >='
+assert_allowed "$FIX" 'cat > docs/notes.md <<'"'"'EOF'"'"'
+s = (Math.imul(s, 1664525) + 1013904223) >>> 0
+EOF' 'heredoc containing a shift operator'
+assert_allowed "$FIX" 'cat > docs/notes.md <<'"'"'EOF'"'"'
+// a vertex of degree >= 3
+EOF' 'heredoc containing a comparison in a comment'
+assert_allowed "$FIX" 'cat > docs/notes.md <<'"'"'EOF'"'"'
+const kept = adjacency.filter((path) => !isDeferred(path))
+EOF' 'heredoc containing an arrow function'
+assert_allowed "$FIX" 'cd /tmp/harness-scratch-xyz && rm -rf gate-logs' \
+  'rm of a relative path after cd out of the repo'
+
+# ---------------------------------------------------------------------------
+describe "RED: relative paths resolve against the command's own cwd"
+
+# Out of the repo: nothing relative afterwards is a repo path.
+assert_allowed "$FIX" 'cd /tmp/harness-scratch-xyz && echo x > main.ts' 'redirect after cd outside'
+assert_allowed "$FIX" 'cd /tmp/scratch; touch src/main.ts'              'touch after cd outside'
+assert_allowed "$FIX" 'cd "$TMPDIR" && rm -rf src'                      'cd to a variable is unaccountable'
+assert_allowed "$FIX" 'cd - && rm -rf src'                              'cd - is unaccountable'
+assert_allowed "$FIX" 'cd && rm -rf src'                                'bare cd goes home'
+assert_allowed "$FIX" 'cd ~/scratch && rm -rf src'                      'cd into home is unaccountable'
+assert_allowed "$FIX" 'cd .. && rm -rf src'              'cd above the repo root'
+assert_allowed "$FIX" 'cd src/../.. && touch main.ts'    'a relative cd that climbs out'
+
+# Still in the repo: the cwd makes the guard SHARPER, not looser. Measured
+# against the root, `main.ts` is a path the classifier has never heard of;
+# measured against src/, it is the source file the shell will really write.
+assert_blocked "$FIX" 'cd src && echo x > main.ts'        src/main.ts 'redirect after cd into src'
+assert_blocked "$FIX" 'cd ./src && touch new.ts'          src/new.ts  'touch after cd into ./src'
+assert_blocked "$FIX" 'cd docs && rm ../src/main.ts'      src/main.ts 'relative path climbing back to source'
+assert_blocked "$FIX" 'cd src && cd ../docs && cd ../src && rm main.ts' src/main.ts 'cd walked back and forth'
+
+# An absolute path is unaffected by any of it.
+assert_blocked "$FIX" "cd /tmp/scratch && rm $FIX/src/main.ts" src/main.ts 'absolute target after cd outside'
+
+# A quoted directory name is still a directory name; the quote marks must not
+# survive into the resolved path.
+assert_blocked "$FIX" 'cd "src" && rm main.ts'      src/main.ts 'cd into a double-quoted directory'
+assert_blocked "$FIX" "cd 'src' && rm main.ts"      src/main.ts 'cd into a single-quoted directory'
+assert_allowed "$FIX" 'cd "/tmp/scratch" && rm -rf gate-logs' 'cd into a quoted path outside the repo'
+
+# ---------------------------------------------------------------------------
 describe "GREEN: tests are frozen, source is not"
 set_phase "$FIX" GREEN
 

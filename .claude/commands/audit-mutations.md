@@ -19,3 +19,12 @@ per cluster of surviving mutants.
 Do not fix anything here. Findings become stories; stories go through the normal
 RED→GREEN cycle. Report the survivors ranked by production impact, and the
 stories filed.
+
+Write the audit to the structure in `docs/wiki/audits/TEMPLATE.md`. The
+`## Decided` / `## Evidence` split is the part that matters: a later story is
+told to follow an audit's recommendation without re-litigating it, and the
+natural reading of that extends to its numbers. It should not. Record what was
+measured, on exactly which inputs, and how it could be wrong — separately from
+the conclusion, so a story consuming it can verify the one while accepting the
+other. Fill in `## What was not checked` honestly; that section is the audit's
+only defence against being trusted further than it earned.

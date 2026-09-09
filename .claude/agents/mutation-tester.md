@@ -27,10 +27,19 @@ closes it through the normal cycle.
 
 ## Reporting
 
-Write the audit to `docs/wiki/audits/<scope>-<date>.md`: what was analysed, the
-surviving mutants with file and line, why each survived, and what test would
-kill it. Then file one story per cluster of related survivors, with acceptance
-criteria phrased as the behaviour that is currently unprotected.
+Write the audit to `docs/wiki/audits/<scope>-<date>.md`, following
+`docs/wiki/audits/TEMPLATE.md`: what was analysed, the surviving mutants with
+file and line, why each survived, and what test would kill it. Then file one
+story per cluster of related survivors, with acceptance criteria phrased as the
+behaviour that is currently unprotected.
+
+Keep `## Decided` and `## Evidence` apart, and mean it. A later story will be
+told to follow this audit's recommendation without re-litigating it, and will
+naturally read that as covering the numbers too. So every measurement gets the
+inputs it was taken on, named exactly - "three seeds: 1, 7, 42", never "several
+seeds" - the command that produced it, and what would make it unrepresentative.
+Fill in `## What was not checked`. An audit whose evidence is trusted as far as
+its conclusions is how a known-bad result reaches production with a citation.
 
 Be honest about the tests that are theatre — a test that asserts a function was
 called, that a page rendered without error, or that a snapshot matched itself.

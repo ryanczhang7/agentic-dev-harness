@@ -202,6 +202,90 @@ to_rel() {
   printf '%s' "${p#./}"
 }
 
+# path_is_absolute <path>   True for /x and for C:/x or C:\x.
+path_is_absolute() {
+  case "$(printf '%s' "$1" | tr '\134' '/')" in
+    /*|?:/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# normalize_rel <relpath>   Collapse "." and ".." segments. Returns 1, printing
+# nothing, when the path climbs above the repository root - which means it is
+# not a repo path and not the lock's business.
+normalize_rel() {
+  local p seg out="" oldIFS
+  p="$(printf '%s' "$1" | tr '\134' '/')"
+  oldIFS="$IFS"; IFS='/'
+  # shellcheck disable=SC2086
+  set -- $p
+  IFS="$oldIFS"
+  for seg in "$@"; do
+    case "$seg" in
+      ''|.) continue ;;
+      ..)
+        [ -z "$out" ] && return 1
+        case "$out" in */*) out="${out%/*}" ;; *) out="" ;; esac ;;
+      *) out="${out:+$out/}$seg" ;;
+    esac
+  done
+  printf '%s' "$out"
+  return 0
+}
+
+# command_cwd <masked command>   The repo-relative directory that command's
+# RELATIVE paths resolve against - "" for the repo root. Returns 1 when the
+# command changes directory somewhere the guard cannot account for: another
+# checkout, a scratch directory, $HOME, a variable, an option it does not
+# understand.
+#
+# Without this the guard resolves every relative path against the repo root
+# regardless of where the shell actually is, and `cd /tmp/scratch && rm -rf
+# gate-logs` is reported as deleting production code. That was observed in the
+# field, and a false positive is expensive here: law 5 of CLAUDE.md tells
+# agents never to route around a block, which only holds while blocks mean
+# something.
+#
+# It cuts the other way too. `cd src && echo x > main.ts` used to be measured
+# against the root, where `main.ts` classifies as source only by luck; now it
+# is `src/main.ts`, which is what the shell will actually write.
+#
+# Fail open, as ever: returning 1 means relative candidates are skipped, not
+# that they are blocked.
+command_cwd() {
+  local masked="$1" tgt cur="" rel joined lp lr
+  # A bare `cd` goes home. Nothing after it is a repo path.
+  printf '%s\n' "$masked" | grep -qE '(^|[|&;(])[[:space:]]*cd[[:space:]]*($|[|&;)])' && return 1
+  lr="$(printf '%s' "${HARNESS_ROOT%/}" | tr '\134' '/')"
+  lr="${lr,,}"
+  while IFS= read -r tgt; do
+    [ -z "$tgt" ] && continue
+    tgt="$(printf '%s' "$tgt" | unmask_shell_quotes)"
+    case "$tgt" in
+      *$'\n'*) return 1 ;;   # not a directory name
+      -*)      return 1 ;;   # `cd -`, `cd -P dir`, `cd --`
+      '~'|'~/'*) return 1 ;;
+      *'$'*)   return 1 ;;   # a variable the guard cannot expand
+    esac
+    if path_is_absolute "$tgt"; then
+      lp="$(printf '%s' "${tgt%/}" | tr '\134' '/')"
+      if [ "${lp,,}" = "$lr" ]; then cur=""; continue; fi
+      rel="$(to_rel "$tgt")"
+      if [ -z "$rel" ]; then cur="OUTSIDE"; else cur="$rel"; fi
+      continue
+    fi
+    [ "$cur" = "OUTSIDE" ] && continue
+    joined="$(normalize_rel "${cur:+$cur/}$tgt")" || { cur="OUTSIDE"; continue; }
+    cur="$joined"
+  done <<< "$(printf '%s\n' "$masked" \
+    | grep -oE '(^|[|&;(]|[[:space:]])cd[[:space:]]+[^|&;><[:space:]]+' \
+    | sed -E 's/.*[[:space:]]cd[[:space:]]+|^cd[[:space:]]+|.*[|&;(]cd[[:space:]]+//' \
+    | tr -d '"'"'")"
+  [ "$cur" = "OUTSIDE" ] && return 1
+  printf '%s' "$cur"
+  return 0
+}
+
 # classify <relpath>   -> vendor | harness | docs | test | config | ignored | source
 #
 # One path. Delegates the rule matching to classify_stdin so that the rules

@@ -70,13 +70,24 @@ case "$TOOL" in
         printf '%s\n' "$MASKED" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;]+'      | tr ' ' '\n' | grep -vE '^(rm|touch|-.*)$'
       } 2>/dev/null | tr -d '"'"'" | grep -vE '^\s*$|^-|\$|\*|^/dev/' | sort -u
     )"
+    # Where the shell will actually be when those targets are written. A
+    # relative path means nothing without it: `cd /tmp/scratch && rm -rf
+    # gate-logs` names no repo path at all. An unaccountable cwd skips relative
+    # candidates rather than blocking them - fail open.
+    CWD_PREFIX=""; CWD_KNOWN=1
+    CWD_PREFIX="$(command_cwd "$MASKED")" || CWD_KNOWN=0
     while IFS= read -r target; do
       [ -z "$target" ] && continue
       target="$(printf '%s' "$target" | unmask_shell_quotes)"
       # A restored candidate spanning a newline is not a filename; a guard that
       # cannot say what it is looking at does not block. Fail open, as ever.
       case "$target" in *$'\n'*) continue ;; esac
-      check_path "$target"
+      if path_is_absolute "$target"; then
+        check_path "$target"
+      elif [ "$CWD_KNOWN" = 1 ]; then
+        target="$(normalize_rel "${CWD_PREFIX:+$CWD_PREFIX/}$target")" || continue
+        check_path "$target"
+      fi
     done <<< "$CANDIDATES"
     ;;
 esac
