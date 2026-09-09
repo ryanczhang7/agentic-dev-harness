@@ -45,6 +45,20 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
      approved it and why. check-boundaries.sh fails a PR whose criteria differ
      from the base branch without an entry here. Omit the section if unused. -->
 
+## Model guidance
+
+<!-- Optional, written by the Lead PO BEFORE the phase it applies to. Use it
+     when a phase of this story is worth running on a different model from the
+     default, and make it falsifiable rather than folklore:
+       * which phase, which model, and why that phase specifically
+       * what the orchestrator should stay on
+       * HOW to brief it differently - a model chosen for judgement wants the
+         criteria and the constraints, not a pre-decided test design
+       * a success condition that could come out either way
+     Then record the VERDICT against that condition when the phase ends, with
+     evidence. The verdict is the part that gets skipped, and without it a model
+     choice becomes a habit nobody can argue with. -->
+
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -74,6 +88,23 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
        * any test that passed on arrival, and the probe or negative control
          that earns it
        * anything discovered that changes the approach -->
+
+## Regressions
+
+<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
+     otherwise. A test that is wrong is never edited into passing, and the
+     return is not a footnote - it is the story failing to be one clean cycle,
+     and the next person needs to know why. One block per return:
+       * which test, what it asserted, and what was wrong with it
+       * how the defect was found
+       * what it asserts now
+       * what earns it, since "watched it fail" usually cannot apply once the
+         implementation exists: either a PROBE (break what the test guards,
+         paste the red, confirm the revert) or, where the defect was cost
+         rather than correctness, a BEFORE/AFTER measurement taken under the
+         gate command - not the plain test command, which is the faster one
+       * whether GREEN was a no-op, and the command output proving the source
+         was untouched and still passes -->
 
 ## Gate results
 

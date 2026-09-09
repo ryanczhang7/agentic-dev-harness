@@ -27,7 +27,9 @@ split it.
 1. **No production code without a failing test that demanded it.** The test is
    written first, is watched to fail, and fails for the right reason.
 2. **Tests are frozen during GREEN.** If a test is wrong, go back to RED and say
-   so in the story file. Never edit a test to make it pass.
+   so in the story file under `## Regressions`. Never edit a test to make it
+   pass. RED on a return is narrower than RED the first time: fix the test only,
+   and earn it with a probe or a measurement rather than "watched it fail".
 3. **Done means the gates pass.** `bash scripts/gates.sh` — not "should pass",
    not "passes locally in principle". Run it; it records its own result in the
    story, stamped with the code it ran against, and CI refuses a PR where that
@@ -83,9 +85,24 @@ Never guess a build command. Every project-specific command lives in
 bash scripts/doctor.sh           # is the toolchain installed?
 bash scripts/selftest.sh         # the harness's own tests (bash + git only)
 bash scripts/gates.sh            # all gates
+bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and GREEN
 bash scripts/gates.sh --gate unit
+bash scripts/check-boundaries.sh # the other half of CI: the commit, not the code
 bash scripts/task.sh dev         # run the app
 ```
+
+`gates.sh` judges the **code**; `check-boundaries.sh` judges the **commit** —
+the phase in the committed frontmatter, the acceptance criteria against the base
+branch, whether the recorded gate run still matches the tree. CI runs both, so
+"all gates pass" is not the same as "CI will pass". Run it after committing and
+before opening the PR.
+
+`--fast` exists because RED and GREEN otherwise only ever run the test command,
+while the gates judge those tests with a slower one — the same suite under
+coverage instrumentation. A suite can pass RED, pass GREEN, pass every local
+gate and still fail a required gate on CI hardware. A gate is in `--fast` unless
+a `slow` line in `project.conf` says otherwise, and a `--fast` run is never
+recorded: it is not a full run.
 
 If a command you need is not in `project.conf`, add it there rather than
 memorising it — the next agent has a fresh context and will not know.

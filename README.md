@@ -202,8 +202,10 @@ task     | dev      | -        | . | uv run uvicorn app:api --reload
 
 ```bash
 bash scripts/gates.sh              # all of them
+bash scripts/gates.sh --fast       # all but the ones marked `slow` (RED, GREEN)
 bash scripts/gates.sh --gate unit  # one
 bash scripts/gates.sh --audit      # check the manifest, run nothing
+bash scripts/check-boundaries.sh   # the other half of CI: the commit, not the code
 bash scripts/task.sh dev           # run the app
 ```
 
@@ -225,6 +227,21 @@ coverage threshold on a glob matching nothing is satisfied *silently*,
 running the runner, never by reading its globs. A story whose evidence lives in
 an optional gate escalates it for itself with `required_gates: [integration]`
 in its frontmatter — optional for the repo, binding for that story.
+
+
+A `slow` line names a gate that `--fast` leaves out — a release bundle, a
+browser suite. Everything else stays in, and the instrumented test run stays in
+deliberately: RED and GREEN otherwise only ever see the plain test command,
+while a required gate judges the same tests under coverage, which is slower, on
+CI hardware that is slower again. That gap cost one real story a full round
+trip. `--fast` is what lets RED ask whether its tests are even admissible to the
+gates, and it is never recorded — only a full run is evidence.
+
+And `gates.sh` is not all of CI. `check-boundaries.sh` judges the **commit**
+rather than the code, so it cannot be a gate: it reads the phase out of the
+committed frontmatter and checks the gate record against the tree being merged,
+neither of which exists yet while the gates are running. Run it after committing
+and before opening the PR.
 
 Two more things `gates.sh` does that a plain test runner does not. A `waiver`
 line names an optional gate that is known to fail and why, so it reports as

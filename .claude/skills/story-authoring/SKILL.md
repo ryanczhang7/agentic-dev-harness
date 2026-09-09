@@ -51,6 +51,29 @@ in the frontmatter:
 That gate is then binding for this story and optional for every other. See the
 `quality-gates` skill.
 
+## When the story depends on an audit or a spike
+
+A story that follows an earlier audit says so, and says it precisely. "Read the
+audit before starting and follow its recommendation; do not re-litigate it" is
+the right instruction about the audit's `## Decided` section and the wrong one
+about its `## Evidence`. Spell out both halves:
+
+- the **decision** is settled - name it, and say the story implements it;
+- the **evidence** is not - name any number the story is about to depend on
+  (a threshold, a tolerance, a claim that two things agree) and say that it is
+  to be verified, not assumed.
+
+This is not pedantry. An audit here recommended an approach and supported it
+with a claim of bit-identical output measured on three lucky seeds; the
+underlying assumption fails for 58% of inputs. The recommendation was fine. A
+story that had trusted the number would have shipped the bug.
+
+The same goes for spike code. If a story is expected to draw on a throwaway
+spike, say what it may take - the algorithm, the shape - and what it must
+re-derive, in one sentence rather than two paragraphs apart. Spike code is
+unreviewed by definition; "throwaway" and "reuse its algorithm" cancel out if
+the story does not resolve them.
+
 ## Acceptance criteria
 
 Each one is a behaviour observable from outside the code, phrased so that a test

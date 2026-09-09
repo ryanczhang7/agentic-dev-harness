@@ -10,7 +10,7 @@ read by everyone.
 | `environment.md` | `/setup-environment` | what to install on a fresh machine, and how to verify it |
 | `architecture.md` | `/plan-product` | components, data model, decisions and their alternatives |
 | `design/` | Lead Designer | tokens, components, layout, accessibility floor, voice |
-| `audits/` | Mutation Tester, or anyone auditing the harness | test-quality and harness audits, and what was decided |
+| `audits/` | Mutation Tester, or anyone auditing the harness | test-quality and harness audits. Structure from `audits/TEMPLATE.md`, which keeps what was **decided** apart from what was **measured** |
 
 Keep these at the altitude where they stay true for months. Anything that
 changes per story belongs in the story file, not here.

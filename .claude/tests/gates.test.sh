@@ -137,4 +137,73 @@ assert_contains "and it fails"                                 "1 required gate(
 
 set_phase "$FIX" ""
 
+
+# ---------------------------------------------------------------------------
+describe "--fast: the subset that judges whether tests are admissible"
+
+# The field report this came from: RED and GREEN only ever ran the plain test
+# command, so a suite that passed both, and passed sixteen local gates, still
+# failed a REQUIRED gate in CI - the same tests under coverage instrumentation,
+# where one property test crossed the 5s timeout. --fast is the primitive that
+# lets RED and GREEN ask the gates the question, without paying for a bundle.
+write_conf "$FIX" <<'EOF'
+gate     | lint     | required | . | printf 'Checked 12 files\n'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | coverage | required | . | printf 'Tests  47 passed (47)\n'
+gate     | build    | required | . | printf 'Bundled 3 targets\n'
+evidence | lint     | Checked [1-9][0-9]* files
+evidence | unit     | Tests +[1-9][0-9]* passed
+evidence | coverage | Tests +[1-9][0-9]* passed
+evidence | build    | Bundled [1-9][0-9]* targets
+slow     | build    | a Tauri release bundle; RED has no use for it
+EOF
+out="$(gates --fast)"
+assert_contains "a fast gate runs"          "PASS         lint" "$out"
+assert_contains "the instrumented one runs" "PASS         coverage" "$out"
+case "$out" in
+  *"PASS         build"*) _bad "a slow gate is skipped" "build ran anyway: $out" ;;
+  *) _ok "a slow gate is skipped" ;;
+esac
+assert_contains "and is named"        "--fast skipped: build" "$out"
+assert_contains "with the caveat"     "This is a subset, not a verdict" "$out"
+
+# A subset is not evidence, for the same reason --gate and --required are not.
+story "$FIX" T-1 GATES <<'EOF'
+EOF
+set_phase "$FIX" GATES
+out="$(gates --fast)"
+assert_contains "a fast run is never recorded" "not recorded in the story" "$out"
+out="$(gates)"
+assert_contains "a full run still is"          "recorded in docs/backlog/stories/T-1.md" "$out"
+assert_contains "and points at CI's other script" "check-boundaries.sh" "$out"
+set_phase "$FIX" ""
+
+# With nothing marked slow, --fast is a full run in everything but the record,
+# and says so rather than letting anyone believe they bought speed.
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates --fast)"
+assert_contains "no slow lines is reported" "--fast skipped nothing" "$out"
+
+# ---------------------------------------------------------------------------
+describe "slow: a line that excludes nothing is a manifest error"
+
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+slow     | unit |
+EOF
+out="$(gates --audit)"
+assert_contains "slow without a reason fails the audit" "marked slow with no reason" "$out"
+
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+slow     | unti | a typo, so `build` never leaves the fast subset
+EOF
+out="$(gates --audit)"
+assert_contains "slow naming no gate fails the audit" "names no configured gate" "$out"
+
 summary "gates"

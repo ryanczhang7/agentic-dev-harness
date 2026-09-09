@@ -46,6 +46,40 @@ already loud. `vitest run` with no matching test files is likewise non-zero.
 **Never add `--passWithNoTests`** - it converts the safe case into the unsafe
 one, which is the whole failure this mechanism exists to catch.
 
+## What `--fast` should leave out
+
+    slow | integration | playwright needs a browser; minutes, not seconds
+    slow | build       | a production bundle, which RED and GREEN have no use for
+    slow | mutation    | stryker re-runs the suite once per mutant
+
+Note what is *not* here: `coverage` stays in the fast subset even though it is
+the slowest of the four that remain. That is the point of it. `vitest run
+--coverage` runs the same tests as `unit` under v8 instrumentation, and the
+instrumented run is the one that judges the story.
+
+## The 5,000 ms default is measured against the wrong run
+
+Vitest's default `testTimeout` is 5,000 ms, and every timing intuition you have
+comes from `vitest run`, which is the fast path. Under `--coverage` the same
+test is slower, and on a CI runner slower again. Measured on one real story:
+
+| | `--coverage` | plain |
+|---|---|---|
+| a property test asserting per-item | 2,644 ms | 1,835 ms |
+| its sibling, same draws, accumulating | 260 ms | 75 ms |
+
+The first one passed locally under both commands and failed CI. Two rules fall
+out of it, and the second is worth more than the first:
+
+- Set an explicit `testTimeout` on property tests and anything looping over a
+  generated collection - in the test file or `vitest.config.ts`, generously,
+  because the default was never measured against the command that judges you.
+- **Do not call `expect()` once per item.** Accumulate the violations and assert
+  once at the end. That is the entire difference between the two rows above:
+  identical work, an order of magnitude apart, because each `expect` in vitest
+  builds a diff and a stack. This matters more than the timeout, since it also
+  makes the failure message name every violation instead of the first.
+
 ## How much work, and where
 
     floor | unit     | 40      # raise it in the story that adds the tests

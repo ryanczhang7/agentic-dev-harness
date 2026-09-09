@@ -11,12 +11,49 @@ coverage gate"; the manifest knows whether that means `pytest --cov`,
 `vitest --coverage` or `cargo llvm-cov`.
 
     bash scripts/gates.sh              # everything
+    bash scripts/gates.sh --fast       # everything not marked `slow`
     bash scripts/gates.sh --list       # what is configured
     bash scripts/gates.sh --gate unit  # one gate
     bash scripts/gates.sh --required   # required only
     bash scripts/gates.sh --audit      # check the manifest itself, run nothing
 
 Failures write their output to `.claude/state/gate-logs/<gate>.log`.
+
+`gates.sh` is not all of CI. The other half is `bash scripts/check-boundaries.sh`,
+and it is not a gate because it judges a different thing: the **commit** rather
+than the code - the phase in the committed story frontmatter, the acceptance
+criteria against the base branch, whether the gate record still matches the tree
+being merged. Folding it into `gates.sh` would be circular, since one of the
+things it checks is the record `gates.sh` has not written yet. Run it after
+committing and before opening the PR. "All gates pass" is not "CI will pass".
+
+## --fast, and why RED runs the gates at all
+
+RED and GREEN validate with the test command. The gates do not: the coverage
+gate runs the same suite under instrumentation, which is strictly slower, and CI
+hardware is slower again. So a suite can pass RED, pass GREEN, pass every gate
+on a developer machine, and fail a required gate in CI - which has happened, on
+a property test at 2,644 ms instrumented against a 5,000 ms default timeout.
+
+`--fast` is the primitive that lets RED and GREEN ask the gates whether the
+tests are even admissible, without paying for a release bundle on every loop. In
+RED it is read for the shape of the failure, not for a pass: lint and typecheck
+green, test gates red with the story's assertion. Anything else - a timeout, a
+config error, a lint rule the test file trips - means the tests are not
+admissible and RED is not finished.
+
+A gate is in `--fast` unless a `slow` line in `project.conf` excludes it:
+
+    slow | build | a release bundle, which RED and GREEN have no use for
+
+The reason is required, and `--audit` refuses a `slow` line without one or one
+naming a gate that does not exist. Fast-by-default is deliberate: the subset is
+then correct in a new project, and wrong only where someone said so out loud.
+Never mark a gate slow to stop it failing - that is what a waiver is for, and
+waivers are refused on required gates for the same reason.
+
+A `--fast` run is never recorded in a story. It is not a full run, and only a
+full run is evidence.
 
 ## The gates
 

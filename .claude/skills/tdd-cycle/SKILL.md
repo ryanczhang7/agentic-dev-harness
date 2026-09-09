@@ -34,6 +34,40 @@ specific way software goes wrong.
    been observed to fail is not a gate. When a story adds or changes one, break
    what it guards, watch it fail, record it in `## Gate probes`, and revert.
    See the `quality-gates` skill.
+7. RED and GREEN each end with `bash scripts/gates.sh --fast`. Not for a pass -
+   in RED the test gates are supposed to be red - but because the gates judge
+   your tests with a *different and slower command* than the one you have been
+   running. See "The gates run your tests differently" below.
+8. A test that is wrong sends the story back to RED, and RED on a return is
+   narrower: fix the defective test, touch nothing else, and earn the correction
+   with a probe or a measurement. See `reference/red-phase.md`.
+
+## The gates run your tests differently
+
+RED and GREEN validate with the test command. At least one required gate does
+not: the coverage gate runs the same suite under instrumentation, which is
+strictly slower, and CI hardware is slower again. Nothing about a green test
+command tells you the tests are *admissible* to the gate that will judge them.
+
+This is not hypothetical. A suite passed RED, passed GREEN, passed sixteen local
+gates and reached REVIEW - then failed a required gate in CI, because one
+property test took 1,835 ms plain and 2,644 ms instrumented against a 5,000 ms
+default timeout. Comfortable on a desktop, over the line on a runner. The cost
+was a full RED -> GREEN -> GATES -> REVIEW round trip.
+
+So:
+
+- End RED and GREEN with `bash scripts/gates.sh --fast`. In RED read it for the
+  *shape* of the failure: lint and typecheck should pass, and the test gates
+  should fail with your assertion. A test gate failing on a timeout, a config
+  error or a lint rule means the tests are not admissible and RED is not done.
+- Set an explicit, generous timeout on property tests and anything that loops
+  over a generated collection. The framework default is measured against the
+  plain run, which is the fast one.
+- In a property test or a whole-collection loop, do not call the assertion once
+  per item. Accumulate the violations and assert once at the end. On identical
+  work this is routinely an order of magnitude cheaper - in the case above, 260
+  ms against 2,644 ms for the sibling test in the same block.
 
 ## Details
 
