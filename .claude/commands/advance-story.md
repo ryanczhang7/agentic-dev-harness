@@ -34,7 +34,10 @@ dispatch the **feature-developer** to fix it, unless the failure means a test is
 wrong — in which case move the story back to RED, record why in the story file,
 and tell the user.
 
-**GATES → REVIEW.** Only when every required gate passes. Commit with a message
+**GATES → REVIEW.** Only when every required gate passes. If this story added or
+changed a gate, `## Gate probes` must record it having been observed to fail —
+a gate nobody has seen fail is not evidence of anything, and refusing to move on
+without it is the point. Commit with a message
 that names the story and what it does, push the branch, and open a PR whose body
 links the story file and lists the acceptance criteria with the test that covers
 each. Set the phase to REVIEW.

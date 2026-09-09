@@ -19,6 +19,29 @@ Python 3.12+ managed by `uv`. Suits services, CLIs, data and ML work.
 Use `pyright` instead of `mypy` where the project leans on modern typing;
 `ruff format` replaces `black`.
 
+## Evidence of work
+
+See the `evidence` format in `project.conf`; these assert that the tool did
+work, not that it succeeded.
+
+    # UNVERIFIED - uv was not installed when this was written. The bootstrap
+    # story must run each gate and correct these against real output.
+    evidence | unit      | [1-9][0-9]* passed
+    evidence | coverage  | TOTAL +[0-9]+ +[0-9]+
+    evidence | lint      | Checked [1-9][0-9]* files|All checks passed
+    evidence | typecheck | Success: no issues found in [1-9][0-9]* source file
+    evidence | build     | Successfully built
+
+`pytest` exits 5 when it collects no tests, so the bare vacuous case is already
+loud - **unless someone adds `--passWithNoTests` or an `addopts` that sets it**,
+which converts a safe gate into an unsafe one. Do not. The `unit` regex is the
+backstop for the subtler version: a `testpaths` or `-k` filter that stops
+matching after a refactor.
+
+`mypy` reports `Success: no issues found in 0 source files` when its target
+resolves empty, and exits 0. That is the vacuous pass in this stack, and the
+`[1-9]` in the typecheck regex is what catches it.
+
 ## Layout
 
     src/<package>/          production code

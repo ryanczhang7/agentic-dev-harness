@@ -63,6 +63,16 @@ depends_on: []
 
 <!-- Filled during GATES from scripts/gates.sh output. -->
 
+## Gate probes
+
+<!-- REQUIRED if this story adds or changes a gate, its command, or its
+     evidence line. Omit the section entirely otherwise.
+     A gate that has never been observed to fail is not a gate: break the thing
+     it guards, run the gate, paste the failure, revert. One block per gate:
+       * what was broken, and where
+       * the gate output proving it failed
+       * confirmation the probe was reverted -->
+
 ## Notes
 
 EOF

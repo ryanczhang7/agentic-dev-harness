@@ -20,6 +20,27 @@ it runs" over framework leverage.
 Even a no-build project benefits from `tsc --checkJs` over JSDoc types: it is
 the cheapest type checking that exists, and it needs no compile step.
 
+## Evidence of work
+
+See the `evidence` format in `project.conf`; these assert that the tool did
+work, not that it succeeded.
+
+    evidence | unit        | Tests +[1-9][0-9]* passed
+    evidence | coverage    | Tests +[1-9][0-9]* passed
+    evidence | typecheck   | -
+    evidence | integration | [1-9][0-9]* passed
+
+    # UNVERIFIED - correct against your biome version's output.
+    evidence | lint        | Checked [1-9][0-9]* files
+    evidence | build       | built in
+
+`biome lint` aimed at a directory containing no source **exits 0 and reports
+"Checked 1 file"** - it counts the directory. That is the vacuous pass in this
+stack; the `[1-9]` is a weak guard against it, so also keep the lint target
+honest and re-check it whenever the tree is reorganised.
+
+See `node-typescript.md` for the vitest and tsc notes, which apply unchanged.
+
 ## Layout
 
     index.html

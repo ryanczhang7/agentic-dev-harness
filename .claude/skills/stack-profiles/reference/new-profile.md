@@ -8,16 +8,18 @@ story will depend on it, and so will every story after that.
 
 1. **Gate commands**, one line each in `project.conf` format, for every gate the
    ecosystem can support. Non-interactive, non-watching, exit-code-honest.
-2. **The coverage story.** Name the tool and how the threshold is enforced. If
+2. **Evidence of work** - an `evidence` line per gate, asserting that the tool
+   observably did something. See below; this section is not optional.
+3. **The coverage story.** Name the tool and how the threshold is enforced. If
    the ecosystem has no coverage tooling, say so explicitly and say what replaces
    it - never leave it implied.
-3. **Layout** - where production code, tests and configuration live.
-4. **`paths.conf` additions** - the globs that make the phase lock classify this
+4. **Layout** - where production code, tests and configuration live.
+5. **`paths.conf` additions** - the globs that make the phase lock classify this
    stack's files correctly. Get this right or the lock will block the wrong
    writes and the agents will learn to distrust it.
-5. **Bootstrap notes** - what the first story must produce, and which step is
+6. **Bootstrap notes** - what the first story must produce, and which step is
    most likely to break.
-6. **Testing notes** - the idiomatic runner, the assertion style, how to fake
+7. **Testing notes** - the idiomatic runner, the assertion style, how to fake
    time and randomness, and which kinds of test are theatre in this ecosystem.
 
 ## Verify before you rely on it
@@ -26,6 +28,32 @@ Run every command you write down, in this repository, before the bootstrap story
 starts. A profile is documentation of something that works, not a plausible
 guess at command-line flags. Versions move, flags get renamed, and an agent with
 an empty context will trust this file completely.
+
+Where you genuinely cannot - the toolchain is not installed on this machine -
+mark the lines `# UNVERIFIED` and say what the bootstrap story must do about it.
+A guess labelled as a guess is useful; a guess presented as fact is the thing
+that poisons every story after it.
+
+## Writing the evidence lines
+
+For each gate, run its command in a state where **it has no work to do**: no
+test files, an empty source directory, a glob that matches nothing. Then look at
+what happened.
+
+- **Non-zero exit?** The tool is already honest. Prefer `evidence | <id> | -`
+  and say in the profile why the gate is safe without one.
+- **Exit 0?** Find the smallest thing in the *working* run's output that counts
+  units of work, and require it to be non-zero: `[1-9]` and `[1-9][0-9]*` do
+  nearly all of it. Assert volume, never success.
+
+Two failure modes to check before writing the line down:
+
+- **Caching.** Compilers print a per-unit line on a cold build and nothing on a
+  warm one, so a "N units processed" regex fails spuriously on the second run.
+  Test runners re-execute every time and are safe. Run the gate twice.
+- **Flags that make a safe tool unsafe.** `--passWithNoTests` and its cousins
+  exist in most runners and turn a loud vacuous case into a silent one. Never
+  add one, and check the ecosystem's config file for one already set.
 
 ## Be honest about weakness
 

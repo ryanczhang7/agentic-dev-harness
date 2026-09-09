@@ -43,6 +43,16 @@ The only channel to the Feature Developer. See the `tdd-cycle` skill,
 
 The `bash scripts/gates.sh` summary, verbatim, with the date.
 
+## Gate probes - Feature Developer
+
+Required for any story that adds or changes a gate, its command, or its
+`evidence` line; omitted entirely otherwise. For each such gate: what was broken
+to make it fail, the failure output, and confirmation the probe was reverted.
+
+This is RED applied to the gates. Without it a story can add a gate that has
+never been seen to do anything, and every story afterwards inherits it as proof.
+See the `quality-gates` skill.
+
 ## Notes - anyone
 
 Decisions taken mid-story, surprises, things deliberately deferred. If a story

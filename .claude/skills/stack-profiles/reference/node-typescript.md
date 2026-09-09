@@ -21,6 +21,37 @@ to a browser through a bundler.
 Biome can replace both Prettier and ESLint; if you use it, one `lint` gate
 covers both and `format` becomes `biome format --check`.
 
+## Evidence of work
+
+See the `evidence` format in `project.conf`; these assert that the tool did
+work, not that it succeeded.
+
+    evidence | unit        | Tests +[1-9][0-9]* passed
+    evidence | coverage    | Tests +[1-9][0-9]* passed
+    evidence | typecheck   | -
+    evidence | integration | [1-9][0-9]* passed
+
+    # UNVERIFIED - correct these against your own linter's output.
+    evidence | lint        | Checked [1-9][0-9]* files      # biome
+    # eslint prints nothing on success; use `--format unix` and count, or `-`.
+
+Verified against vitest 5 and typescript 5 on Windows. Vitest prints
+`Tests  2 passed (2)` with ANSI colour and, on Windows, CRLF; `gates.sh` strips
+both before matching, so write the regex against the plain text.
+
+`typecheck` is `-` because `tsc` prints nothing on success and there is nothing
+honest to match. It does not need liveness cover: `tsc --noEmit` over an empty
+`include` fails with `TS18003: No inputs were found`, so its vacuous case is
+already loud. `vitest run` with no matching test files is likewise non-zero.
+**Never add `--passWithNoTests`** - it converts the safe case into the unsafe
+one, which is the whole failure this mechanism exists to catch.
+
+The real trap in this stack is per-directory coverage thresholds. A
+`vitest.config.ts` carrying `"src/platform/**": { lines: 100 }` for a directory
+that does not exist yet is satisfied vacuously and reports nothing. The
+`coverage` evidence line above catches an empty run but not that; check globs
+against the tree when you add one.
+
 ## Layout
 
     src/                    production code

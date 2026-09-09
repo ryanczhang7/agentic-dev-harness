@@ -19,6 +19,28 @@ other ecosystems, so the architecture has to carry more of the load.
 `gdlint` and `gdformat` come from `gdtoolkit` (`pipx install gdtoolkit`).
 gdUnit4 is the test runner with the best headless CLI; GUT is the alternative.
 
+## Evidence of work
+
+See the `evidence` format in `project.conf`; these assert that the tool did
+work, not that it succeeded.
+
+    # UNVERIFIED - Godot was not installed when this was written. The bootstrap
+    # story must run each gate and correct these against real output.
+    evidence | unit      | [1-9][0-9]* of [0-9]+ test.?s? *(cases)? *(passed|executed)
+    evidence | lint      | [1-9][0-9]* file.? *(linted|checked)|Success: no problems found
+    evidence | typecheck | -
+    evidence | build     | -
+
+Liveness matters more here than anywhere else in this harness, because the
+`unit` gate is a `godot --headless -s <script> -a test/` invocation - a shape
+that can silently resolve to an empty test directory, a missing addon or a
+misspelled `-a` path and still exit 0. Get the `unit` regex right during the
+bootstrap story by deliberately pointing `-a` at an empty directory and
+confirming the gate fails.
+
+`build` is `-` because an export prints little that is reliably countable;
+verify the artefact exists as a separate acceptance criterion instead.
+
 ## The coverage problem
 
 There is no reliable line-coverage tool for GDScript. Do not fake one, and do

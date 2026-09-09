@@ -21,7 +21,19 @@ Produce, in this order:
    profile where one fits, and write a new profile file when the stack is one
    the harness has not seen. Name the test runner, the coverage tool, the
    linter, the type checker and the build command explicitly — these become the
-   gates.
+   gates, with an `evidence` regex each (see the `quality-gates` skill).
+
+   **Open this file with a header declaring its epistemic status**, because
+   nothing in it has been run yet:
+
+   > **Unverified.** Nothing in this file has been executed. Every version and
+   > every command below is researched, not verified. The bootstrap story must
+   > run each gate command, observe it fail on purpose, correct anything that
+   > has moved, and update both this file and `.claude/harness/project.conf`.
+
+   Say it plainly rather than implying it. The next agent starts with an empty
+   context and will otherwise treat a plausible command line as a working one —
+   which is how a wrong gate command survives to story 30 instead of story 1.
 
 2. **`docs/wiki/architecture.md`** — components and their responsibilities, the
    data model in outline, how the pieces talk to each other, where state lives,

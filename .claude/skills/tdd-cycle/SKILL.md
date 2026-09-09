@@ -24,6 +24,10 @@ specific way software goes wrong.
 4. Never reach green by weakening: no relaxed tolerance, no skipped case, no
    deleted case, no assertion narrowed to what the code already does.
 5. Done means `bash scripts/gates.sh` was run and passed. Paste the summary.
+6. The same discipline applies to the gates themselves: a gate that has never
+   been observed to fail is not a gate. When a story adds or changes one, break
+   what it guards, watch it fail, record it in `## Gate probes`, and revert.
+   See the `quality-gates` skill.
 
 ## Details
 
