@@ -102,6 +102,15 @@ while IFS= read -r line; do
   esac
 done < "$CONF"
 
+# A typo in --gate ran nothing and reported "All required gates passed (0
+# ran)", exit 0. Nothing to run is not a pass.
+if [ -n "$ONLY" ]; then
+  case " $GATE_IDS " in
+    *" $ONLY "*) ;;
+    *) printf "error: no gate named '%s' in project.conf; see --list\n" "$ONLY" >&2; exit 2 ;;
+  esac
+fi
+
 # table_lookup <table> <id>   Echoes the value. Exact string comparison, never
 # a regex match: a gate id containing `.` or `*` must not silently adopt a
 # different gate's line. Returns 1 when the id has no line.

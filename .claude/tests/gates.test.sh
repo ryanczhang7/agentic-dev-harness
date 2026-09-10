@@ -31,6 +31,19 @@ assert_contains "a vacuous gate fails" "no evidence of work" "$out"
 assert_contains "and the run fails"    "1 required gate(s) failed" "$out"
 
 # ---------------------------------------------------------------------------
+describe "--gate names a gate that exists"
+
+# `--gate untt` ran nothing and printed "All required gates passed (0 ran)",
+# exit 0. A typo is not a pass.
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates --gate untt)"; rc=$?
+assert_contains "a typo is refused" "no gate named 'untt'" "$out"
+assert_eq "and exits non-zero" "2" "$rc"
+
+# ---------------------------------------------------------------------------
 describe "floor: a gate that started doing much less"
 
 write_conf "$FIX" <<'EOF'

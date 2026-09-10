@@ -136,9 +136,9 @@ failures and genuine ambiguity.
 
 | Agent | Writes | Never writes |
 |---|---|---|
-| Lead PO | `docs/wiki/**`, `docs/backlog/**`, `project.conf` | source, tests |
-| Test Developer | test files, the story's test plan and handoff | production code |
-| Feature Developer | source and config, the story's gate results | test files |
+| Lead PO | `docs/wiki/**`, `docs/backlog/**`, `project.conf`; under SCAFFOLD, the bootstrap story's source and tests (see `rules.md`) | source, tests, outside that one story |
+| Test Developer | test files, the story's test plan, handoff and regressions | production code |
+| Feature Developer | source and config, the story's gate probes (the gate *results* are written by `gates.sh`) | test files |
 | Lead Designer | `docs/wiki/design/**`, a story's design notes | code |
 | Mutation Tester | `docs/wiki/audits/**`, new stories | code, tests |
 
@@ -159,8 +159,10 @@ violate the story's current phase:
   into a passing one.
 - **GATES** — source only, for fixing lint, types and build.
 
-It covers `Write`, `Edit` and `MultiEdit`, and inspects shell commands too —
-redirects, `tee`, `sed -i`, `cp`, `mv` — because an agent that cannot use Edit
+It covers `Write`, `Edit`, `MultiEdit` and `NotebookEdit`, and inspects shell
+commands too — redirects, `tee`, `sed -i`, `cp`, `mv`, `rm`, `touch`, each
+resolved against the directory the command will actually run in — because an
+agent that cannot use Edit
 will reach for `cat > file`. Quoted arguments and heredoc bodies are masked
 before that inspection, so a `|` inside `sed 's|a|b|'` and an arrow inside
 `awk '/A -> B/'` stay data: a lock that fires on the contents of a string
@@ -378,14 +380,18 @@ CLAUDE.md                     standing rules, in context every turn
     quality-gates/            what each gate means, how to triage
     stack-profiles/           per-ecosystem command sets
     design-system/            tokens, states, accessibility floor
-  hooks/                      phase guard, state injection, gate reminder
+  hooks/                      phase guard, state injection, gate reminder,
+                              status line, and lib.sh they all share
   tests/                      the harness's own tests (scripts/selftest.sh)
   harness/
     project.conf              how to build and test THIS project
     paths.conf                which paths are test / source / config
     phases.conf               which phase may write which category
     rules.md                  path ownership, imported by CLAUDE.md
+    mcp-notes.md              which MCP servers are worth wiring, and when
   state/                      runtime state, gitignored
+.github/workflows/            gates and boundaries, the two CI jobs
+.mcp.json.example             MCP servers to opt into per project
 docs/
   wiki/                       brief, stack, architecture, design, audits
   backlog/{epics,stories}/    the work

@@ -1,14 +1,17 @@
 # Path ownership
 
 Each agent owns a slice of the tree. The phase lock enforces the *phase*
-dimension of this automatically; the *role* dimension is honoured by the agents
-themselves and checked in CI by `scripts/check-boundaries.sh`.
+dimension of this automatically. The *role* dimension is honoured by the agents
+themselves: nothing checks which agent wrote a file. What CI checks, in
+`scripts/check-boundaries.sh`, is the commit - source arrives with tests or a
+scaffold inventory, the phase and criteria in the committed story, the gate
+record against the tree.
 
 | Agent | Writes | Never writes |
 |---|---|---|
 | **Lead PO** | `docs/wiki/**`, `docs/backlog/**`, `.claude/harness/project.conf` | any source or test file |
-| **Test Developer** | test paths (see `paths.conf`), the story's `## Test plan` and `## Handoff` | production source, config |
-| **Feature Developer** | source and config paths, the story's `## Gate results` and `## Gate probes` | any test file |
+| **Test Developer** | test paths (see `paths.conf`), the story's `## Test plan`, `## Handoff` and `## Regressions` | production source, config |
+| **Feature Developer** | source and config paths, the story's `## Gate probes` (`## Gate results` is written by `gates.sh`, by nobody else) | any test file |
 | **Lead Designer** | `docs/wiki/design/**`, the story's `## Design notes` | source, tests, config |
 | **Mutation Tester** | `docs/wiki/audits/**`, new story files | source, tests, config |
 
@@ -54,7 +57,7 @@ bash -c '. .claude/hooks/lib.sh; classify "src/app/main.ts"'
 |---|---|---|
 | any | vendor, ignored | installed dependencies, build output, and anything the project's `.gitignore` covers — generated, not authored |
 | `PLANNED` | docs, harness | story is being written |
-| `RED` | tests, docs, harness | failing tests only; source frozen |
+| `RED` | test, docs, harness | failing tests only; source frozen |
 | `GREEN` | source, config, docs, harness | make them pass; tests frozen |
 | `GATES` | source, config, docs, harness | fix lint/type/build; tests frozen |
 | `REVIEW` | docs, harness | PR is open |

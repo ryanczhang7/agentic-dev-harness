@@ -16,7 +16,8 @@ Active story: ${STORY_ID} — ${STORY_SLUG:-}
 Phase: ${PHASE} (${STORY_TYPE:-feature} story)
 Branch: ${BRANCH:-<none>}
 Story file: docs/backlog/stories/${STORY_ID}.md$([ -f "$STORY_FILE" ] || printf ' (MISSING)')
-Writes allowed this phase: $(phase_message)
+Writes allowed this phase: $(phase_categories)
+$(phase_message)
 Advance with: bash scripts/phase.sh set ${STORY_ID} <PHASE>   |   Board: bash scripts/phase.sh show
 </harness-state>
 TXT

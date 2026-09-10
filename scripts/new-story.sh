@@ -30,7 +30,7 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
 <!-- Why this story exists. Link the epic and any wiki pages that constrain it.
      Name the REQUIRED gate that would fail if this story's artifact broke. If
      only an optional gate can, put it in required_gates above before RED:
-     sixteen required gates once passed over a story none of them exercised. -->
+     every required gate once passed over a story none of them exercised. -->
 
 ## Acceptance criteria
 
@@ -150,7 +150,8 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
 ## Scaffold inventory
 
 <!-- REQUIRED for a bootstrap or chore story that writes production code under
-     SCAFFOLD, where nothing forces a test to exist first. Omit otherwise.
+     SCAFFOLD, where nothing forces a test to exist first, and for a spike that
+     commits its throwaway code. Omit otherwise.
      One line per production file written, and for anything with behaviour
      rather than configuration, the test that covers it:
        src/core/palette.ts        - src/core/palette.test.ts

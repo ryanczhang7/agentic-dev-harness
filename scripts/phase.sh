@@ -24,8 +24,14 @@ export CLAUDE_PROJECT_DIR="$ROOT"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 
+# Exact comparison, never a regex: `GREEN.` matched the GREEN row, was written
+# into the state file, and phase_allows - finding no row for it - fell back to
+# "unknown phase, do not block". The lock off, by typo.
 valid_phase() {
-  grep -qE "^[[:space:]]*$1[[:space:]]*\|" "$PHASES"
+  awk -F'|' -v p="$1" '
+    /^[[:space:]]*(#|$)/ { next }
+    { t = $1; gsub(/^[ \t]+|[ \t]+$/, "", t); if (t == p) { found = 1; exit } }
+    END { exit !found }' "$PHASES"
 }
 
 status_for_phase() {
@@ -40,13 +46,22 @@ status_for_phase() {
 
 frontmatter() { frontmatter_value "$1" "$2"; }   # lib.sh
 
+# awk to a temp file, not `sed -i`: the in-place flag takes no suffix on GNU
+# sed and a mandatory one on BSD sed, so on macOS the old form silently did
+# nothing and the frontmatter and the state file - which "cannot drift" -
+# drifted. Only the frontmatter is touched: the first block between the two
+# `---` lines, never a `phase:` that happens to appear in the body.
 set_frontmatter() { # <file> <key> <value>
-  local f="$1" k="$2" v="$3"
-  if grep -qE "^$k:" "$f"; then
-    sed -i -E "0,/^$k:.*/s||$k: $v|" "$f"
-  else
-    sed -i "0,/^---$/!{0,/^---$/s|^---$|$k: $v\n---|}" "$f"
-  fi
+  local f="$1" tmp="$1.tmp"
+  K="$2" V="$3" awk '
+    BEGIN { k = ENVIRON["K"]; v = ENVIRON["V"]; fence = 0; done = 0 }
+    /^---[[:space:]]*$/ {
+      fence++
+      if (fence == 2 && !done) { print k ": " v; done = 1 }
+      print; next
+    }
+    fence == 1 && !done && index($0, k ":") == 1 { print k ": " v; done = 1; next }
+    { print }' "$f" > "$tmp" && mv "$tmp" "$f"
 }
 
 # story_deps <file>   The ids in depends_on, space-separated.

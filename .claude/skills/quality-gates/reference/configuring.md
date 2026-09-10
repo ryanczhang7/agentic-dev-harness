@@ -17,6 +17,17 @@ fail gets a waiver naming why:
 A waiver turns that gate's failure from `WARN` into `KNOWN` so that `WARN`
 always means something changed. It is refused on required gates.
 
+Three more kinds, each explained in the skill and in `project.conf`'s own
+comments:
+
+    floor     | <gate id> | <minimum count read out of the evidence match>
+    slow      | <gate id> | <why it is too slow for gates.sh --fast>
+    discovery | <id> | <cwd> | <command proving a runner can see a directory>
+
+`floor` catches a gate that quietly started doing much less; `slow` names what
+`--fast` leaves out, reason required; `discovery` lines are run by `doctor.sh`,
+never by the gates.
+
 Once CI has run a gate for real, record how much slower one test is there:
 
     ci-factor | <gate id> | <per-test factor> | <the CI run it came from>
@@ -68,8 +79,10 @@ it rarely, and say why in the story.
 
     bash scripts/gates.sh --audit
 
-reports gates with no command, gates whose `cwd` does not exist, and gates with
-no evidence line, without running anything.
+reports gates whose `cwd` does not exist, gates with no evidence line, a floor
+or slow line it cannot honour, and - once `BOOTSTRAPPED=yes` - required gates
+with no command, without running anything. Before the flag is flipped an
+unconfigured gate is reported as `ok (unconfigured)`.
 
 ## Multiple workspaces
 

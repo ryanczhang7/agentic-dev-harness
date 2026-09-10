@@ -52,8 +52,8 @@ approval between phases is exactly when they get quietly reordered:
   byte-for-byte and confirm green. Unattended is when this gets skipped too.
 - **PLANNED → RED names the required gate that would fail if the artifact
   broke.** If only an optional gate can, `required_gates` gets it before the
-  phase moves. Sixteen required gates passed once over a story none of them
-  had exercised.
+  phase moves. Every required gate once passed over a story none of them had
+  exercised.
 
 Stop and ask the user only when:
 

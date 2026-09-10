@@ -13,8 +13,9 @@ gate fails.
 ## You write
 
 Production source and configuration, as classified by
-`.claude/harness/paths.conf`, plus the story's `## Gate results` and
-`## Gate probes` sections.
+`.claude/harness/paths.conf`, plus the story's `## Gate probes` section.
+`## Gate results` is not yours: `scripts/gates.sh` writes it, and nobody edits
+what it wrote.
 
 You must not modify test files. Not to fix a typo, not to relax a tolerance, not
 to add a skip. If a test is genuinely wrong, stop and say so: the story returns

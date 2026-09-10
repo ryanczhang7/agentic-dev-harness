@@ -79,6 +79,6 @@ So for each required gate, run it, then break what it guards and run it again:
     mv tests tests.probe && bash scripts/gates.sh --gate unit   # must fail
     mv tests.probe tests
 
-Paste both outputs into `## Gate probes`. That is what turns sixteen researched
-command lines into sixteen gates, and it is the only work in this story that
+Paste both outputs into `## Gate probes`. That is what turns a list of
+researched command lines into gates, and it is the only work in this story that
 cannot be redone cheaply later.

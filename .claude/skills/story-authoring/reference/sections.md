@@ -67,7 +67,7 @@ entirely for headless work rather than writing "n/a".
 Which tests, at which level, and which acceptance criterion each covers. Written
 during RED, before or as the tests are written.
 
-## Handoff: RED to GREEN - Test Developer
+## Handoff: RED -> GREEN - Test Developer
 
 The only channel to the Feature Developer. See the `tdd-cycle` skill,
 `reference/handoff.md`.
@@ -105,7 +105,7 @@ section lacks the marker or whose recorded hash does not match the code being
 merged - so a story that changes code after its last gate run has to run the
 gates again, which is the point.
 
-## Gate probes - Feature Developer
+## Gate probes - Feature Developer, or whoever scaffolds
 
 Required for any story that adds or changes a gate, its command, or its
 `evidence` line; omitted entirely otherwise. For each such gate: what was broken
@@ -120,7 +120,7 @@ See the `quality-gates` skill.
 ## Scaffold inventory - whoever scaffolds
 
 Required for a `bootstrap` or `chore` story that writes production code under
-SCAFFOLD; omitted otherwise. One line per production file written, and for
+SCAFFOLD, and for a `spike` that commits its throwaway code; omitted otherwise. One line per production file written, and for
 anything with behaviour rather than configuration, the test that covers it.
 SCAFFOLD is the one phase where nothing forces a test to exist first, and it is
 the phase every later story's correctness rests on; this is where the scaffolder
@@ -130,5 +130,6 @@ reviewer's judgement, not the script's.
 
 ## Notes - anyone
 
-Decisions taken mid-story, surprises, things deliberately deferred. If a story
-returns from GREEN to RED, the reason goes here.
+Decisions taken mid-story, surprises, things deliberately deferred, the result
+of an orchestrator's own mutation run. A return to RED is recorded in
+`## Regressions`, not here.

@@ -120,6 +120,83 @@ fi
 assert_eq "an escaped operator is masked" "0" \
   "$(mask 'echo a \> b' | grep -cE '>')"
 
+describe "mask_shell_quotes: a backslash inside double quotes is usually a backslash"
+
+# Bash escapes only five things inside double quotes: $ ` " \ and newline.
+# Every other backslash is literal - which is every backslash in a Windows
+# path. A masker that eats them turns the scratchpad this harness tells agents
+# to use into `C:UsersryancAppDataLocalTempclaude`, which is not outside the
+# repository as far as to_rel can tell, so it falls through to `source` and the
+# write is denied. Observed on a Windows machine in RED.
+for cmd in \
+  'echo x > "C:\Users\ryanc\AppData\Local\Temp\claude\n.txt"' \
+  'cd "C:\Users\ryanc\AppData\Local\Temp\claude" && rm -rf x' \
+  'printf "%s\n" "a\tb"' \
+  ; do
+  assert_eq "round trip keeps literal backslashes: $cmd" "$cmd" "$(roundtrip "$cmd")"
+done
+# The ones that ARE escapes still are: the escaped quote does not end the
+# string, so the arrow inside it is masked and only the real redirect is left.
+assert_eq "an escaped quote does not end the string" "1" \
+  "$(mask 'echo "a \" > b" > docs/notes.md' | tr -cd '>' | wc -c | tr -d ' ')"
+
+describe "mask_shell_quotes: a comment is data to the end of the line"
+
+# `# it's fine` - the apostrophe opens a single-quoted span that never closes,
+# and everything after it, on every following line, is masked. A real redirect
+# on the next line vanished. Observed by probe, not in the field, but the
+# shape - a chatty comment, then the write - is an everyday one.
+two="$(printf 'echo hi # it%ss fine\necho x > src/main.ts' "'")"
+assert_contains "a redirect after a commented apostrophe survives" "> src/main.ts" "$(mask "$two")"
+assert_eq "a # inside a word is not a comment" "echo a#b > out.txt" "$(mask 'echo a#b > out.txt' | unmask_shell_quotes)"
+assert_contains "a # inside a word still leaves the redirect" ">" "$(mask 'echo a#b > out.txt')"
+
+# ---------------------------------------------------------------------------
+describe "json_escape: a backslash is escaped, not dropped"
+
+# The deny reason is emitted as JSON. A backslash in it - a Windows path, a
+# regex the guard quotes back - has to arrive doubled or the hook's output is
+# not JSON at all.
+assert_eq "a backslash"      'a\\b'     "$(json_escape 'a\b')"
+assert_eq "a quote"          'a\"b'     "$(json_escape 'a"b')"
+assert_eq "a newline"        'a\nb'     "$(json_escape "$(printf 'a\nb')")"
+assert_eq "a tab"            'a\tb'     "$(json_escape "$(printf 'a\tb')")"
+assert_eq "a carriage return is dropped" 'ab' "$(json_escape "$(printf 'a\rb')")"
+
+# ---------------------------------------------------------------------------
+describe "gate_tree_hash: agrees with the committed tree whatever autocrlf says"
+
+# The hash is recorded from the working tree and recomputed by CI from the PR
+# head commit. Adding into an EMPTY index treats every file as new, so git
+# applies CRLF normalisation the real commit never had - and the two hashes
+# disagree on any CRLF file committed before .gitattributes pinned LF. Then
+# re-running the gates cannot fix it, because the working tree is not what is
+# wrong.
+HARNESS_ROOT="$FIX"
+git -C "$FIX" config core.autocrlf false
+printf 'export const crlf = 1\r\n' > "$FIX/src/crlf.ts"
+git -C "$FIX" add -A >/dev/null 2>&1
+git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "crlf file" >/dev/null 2>&1
+git -C "$FIX" config core.autocrlf true
+assert_eq "working tree hash equals HEAD hash under autocrlf=true" \
+  "$(gate_tree_hash_of HEAD)" "$(gate_tree_hash)"
+git -C "$FIX" config core.autocrlf false
+
+# ---------------------------------------------------------------------------
+describe "portability: the harness runs on bash 3.2 and BSD tools"
+
+# gates.sh names bash 3.2 as a target and macOS ships 3.2.57. `${var,,}`
+# is a bash 4 feature; on 3.2 it is a "bad substitution" that kills to_rel,
+# and a to_rel that dies makes check_path return "allow" - the lock silently
+# off on every stock Mac. `sed -i` with no suffix is GNU-only; BSD sed reads
+# the next argument as the backup suffix. Both are caught here by reading the
+# code, because nothing else in this suite can run the other platform.
+shipped="$(ls "$REPO_ROOT"/scripts/*.sh "$REPO_ROOT"/.claude/hooks/*.sh)"
+hits="$(grep -nE '\$\{[A-Za-z_][A-Za-z0-9_]*(,,|\^\^)\}' $shipped || true)"
+assert_eq "no \${var,,} or \${var^^} in shipped scripts" "" "$hits"
+hits="$(grep -nE '(^|[[:space:]|;&(])sed[[:space:]]+(-[A-Za-z]*\s+)*-i([[:space:]]|$)' $shipped || true)"
+assert_eq "no GNU-only sed -i in shipped scripts" "" "$hits"
+
 # ---------------------------------------------------------------------------
 describe "gate_tree_hash: covers what the gates judge, and only that"
 
