@@ -44,6 +44,13 @@ End it with a success condition that could come out either way, and record the
 verdict is the part that gets skipped, and a model choice with no verdict is
 folklore: nobody can argue with it and nobody can undo it.
 
+Carry the **oracle partition** here too - which criteria are settled and to be
+read out, which are oracle-free and want an invented metric with a negative
+control, which are mechanical and want exact pinning (main skill file, "Brief
+RED by oracle"). It is the part of the brief the recorded verdict points at:
+the same partitioned brief on the default model out-performed a stronger model
+without it, so the section earns its place even when the model never changes.
+
 ## Out of scope - Lead PO
 
 The explicit non-goals. This is how the Feature Developer knows where to stop,

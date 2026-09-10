@@ -51,6 +51,43 @@ in the frontmatter:
 That gate is then binding for this story and optional for every other. See the
 `quality-gates` skill.
 
+Do this for every story, not only the obviously browser-bound ones: **name,
+before RED, the required gate that would fail if the story's artifact broke.**
+If the answer is "none" or "an optional one", this is the moment to fix it. The
+trap is not one wrong decision but three right ones adding up: a test project
+that needs a real browser (correct - jsdom has no WebGL, and testing a renderer
+there is theatre), an `integration` gate marked `optional` because it needs
+that browser (correct), a coverage `include` that skips the same directory
+(correct). Together they put all twenty-five tests of a renderer where nothing
+could block on them, and `All required gates passed (16 ran)` was printed over
+a story whose artifact no required gate had exercised. `optional` means "this
+gate reports information"; it must never be the only thing testing a shipped
+feature. `gates.sh` cannot warn you, because nothing in `project.conf` says
+which paths a gate exercises - so the story says it.
+
+## Brief RED by oracle
+
+Not every criterion is the same kind of claim, and a Test Developer told "you
+have no oracle, design the metric" across *all* of them will re-derive values a
+design decision already fixed - the audit problem arriving from the other
+direction. Before RED, sort the criteria and say which is which:
+
+| Kind | Instruction to RED |
+|---|---|
+| **Settled** - a design doc, an audit's `## Decided`, a validated constant stands behind it | *Read the numbers out. Do not derive, tune or "calibrate" them.* |
+| **Oracle-free** - perceptual, statistical, "reads as continents" | *Invent the metric, and demand a negative control that fires hard.* |
+| **Mechanical** - an API shape, an event, instrumentation | *Precision beats invention; pin it exactly, leave nothing open-ended.* |
+
+This partition is the part of a RED brief that has been measured to matter.
+Two stories ran RED with it, one on a stronger model and one on the default,
+with the default-model claim written down first so it could come out either
+way. The default-model run produced the sharper controls - 69x separation
+against 10x - and a second control for a criterion whose first metric could be
+defeated by per-triangle flat shading. One run each, so the honest reading is
+"the brief did the work, not the model"; and the brief is the cheap variable.
+Put the partition in the story, under `## Model guidance` or beside the
+criteria, so that the orchestrator's dispatch prompt carries it.
+
 ## When the story depends on an audit or a spike
 
 A story that follows an earlier audit says so, and says it precisely. "Read the

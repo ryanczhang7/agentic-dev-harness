@@ -45,6 +45,15 @@ approval between phases is exactly when they get quietly reordered:
   subagent's code, and record the reproduction in the story. Running unattended
   is exactly when this gets skipped, and it is the difference between a correct
   escalation and a plausible excuse for not failing.
+- **A mutation table in the handoff is a claim until you run one.** When RED
+  says the suite discriminates, pick a mutation it predicts a count for — the
+  one whose predicted catch is a single assertion, for preference — run it
+  against the committed implementation, compare the count, restore the file
+  byte-for-byte and confirm green. Unattended is when this gets skipped too.
+- **PLANNED → RED names the required gate that would fail if the artifact
+  broke.** If only an optional gate can, `required_gates` gets it before the
+  phase moves. Sixteen required gates passed once over a story none of them
+  had exercised.
 
 Stop and ask the user only when:
 

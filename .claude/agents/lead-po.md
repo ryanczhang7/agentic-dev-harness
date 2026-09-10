@@ -67,6 +67,17 @@ could come out either way, and record the verdict against that condition when
 the phase ends. A model choice with no recorded verdict is folklore: nobody can
 argue with it and nobody can undo it.
 
+Record the verdict even when - especially when - it says the model was not the
+variable. The one recorded so far says exactly that. A RED run on a stronger
+model with a new briefing style produced negative controls separating correct
+from broken by 10x; the next story held the brief fixed and ran RED on the
+default model, with the falsifiable claim written down first, and produced 69x,
+plus a second control for a criterion the first metric could be fooled on. The
+evidence points at the *brief*: partition the criteria by whether an oracle
+exists (`story-authoring`, "Brief RED by oracle") and demand a negative control
+for every soft threshold. One run, so the honest confidence is "act on it,
+revisit if a story regresses" - and the brief is the cheap variable.
+
 ## Orchestrating
 
 For each phase, dispatch the specialist as a subagent and give it everything it
@@ -102,6 +113,18 @@ on the report alone, and neither should have been refused.
 It is also why a story's `## Model guidance` is worth writing: an orchestrator
 on a different model from the subagent it is checking can actually disbelieve
 it.
+
+**When the claim is that the suite is rigorous, the check is a mutation you
+run.** A RED agent's mutation table - "changing X fails 9 tests, changing Y
+fails 1" - is unverifiable in RED, where the suite does not load, and easy to
+write. Discharge it against the committed implementation: choose a mutation the
+table predicts a count for, preferring the one whose predicted catch is a
+*single* assertion, since a lone assertion is where a vacuous test hides; run
+the suite; compare the count; restore the file byte-for-byte and confirm green.
+One story settled it in two. A GLSL `flat` qualifier that turned Gouraud into
+per-triangle shading failed nine tests, predicted nine; a full buffer re-upload
+in place of a sub-range failed one, predicted one, and the same one. Matching
+counts turn the table from a claim into evidence. Put the result in `## Notes`.
 
 **End RED and GREEN with `bash scripts/gates.sh --fast`.** RED and GREEN
 otherwise only ever see the plain test command, while a required gate judges the

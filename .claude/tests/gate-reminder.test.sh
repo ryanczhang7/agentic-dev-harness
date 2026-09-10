@@ -113,9 +113,43 @@ mkdir -p "$FIX/src/generated"
 printf 'export const x = 1\n' > "$FIX/src/generated/api.ts"
 assert_allows "generated output nested inside a source directory"
 
+# The one that matters most. Vitest writes a screenshot under
+# .vitest/attachments/ when a browser test FAILS - which is what happens when
+# an orchestrator deliberately mutates production code to prove the suite
+# discriminates, the strongest verification this harness has. A hook that
+# fires on that output charges a full gate run for every mutation, and the
+# incentive it creates is to mutation-test less.
+stamp_run pass
+mkdir -p "$FIX/.vitest/attachments"
+printf 'PNG\n' > "$FIX/.vitest/attachments/3f2a9c1e.png"
+assert_allows "a failure screenshot written by a deliberate mutation run"
+
 # The floor: ignoring generated output must not stop it noticing real ones.
 touch "$FIX/src/main.ts"
 assert_blocks "a real source change alongside generated output" "src/main.ts"
+
+# --- prose the gates never read ---------------------------------------------
+describe "a harness prompt is not code the gates judge"
+
+# .claude/commands/advance-story.md classifies as harness, and until now that
+# meant editing a command file cost a full gate run - while editing a wiki
+# page, one directory over, cost nothing. No gate reads either. The set is the
+# one gate_tree_hash covers, so the two stay in agreement: a prompt edited
+# after the run neither blocks the stop here nor invalidates the recorded
+# hash in CI.
+set_phase "$FIX" GREEN
+stamp_run pass
+mkdir -p "$FIX/.claude/commands" "$FIX/.claude/hooks"
+printf '# advance\n' > "$FIX/.claude/commands/advance-story.md"
+assert_allows "a command prompt edited after the run"
+
+stamp_run pass
+printf 'x() { :; }\n' > "$FIX/.claude/hooks/lib.sh"
+assert_blocks "a hook edited after the run is still code" ".claude/hooks/lib.sh"
+
+stamp_run pass
+printf 'gate | unit | required | . | true\n' > "$FIX/.claude/harness/project.conf"
+assert_blocks "the gate manifest is still code" ".claude/harness/project.conf"
 
 # --- the loop guard ----------------------------------------------------------
 describe "the hook never loops on itself"

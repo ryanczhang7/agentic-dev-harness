@@ -134,6 +134,25 @@ assert_contains "a detached checkout still finds the story" "story T-1 is in REV
 git -C "$FIX" checkout -q story/T-1-fixture 2>/dev/null
 
 # ---------------------------------------------------------------------------
+describe "a PR is opened from REVIEW, as committed"
+
+# This is why /advance-story sets the phase BEFORE committing. phase.sh set
+# rewrites the frontmatter; this script reads the frontmatter back out of the
+# commit; so a commit made while the story still said GATES carries GATES to
+# CI no matter what the working tree says afterwards. Committing first passed
+# whenever the PR happened to be opened before this job ran, which is worse
+# than always failing: it taught one project that the order was cosmetic.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+mkdir -p "$FIX/docs/backlog/stories"
+printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: GATES\nbranch: story/T-1-fixture\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n' \
+  > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "T-1 committed before the phase was set"
+out="$(boundaries)"
+assert_contains "a commit carrying GATES is refused" "a PR should be opened from REVIEW or DONE" "$out"
+
+# ---------------------------------------------------------------------------
 describe "the same rule covers gate probes"
 
 story_on_branch <<'EOF'

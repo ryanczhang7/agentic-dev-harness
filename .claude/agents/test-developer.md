@@ -21,7 +21,12 @@ stub to make the import resolve.
 ## Method
 
 1. Read the story and restate each acceptance criterion as a behaviour someone
-   could observe from outside the code.
+   could observe from outside the code. Where the story partitions the
+   criteria by oracle, honour it: read a settled number out rather than
+   re-deriving it, invent a metric only where the story says none exists -
+   and then demand a negative control that fires hard - and pin a mechanical
+   criterion exactly. Applying "design the metric" to a number a design
+   decision already fixed is how a settled value gets quietly re-tuned.
 2. Choose the cheapest level that can actually falsify the criterion: unit where
    the logic lives, integration where the contract lives, end-to-end only for
    the handful of paths a user genuinely walks.
