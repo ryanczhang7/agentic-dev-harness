@@ -198,9 +198,11 @@ bash scripts/phase.sh set PROJ-014 GREEN   # the only supported way to change ph
 A `Stop` hook refuses to let a story be called finished while the gates have not
 been run since the last code change, or while the last run failed. "Done" is
 measured, not asserted. "Code" there means what the gates would have hashed —
-source, test, config, harness — so a coverage report or a build directory the
-gates themselves produced does not count as a change, and re-running a gate to
-check something never blocks the report that follows it.
+source, test, config, and the harness's scripts and manifests — so a coverage
+report or a build directory the gates themselves produced does not count as a
+change, re-running a gate to check something never blocks the report that
+follows it, and neither does rewording a command file or a skill, which no
+gate reads.
 
 ## Gates
 

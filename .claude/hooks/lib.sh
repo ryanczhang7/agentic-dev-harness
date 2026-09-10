@@ -132,8 +132,26 @@ mask_shell_quotes() {
               if (j == n) { cont = 1; j++; continue }
               out = out maskchar(substr(s, j + 1, 1)); j += 2; continue
             }
+            # "$( ... )" opens a nested context in which a double quote does
+            # NOT close the string: `-m "$(printf "%s" "a -> b")"` is one
+            # argument. Read naively, the inner quotes toggle the state and the
+            # arrow leaks out as a redirect into a file called `b"`. Everything
+            # up to the matching paren is data to the command outside it - a
+            # redirect in there is masked too, which fails open, as the guard
+            # already does for any target with a `$` in it.
+            if (c == "$" && substr(s, j + 1, 1) == "(") {
+              out = out c "("; state = "subst"; depth = 1; j += 2; continue
+            }
             if (c == "\"") { out = out c; state = "none" } else out = out maskchar(c)
             j++; continue
+          }
+          if (state == "subst") {
+            if (c == "(") depth++
+            else if (c == ")") {
+              depth--
+              if (depth == 0) { out = out c; state = "double"; j++; continue }
+            }
+            out = out maskchar(c); j++; continue
           }
 
           # Unquoted.
@@ -428,9 +446,9 @@ classify_stdin() {
 # for. Observed in the field, twice.
 #
 # The set that matters is already defined: it is the one gate_tree_hash covers
-# - source, test, config and harness, never docs, vendor or ignored. So the
-# question this asks is precisely "would the recorded gate hash still match",
-# and the two answers cannot drift apart.
+# - see gated_stdin - never docs, vendor or ignored. So the question this asks
+# is precisely "would the recorded gate hash still match", and the two answers
+# cannot drift apart.
 #
 # Ignored TOP-LEVEL directories are pruned before the walk rather than filtered
 # after it, because `src-tauri/target` holds six figures of files and a Stop
@@ -468,10 +486,33 @@ code_changed_since() {
     kept="$(printf '%s\n' "$out" | awk -F'\t' '$1 == "::" && $2 != "" { print $2 }')"
   fi
   [ -n "$kept" ] || return 0
-  printf '%s\n' "$kept" | classify_stdin \
-    | awk -F'\t' '$1 == "source" || $1 == "test" || $1 == "config" || $1 == "harness" \
-                  { print $2; exit }'
+  printf '%s\n' "$kept" | classify_stdin | gated_stdin \
+    | awk -F'\t' '{ print $2; exit }'
   return 0
+}
+
+# --- What the gates judge ---------------------------------------------------
+#
+# gated_stdin   Reads "<category>\t<path>" lines, as classify_stdin prints
+# them, and keeps the ones some gate could actually read. This is the ONE
+# definition of "the code the gates ran against": gate_tree_hash records it,
+# check-boundaries.sh recomputes it, and the Stop hook asks whether it moved.
+# Three readers of one predicate cannot disagree; three predicates would.
+#
+# Kept: source, test, config, and harness - the hooks, the scripts, the gate
+# manifest, the CI workflow. Dropped: docs (the story file that records the
+# hash cannot be part of it), vendor, ignored, harness runtime state, and
+# harness MARKDOWN. That last one is deliberate. A command file, an agent
+# spec, a skill and CLAUDE.md classify as harness because they live under
+# .claude/, but they are prompts: no lint, no test and no build reads them.
+# Counting them meant rewording /advance-story cost a full gate run while
+# editing a wiki page one directory over cost nothing, and it meant a
+# recorded gate hash went stale on a change the gates could not have judged.
+gated_stdin() {
+  awk -F'\t' '
+    ($1 == "source" || $1 == "test" || $1 == "config" || $1 == "harness") \
+      && !($1 == "harness" && $2 ~ /\.md$/) \
+      && index($2, ".claude/state/") != 1 { print }'
 }
 
 # --- Gate tree hash ---------------------------------------------------------
@@ -480,10 +521,9 @@ code_changed_since() {
 # story's ## Gate results; check-boundaries.sh recomputes it and refuses a PR
 # whose recorded gate run does not match the code being merged.
 #
-# Included: every source, test, config and harness path. Excluded: docs (the
-# story file that records the hash cannot be part of it), vendor, ignored
-# files, and harness runtime state. Blob ids are of LF-normalised content, so a
-# Windows working tree and a Linux checkout of the same content agree.
+# Covers exactly what gated_stdin keeps. Blob ids are of LF-normalised
+# content, so a Windows working tree and a Linux checkout of the same content
+# agree.
 
 # Reads "blob\tpath" lines; prints the hash.
 _hash_blob_listing() {
@@ -492,15 +532,13 @@ _hash_blob_listing() {
   [ -n "$listing" ] || { printf 'unavailable'; return 1; }
   {
     printf '%s\n' "$listing" | awk -F'\t' '{ print "B\t" $1 "\t" $2 }'
-    printf '%s\n' "$listing" | cut -f2- | classify_stdin | awk -F'\t' '{ print "C\t" $1 "\t" $2 }'
+    printf '%s\n' "$listing" | cut -f2- | classify_stdin | gated_stdin | awk -F'\t' '{ print "C\t" $2 }'
   } | awk -F'\t' '
       $1 == "B" { blob[$3] = $2; next }
-      $1 == "C" { cat[$3] = $2 }
+      $1 == "C" { gated[$2] = 1 }
       END {
         for (p in blob) {
-          c = cat[p]
-          if (c != "source" && c != "test" && c != "config" && c != "harness") continue
-          if (index(p, ".claude/state/") == 1) continue
+          if (!(p in gated)) continue
           print blob[p] "  " p
         }
       }' | LC_ALL=C sort | git hash-object --stdin

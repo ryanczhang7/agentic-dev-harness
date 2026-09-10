@@ -80,6 +80,7 @@ for cmd in \
   "grep -oE 'x>y' f.txt" \
   'git commit -m "fix: a > b"' \
   'echo "a && b; c"' \
+  'git commit -m "$(printf "%s\n%s" "GATES -> REVIEW" "set the phase first")"' \
   ; do
   masked="$(mask "$cmd")"
   # Everything after the first quote is data; only the command word and the
@@ -118,6 +119,29 @@ fi
 
 assert_eq "an escaped operator is masked" "0" \
   "$(mask 'echo a \> b' | grep -cE '>')"
+
+# ---------------------------------------------------------------------------
+describe "gate_tree_hash: covers what the gates judge, and only that"
+
+# The hash is the identity of "the code the gates ran against". A change to a
+# file no gate reads must not move it, or every prompt edit after the last run
+# forces a re-run before the PR is acceptable - and it does have to move on a
+# change to anything a gate does read, or the record proves nothing.
+HARNESS_ROOT="$FIX"
+mkdir -p "$FIX/.claude/commands" "$FIX/.claude/hooks"
+printf '# advance\n' > "$FIX/.claude/commands/advance-story.md"
+printf 'x() { :; }\n' > "$FIX/.claude/hooks/lib.sh"
+h0="$(gate_tree_hash)"
+printf '# advance, reworded\n' > "$FIX/.claude/commands/advance-story.md"
+assert_eq "a command prompt does not move the hash" "$h0" "$(gate_tree_hash)"
+printf '# a wiki page\n' > "$FIX/docs/notes.md"
+assert_eq "a docs file does not move the hash"      "$h0" "$(gate_tree_hash)"
+printf 'y() { :; }\n' > "$FIX/.claude/hooks/lib.sh"
+h1="$(gate_tree_hash)"
+if [ "$h1" = "$h0" ]; then _bad "a hook moves the hash" "unchanged: $h0"; else _ok "a hook moves the hash"; fi
+printf 'export const x = 2\n' > "$FIX/src/main.ts"
+h2="$(gate_tree_hash)"
+if [ "$h2" = "$h1" ]; then _bad "source moves the hash" "unchanged: $h1"; else _ok "source moves the hash"; fi
 
 # ---------------------------------------------------------------------------
 describe "path_is_implausible: a failed parse is inconclusive, not a violation"

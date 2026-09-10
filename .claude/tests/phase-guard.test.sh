@@ -124,6 +124,34 @@ Prose that quotes `>` or `>>` is data, not syntax.
 MARKDOWN' 'a docs heredoc whose prose quotes the redirect character'
 
 # ---------------------------------------------------------------------------
+describe "RED: the harness's own vocabulary in a commit message"
+set_phase "$FIX" RED
+
+# Third field report. A consuming project fixed the GATES -> REVIEW ordering in
+# /advance-story, then wrote a commit message saying so - and the vendored
+# guard read the arrow as a redirect into a file named REVIEW, classified it
+# as source, and refused the commit. The message documenting the arrow-ordering
+# fix was blocked by the arrow-parsing bug. Every story here names its handoff
+# `RED -> GREEN` and every phase change is an arrow, so a commit message is
+# not an unlucky input: it is the input.
+assert_allowed "$FIX" 'git commit -m "WORLD-006: set the phase before committing at GATES -> REVIEW"' \
+  'a commit message naming a phase transition'
+assert_allowed "$FIX" 'git commit -am "advance-story: RED -> GREEN handoff must carry control values"' \
+  'a commit message naming the handoff section'
+assert_allowed "$FIX" 'git commit -F - <<'"'"'MSG'"'"'
+Reorder GATES -> REVIEW
+
+check-boundaries.sh reads the phase out of the committed frontmatter, so
+`phase.sh set <id> REVIEW` has to run before the commit, not after it.
+MSG' 'a multi-line commit message fed by heredoc'
+assert_allowed "$FIX" 'git commit -m "$(printf "%s\n\n%s" "Fix GATES -> REVIEW" "Set the phase first.")"' \
+  'a commit message built by command substitution'
+
+# And the same words are still an operator when they are one.
+assert_blocked "$FIX" 'echo "GATES -> REVIEW" > src/main.ts' src/main.ts \
+  'the vocabulary quoted, the redirect not'
+
+# ---------------------------------------------------------------------------
 describe "RED: a parse the guard cannot believe declines rather than denies"
 set_phase "$FIX" RED
 

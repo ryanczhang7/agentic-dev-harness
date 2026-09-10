@@ -5,9 +5,11 @@
 # the last change to the code the gates judge, block the stop and say so.
 # Cheap, and self-clearing: running the gates updates the stamp.
 #
-# "The code the gates judge" is source, test, config and harness - never docs,
-# vendor, or anything .gitignore covers. Counting generated output would make
-# the hook fire on its own exhaust, which is the same as firing at random.
+# "The code the gates judge" is what gated_stdin in lib.sh keeps: source, test,
+# config and the harness's scripts and manifests - never docs, prompts, vendor,
+# or anything .gitignore covers. Counting generated output would make the hook
+# fire on its own exhaust, which is the same as firing at random; counting a
+# command file would charge a gate run for rewording a prompt no gate reads.
 
 set -uo pipefail
 HOOK_INPUT="$(cat)"

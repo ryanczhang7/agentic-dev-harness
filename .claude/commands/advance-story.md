@@ -17,14 +17,29 @@ Read `docs/backlog/stories/$1.md` first. Then, based on its current phase:
 
 **PLANNED → RED.** Confirm the acceptance criteria are testable; fix them with
 the user if they are not — this is the last phase in which they may change
-without an `## Amendments` entry. Create and switch to the story's branch
+without an `## Amendments` entry. Then name the gate that would fail if this
+story's artifact broke, and check it is `required`. Read the criteria against
+`bash scripts/gates.sh --list`: if the only gate that exercises what the story
+builds is `optional` — a browser-driven `integration` suite, most often — put it
+in the story's `required_gates` now. That is a PO decision made here, not a
+discovery for GATES. Three individually sound exclusions (a test project that
+needs a real browser, an `optional` integration gate because it needs one, a
+coverage `include` that skips the same directory) once combined so that every
+test of a renderer ran where nothing could block on it, and `All required gates
+passed` was printed over a story whose artifact no required gate had touched.
+If no gate at all can verify the artifact, the story is not ready.
+
+Create and switch to the story's branch
 (`story/<id>-<slug>`) if it does not exist. Set the phase; `phase.sh` refuses
 if a `depends_on` story is not DONE or the checkout is on another branch, and
 either refusal is a reason to stop and tell the user, not to reach for
 `--force`. Then dispatch the
-**test-developer** subagent with the story path, the criteria restated in full,
-the relevant constraints from `docs/wiki/`, and the exact test command from
-`.claude/harness/project.conf`. When it returns, verify: read the test files it
+**test-developer** subagent with the story path, the criteria restated in full
+and **partitioned by oracle** — which carry a settled number to read out, which
+are oracle-free and need an invented metric with a negative control, which are
+mechanical and want exact pinning (see `story-authoring`, "Brief RED by
+oracle") — the relevant constraints from `docs/wiki/`, and the exact test
+command from `.claude/harness/project.conf`. When it returns, verify: read the test files it
 wrote and run the tests yourself. Confirm they fail, and fail for the right
 reason. If they pass, or fail on an unrelated error, send it back.
 
@@ -124,6 +139,17 @@ Rules for you as orchestrator:
   the only thing that separates them, and it is cheap: a fresh probe on
   different inputs, or reading the fixture and enumerating the cases the file
   asserts to show no rule satisfies all of them.
+- **When the claim is "this suite discriminates", the check is a mutation you
+  run.** A handoff's mutation table — *changing X fails 9 tests, changing Y
+  fails 1* — could not be verified in RED, where the suite did not load, and
+  is easy to write. Against the committed implementation, pick a mutation the
+  table predicts a count for, preferring one whose predicted catch is a
+  **single** assertion (a lone assertion is where a vacuous test hides), run
+  the suite, compare the count, restore the file byte-for-byte and confirm the
+  suite is green again. Two mutations, one run each, is enough; matching
+  counts turn the table from a claim into evidence. Record it in `## Notes`.
+  The failure screenshots a runner writes under an ignored directory while you
+  do this are not a code change, and the Stop hook knows it.
 - Keep the story file current as you go — it is the only thing the next agent
   will see.
 - Stop and ask the user on any product ambiguity. Do not invent scope. A

@@ -27,7 +27,10 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
 
 ## Context
 
-<!-- Why this story exists. Link the epic and any wiki pages that constrain it. -->
+<!-- Why this story exists. Link the epic and any wiki pages that constrain it.
+     Name the REQUIRED gate that would fail if this story's artifact broke. If
+     only an optional gate can, put it in required_gates above before RED:
+     sixteen required gates once passed over a story none of them exercised. -->
 
 ## Acceptance criteria
 
@@ -63,6 +66,10 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
        * what the orchestrator should stay on
        * HOW to brief it differently - a model chosen for judgement wants the
          criteria and the constraints, not a pre-decided test design
+       * the ORACLE PARTITION of the criteria: which are settled (read the
+         numbers out, do not calibrate), which are oracle-free (invent the
+         metric and demand a negative control that fires hard), which are
+         mechanical (pin exactly). Measured to matter more than the model
        * a success condition that could come out either way
      Then record the VERDICT against that condition when the phase ends, with
      evidence. The verdict is the part that gets skipped, and without it a model

@@ -211,6 +211,17 @@ the story requires.
 
 Use it whenever an acceptance criterion is verified only in an optional gate.
 
+**`optional` means "this gate reports information". It never means "this gate
+is the only thing testing a shipped feature"** - and it gets there without
+anyone deciding it should. A test project that needs a real browser, an
+`integration` gate marked optional because it needs one, a coverage `include`
+that skips the same directory: each is right on its own, and together they put
+every test of a renderer where nothing could block on it while `All required
+gates passed (16 ran)` printed underneath. `gates.sh` cannot notice, because
+nothing in `project.conf` says which paths a gate exercises. So the story
+names, before RED, the required gate that would fail if its artifact broke -
+see `story-authoring` - and promotes one if the answer is "none".
+
 ## WARN must mean something changed
 
 Optional gates report rather than block, which is not the same as ignorable -
