@@ -51,6 +51,25 @@ how a path is classified:
 bash -c '. .claude/hooks/lib.sh; classify "src/app/main.ts"'
 ```
 
+# The model each agent runs on
+
+Every definition in `.claude/agents/` declares `model:`, so which model a role
+runs on is a fact of the harness rather than of whoever's session dispatched it.
+All five say `opus` today, and that is a decision rather than a default: the one
+place model choice has been measured against a controlled alternative, the
+*brief* out-performed the model - a partitioned RED brief on the weaker model
+produced sharper negative controls than the stronger model without it - while the
+failure mode of a weaker model in GREEN or GATES is precisely the one this
+harness exists to prevent, reaching green by weakening a test.
+
+Lower it deliberately, per role, and record the decision and the outcome. What
+you may not do is leave it unstated: a session setting or an explicit override
+can still win, and the orchestrator cannot see which did. Two stories once
+compared "the default model" against a stronger one, and neither could say what
+"default" had resolved to - so the comparison may have been the stronger model
+against itself. Hence the other half of the rule: **`lead-po` records the
+resolved model of every dispatch, by name, in the story.**
+
 # Phase permissions
 
 | Phase | May write | Meaning |
@@ -81,7 +100,9 @@ is not a general permission system.
     and nothing would notice. Earn it by mutating the specific production
     behaviour it claims to pin, watching that one assertion go red, reverting,
     and pasting the output into `## Regressions`. One mutation, one run, one
-    revert.
+    revert — and the mutation goes through `bash scripts/mutate.sh FILE 'EXPR'
+    -- COMMAND`, which is allowed in every phase because it restores the file
+    and verifies the restore. `sed -i` here is working around the lock.
   - a suite that fails at **import**, where no assertion in the file has run.
     Negative controls - the cases that make a threshold mean something - are
     unverified for the whole of RED. Record each control's expected value in
@@ -110,6 +131,14 @@ is not a general permission system.
   `phase.sh set`, which refuses to move a story past PLANNED while a dependency
   is not DONE or the checkout is on the wrong branch. `--force` overrides
   either, and prints that it did; record why in `## Notes`.
-- Do not commit `.claude/state/**`. It is machine-local.
+- Do not commit `.claude/state/**`. It is machine-local: `current-story.env` from
+  `phase.sh`, `last-gate-run` and `gate-logs/` from `gates.sh`,
+  `mutations/` (backups and a log) from `mutate.sh`, and the guard's
+  `phase-guard-declined.log`. A `.bak` left behind under `mutations/` means a
+  restore failed and `mutate.sh` exited 90 saying so; everything else it cleans
+  up. The backup path is explicit rather than `$TMPDIR` because that variable is
+  unset in some of the shells this harness runs in, and a mutation whose backup
+  went nowhere once left its restore depending on the `sed` expression happening
+  to be an exact inverse of a single-occurrence match.
 - Agentic scaffolding (`.claude/`, `docs/`, `scripts/`, `.github/`) never ships
   in a production image. Keep `.dockerignore` honest.

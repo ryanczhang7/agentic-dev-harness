@@ -92,8 +92,24 @@ case "$TOOL" in
         printf '%s\n' "$MASKED" | grep -oE '\bsed\b[^|&;()]*-i[^|&;()]*'              | awk '{print $NF}'
         printf '%s\n' "$MASKED" | grep -oE '\b(cp|mv)\b[[:space:]]+[^|&;()]+'         | awk '{print $NF}'
         printf '%s\n' "$MASKED" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;<>()]+'    | tr ' ' '\n' | grep -vE '^(rm|touch|-.*)$'
-      } 2>/dev/null | tr -d '"'"'" | grep -vE '^\s*$|^-|\$|\*|^/dev/' | sort -u
+      } 2>/dev/null | tr -d '"'"'" | grep -vE '^\s*$|^-|\*|^/dev/' | sort -u
     )"
+    # `$` is no longer filtered out here. It was, silently, which made the ONE
+    # recipe the harness pushes an agent towards in RED - mutate the production
+    # file, watch the corrected test fail, revert - pass unchecked. A candidate
+    # whose variable the command text assigns is resolved; one it does not is
+    # declined and logged, which is what the guard already does with every other
+    # parse it cannot believe. See lib.sh.
+    ASSIGNMENTS="$(shell_assignments "$MASKED")"
+    # The FILE argument of a scripts/mutate.sh invocation, resolved the same way
+    # so that `mutate.sh "$F"` is exempt for the same reason `mutate.sh src/a.ts`
+    # is. Only that argument: the payload after `--` is judged normally.
+    EXEMPT=""
+    while IFS= read -r m; do
+      [ -n "$m" ] || continue
+      EXEMPT="$EXEMPT
+$(resolve_vars "$m" "$ASSIGNMENTS")"
+    done <<< "$(mutate_targets "$MASKED")"
     # Where the shell will actually be when those targets are written. A
     # relative path means nothing without it: `cd /tmp/scratch && rm -rf
     # gate-logs` names no repo path at all. An unaccountable cwd skips relative
@@ -102,6 +118,13 @@ case "$TOOL" in
     CWD_PREFIX="$(command_cwd "$MASKED")" || CWD_KNOWN=0
     while IFS= read -r target; do
       [ -z "$target" ] && continue
+      # Resolved before it is judged, so that `"$F"` is either a real path or an
+      # honest decline. Still masked at this point, so a value carrying a quoted
+      # space survives as one token.
+      target="$(resolve_vars "$target" "$ASSIGNMENTS")"
+      case "
+$EXEMPT" in *"
+$target"*) continue ;; esac
       # Judged while still masked: a metacharacter that survives to here was
       # leaked by the parse rather than quoted by the author. An implausible
       # token means the parse failed, and a failed parse is inconclusive, not

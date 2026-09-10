@@ -205,6 +205,68 @@ unmask_shell_quotes() {
   tr '\001\002\003\004\005\006\007\010' '|&;>< \t\n'
 }
 
+# --- Variables in a command string ------------------------------------------
+#
+# The guard used to discard any write target containing a `$`, silently, on the
+# grounds that it could not know what the variable held. That was the one hole
+# an agent could not help finding, because the harness's own rules push it
+# there: a corrected test has to be earned by mutating the production file it
+# pins, in RED, where production source is frozen. `sed -i 's/a/b/' "$F"` was
+# how three source files were mutated in one corrective pass. The lock did not
+# fail open on them; it was open.
+#
+# So `$` is no longer a reason to look away. It is resolved where the command
+# text says what it holds, and declined - logged, allowed, on H1's terms - where
+# it does not. `scripts/mutate.sh` is the sanctioned way to do the thing the
+# loophole was serving.
+
+# shell_assignments <masked-command>   NAME=VALUE for every simple assignment
+# the command text makes, longest name first so that `$FILE` is not eaten by a
+# rule for `$F`.
+#
+# Only assignments outside quotes count, and masking gives that for free: inside
+# a quoted span the preceding space is a control character, so `git commit -m
+# "fix: A=b"` does not look like one.
+shell_assignments() {
+  printf '%s' "$1" \
+    | grep -oE '(^|[;&|]|[[:space:]])[A-Za-z_][A-Za-z0-9_]*=[^[:space:];&|<>()]*' \
+    | sed -E 's/^[^A-Za-z_]+//' \
+    | tr -d '"'"'" \
+    | awk -F= 'length($1) > 0 { print length($1) "\t" $0 }' \
+    | sort -rn | cut -f2-
+}
+
+# resolve_vars <text> <assignments>   Substitutes $NAME and ${NAME} using what
+# shell_assignments found. A `$` that survives is one the guard cannot account
+# for, and path_is_implausible declines on it.
+resolve_vars() {
+  local text="$1" line name val
+  case "$text" in *'$'*) ;; *) printf '%s' "$text"; return 0 ;; esac
+  while IFS= read -r line; do
+    case "$line" in *=*) ;; *) continue ;; esac
+    name="${line%%=*}"; val="${line#*=}"
+    text="${text//\$\{$name\}/$val}"
+    text="${text//\$$name/$val}"
+  done <<< "$2"
+  printf '%s' "$text"
+}
+
+# mutate_targets <masked-command>   The FILE argument of every
+# `scripts/mutate.sh` invocation in the command.
+#
+# That file is not a write the lock has to judge, in any phase: mutate.sh backs
+# it up to an explicit path, applies the expression, runs the command, restores
+# it and verifies the restore with cmp - and exits 90, loudly, if it cannot. The
+# exemption is the FILE argument and NOTHING else, so a `--` payload that writes
+# somewhere the phase forbids is judged like any other command. mutate.sh is not
+# an escape hatch with a flag in front of it.
+mutate_targets() {
+  printf '%s' "$1" \
+    | grep -oE 'scripts[/\\]mutate\.sh[[:space:]]+[^[:space:]|&;<>()]+' \
+    | awk '{ print $NF }' \
+    | tr -d '"'"'"
+}
+
 # --- Paths ------------------------------------------------------------------
 
 # lower <text>   Lower-cased with tr, not with the bash 4 case-conversion

@@ -91,6 +91,62 @@ defeated by per-triangle flat shading. One run each, so the honest reading is
 Put the partition in the story, under `## Model guidance` or beside the
 criteria, so that the orchestrator's dispatch prompt carries it.
 
+## Pin the whole contract before RED, and let RED amend it in place
+
+The acceptance criteria say what must be true. They do not say what the modules
+are called, what the exported signatures are, which way a drag moves the world,
+where a value clamps, what the accessible markup is, or which measurements the
+story is entitled to treat as settled. RED will decide every one of those by
+writing a test against it, and GREEN will then either build that shape or build a
+different one. "RED tested one shape and GREEN built another" is a named failure
+of this loop, and the fix is cheap: write the shape down first.
+
+So give the story a `## Contract` section, owned by the PO before RED, holding
+whatever of these the story touches:
+
+- **Module paths and exported names**, exactly.
+- **Exact signatures**, including the types the assertions will destructure.
+- **The semantics behind each number.** Not `clamp(latitude)` but "latitude
+  clamps at ±85°, and dragging *down* brings the north into view". One sentence
+  per number is what settles a sign error in one line instead of an argument.
+- **The accessible markup** for anything user-facing: roles, labels, what is a
+  sibling of what.
+- **The oracle partition** of the criteria (above).
+- **Baseline measurements** the story may read out rather than re-derive, each
+  with what it was measured on.
+
+And one standing rule, in the section itself: **RED may amend any block, in
+place, with a reason** - and GREEN then builds what the amended block says. That
+is not a loophole, it is where the value showed up. A story that pinned eight
+such blocks produced 326 tests and a GREEN with no shape drift, and RED amended
+seventeen of them - two of which were real design traps that GREEN would have hit
+late and expensively (pointer capture on a map region swallows clicks on any
+button inside it, so the overlay chips must be siblings; a plain container
+re-uploads a graticule on every move, 17,280 bytes per ten frames measured, while
+a render group uploads nothing).
+
+The `## Contract` is not the acceptance criteria and does not inherit their
+freeze. Criteria are frozen once the story leaves PLANNED and change only through
+`## Amendments`; the contract is a working agreement RED is expected to sharpen.
+
+### A changed signature must list its callers
+
+The one gap RED cannot see for itself. When the contract changes the signature of
+an **existing** export, the PO greps every caller - source *and* test - and lists
+them in the story before dispatch, and RED's handoff states the list was checked
+against the tree. It is one `rg` per changed export.
+
+Why it has to be the PO's job: a story changed `equirectangular(width, height)`
+to `equirectangular(viewport, extent, camera?)` and listed the test files RED had
+to rewrite, missing one from an earlier story. RED's typecheck reported 221
+errors, all correctly attributed to the not-yet-built contract, and the missed
+file was **not among them** - it still compiled, because the old signature still
+existed. GREEN deleted the old signature, that file stopped collecting, and its
+25 tests - the only verification of a change GREEN had just made - became 25
+silent skips. Running the gates at the end of RED would not have caught it:
+every gate was green. A caller of a changed signature is invisible to RED
+precisely because RED does not change the signature.
+
 ## When the story depends on an audit or a spike
 
 A story that follows an earlier audit says so, and says it precisely. "Read the

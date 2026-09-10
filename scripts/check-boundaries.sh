@@ -182,6 +182,40 @@ case "$ph:$story_type" in
       res=$(printf '%s\n' "$gr" | sed -nE 's/^[[:space:]]*result:[[:space:]]*//p' | head -1)
       case "$res" in
         pass*) ok "recorded gate result: $res" ;;
+        blocked*)
+          # The third state. BLOCKED means the environment would not let a
+          # required gate start, so it has no verdict at all - and a story
+          # cannot get one from the machine that refused it. The loop's answer
+          # is CI, a different machine under a different policy: REVIEW with
+          # the gate pending CI, DONE only once CI has run it. Refusing this
+          # outright, as "must start with pass" did, refused the one path
+          # /advance-story prescribes.
+          #
+          # The evidence has to be on ONE LINE with the gate id on it, because
+          # the alternative - looking for the words anywhere in the story - is
+          # satisfied by a story that mentions CI about something else.
+          # `## Gate results` is excluded implicitly: gates.sh writes the BLOCKED
+          # line there and nothing else, and it carries neither phrase.
+          ok "recorded gate result: $res"
+          bgates=$(printf '%s\n' "$gr" | sed -nE 's/^[[:space:]]*BLOCKED[[:space:]]+([^ (]+).*/\1/p' | sort -u)
+          if [ -z "$bgates" ]; then
+            problem "story $sid: the record says blocked but no BLOCKED line names a gate. Re-run 'bash scripts/gates.sh'."
+          fi
+          for g in $bgates; do
+            if [ "$ph" = "REVIEW" ]; then
+              if grep -qiE "$g.*pending CI|pending CI.*$g" "$sfile"; then
+                ok "blocked gate '$g' is recorded as pending CI"
+              else
+                problem "story $sid: gate '$g' was BLOCKED - the environment would not launch it - and nothing in the story says so. Record the PO decision on one line naming the gate and 'pending CI': which gate, the log line quoted, and what makes this the environment rather than the code. See /advance-story, GATES."
+              fi
+            else
+              if grep -qiE "$g[^\n]*https?://|https?://[^\n]*$g" "$sfile"; then
+                ok "blocked gate '$g' was verified on CI"
+              else
+                problem "story $sid: gate '$g' was BLOCKED locally and has not been verified on CI, so this story is not DONE. Quote the PR's CI run for it in the story - one line carrying the gate id and the run URL - or re-run the gates somewhere they are not blocked."
+              fi
+            fi
+          done ;;
         *) problem "story $sid: recorded gate result is '$res'" ;;
       esac
       rec=$(printf '%s\n' "$gr" | sed -nE 's/^[[:space:]]*tree:[[:space:]]*([0-9a-f]+).*/\1/p' | head -1)

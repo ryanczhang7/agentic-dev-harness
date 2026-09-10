@@ -35,6 +35,22 @@ assert_allowed "$FIX" "grep -oE 'x>y' src/main.ts" 'operator inside a quoted gre
 # An operator inside a commit message.
 assert_allowed "$FIX" 'git commit -m "fix: a > b"' 'operator inside a commit message'
 
+# Four more shapes, all observed blocking correct commands in one story. They
+# are here because they are the ones a story actually reaches for while proving
+# a test discriminates, and each was reported on a nonsense path - `0)`, `0`,
+# `s`, `turnPx` - which is how a false positive teaches an agent to stop
+# reading denials.
+#
+# A numeric comparison inside an awk program is not a redirect.
+assert_allowed "$FIX" "awk 'BEGIN { while ((getline line < f) > 0) n++ }' src/main.ts" 'awk getline compared against 0'
+
+# A docs append whose TEXT mentions the operator. The note recording the
+# previous trip was itself blocked, on the path `0`.
+assert_allowed "$FIX" "printf '%s\n' 'the > operator, in prose' >> docs/notes.md" 'prose quoting an operator, appended to docs'
+
+# A word boundary in a grep pattern. Reads source; writes nothing.
+assert_allowed "$FIX" "grep -n 'foo\\b' src/main.ts" 'word boundary in a grep pattern'
+
 # A heredoc body is data, not shell. The only real target here is docs/notes.md.
 assert_allowed "$FIX" 'cat > docs/notes.md <<'"'"'EOF'"'"'
 to write it by hand: cat > src/main.ts
@@ -71,6 +87,67 @@ r="$(guard "$FIX" Write file_path src/main.ts)"
 assert_contains "Write tool is blocked in RED" "category: source" "$r"
 r="$(guard "$FIX" Edit file_path "$FIX/src/main.ts")"
 assert_contains "Edit tool is blocked on an absolute path" "category: source" "$r"
+
+
+# ---------------------------------------------------------------------------
+describe "RED: a path in a variable is still a path"
+
+# The loophole every agent found. The guard used to discard any candidate
+# containing `$`, silently, so the ONE recipe the harness's own rules push an
+# agent towards in RED - mutate the production file, watch the corrected test
+# fail, revert - went through unchecked. Three source files were mutated this
+# way in one corrective RED pass, on written instruction, because nothing else
+# in the harness permitted touching them. The lock did not fail open here; it
+# was open.
+#
+# An assignment in the same command is what the guard can see, so it is what it
+# resolves. Anything else declines and says so in the log.
+assert_blocked "$FIX" 'F=src/main.ts; sed -i '"'"'s/a/b/'"'"' "$F"'   src/main.ts 'sed -i on a path held in a variable'
+assert_blocked "$FIX" 'F=src/main.ts; sed -i '"'"'s/a|b/c/'"'"' "$F"' src/main.ts 'the sed delimiter is not the target, even via a variable'
+assert_blocked "$FIX" 'F=src/main.ts; sed -i '"'"'s/a;b/c/'"'"' "$F"' src/main.ts 'a semicolon inside the expression is not a separator'
+assert_blocked "$FIX" 'OUT="src/main.ts"; echo x > "$OUT"'            src/main.ts 'redirect into a path held in a variable'
+assert_blocked "$FIX" 'D=src; rm "$D/main.ts"'                        src/main.ts 'variable holding a directory'
+assert_blocked "$FIX" 'F=src/main.ts; sed -i '"'"'s/a/b/'"'"' "${F}"' src/main.ts 'braced expansion'
+
+# Not every `$` can be resolved: the guard reads one command string and has no
+# access to the shell's environment. An unresolvable target is inconclusive,
+# so it declines and logs the token - the same contract as any other parse the
+# guard does not believe. It must not pretend to have checked it.
+assert_allowed "$FIX" 'sed -i '"'"'s/a/b/'"'"' "$EXPORTED_ELSEWHERE"' 'a variable assigned in an earlier command'
+rm -f "$FIX/.claude/state/phase-guard-declined.log"
+guard_bash "$FIX" 'sed -i '"'"'s/a/b/'"'"' "$EXPORTED_ELSEWHERE"' >/dev/null
+assert_contains "and the decline is logged with its token" 'EXPORTED_ELSEWHERE' \
+  "$(cat "$FIX/.claude/state/phase-guard-declined.log" 2>/dev/null)"
+
+# A longer name must not be eaten by a shorter one that prefixes it.
+assert_blocked "$FIX" 'F=docs; FILE=src/main.ts; rm "$FILE"' src/main.ts 'the longest matching name wins'
+
+# ---------------------------------------------------------------------------
+describe "scripts/mutate.sh is the sanctioned way to mutate a frozen file"
+
+# H14: the harness requires a diagnostic mutation of production source in RED
+# (watch a corrected test fail against the behaviour it claims to pin) and in
+# GREEN (verify a handoff's mutation table). mutate.sh backs the file up,
+# applies the expression, runs a command, restores and verifies - so the file
+# it names is not a write the lock has to care about, in any phase.
+assert_allowed "$FIX" "bash scripts/mutate.sh src/main.ts 's/a/b/' -- true" 'mutate.sh naming a source file in RED'
+assert_allowed "$FIX" "bash scripts/mutate.sh src/main.ts 's|a|b|' -- pnpm exec vitest run" 'mutate.sh with a | delimiter'
+
+# The exemption is the FILE argument and nothing else. A payload that writes
+# somewhere the phase forbids is judged like any other command: mutate.sh is not
+# a phase escape hatch with a `--` in front of it.
+#
+# It is not a sandbox either, and the boundary is the same one the guard has
+# everywhere else: what is inside `sh -c '...'` is a quoted string, so it is
+# data, and the guard does not read it - with or without mutate.sh in front. That
+# fails open by design; mutate.sh adds no hole that a bare `sh -c` did not
+# already have.
+set_phase "$FIX" GREEN
+assert_blocked "$FIX" "bash scripts/mutate.sh src/main.ts 's/a/b/' -- cp docs/notes.md tests/main.test.ts" \
+  tests/main.test.ts 'a payload writing a frozen test is still blocked'
+assert_allowed "$FIX" "bash scripts/mutate.sh src/main.ts 's/a/b/' -- cp docs/notes.md src/other.ts" \
+  'a payload writing source in GREEN is allowed, like any other'
+set_phase "$FIX" RED
 
 # ---------------------------------------------------------------------------
 describe "RED: the seven false positives reported from the field"

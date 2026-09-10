@@ -42,7 +42,10 @@ split it.
    that criterion is broken.
 5. **Never work around the phase lock.** If the lock blocks a write you believe
    is correct, that is a signal to change phase deliberately or to reconsider —
-   never to route around it with a different tool.
+   never to route around it with a different tool. The one mutation the law
+   *requires* of a frozen file — earning a corrected test, checking that a suite
+   discriminates — goes through `scripts/mutate.sh`, which restores the file and
+   proves it did. `sed -i` on production source is working around the lock.
 6. **Acceptance criteria are frozen once a story leaves PLANNED**, for the same
    reason tests are frozen during GREEN. If one is wrong, stop, put it to the
    user, and record the change under `## Amendments`. CI fails a PR whose
@@ -54,7 +57,9 @@ split it.
 covers `Write`/`Edit`/`MultiEdit`/`NotebookEdit` and shell redirects alike. When
 no story is active it is off entirely. Quoted arguments and heredoc bodies are
 data, not syntax; relative paths resolve against the directory the command will
-actually run in; and anything `.gitignore` covers is always writable. If it
+actually run in; a path held in a variable the command itself assigns is
+resolved and judged, and one it cannot resolve is declined and logged rather
+than waved through; and anything `.gitignore` covers is always writable. If it
 still blocks a command that writes nothing, that is a bug in the guard: add the
 case to `.claude/tests/phase-guard.test.sh` and fix it there, which is the one
 form of "working around the lock" that is allowed.
@@ -89,7 +94,14 @@ bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and 
 bash scripts/gates.sh --gate unit
 bash scripts/check-boundaries.sh # the other half of CI: the commit, not the code
 bash scripts/task.sh dev         # run the app
+bash scripts/mutate.sh F 'EXPR' -- CMD   # the only sanctioned diagnostic mutation
 ```
+
+`mutate.sh` exists because the law below requires mutating production code in a
+phase that freezes it. It backs the file up to an explicit path, applies a `sed`
+expression, runs the command, restores the file, verifies the restore with `cmp`
+and logs it — so it is allowed in every phase, and the phase lock knows it.
+Anything else, `sed -i` included, is working around the lock (law 5).
 
 `gates.sh` judges the **code**; `check-boundaries.sh` judges the **commit** —
 the phase in the committed frontmatter, the acceptance criteria against the base

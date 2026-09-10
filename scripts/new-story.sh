@@ -45,6 +45,31 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
 - **AC-1** — Given <state>, when <action>, then <observable outcome>.
 - **AC-2** — Given <state>, when <action>, then <observable outcome>.
 
+## Contract
+
+<!-- Written by the Lead PO BEFORE RED, and AMENDABLE BY RED IN PLACE with a
+     reason - GREEN then builds what the amended block says. This is where "RED
+     tested one shape and GREEN built another" is prevented, and it is not the
+     acceptance criteria: the criteria are frozen and change only through
+     ## Amendments; this is a working agreement RED is expected to sharpen.
+     One block per thing the story touches:
+       * module paths and exported names, exactly
+       * exact signatures, and the types the assertions will destructure
+       * THE SEMANTICS BEHIND EACH NUMBER - not clamp(latitude) but "latitude
+         clamps at +/-85, and dragging DOWN brings the north into view". One
+         sentence per number settles a sign error in one line
+       * the accessible markup for anything user-facing: roles, labels, what is
+         a sibling of what
+       * the oracle partition of the criteria (settled / oracle-free /
+         mechanical - see story-authoring)
+       * baseline measurements the story may read out rather than re-derive,
+         each with what it was measured on
+       * FOR EVERY EXISTING EXPORT WHOSE SIGNATURE THIS STORY CHANGES: every
+         caller, source and test, grep-listed here before dispatch. RED cannot
+         find these itself - the old signature still exists during RED, so a
+         caller of it still compiles and is absent from RED's typecheck. One
+         such file went missing and took 25 tests with it, silently, at GREEN. -->
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -63,6 +88,12 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
      when a phase of this story is worth running on a different model from the
      default, and make it falsifiable rather than folklore:
        * which phase, which model, and why that phase specifically
+       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
+         "default". An agent definition's `model:` field, or the session's
+         setting, or an override: the orchestrator cannot see which won unless
+         it records it. Two stories once compared "the default model" against a
+         stronger one, and neither could say what the default had resolved to,
+         so the comparison may have been the stronger model against itself
        * what the orchestrator should stay on
        * HOW to brief it differently - a model chosen for judgement wants the
          criteria and the constraints, not a pre-decided test design

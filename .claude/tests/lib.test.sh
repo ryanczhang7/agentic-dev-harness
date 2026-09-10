@@ -197,6 +197,14 @@ assert_eq "no \${var,,} or \${var^^} in shipped scripts" "" "$hits"
 hits="$(grep -nE '(^|[[:space:]|;&(])sed[[:space:]]+(-[A-Za-z]*\s+)*-i([[:space:]]|$)' $shipped || true)"
 assert_eq "no GNU-only sed -i in shipped scripts" "" "$hits"
 
+# $TMPDIR is unset in some of the shells this harness runs in, and the one place
+# that mattered - a mutation backup - lost its backup to exactly that, leaving
+# the restore to depend on the sed expression happening to be an exact inverse.
+# Nothing shipped may write to a temporary directory it did not name itself.
+# Comments are allowed to mention it; code is not.
+hits="$(grep -nE '\$\{?TMPDIR|\bmktemp\b' $shipped | grep -vE ':[[:space:]]*#' || true)"
+assert_eq "no shipped script depends on \$TMPDIR or mktemp" "" "$hits"
+
 # ---------------------------------------------------------------------------
 describe "glob_matches: the paths.conf glob dialect, reusable"
 
@@ -265,5 +273,62 @@ for t in 'src/main.ts' 'src/app/[id]/page.tsx' 'src/my file.ts' '.gitignore' \
   if path_is_implausible "$t"; then _bad "plausible: '$t'" "the guard refused to judge a real path"
   else _ok "plausible: '$t'"; fi
 done
+
+
+# ---------------------------------------------------------------------------
+describe "shell_assignments: what the command text says a variable holds"
+
+m() { printf '%s' "$1" | mask_shell_quotes; }
+
+assert_eq "a bare assignment" "F=src/main.ts" \
+  "$(shell_assignments "$(m 'F=src/main.ts; rm "$F"')")"
+assert_eq "a quoted value keeps its path, loses its quotes" "F=src/main.ts" \
+  "$(shell_assignments "$(m 'F="src/main.ts"; rm "$F"')")"
+
+# Longest name first, so that a rule for $F cannot eat $FILE.
+assert_eq "longest name first" "FILE=src/a.ts
+F=docs" \
+  "$(shell_assignments "$(m 'F=docs; FILE=src/a.ts; rm "$FILE"')")"
+
+# Inside quotes there is no assignment, only text. Masking is what makes this
+# true without a second parser: the space before it is a control character by
+# now, so the pattern cannot match.
+assert_eq "an equals sign inside a commit message" "" \
+  "$(shell_assignments "$(m 'git commit -m "note: A=b was wrong"')")"
+assert_eq "an equals sign inside a quoted printf" "" \
+  "$(shell_assignments "$(m "printf '%s' 'X=y'")")"
+
+# ---------------------------------------------------------------------------
+describe "resolve_vars: resolved, or left with its \$ for the decline to catch"
+
+A="$(shell_assignments "$(m 'F=src/main.ts; D=src')")"
+assert_eq "a plain expansion"  "src/main.ts" "$(resolve_vars '$F' "$A")"
+assert_eq "a braced expansion" "src/main.ts" "$(resolve_vars '${F}' "$A")"
+assert_eq "a variable plus a suffix" "src/main.ts" "$(resolve_vars '$D/main.ts' "$A")"
+assert_eq "text with no variable is returned unchanged" "src/main.ts" \
+  "$(resolve_vars 'src/main.ts' "$A")"
+
+# The honest limit: the guard reads one command string, not the shell's
+# environment. What it cannot resolve keeps its `$`, and path_is_implausible
+# declines on it rather than pretending to have checked it.
+assert_eq "an unknown name survives untouched" '$ELSEWHERE' \
+  "$(resolve_vars '$ELSEWHERE' "$A")"
+if path_is_implausible "$(resolve_vars '$ELSEWHERE' "$A")"; then
+  _ok "and is then declined"
+else _bad "and is then declined" "the guard believed an unresolved variable was a path"; fi
+
+# ---------------------------------------------------------------------------
+describe "mutate_targets: the one file a mutation is allowed to touch"
+
+assert_eq "the FILE argument" "src/main.ts" \
+  "$(mutate_targets "$(m "bash scripts/mutate.sh src/main.ts 's/a/b/' -- true")")"
+assert_eq "quoted, with a | in the expression" "src/main.ts" \
+  "$(mutate_targets "$(m "bash scripts/mutate.sh \"src/main.ts\" 's|a|b|' -- true")")"
+assert_eq "nothing when mutate.sh is not involved" "" \
+  "$(mutate_targets "$(m "sed -i 's/a/b/' src/main.ts")")"
+
+# A file that merely happens to be called mutate.sh is not this script.
+assert_eq "only scripts/mutate.sh" "" \
+  "$(mutate_targets "$(m "bash tools/mutate.sh src/main.ts 's/a/b/' -- true")")"
 
 summary "lib"

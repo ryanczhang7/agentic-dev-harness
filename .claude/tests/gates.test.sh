@@ -372,4 +372,119 @@ EOF
 out="$(gates --audit)"
 assert_contains "a factor naming no gate fails the audit" "names no configured gate" "$out"
 
+
+# ---------------------------------------------------------------------------
+describe "BLOCKED: the environment would not let the gate run"
+
+# H16. A required gate failed eight consecutive runs on one machine with this,
+# and nothing about it was a test failure:
+#
+#   error: failed to run custom build command for `fantasy-world-builder v0.1.0`
+#   Caused by: could not execute process `...build-script-build` (never executed)
+#   Caused by: An Application Control policy has blocked this file. (os error 4551)
+#
+# The runner reported FAIL, because a gate's result was a boolean derived from an
+# exit code. The Stop hook then refused every report with "fix it or move the
+# story back to RED", and neither applied: there was nothing to fix and the code
+# was fine - the same command passed on CI three times that day. An hour and a
+# user decision went into inventing the third path. BLOCKED is that path, named.
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'error: could not execute process (never executed)\nCaused by: An Application Control policy has blocked this file. (os error 4551)\n'; exit 101
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates)"; rc=$?
+assert_contains "a launch failure is BLOCKED, not FAIL" "BLOCKED      unit" "$out"
+assert_contains "and says the environment refused it"   "could not launch" "$out"
+assert_contains "and it is not reported as a pass"      "1 required gate(s) could not run" "$out"
+assert_eq "and exits 3, distinct from a failure"        "3" "$rc"
+assert_contains "and names the third path"              "pending CI" "$out"
+assert_contains "RESULT=blocked in the stamp" "RESULT=blocked" \
+  "$(cat "$FIX/.claude/state/last-gate-run")"
+
+# The distinction has to cut both ways, or it is just a wider FAIL. An ordinary
+# failure - the gate ran, the gate complained - is still a failure.
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  2 failed, 45 passed (47)\nAssertionError: expected 3 to be 4\n'; exit 1
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates)"; rc=$?
+assert_contains "a real failure is still FAIL" "FAIL         unit" "$out"
+assert_eq "and still exits 1"                  "1" "$rc"
+assert_contains "RESULT=fail in the stamp" "RESULT=fail" \
+  "$(cat "$FIX/.claude/state/last-gate-run")"
+
+# A blocked gate must never hide a broken one. When both happen the run is a
+# failure: there is something to fix, and that decides what happens next.
+write_conf "$FIX" <<'EOF'
+gate     | unit  | required | . | printf 'Tests  2 failed, 45 passed (47)\n'; exit 1
+gate     | types | required | . | printf 'error: could not execute process (never executed)\n'; exit 101
+evidence | unit  | Tests +[1-9][0-9]* passed
+evidence | types | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates)"; rc=$?
+assert_contains "a failure alongside a block is reported as both" "BLOCKED      types" "$out"
+assert_eq "and a real failure decides the exit code" "1" "$rc"
+assert_contains "RESULT=fail wins in the stamp" "RESULT=fail" \
+  "$(cat "$FIX/.claude/state/last-gate-run")"
+
+# An OPTIONAL gate the environment blocked is nobody's decision to make: it was
+# never going to stop the story. It warns, like any other optional failure.
+write_conf "$FIX" <<'EOF'
+gate     | unit  | required | . | printf 'Tests  47 passed (47)\n'
+gate     | e2e   | optional | . | printf 'error: could not execute process (never executed)\n'; exit 101
+evidence | unit  | Tests +[1-9][0-9]* passed
+evidence | e2e   | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates)"; rc=$?
+assert_contains "an optional blocked gate warns" "WARN         e2e" "$out"
+assert_contains "and says why"                   "could not launch" "$out"
+assert_eq "and the run still passes"             "0" "$rc"
+
+# The built-in patterns describe a process that never started. They cannot
+# describe every runner, so a project adds its own - and, like every other line
+# in the manifest, an unusable one is refused rather than sitting there looking
+# like protection.
+write_conf "$FIX" <<'EOF'
+gate         | unit | required | . | printf 'FATAL: emulator device offline\n'; exit 7
+evidence     | unit | Tests +[1-9][0-9]* passed
+blocked-when | unit | emulator device offline
+EOF
+out="$(gates)"; rc=$?
+assert_contains "a project pattern is honoured" "BLOCKED      unit" "$out"
+assert_eq "and exits 3"                         "3" "$rc"
+
+write_conf "$FIX" <<'EOF'
+gate         | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence     | unit | Tests +[1-9][0-9]* passed
+blocked-when | untt | emulator device offline
+EOF
+out="$(gates --audit)"
+assert_contains "a blocked-when naming no gate fails the audit" "names no configured gate" "$out"
+
+write_conf "$FIX" <<'EOF'
+gate         | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence     | unit | Tests +[1-9][0-9]* passed
+blocked-when | unit |
+EOF
+out="$(gates --audit)"
+assert_contains "a blocked-when with no pattern fails the audit" "has no pattern" "$out"
+
+# ---------------------------------------------------------------------------
+describe "the stamp says whether the run was a full one"
+
+# The Stop hook decides whether a phase's gate obligation was met from this
+# stamp, and `--fast` and `--gate` write it too. Without this line a `--gate
+# unit` could discharge GATES, whose entire job is the full suite.
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+slow     | unit | it is the whole suite under instrumentation
+EOF
+gates >/dev/null
+assert_contains "a full run records FULL=yes" "FULL=yes" "$(cat "$FIX/.claude/state/last-gate-run")"
+gates --fast >/dev/null
+assert_contains "--fast records FULL=no"      "FULL=no"  "$(cat "$FIX/.claude/state/last-gate-run")"
+gates --gate unit >/dev/null
+assert_contains "--gate records FULL=no"      "FULL=no"  "$(cat "$FIX/.claude/state/last-gate-run")"
+
 summary "gates"

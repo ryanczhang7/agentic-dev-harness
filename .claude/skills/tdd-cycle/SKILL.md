@@ -79,6 +79,35 @@ without showing one. Nothing in the harness asked for that mutation before this
 rule existed, and a less suspicious orchestrator would have shipped the
 unobserved assertion in full compliance with every other rule.
 
+### Make the mutation with `scripts/mutate.sh`, and with nothing else
+
+    bash scripts/mutate.sh src/camera.ts 's/Math.min(90/Math.min(900/' \
+      -- pnpm exec vitest run tests/camera.test.ts
+
+This is the only sanctioned way to mutate production source, and it is allowed in
+every phase - including RED, where the file is otherwise frozen. It backs the
+file up to an explicit path under `.claude/state/mutations/`, applies the
+expression, runs the command, restores the file, **verifies the restore with
+`cmp`**, prints the line it put back, and logs what happened for the story to
+quote. It refuses an expression that changes nothing, because a probe that alters
+no behaviour hands you a green run and a test you wrongly believe you have
+earned. Its exit status is the command's, since a non-zero exit is the evidence
+you came for.
+
+Reach for `sed -i` here and you are routing around the phase lock. That is not a
+hypothetical: the two rules above ("mutate the frozen file", "never work around
+the lock") contradicted each other for several stories, and every agent resolved
+it privately with `sed -i` on a path held in a variable - which the lock let
+through only because it discarded any target containing a `$`. It no longer does.
+And the one mutation made where source *was* writable lost its backup, because
+that shell had no `$TMPDIR`; the restore came down to the substitution happening
+to be an exact inverse of a single-occurrence match. It was. That is the coin
+flip this script exists to remove.
+
+The same script is what the orchestrator uses to check a handoff's claim that the
+suite discriminates (`/advance-story`, "when the claim is *this suite
+discriminates*"), for the same reason: the restore has to be a fact.
+
 **A suite that fails at import.** In RED the module under test does not exist,
 so the file does not load and **not one assertion in it has executed** -
 including assertions that never touch the missing module. Negative controls are
