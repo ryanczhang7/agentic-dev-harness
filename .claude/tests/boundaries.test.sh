@@ -13,7 +13,16 @@ trap 'rm -rf "$FIX"' EXIT
 
 git -C "$FIX" -c user.email=t@t -c user.name=t branch -M main >/dev/null 2>&1
 
-boundaries() { ( cd "$FIX" && bash scripts/check-boundaries.sh main 2>&1 ); }
+# The fixture's own branch decides which story is under test, so the CI
+# variables that override that have to be cleared - otherwise this suite reads
+# the story id out of the branch of whatever PR is running it, finds no story,
+# and exits before reaching a single one of the checks below. It passes locally
+# and fails on a runner, which is the failure mode the harness spends the rest
+# of its documentation warning about. PR_HEAD_SHA goes for the same reason: it
+# would recompute the gate hash at a commit in the real repository.
+boundaries() {
+  ( cd "$FIX" && GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh main 2>&1 )
+}
 commit_all() { git -C "$FIX" add -A >/dev/null 2>&1
                git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "${1:-wip}" >/dev/null 2>&1; }
 
@@ -105,6 +114,24 @@ case "$out" in
   *"## Regressions"*) _bad "an untouched template block is not a claim" "complained anyway: $out" ;;
   *) _ok "an untouched template block is not a claim" ;;
 esac
+
+# ---------------------------------------------------------------------------
+describe "the story comes from GITHUB_HEAD_REF where CI sets it"
+
+# On a pull_request the checkout is a detached merge commit, so the branch name
+# says "HEAD" and names no story; CI passes the real one in GITHUB_HEAD_REF.
+# Pinned here because this suite was written without it, inherited the variable
+# from the runner, and silently checked nothing at all.
+story_on_branch <<'EOF'
+## Regressions
+
+Described, not shown.
+EOF
+head_sha="$(git -C "$FIX" rev-parse HEAD)"
+git -C "$FIX" checkout -q --detach "$head_sha" 2>/dev/null
+out="$( cd "$FIX" && GITHUB_HEAD_REF=story/T-1-fixture PR_HEAD_SHA= bash scripts/check-boundaries.sh main 2>&1 )"
+assert_contains "a detached checkout still finds the story" "story T-1 is in REVIEW" "$out"
+git -C "$FIX" checkout -q story/T-1-fixture 2>/dev/null
 
 # ---------------------------------------------------------------------------
 describe "the same rule covers gate probes"
