@@ -134,9 +134,9 @@ is not a general permission system.
 - Do not commit `.claude/state/**`. It is machine-local: `current-story.env` from
   `phase.sh`, `last-gate-run` and `gate-logs/` from `gates.sh`,
   `mutations/` (backups and a log) from `mutate.sh`, and the guard's
-  `phase-guard-declined.log`. Two of those are denied to `Write` and `Edit` in
-  `settings.json` because their contents are read as evidence - the phase and the
-  gate stamp - and `.claude/state/README.md` says which, in a column
+  `phase-guard-declined.log`. Two of those are denied to `Write`, `Edit` and
+  `MultiEdit` in `settings.json` because their contents are read as evidence - the
+  phase and the gate stamp - and `.claude/state/README.md` says which, in a column
   `.claude/tests/settings.test.sh` checks against the rules in both directions. A
   new state file belongs in that table, with a yes or no, or the suite fails. A
   `.bak` left behind under `mutations/` means a

@@ -14,11 +14,17 @@ in here is ever committed; only this file and `.gitkeep` are tracked.
 
 ## The `Hand-editable` column is enforced
 
-`.claude/settings.json` denies `Write` and `Edit` on exactly the `no` rows, and
-`.claude/tests/settings.test.sh` checks the two against each other in both
-directions: a `no` row without its rules fails, a `yes` row with rules fails, and
-a rule for a path this table does not list fails. So a new state file cannot be
-added without somebody deciding which it is.
+`.claude/settings.json` denies `Write`, `Edit` and `MultiEdit` on exactly the `no`
+rows, and `.claude/tests/settings.test.sh` checks the two against each other in
+both directions: a `no` row without its rules fails, a `yes` row with rules fails,
+and a rule for a path this table does not list fails. So a new state file cannot
+be added without somebody deciding which it is.
+
+The tool list lives in that suite as `TOOLS`, and it drives both directions of the
+check — so adding a tool there makes every `no` row demand a rule for it. It is
+not a list of every editing tool: `NotebookEdit` is deliberately absent, because it
+refuses anything that is not a `.ipynb` before any permission check runs and
+nothing in here is a notebook.
 
 The rules are per file rather than a glob over the directory. The glob was right
 about the two files below and wrong about everything else: it also covered this
