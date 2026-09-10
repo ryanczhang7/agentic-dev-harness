@@ -40,24 +40,24 @@ TAB="$(printf '\t')"
 # decision.
 #
 #   Write, Edit    the two that exist in every build and can write any file.
-#   MultiEdit      BELONGS HERE, and is missing because no rule names it yet.
-#                  It can edit arbitrary text files where it exists, and the
-#                  phase lock is no fallback: paths.conf classifies
-#                  `.claude/state/**` as `harness` (first matching rule,
-#                  `.claude/**`) and phases.conf lets every phase write
-#                  `harness`, so settings.json is the ONLY protection these two
-#                  files have. It could not be probed on this build - MultiEdit
-#                  does not exist here - but settings.json's own PreToolUse
-#                  matcher lists it, so the harness already expects builds that
-#                  have it. Once the four rules exist, add MultiEdit to this
-#                  string and the suite starts enforcing them.
+#   MultiEdit      it edits arbitrary text files, and the phase lock is no
+#                  fallback: paths.conf classifies `.claude/state/**` as
+#                  `harness` (first matching rule, `.claude/**`) and phases.conf
+#                  lets every phase write `harness`, so settings.json is the ONLY
+#                  protection these two files have. It does not exist in every
+#                  build - it does not exist in the one this was written on, so
+#                  the rules could not be probed the way the Write and Edit ones
+#                  were - but settings.json's own PreToolUse matcher lists it, so
+#                  the harness already expects builds that have it. A rule naming
+#                  a tool a build does not have is inert; a missing rule on a
+#                  build that has the tool is a hole.
 #   NotebookEdit   deliberately absent. It refuses anything that is not a
 #                  `.ipynb` before any permission check runs (probed), and
 #                  nothing under .claude/state/ is a notebook - phase.sh,
 #                  gates.sh, mutate.sh and the guard all write plain text. A rule
 #                  for it would be dead weight, and a rule nobody can justify is
 #                  one somebody widens back to a glob.
-TOOLS="Write Edit"
+TOOLS="Write Edit MultiEdit"
 
 # rows <readme>   "<path><TAB><yes|no>" per table row.
 rows() {
@@ -161,17 +161,33 @@ FIX="$(make_fixture)"
 trap 'rm -rf "$FIX"' EXIT
 
 # The baseline pair: small, correct, and the thing each case below breaks by one
-# edit. Written out rather than copied from the repo so that a case says exactly
-# what it is testing.
-good_settings() {
-  cat > "$FIX/settings.json" <<'EOF'
-{ "permissions": { "deny": [
-  "Write(./.claude/state/current-story.env)",
-  "Edit(./.claude/state/current-story.env)",
-  "Write(./.claude/state/last-gate-run)",
-  "Edit(./.claude/state/last-gate-run)"
-] } }
-EOF
+# edit. Generated from $TOOLS rather than written out, so that adding a tool to
+# that list does not leave every fixture here quietly wrong - which is exactly
+# what happened when MultiEdit was added, and is the reason these are functions.
+#
+# settings_for <tool>...   A deny block protecting both files for exactly these
+# tools, and nothing else.
+settings_for() {
+  { printf '{ "permissions": { "deny": [\n'
+    local first=1 f t
+    for f in current-story.env last-gate-run; do
+      for t in "$@"; do
+        [ "$first" = 1 ] || printf ',\n'
+        first=0
+        printf '  "%s(./.claude/state/%s)"' "$t" "$f"
+      done
+    done
+    printf '\n] } }\n'
+  } > "$FIX/settings.json"
+}
+good_settings() { settings_for $TOOLS; }
+
+# deny_also <rule>   One more deny entry on top of whatever is there, so a case
+# says "the baseline, plus this one wrong thing".
+deny_also() {
+  awk -v r="$1" '
+    /^\] \} \}$/ { print ",\n  \"" r "\""; print; next }
+    { print }' "$FIX/settings.json" > "$FIX/s.tmp" && mv "$FIX/s.tmp" "$FIX/settings.json"
 }
 good_readme() {
   cat > "$FIX/README.md" <<'EOF'
@@ -206,33 +222,15 @@ assert_contains "a dropped rule" 'last-gate-run: not hand-editable, but settings
 
 # A rule nobody can explain, on a file the README says is fine to touch.
 good_settings; good_readme
-printf 's|"Write(./.claude/state/last-gate-run)"|"Write(./.claude/state/gate-logs/*.log)"|' > /dev/null
-cat > "$FIX/settings.json" <<'EOF'
-{ "permissions": { "deny": [
-  "Write(./.claude/state/current-story.env)",
-  "Edit(./.claude/state/current-story.env)",
-  "Write(./.claude/state/last-gate-run)",
-  "Edit(./.claude/state/last-gate-run)",
-  "Write(./.claude/state/gate-logs/*.log)"
-] } }
-EOF
+deny_also 'Write(./.claude/state/gate-logs/*.log)'
 assert_contains "a yes row that is denied anyway" \
   "gate-logs/*.log: hand-editable, but settings.json denies it" "$(p)"
 
 # The glob, back. This is what the narrowing undid, and nothing else in the
 # suite would notice it returning: `**` satisfies no row, so it is caught by the
 # backwards check rather than the forwards one.
-good_readme
-cat > "$FIX/settings.json" <<'EOF'
-{ "permissions": { "deny": [
-  "Write(./.claude/state/current-story.env)",
-  "Edit(./.claude/state/current-story.env)",
-  "Write(./.claude/state/last-gate-run)",
-  "Edit(./.claude/state/last-gate-run)",
-  "Write(./.claude/state/**)",
-  "Edit(./.claude/state/**)"
-] } }
-EOF
+good_settings; good_readme
+deny_also 'Write(./.claude/state/**)'
 assert_contains "a re-widened glob" "denied path '**' is not in the README table" "$(p)"
 
 # Nothing protected at all.
@@ -247,35 +245,28 @@ good_settings
 printf 'There used to be a table here.\n' > "$FIX/README.md"
 assert_contains "an unparseable README" "no parseable table" "$(p)"
 
-# $TOOLS is load-bearing, not decoration. This is the migration the header
-# describes: the day MultiEdit rules are added, putting the tool in that list is
-# what starts enforcing them - and until the rules exist, doing so fails loudly
-# rather than quietly passing. Asserted here so the instruction is verified
-# instead of aspirational.
-good_settings; good_readme
+# $TOOLS is load-bearing in both directions, not decoration, and this pair of
+# cases is what made adding MultiEdit a one-line change once its rules existed:
+# a tool IN the list demands rules for it, a tool absent from the list demands
+# nothing. Stated without naming the shipped list, so it stays true whatever that
+# list becomes - the earlier version asserted "the shipped list does not demand
+# MultiEdit yet" and went stale the moment the rules landed.
+good_readme
+settings_for Write Edit
 out="$(TOOLS="Write Edit MultiEdit" p)"
-assert_contains "adding a tool demands rules for it" \
+assert_contains "a tool in the list demands rules for it" \
   'current-story.env: not hand-editable, but settings.json has no "MultiEdit' "$out"
 assert_contains "for every protected file" \
   'last-gate-run: not hand-editable, but settings.json has no "MultiEdit' "$out"
-assert_eq "and the shipped list does not demand it yet" "" "$(p)"
+assert_eq "a tool absent from the list demands nothing" "" "$(TOOLS="Write Edit" p)"
 
-# And the backwards direction sees the tools in that list too, which is why the
-# alternation is built from it. Hardcoded, a rule for an undocumented path under
-# a third tool would slip past here while the forwards check demanded it.
-good_readme
-cat > "$FIX/settings.json" <<'EOF'
-{ "permissions": { "deny": [
-  "Write(./.claude/state/current-story.env)",
-  "Edit(./.claude/state/current-story.env)",
-  "MultiEdit(./.claude/state/current-story.env)",
-  "Write(./.claude/state/last-gate-run)",
-  "Edit(./.claude/state/last-gate-run)",
-  "MultiEdit(./.claude/state/last-gate-run)",
-  "MultiEdit(./.claude/state/mystery)"
-] } }
-EOF
-assert_contains "an undocumented path under a third tool" \
-  "denied path 'mystery' is not in the README table" "$(TOOLS="Write Edit MultiEdit" p)"
+# And the backwards direction sees those tools too, which is why the alternation
+# is built from the list. Hardcoded to Write|Edit, a MultiEdit rule for an
+# undocumented path would slip past this direction while the forwards one was
+# busy demanding MultiEdit rules elsewhere.
+good_settings; good_readme
+deny_also 'MultiEdit(./.claude/state/mystery)'
+assert_contains "an undocumented path under a later tool" \
+  "denied path 'mystery' is not in the README table" "$(p)"
 
 summary "settings"

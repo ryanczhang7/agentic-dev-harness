@@ -71,7 +71,46 @@ could not be deleted.
 - **Full selftest:** 10 suites, 436 assertions, 0 failures. New this round:
   `settings` (14).
 
-## Which tools the rules cover — the one finding left open
+## Update, same day: the `MultiEdit` gap is closed
+
+`MultiEdit(./.claude/state/current-story.env)` and
+`MultiEdit(./.claude/state/last-gate-run)` were added to the deny block, and
+`TOOLS` in `settings.test.sh` became `Write Edit MultiEdit`, so the suite now
+enforces them in both directions. The section below is left as written; this is
+what changed about it.
+
+The flip behaved as the migration case predicted, which is the part worth
+recording. Before it, the suite was **green with the new rules already in place
+and not enforcing them** - the backwards check's alternation came from `TOOLS`, so
+`MultiEdit` lines were invisible to it, and the forwards check did not ask for
+them. After it, the live pair passed immediately and **two fixtures failed**: the
+baseline pair, which hardcoded `Write`/`Edit` rules and was therefore no longer
+the "small, correct" pair it claimed to be, and the assertion `and the shipped
+list does not demand it yet`, which had gone false the moment the rules landed.
+
+Both were the fix, not collateral:
+
+- The fixtures are now generated from `$TOOLS` (`settings_for <tool>...`, with
+  `good_settings` calling it with the shipped list) plus a `deny_also <rule>`
+  helper, so a case reads as "the baseline, plus this one wrong thing" and the
+  next tool added cannot leave every fixture quietly wrong.
+- The migration assertion was restated without naming the shipped list: **a tool
+  in the list demands rules for it, a tool absent from the list demands nothing.**
+  That is true whatever `TOOLS` becomes, where the old form was true for exactly
+  one day. A test that has to be edited by the change it is meant to police is
+  not policing it.
+
+Earned through `scripts/mutate.sh`, one mutation and one verified restore each:
+hardcoding `good_settings` to `Write Edit` fails `the baseline pair agrees`;
+neutering `deny_also` fails the three cases built on it; dropping the `TOOLS`
+override fails `a tool absent from the list demands nothing`.
+
+Still not probed: whether a `MultiEdit(...)` deny is actually enforced. `MultiEdit`
+does not exist in this build, so there is nothing here to refuse. A rule naming a
+tool a build does not have is inert; a missing rule on a build that has the tool
+is a hole - which is why the rules are in even though the probe is not possible.
+
+## Which tools the rules cover — the finding this round opened
 
 The rules name `Write` and `Edit`, as the glob did before them. Probing that:
 
@@ -86,8 +125,9 @@ The rules name `Write` and `Edit`, as the glob did before them. Probing that:
   build - `ToolSearch` resolves `NotebookEdit` and not `MultiEdit` - so it could
   not be probed here at all. But it edits arbitrary text files where it does
   exist, and `settings.json`'s own `PreToolUse` matcher already lists it, so the
-  harness expects builds that have it. **Adding four rules would close it**, and
-  they were not added because the permissions block cannot be edited from here.
+  harness expects builds that have it. **Two rules would close it** - one per
+  protected file - and they were not added because the permissions block cannot be
+  edited from here. (They were, later the same day; see the Update above.)
 - **The phase lock is not a fallback for either.** `paths.conf` classifies
   `.claude/state/**` as `harness` on its first matching rule (`.claude/**`), and
   `phases.conf` lets every phase write `harness`. So the lock permits these files
@@ -120,8 +160,11 @@ early fails loudly instead of passing quietly.
 
 ## What was not checked
 
-- **`MultiEdit` is a real gap, and it is open.** See the finding below; it could
-  not be probed on this build and no rule names it.
+- **Whether a `MultiEdit(...)` deny is enforced.** The rules are now in and the
+  suite enforces their presence, but `MultiEdit` does not exist in this build, so
+  there is nothing here to refuse and the probe that settled `Write` and `Edit`
+  cannot be run for it. Inert where the tool is absent; the point is the builds
+  where it is not.
 - **`.gitkeep`.** It is tracked, empty, and now editable. Nothing reads it; no
   row was added for it, so the table does not mention it and no rule names it.
   Consistent, but it means the table is not an inventory of the directory - only
