@@ -152,6 +152,44 @@ assert_blocked "$FIX" 'echo "GATES -> REVIEW" > src/main.ts' src/main.ts \
   'the vocabulary quoted, the redirect not'
 
 # ---------------------------------------------------------------------------
+describe "RED: a double-quoted Windows path keeps its backslashes"
+set_phase "$FIX" RED
+
+# The scratchpad this harness tells agents to use is
+# C:\Users\<you>\AppData\Local\Temp\claude\..., and an agent quotes it. The
+# masker ate the backslashes, to_rel could not place the result outside the
+# repository, and the guard denied a write to the scratchpad as `source`.
+# Observed on a Windows machine during an audit of this very repository.
+assert_allowed "$FIX" 'echo x > "C:\Users\ryanc\AppData\Local\Temp\claude\n.txt"' \
+  'a double-quoted Windows path outside the repository'
+assert_allowed "$FIX" 'cd "C:\Users\ryanc\AppData\Local\Temp\claude" && rm -rf x' \
+  'cd into a double-quoted Windows path, then rm'
+# And the same spelling INSIDE the repository is judged on the real path,
+# not on a string with the separators removed.
+FIXBS="$(printf '%s' "$FIX" | tr '/' '\134')"
+assert_blocked "$FIX" "echo x > \"$FIXBS\\src\\main.ts\"" src/main.ts \
+  'a double-quoted backslash path inside the repository'
+
+# ---------------------------------------------------------------------------
+describe "RED: three holes found by probing, closed"
+set_phase "$FIX" RED
+
+# A subshell's closing paren was glued onto the target, `a.ts)`, which the
+# guard then declined as implausible. Declining is for tokens it cannot read;
+# this one it could, once the paren is treated as the terminator it is.
+assert_blocked "$FIX" '(cd src && echo x > a.ts)'      src/a.ts 'redirect inside a subshell'
+assert_blocked "$FIX" 'cd src && (echo x > a.ts)'      src/a.ts 'subshell after a cd'
+assert_blocked "$FIX" '(echo x > src/main.ts)'         src/main.ts 'parenthesised redirect'
+# An apostrophe in a comment opened a quote that never closed, and masked a
+# real redirect on the following line.
+assert_blocked "$FIX" "$(printf 'echo hi # it%ss fine\necho x > src/main.ts' "'")" \
+  src/main.ts 'a redirect after a commented apostrophe'
+# The clobber form.
+assert_blocked "$FIX" 'echo x >| src/main.ts'          src/main.ts 'clobber redirect'
+# And a false positive from the same probe: an input redirect is a READ.
+assert_allowed "$FIX" 'xargs touch < list'             'touch fed by an input redirect'
+
+# ---------------------------------------------------------------------------
 describe "RED: a parse the guard cannot believe declines rather than denies"
 set_phase "$FIX" RED
 

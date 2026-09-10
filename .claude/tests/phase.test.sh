@@ -68,6 +68,13 @@ assert_eq "and the story did not move" "PLANNED" "$(frontmatter_value "$(sfile T
 git -C "$FIX" checkout -q -b story/T-11-a-hex-grid-renders
 out="$(phase set T-11 RED)"
 assert_contains "on the right branch it moves" "T-11 -> RED" "$out"
+
+# A phase name that merely regex-matches a row is not a phase. `GREEN.` was
+# accepted, written to the state file, and phase_allows - finding no such row
+# - fell back to "unknown phase, do not block": the lock off, by typo.
+out="$(phase set T-11 'GREEN.')"
+assert_contains "a regex-matching phase name is refused" "unknown phase" "$out"
+assert_eq "and the story did not move" "RED" "$(frontmatter_value "$(sfile T-11)" phase)"
 assert_eq "frontmatter phase"  "RED"         "$(frontmatter_value "$(sfile T-11)" phase)"
 assert_eq "frontmatter status" "in-progress" "$(frontmatter_value "$(sfile T-11)" status)"
 assert_contains "and the hooks can see it" "PHASE=RED" "$(cat "$FIX/.claude/state/current-story.env")"

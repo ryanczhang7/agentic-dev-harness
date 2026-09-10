@@ -120,16 +120,16 @@ set_phase() {
 
 # --- driving the hook --------------------------------------------------------
 
-# json_str <text>   The text as a JSON string body. Pure bash, so that a test
-# for quoting is not itself defeated by quoting.
+# json_str <text>   The text as a JSON string body. awk, not parameter
+# expansion: `${s//\\/\\\\}` is not a reliable way to double a backslash in
+# bash, and a helper that silently drops every backslash before the hook runs
+# makes a test about backslashes assert nothing. That is exactly what happened
+# to the "escaped redirect inside a string" case for a while.
 json_str() {
-  local s="$1" BS DQ
-  BS=$(printf '\134'); DQ='"'
-  s="${s//$BS/$BS$BS}"
-  s="${s//$DQ/$BS$DQ}"
-  s="${s//$'\n'/${BS}n}"
-  s="${s//$'\t'/${BS}t}"
-  printf '%s' "$s"
+  printf '%s' "$1" | awk 'BEGIN { ORS = "" }
+    { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); gsub(/\t/, "\\t")
+      if (NR > 1) printf "\\n"
+      printf "%s", $0 }'
 }
 
 # guard <fixture> <tool> <key> <value>   Runs the real phase-guard hook and

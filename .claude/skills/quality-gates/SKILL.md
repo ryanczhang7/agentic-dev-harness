@@ -217,7 +217,7 @@ anyone deciding it should. A test project that needs a real browser, an
 `integration` gate marked optional because it needs one, a coverage `include`
 that skips the same directory: each is right on its own, and together they put
 every test of a renderer where nothing could block on it while `All required
-gates passed (16 ran)` printed underneath. `gates.sh` cannot notice, because
+gates passed` printed underneath. `gates.sh` cannot notice, because
 nothing in `project.conf` says which paths a gate exercises. So the story
 names, before RED, the required gate that would fail if its artifact broke -
 see `story-authoring` - and promotes one if the answer is "none".
@@ -248,8 +248,9 @@ no command fails once `BOOTSTRAPPED=yes`, deliberately.
 
 A full run of `gates.sh` writes its own summary into the active story's
 `## Gate results` (or `--story <id>`): a marker line, the UTC time, the commit,
-a hash of every source, test, config and harness file as it was on disk when
-the gates ran, and the summary. `--gate` and `--required` runs are not recorded,
+a hash of every source, test and config file plus the harness's scripts and
+manifests (not its prompts - no gate reads a command file) as they were on disk
+when the gates ran, and the summary. `--gate` and `--required` runs are not recorded,
 because a partial run is not evidence that the story passes its gates.
 
 Nobody pastes it and nobody edits it. `check-boundaries.sh` refuses a PR whose

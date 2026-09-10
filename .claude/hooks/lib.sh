@@ -130,7 +130,17 @@ mask_shell_quotes() {
           if (state == "double") {
             if (c == BS) {
               if (j == n) { cont = 1; j++; continue }
-              out = out maskchar(substr(s, j + 1, 1)); j += 2; continue
+              # Inside double quotes bash removes a backslash before exactly
+              # four characters ($ ` " \) and a newline. Every other backslash
+              # is literal - which is every backslash in a Windows path. Eating
+              # them turned C:\Users\...\Temp\claude into a word to_rel could
+              # not place outside the repository, so a write to the scratchpad
+              # this harness tells agents to use was denied as `source`.
+              nx = substr(s, j + 1, 1)
+              if (nx == "$" || nx == "`" || nx == "\"" || nx == BS) {
+                out = out maskchar(nx); j += 2; continue
+              }
+              out = out c; j++; continue
             }
             # "$( ... )" opens a nested context in which a double quote does
             # NOT close the string: `-m "$(printf "%s" "a -> b")"` is one
@@ -154,7 +164,14 @@ mask_shell_quotes() {
             out = out maskchar(c); j++; continue
           }
 
-          # Unquoted.
+          # Unquoted. A comment runs to the end of the line and is data: an
+          # apostrophe in a comment (`# that is Bob`s`) is not a quote, and
+          # treating it as one masked a real redirect on the line after it.
+          # (No apostrophe in THIS comment either: it sits inside the single
+          # quotes that delimit the awk program.)
+          if (c == "#" && (j == 1 || index(" \t;&|(", substr(s, j - 1, 1)) > 0)) {
+            out = out maskstr(substr(s, j)); j = n + 1; continue
+          }
           if (c == BS) {
             if (j == n) { cont = 1; j++; continue }     # line continuation
             out = out maskchar(substr(s, j + 1, 1)); j += 2; continue
@@ -190,6 +207,13 @@ unmask_shell_quotes() {
 
 # --- Paths ------------------------------------------------------------------
 
+# lower <text>   Lower-cased with tr, not with the bash 4 case-conversion
+# expansion: macOS ships bash 3.2, where that expansion is a "bad
+# substitution" that kills to_rel - after which check_path sees an empty path
+# and allows the write. The lock silently off on every stock Mac. The selftest
+# greps the shipped scripts for it.
+lower() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
+
 # to_rel <path>   Repo-relative, forward slashes. Empty output means "outside
 # this repository", and therefore not the harness's business.
 to_rel() {
@@ -197,8 +221,8 @@ to_rel() {
   p=$(printf '%s' "$1" | tr '\134' '/')
   root=$(printf '%s' "$HARNESS_ROOT" | tr '\134' '/')
   root="${root%/}"
-  lp="${p,,}"
-  lr="${root,,}"
+  lp="$(lower "$p")"
+  lr="$(lower "$root")"
 
   if [[ "$lp" == "$lr"/* ]]; then
     printf '%s' "${p:${#root}+1}"
@@ -209,7 +233,7 @@ to_rel() {
   if [[ "$p" == /* || "$p" == ?:/* ]]; then
     # Tolerate C:/ vs /c/ drive spellings by matching the repo folder name.
     base="${root##*/}"
-    if [[ "$lp" == */"${base,,}"/* ]]; then
+    if [[ "$lp" == */"$(lower "$base")"/* ]]; then
       printf '%s' "${p#*/$base/}"
       return
     fi
@@ -313,8 +337,7 @@ command_cwd() {
   local masked="$1" tgt cur="" rel joined lp lr
   # A bare `cd` goes home. Nothing after it is a repo path.
   printf '%s\n' "$masked" | grep -qE '(^|[|&;(])[[:space:]]*cd[[:space:]]*($|[|&;)])' && return 1
-  lr="$(printf '%s' "${HARNESS_ROOT%/}" | tr '\134' '/')"
-  lr="${lr,,}"
+  lr="$(lower "$(printf '%s' "${HARNESS_ROOT%/}" | tr '\134' '/')")"
   while IFS= read -r tgt; do
     [ -z "$tgt" ] && continue
     tgt="$(printf '%s' "$tgt" | unmask_shell_quotes)"
@@ -325,8 +348,8 @@ command_cwd() {
       *'$'*)   return 1 ;;   # a variable the guard cannot expand
     esac
     if path_is_absolute "$tgt"; then
-      lp="$(printf '%s' "${tgt%/}" | tr '\134' '/')"
-      if [ "${lp,,}" = "$lr" ]; then cur=""; continue; fi
+      lp="$(lower "$(printf '%s' "${tgt%/}" | tr '\134' '/')")"
+      if [ "$lp" = "$lr" ]; then cur=""; continue; fi
       rel="$(to_rel "$tgt")"
       if [ -z "$rel" ]; then cur="OUTSIDE"; else cur="$rel"; fi
       continue
@@ -549,7 +572,14 @@ gate_tree_hash() {
   local idx
   idx="$HARNESS_ROOT/.claude/state/.tree-index.$$"
   mkdir -p "$HARNESS_ROOT/.claude/state"; rm -f "$idx"
+  # Start from HEAD's index, not an empty one. Into an empty index every file
+  # is new, so git applies CRLF normalisation the real commit never had, and
+  # the hash recorded here disagrees with the one CI recomputes from the PR
+  # head on any CRLF file committed before .gitattributes pinned LF. Then no
+  # amount of re-running the gates can make them match. Seeded with HEAD,
+  # `add -A` treats those files exactly as a real commit would.
   ( cd "$HARNESS_ROOT" \
+      && { GIT_INDEX_FILE="$idx" git read-tree HEAD >/dev/null 2>&1 || :; } \
       && GIT_INDEX_FILE="$idx" git add -A . >/dev/null 2>&1 \
       && GIT_INDEX_FILE="$idx" git ls-files -s ) \
     | awk -F'\t' '{ split($1, a, " "); print a[2] "\t" $2 }' \
@@ -652,6 +682,17 @@ phase_allows() {
   return 0
 }
 
+# phase_categories   The categories the current phase may write - field 2 of
+# its phases.conf row. inject-state.sh used to print phase_message under the
+# label "Writes allowed this phase", which is the denial prose, not the list.
+phase_categories() {
+  awk -F'|' -v p="$PHASE" '
+    /^[[:space:]]*(#|$)/ { next }
+    { t = $1; gsub(/^[ \t]+|[ \t]+$/, "", t)
+      if (t == p) { c = $2; gsub(/^[ \t]+|[ \t]+$/, "", c); print c; exit } }' \
+    "$HARNESS_DIR/phases.conf"
+}
+
 phase_message() {
   local line ph msg
   while IFS= read -r line; do
@@ -674,13 +715,11 @@ deny() {
 # the escape character is built with printf, which keeps this readable and
 # immune to quoting accidents across shells and editors.
 json_escape() {
-  local s="$1" BS DQ
-  BS=$(printf '\134')
-  DQ='"'
-  s="${s//$BS/$BS$BS}"
-  s="${s//$DQ/$BS$DQ}"
-  s="${s//$'\r'/}"
-  s="${s//$'\n'/${BS}n}"
-  s="${s//$'\t'/${BS}t}"
-  printf '%s' "$s"
+  # awk, not `${s//\\/\\\\}`: doubling a backslash by parameter expansion is
+  # not reliable across bash versions, and this used to emit the backslash
+  # unchanged - so a deny reason quoting a Windows path was not JSON.
+  printf '%s' "$1" | tr -d '\r' | awk 'BEGIN { ORS = "" }
+    { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); gsub(/\t/, "\\t")
+      if (NR > 1) printf "\\n"
+      printf "%s", $0 }'
 }

@@ -80,13 +80,18 @@ case "$TOOL" in
     # tool on the left of a redirect. What those false positives had in common
     # was quoting, which masking handles, and unparseable output, which
     # path_is_implausible handles. Neither is a property of the command name.
+    #
+    # Parentheses terminate a target like `;` does: `(cd src && echo x > a.ts)`
+    # used to yield `a.ts)`, which the guard declined as unreadable - a hole
+    # in the shape of a subshell. `>|` is a redirect too. And `<` ends the
+    # rm/touch operand list, because `xargs touch < list` reads `list`.
     CANDIDATES="$(
       {
-        printf '%s\n' "$MASKED" | grep -oE '>>?[[:space:]]*[^|&;><[:space:]]+'      | sed -E 's/^>>?[[:space:]]*//'
-        printf '%s\n' "$MASKED" | grep -oE '\btee\b([[:space:]]+-a)?[[:space:]]+[^|&;><[:space:]]+' | awk '{print $NF}'
-        printf '%s\n' "$MASKED" | grep -oE '\bsed\b[^|&;]*-i[^|&;]*'                | awk '{print $NF}'
-        printf '%s\n' "$MASKED" | grep -oE '\b(cp|mv)\b[[:space:]]+[^|&;]+'         | awk '{print $NF}'
-        printf '%s\n' "$MASKED" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;]+'      | tr ' ' '\n' | grep -vE '^(rm|touch|-.*)$'
+        printf '%s\n' "$MASKED" | grep -oE '>(>|\|)?[[:space:]]*[^|&;><()[:space:]]+'  | sed -E 's/^>(>|\|)?[[:space:]]*//'
+        printf '%s\n' "$MASKED" | grep -oE '\btee\b([[:space:]]+-a)?[[:space:]]+[^|&;><()[:space:]]+' | awk '{print $NF}'
+        printf '%s\n' "$MASKED" | grep -oE '\bsed\b[^|&;()]*-i[^|&;()]*'              | awk '{print $NF}'
+        printf '%s\n' "$MASKED" | grep -oE '\b(cp|mv)\b[[:space:]]+[^|&;()]+'         | awk '{print $NF}'
+        printf '%s\n' "$MASKED" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;<>()]+'    | tr ' ' '\n' | grep -vE '^(rm|touch|-.*)$'
       } 2>/dev/null | tr -d '"'"'" | grep -vE '^\s*$|^-|\$|\*|^/dev/' | sort -u
     )"
     # Where the shell will actually be when those targets are written. A

@@ -47,9 +47,9 @@ assert_allows() { # <label>
 # unambiguously newer. Fixed dates rather than sleeps - mtime granularity is a
 # whole second on some filesystems and a suite that races it fails at random.
 stamp_run() {
-  find "$FIX" -type f -exec touch -d '2020-01-01 00:00:00' {} + 2>/dev/null
+  find "$FIX" -type f -exec touch -t 202001010000 {} + 2>/dev/null
   printf 'RESULT=%s\n' "$1" > "$STAMP"
-  touch -d '2020-06-01 00:00:00' "$STAMP"
+  touch -t 202006010000 "$STAMP"
 }
 
 # --- the phases it watches ---------------------------------------------------

@@ -62,14 +62,15 @@ execution and every execution after. Nothing distinguishes it from an assertion
 that checks nothing at all. The same holds outside a return: a story adding
 tests to a module an earlier story built starts from a working implementation.
 
-Real example. A test demanded a `RangeError` for `seaFloorM: -1000` against a
-sea level of `+1500`, but the rule was "the floor is below sea level", which
--1000 satisfies. Corrected to a floor below sea level, it passed instantly.
-Mutating the guard from `seaFloorM < seaLevelM` to `seaFloorM < 0` - the exact
-bug the test names - produced one failure, the right one:
+Real example. A test demanded a validation error for an input the rule
+actually permits - a lower bound compared against the document's own reference
+value, where the test had assumed the reference was zero. Corrected to an input
+the rule rejects, it passed instantly against untouched code. Mutating the
+guard to the exact bug the test names - comparing against the constant zero
+instead of the document's value - produced one failure, the right one:
 
-    x compares seaFloorM against the document's sea level, not against zero
-    Tests  1 failed | 27 passed (28)
+    FAIL  compares the bound against the document's own reference, not zero
+    1 failed, 27 passed
 
 That is what earns it: one mutation of the specific production behaviour the
 test claims to pin, one run, one revert, output pasted into `## Regressions`.
@@ -106,8 +107,8 @@ not: the coverage gate runs the same suite under instrumentation, which is
 strictly slower, and CI hardware is slower again. Nothing about a green test
 command tells you the tests are *admissible* to the gate that will judge them.
 
-This is not hypothetical. A suite passed RED, passed GREEN, passed sixteen local
-gates and reached REVIEW - then failed a required gate in CI, because one
+This is not hypothetical. A suite passed RED, passed GREEN, passed every local
+gate and reached REVIEW - then failed a required gate in CI, because one
 property test took 1,835 ms plain and 2,644 ms instrumented against a 5,000 ms
 default timeout. Comfortable on a desktop, over the line on a runner. The cost
 was a full RED -> GREEN -> GATES -> REVIEW round trip.

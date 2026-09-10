@@ -11,6 +11,7 @@ every turn, so it stays short.
 ```
 /create-product    → Lead PO interviews the user           → docs/wiki/product-brief.md
 /plan-product      → Lead PO + Lead Designer plan          → docs/wiki/{stack,architecture}.md
+                                                             docs/wiki/design/**
                                                              docs/backlog/{epics,stories}/*.md
 /setup-environment → install the toolchain the stack needs → docs/wiki/environment.md
 /advance-story ID  → one phase of the cycle
@@ -26,32 +27,26 @@ split it.
 
 1. **No production code without a failing test that demanded it.** The test is
    written first, is watched to fail, and fails for the right reason. "Watched
-   to fail" is a property of the *assertion*, not of the run: a test written or
-   corrected while the implementation already exists passes on its first
-   execution and forever after, so it is earned instead by mutating what it
-   pins, watching it go red, and reverting.
+   to fail" is a property of the *assertion*, not of the run; the
+   non-negotiables in `rules.md` say how a test written against code that
+   already exists earns it.
 2. **Tests are frozen during GREEN.** If a test is wrong, go back to RED and say
    so in the story file under `## Regressions`. Never edit a test to make it
-   pass. RED on a return is narrower than RED the first time: fix the test only,
-   and earn it with a probe or a measurement rather than "watched it fail".
+   pass.
 3. **Done means the gates pass.** `bash scripts/gates.sh` — not "should pass",
    not "passes locally in principle". Run it; it records its own result in the
    story, stamped with the code it ran against, and CI refuses a PR where that
    record does not match the code being merged. Never paste a summary by hand.
-   And a gate that has never been observed to fail is not a gate: when a story
-   adds or changes one, break the thing it guards, watch it fail, record that in
-   `## Gate probes`, and revert. Exit 0 only means the tool did not complain,
-   and a tool with nothing to do never complains.
-6. **Acceptance criteria are frozen once a story leaves PLANNED**, for the same
-   reason tests are frozen during GREEN. If one is wrong, stop, put it to the
-   user, and record the change under `## Amendments`. CI fails a PR whose
-   criteria changed without one.
 4. **Full coverage of the behaviour the story claims.** Coverage of lines is the
    floor, not the goal; every acceptance criterion has a test that fails when
    that criterion is broken.
 5. **Never work around the phase lock.** If the lock blocks a write you believe
    is correct, that is a signal to change phase deliberately or to reconsider —
    never to route around it with a different tool.
+6. **Acceptance criteria are frozen once a story leaves PLANNED**, for the same
+   reason tests are frozen during GREEN. If one is wrong, stop, put it to the
+   user, and record the change under `## Amendments`. CI fails a PR whose
+   criteria changed without one.
 
 ## Phase lock
 

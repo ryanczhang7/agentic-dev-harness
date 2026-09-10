@@ -1,7 +1,7 @@
 ---
 description: Move one story forward by exactly one phase
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1

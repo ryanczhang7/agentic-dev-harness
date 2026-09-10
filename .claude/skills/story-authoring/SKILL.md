@@ -59,8 +59,8 @@ that needs a real browser (correct - jsdom has no WebGL, and testing a renderer
 there is theatre), an `integration` gate marked `optional` because it needs
 that browser (correct), a coverage `include` that skips the same directory
 (correct). Together they put all twenty-five tests of a renderer where nothing
-could block on them, and `All required gates passed (16 ran)` was printed over
-a story whose artifact no required gate had exercised. `optional` means "this
+could block on them, and `All required gates passed` was printed over a story
+whose artifact no required gate had exercised. `optional` means "this
 gate reports information"; it must never be the only thing testing a shipped
 feature. `gates.sh` cannot warn you, because nothing in `project.conf` says
 which paths a gate exercises - so the story says it.

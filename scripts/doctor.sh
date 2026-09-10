@@ -92,7 +92,7 @@ dep_check() { # <manifest> <install dir> <label>
     printf '  ok       %-10s %s present\n' "$3" "$2"
   else
     printf '  MISSING  %-10s %s exists but %s/ is not installed\n' "$3" "$1" "$2"
-    printf '  %-10s run: bash scripts/task.sh install\n' ""
+    printf '  %-10s install them: bash scripts/task.sh install, if project.conf defines that task\n' ""
     missing=$((missing+1))
   fi
 }
