@@ -110,6 +110,21 @@ that built and mounted it - RED had sized all three from measurement. The
   cleared the 30 s default by three seconds, and that margin was the whole
   story. Read the hook and test timings out of the *first* CI log before calling
   the PR green.
+- **A budget is a function of the workload, not a constant.** Those three numbers
+  were sized against 100,000 cells. The next story was a performance audit of
+  that very default - and had it raised the cell count, all three budgets would
+  have been sized for a world that no longer existed, silently, with no gate able
+  to notice. Worse, the story could not have fixed them in GREEN, because they
+  live in a test file. Write the budget as an expression over the thing that
+  drives the cost:
+
+      const budgetMs = (base) => base * Math.max(1, siteCount / 100_000)
+
+  Each measured base is preserved, the scaling is explicit, and at the default it
+  was measured against the value is **numerically identical** - which is what
+  makes the change safe to take before any new measurement exists. The
+  `Math.max(1, …)` floor is not decoration: a *lower* default must not shrink a
+  budget that came from observed CI behaviour rather than from theory.
 
 **And the first question about a slow test is "is the cost in the helper?"** -
 because "make the test faster" must never become "weaken the test". In the case
@@ -391,6 +406,16 @@ probe before moving on, and say in the story that you did.
    the rule itself is wrong, and it is recorded in the story.
 4. If a gate failure means a **test** is wrong, the story returns to RED. Say so
    and record why.
+
+4a. More generally: **if the only legal fix for a gate failure is a write this
+   phase forbids, the story returns to RED.** Not only when the test is wrong -
+   the everyday instance is a `format` or `lint` gate WARNing on one test file
+   the story itself added, needing a one-line reflow, with the assertion
+   perfectly correct. GREEN freezes test files and so does GATES, so the phase
+   whose whole job is fixing lint failures is the phase that cannot fix that one.
+   GATES → RED → the one line → GATES, with the reason in `## Regressions`. The
+   two wrong answers are documenting a whitespace failure as an expected WARN,
+   and reaching for a tool the lock does not inspect.
 
 4b. If the gate reported `BLOCKED` it did not run, and neither rule 2 nor rule 4
    applies. Take the path in "BLOCKED: the gate the machine would not run"

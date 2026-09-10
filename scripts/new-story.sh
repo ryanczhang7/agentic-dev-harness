@@ -11,6 +11,13 @@ slug="${slug%-}"
 file="$ROOT/docs/backlog/stories/$id.md"
 [ -e "$file" ] && { echo "error: $file already exists" >&2; exit 1; }
 
+# TWO heredocs, and the split is load-bearing. The frontmatter interpolates,
+# so its delimiter is unquoted. The BODY must not: it is prose about the
+# harness, full of backtick-quoted filenames and fields, and an unquoted
+# delimiter turns every one of those into command substitution. It did -
+# `model:` ran as a command, printed "model:: command not found" to stderr,
+# and the phrase naming the mechanism that section is about landed in every
+# generated story as "An agent definition's  field". Exit status 0 throughout.
 cat > "$file" <<EOF
 ---
 id: $id
@@ -24,6 +31,8 @@ branch: story/$id-$slug
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
+EOF
+cat >> "$file" <<'TEMPLATE'
 
 ## Context
 
@@ -69,6 +78,31 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
          find these itself - the old signature still exists during RED, so a
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
+
+## Deferred verifications
+
+<!-- REQUIRED when a verification this story depends on provably cannot run in
+     the phase that wants it; omit the section otherwise. Written by the Lead PO
+     at PLANNED, and the phase that owns it pastes the result in.
+     The case this exists for: a negative control for a round trip, a threshold
+     or a codec has to break the real implementation to mean anything, and in
+     RED there is no implementation to break. RED naming the control and saying
+     it could not run it is the honest answer; RED claiming a verification it
+     did not do is the failure. One block per entry:
+       * what it verifies, as a falsifiable condition - "with one field dropped
+         from the encoder, AC-1's property test MUST fail"
+       * why the phase that wants it cannot run it
+       * THE PHASE THAT OWNS IT, by name. check-boundaries.sh refuses a PR
+         whose block names no phase
+       * the RESULT, pasted, once that phase runs it: what was mutated, what
+         failed, and that the file was restored - or the word WAIVED with the
+         reason. check-boundaries.sh refuses a PR that has neither
+     Schedule it into GATES rather than RED where you can: source is writable
+     there, and a story that bounced back to RED mid-cycle gets its corrected
+     assertions earned by the same mutation, for free. Do THREE mutations rather
+     than one, and make one of them a wrong VALUE rather than a missing field: a
+     suite that catches an omission can be blind to a corruption, and a codec
+     that is uniformly wrong round-trips through itself perfectly. -->
 
 ## Amendments
 
@@ -192,6 +226,6 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
 
 ## Notes
 
-EOF
+TEMPLATE
 printf 'created docs/backlog/stories/%s.md\n' "$id"
 printf 'next: bash scripts/phase.sh set %s RED\n' "$id"

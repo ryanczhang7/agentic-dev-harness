@@ -41,9 +41,17 @@ specific way software goes wrong.
    running. See "The gates run your tests differently" below.
 8. A test that is wrong sends the story back to RED, and RED on a return is
    narrower: fix the defective test, touch nothing else, and earn the correction
-   with a probe or a measurement. See `reference/red-phase.md`.
+   with a probe or a measurement. See `reference/red-phase.md`. The general
+   trigger is wider than a wrong test - it is **any** gate failure whose only
+   legal fix is a write the current phase forbids, and a `format` gate WARNing on
+   a test file the story just added is the everyday instance.
 9. Rule 1 is about an **assertion**, not about a run. See below - it is the one
    place the cycle can look completely correct and prove nothing.
+10. A property test's **generator** is part of the specification, not part of the
+    test strategy. Narrowing its domain is a change to what the criterion claims,
+    and needs its own justification. See "A generator is part of the
+    specification" below - it is the fifth way to reach green, and rule 4 does
+    not cover it.
 
 ## Red is a property of an assertion, not of a run
 
@@ -128,6 +136,65 @@ Bridge it in two steps, both cheap:
   0.12` in GREEN, because RED had measured a candidate pipeline and GREEN
   measured the shipped module. Benign, explained in the story, and exactly the
   kind of divergence that is cheap now and expensive later.
+
+## A generator is part of the specification
+
+Everything above is about assertions. A property test has a second half - the
+generator - and it is not test strategy, it is the **input domain the criterion
+claims to hold over**. That makes a fifth way to reach green, and the law's four
+prohibitions do not cover it: shrink what is generated. No skip, no widened
+tolerance, no deleted case, no weakened assertion, and a diff of one line in a
+helper.
+
+Sometimes that is exactly right. A round-trip property over generated documents
+failed on roughly two runs in three, and both counterexamples shrank to the same
+minimal shape: a **negative zero** in a coordinate. Neither the test nor the
+implementation was wrong. The *criterion* admitted an input the format cannot
+represent - the design stores those objects as JSON, `JSON.stringify(-0)` is
+`"0"`, and the comparison distinguishes `-0` from `0`. Two one-line fixes were
+available:
+
+| Move | Effect |
+|---|---|
+| Keep `-0` out of the two coordinate generators | Removes an input the format's design excludes. **Legitimate.** |
+| Compare `-0` and `0` as equal in the round-trip helper | Stops the comparison distinguishing values for **every number in the document**. **A weakening, and invisible.** |
+
+The second is *easier*, because it is an edit in the file where the failure is
+reported. Narrowing the domain and loosening the comparison look identical in
+review, so a narrowing has to arrive with three things:
+
+1. **The design clause that excludes the value**, named. "The format cannot carry
+   this" is a reason; "the property was failing" is not. If no document says so,
+   you have found an undocumented limit, not a test bug.
+2. **The limit written into the architecture document**, not only into a comment
+   beside the generator. It is a property of the format that every later story
+   inherits - a migration or a golden fixture will meet it again.
+3. **A mutation showing the property still fails on a lossy implementation.**
+   This is the part with teeth, and it is the same mechanism as above: after the
+   narrowing, break the thing the property is about and watch it go red. A
+   narrowing that gutted the property cannot survive it.
+
+And note the third branch this opens. "Test wrong → RED, code wrong → GREEN" has
+no slot for *the criterion's domain is wider than the design's representable
+domain*, which is the common case the moment a story has both a property test and
+a serialisation format. It is an `## Amendments` conversation, and a
+feature-developer that stops and says so rather than making the property pass has
+done the right thing.
+
+### A mutation is only as informative as the independence of what observes it
+
+Three mutations of one codec: two dropped a field, and each was caught **only**
+by the round-trip property, because no structural test asserted either field. The
+third flipped a float writer to big-endian, and six tests caught it - but only
+because the container assertions read the bytes through a reader that imports
+nothing from the source tree.
+
+That is the general rule, and it is why a round-trip suite is weaker evidence
+than it looks: **a codec that is uniformly wrong round-trips through itself
+perfectly.** When you choose what observes a mutation, prefer the thing that does
+not share the implementation's assumptions. And mutate in two directions - a
+missing field and a wrong value fail differently, and a suite that catches an
+omission can be blind to a corruption.
 
 ## The gates run your tests differently
 

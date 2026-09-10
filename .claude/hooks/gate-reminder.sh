@@ -82,7 +82,12 @@ fi
 note=""
 case "$(stamp_value RESULT)" in
   blocked)
-    note="The last gate run for story ${STORY_ID} reported BLOCKED: the environment refused to launch a required gate, so it neither passed nor failed. Neither \"fix it\" nor \"back to RED\" applies. Record it in the story as a PO decision with the log line quoted, take the story to REVIEW with that gate marked pending CI, and do not call it DONE until the PR's CI log for that gate is quoted in ## Gate results." ;;
+    # ## Notes, never ## Gate results: gates.sh rewrites that section on every
+    # run, so evidence put there is evidence with an expiry date - and the
+    # non-negotiables say nobody but gates.sh writes it. check-boundaries.sh
+    # greps the whole story for these lines, so pointing here at the section
+    # that loses them would never have complained until it mattered.
+    note="The last gate run for story ${STORY_ID} reported BLOCKED: the environment refused to launch a required gate, so it neither passed nor failed. Neither \"fix it\" nor \"back to RED\" applies. Record it in the story's ## Notes as a PO decision with the log line quoted, on one line carrying the gate id and the words 'pending CI', take the story to REVIEW with that gate pending, and do not call it DONE until the PR's CI run for that gate is quoted in ## Notes on a line carrying the gate id and the run URL." ;;
   fail)
     note="The last gate run for story ${STORY_ID} FAILED, and that result is recorded in the story. Fix the cause, or - if the failure means a test is wrong - return the story to RED and say so in ## Regressions. Do not weaken the test." ;;
 esac

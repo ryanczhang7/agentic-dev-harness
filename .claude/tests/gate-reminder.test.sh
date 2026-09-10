@@ -186,6 +186,18 @@ assert_warns "a gate the environment refused to launch" "BLOCKED"
 w="$(warned)"
 assert_contains "and it names the CI path" "CI" "$w"
 
+# And it must name a section that will still be there. The hook told the agent
+# to quote the CI run into `## Gate results` - which gates.sh REWRITES on every
+# run, and which the non-negotiables say nobody else may touch. Following the
+# hook meant writing evidence into the one section guaranteed to lose it, and
+# check-boundaries.sh looks for that line by grepping the whole story, so
+# nothing would have complained until the record was gone.
+assert_contains "and points the evidence at ## Notes" "## Notes" "$w"
+case "$w" in
+  *"Gate results"*) _bad "does not send evidence to a section gates.sh rewrites" "it names ## Gate results: $w" ;;
+  *) _ok "does not send evidence to a section gates.sh rewrites" ;;
+esac
+
 # --- a partial run does not close GATES -------------------------------------
 describe "in GATES the obligation is a full run"
 

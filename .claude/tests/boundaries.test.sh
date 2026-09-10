@@ -267,4 +267,80 @@ commit_all "T-1 review failing"
 out="$(boundaries)"
 assert_contains "a recorded failure is still refused" "recorded gate result is 'fail" "$out"
 
+
+# ---------------------------------------------------------------------------
+describe "a deferred verification is discharged or waived, never just filed"
+
+# H8 and K6. Some verifications provably cannot run in the phase that wants
+# them: RED cannot mutate an encoder that does not exist yet, so the negative
+# control that gives a round-trip property its meaning has to be named at
+# PLANNED and run later. That is the honest answer, and it was working - until
+# you notice the commitment is PROSE, and prose does not fail a build. One
+# story ran its deferred control because it had written the promise into its
+# own report twice. Nothing else would have noticed.
+story_on_branch <<'EOF'
+## Deferred verifications
+
+With one field dropped from the encoder, AC-1's property test must fail, and
+the orchestrator should watch it fail rather than take the claim.
+EOF
+out="$(boundaries)"
+assert_contains "no phase owns it" "names no phase" "$out"
+
+# Naming the phase is half of it. A block that names GATES and reaches the PR
+# with nothing recorded is the failure K6 describes exactly: a commitment that
+# outlived the phase that owed it.
+story_on_branch <<'EOF'
+## Deferred verifications
+
+1. Drop a field from the encoder; AC-1's property must fail. RED cannot run
+   this - there is no encoder to mutate. Owner: GATES.
+EOF
+out="$(boundaries)"
+assert_contains "named, owned, and never run" "no result and no waiver" "$out"
+
+# Discharged: the phase ran it and pasted what happened. Same predicate as
+# ## Regressions and ## Gate probes, for the same reason - "we ran it" is not
+# a result.
+story_on_branch <<'EOF'
+## Deferred verifications
+
+1. Drop a field from the encoder; AC-1's property must fail. RED could not run
+   it - no encoder existed. Owner: GATES. Run there against the real encoder:
+
+```
+ x round-trips an arbitrary world document
+   - relation.note: expected "worn" to be "undefined"
+ Tests  1 failed | 44 passed (45)
+```
+
+   Reverted; `cmp` clean.
+EOF
+out="$(boundaries)"
+assert_contains "run, with the failure shown" "ok    ## Deferred verifications carries its result" "$out"
+
+# Waived: the story decided not to run it, in writing. A waiver is a decision
+# somebody can argue with later, which is the whole difference between it and
+# silence.
+story_on_branch <<'EOF'
+## Deferred verifications
+
+1. Owner: GATES. WAIVED - the encoder this control mutates moved to WORLD-010
+   with the criterion it belonged to, so there is nothing here to break.
+EOF
+out="$(boundaries)"
+assert_contains "waived in writing" "ok    ## Deferred verifications carries an explicit waiver" "$out"
+
+# And the section is optional: most stories defer nothing, and a story that
+# omits it is not asked about it.
+story_on_branch <<'EOF'
+## Notes
+
+Nothing deferred.
+EOF
+out="$(boundaries)"
+case "$out" in
+  *"Deferred verifications"*) _bad "silent when the section is absent" "said something about it: $out" ;;
+  *) _ok "silent when the section is absent" ;;
+esac
 summary "boundaries"

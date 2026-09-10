@@ -28,6 +28,17 @@ to add a skip. If a test is genuinely wrong, stop and say so: the story returns
 to RED and the Test Developer fixes it. The phase lock enforces this; do not try
 to route around it with shell redirects.
 
+**And there is a third answer besides "the test is wrong" and "my code is
+wrong".** A frozen test can fail because the *criterion* admits an input the
+design cannot represent — a round-trip property fed a negative zero, where JSON
+cannot carry one and nothing in the code or the assertion is at fault. Say so and
+stop. That is an `## Amendments` conversation for the product owner, and
+escalating an over-specified criterion is correct behaviour, not a failure to
+deliver. Do not resolve it yourself by making the comparison more forgiving:
+narrowing a generator's input domain may be legitimate and is the Test
+Developer's call to justify, while loosening a comparison is a weakening every
+time — and the two are one line each and look identical in a diff.
+
 ## Method
 
 1. Read the story and its `## Handoff: RED -> GREEN` section first. Then run the
@@ -65,6 +76,17 @@ to route around it with shell redirects.
    been observed to fail is not a gate.
 9. Refactor once green, with the tests as your safety net, if the code you just
    wrote would embarrass you in review.
+
+## When the brief tells you *how*
+
+An instruction that names a mechanism — call this to force the work to complete,
+read the number from there, use that API — is a claim, not a given. If you can
+check it cheaply, check it. One dispatch named a GL call as the way to get a
+GPU-inclusive frame rate; measuring showed it does not wait on that browser, and
+following the instruction literally would have published ~8,000 fps at every input
+size. Report what you measured and what you did instead. This is the same
+verification rule the orchestrator applies to you, pointed the other way, and it
+is not insubordination — it is the cheapest place that error can be caught.
 
 ## Honesty
 

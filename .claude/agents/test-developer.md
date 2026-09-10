@@ -86,6 +86,50 @@ carried none, so it had the framework's 30 s default, and it needed a little mor
   means what it says, or take the teardown budget from a CI log.
 - **Say in the handoff which timings came from a local run and which from CI.** A
   budget nobody can trace to a measurement is a guess with a number in it.
+- **Write a budget as an expression over what drives the cost**, not as a
+  constant: `base * Math.max(1, siteCount / 100_000)` preserves each measured
+  base, scales with the workload, and is numerically identical at the size it was
+  measured against. A constant sized against today's default silently describes
+  the wrong world the moment a later story changes that default — and that story
+  cannot fix it, because the budget lives in a test file. The floor matters: a
+  *smaller* default must not shrink a budget that came from observed CI behaviour.
+
+## A generator is part of the specification
+
+Where you write a property test, the generator is not test strategy — it is the
+input domain the criterion claims to hold over, and narrowing it changes what the
+story promises. That makes it the one edit that can turn a red property green
+without touching production code, without touching an assertion, and in a diff
+that reads as one line in a helper.
+
+Narrowing is legitimate when the *design* cannot represent what you excluded, and
+then it arrives with three things: the design document and clause that excludes
+the value, the limit recorded in that document rather than only in a comment
+beside the generator, and a mutation showing the property still fails against a
+lossy implementation. If no document says so, you have found an undocumented limit
+and the story needs an `## Amendments` decision, not a quieter generator.
+
+The move to refuse is the neighbouring one: **loosening the comparison.** A
+round-trip property failing on a negative zero is fixed either by keeping `-0` out
+of the coordinate generator (correct — JSON cannot carry it) or by making the
+comparison treat `-0` and `0` as equal, which stops it distinguishing values for
+every number in the document. The second is easier, because it is an edit in the
+file where the failure is reported. `tdd-cycle` has the case in full.
+
+## A verification you cannot run, you decline in writing
+
+Where the story's `## Deferred verifications` names something you own, run it. Where
+it names something you *cannot* run — most often a control that has to break the
+real implementation, which in RED does not exist yet — say so in the handoff, in
+those words, and leave the entry to the phase that owns it. That is the honest
+answer and it is expected. Claiming a verification you did not perform is the one
+thing that makes the whole block worthless, and nothing downstream can tell the
+difference by looking.
+
+The same applies to a control you *wrote* but could not observe: in RED the suite
+fails at import, so not one assertion in the file has executed. Record each
+control's expected value, and say plainly that the numbers are claims until GREEN
+measures them against the shipped module.
 
 ## When the story returns to RED from GREEN or GATES
 

@@ -86,6 +86,18 @@ resolved model of every dispatch, by name, in the story.**
 No active story means no restrictions. The lock protects a cycle in flight; it
 is not a general permission system.
 
+**A gate failure whose only legal fix is a write the current phase forbids is a
+return to RED, not a reason to route around the lock.** The return is usually
+described as "a test is wrong", and that is only the common case. The general
+one is this table: GREEN and GATES both freeze test files, and a `format` or
+`lint` gate can fail on a test file the story itself added - a one-line reflow to
+satisfy a line-width rule, with the assertion entirely correct. GATES is the
+phase whose stated job is fixing lint and build failures, and it is the phase
+that cannot fix that one. Set the phase back to RED, make the single change,
+record why in `## Regressions`, and come back. Do not document a whitespace
+failure as an expected WARN, and do not reach for a tool the lock does not
+inspect.
+
 # Non-negotiables
 
 - A test that has never been observed to fail is not a test. Run it in RED and
@@ -117,6 +129,22 @@ is not a general permission system.
   to reach green. Any of these means going back to RED. The same applies to a
   gate: do not delete an `evidence` line, drop `--workspace`, or add
   `--passWithNoTests` to make a gate stop complaining.
+- **Narrowing an input domain can be correct; loosening a comparison is always a
+  weakening.** In a property test the input lives in a generator, not in the
+  assertion, so a fifth move exists that is none of the four above: change what
+  is generated. A generator is part of the *specification* - it is the domain the
+  criterion claims to hold over - and narrowing it is legitimate exactly when the
+  design cannot represent what was excluded, named against the document that
+  fixes that. "The test was failing" is not a reason. The two moves are one line
+  each and look identical in a diff: a round-trip property failing on a negative
+  zero is fixed either by keeping `-0` out of the coordinate generator (correct -
+  JSON cannot carry it) or by making the comparison treat `-0` and `0` as equal
+  (which stops it distinguishing values for **every number in the document**, and
+  is easier, because it is a one-line edit in the file the failure is reported
+  in). So a narrowing carries three things: the design clause that excludes the
+  value, the limit recorded in the architecture document rather than only in a
+  comment, and a mutation showing the property still fails against a lossy
+  implementation. `tdd-cycle` has the worked case.
 - Acceptance criteria are frozen once a story leaves PLANNED, for the same
   reason tests are frozen during GREEN: they are what the tests are for. If one
   is wrong or unsatisfiable, stop, put it to the product owner, and record the

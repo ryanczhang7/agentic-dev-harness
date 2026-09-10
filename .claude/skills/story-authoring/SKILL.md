@@ -238,6 +238,82 @@ criterion is about, that is an AC change: it stops, the product owner decides,
 and the change is recorded under `## Amendments` — after the orchestrator has
 reproduced the finding independently, on its own inputs.
 
+### Name the control you cannot run yet, and the phase that owns it
+
+Some controls cannot run when they are needed. A control for a codec, a
+threshold or a round trip has to break the **real** implementation to mean
+anything, and in RED the implementation is what the story is about to build.
+There is nothing to mutate, and RED claiming otherwise is the failure mode this
+whole section exists to prevent.
+
+So write it into the story at PLANNED, in `## Deferred verifications`, as a
+falsifiable condition with an owner:
+
+> With one field dropped from the encoder, AC-1's round-trip property **must**
+> fail, and the orchestrator watches it fail rather than taking the claim. RED
+> cannot run this — there is no encoder to mutate. **Owner: GATES.**
+
+Three things follow from that shape, and each was learned the expensive way:
+
+- **RED declines it explicitly.** "I could not run this, and here is why" in the
+  handoff is honest; a verification claimed and not done is not.
+- **Prefer GATES to RED as the owner.** Source is writable there, so the
+  mutation needs no special permission — and a story that bounced back to RED
+  mid-cycle gets its corrected assertions earned by the *same* experiment, which
+  is the cheapest way there is to satisfy `tdd-cycle`'s corrective-RED rule.
+- **Do three mutations, and make one a wrong value rather than a missing
+  field.** Two dropped-field mutations of one codec were each caught only by the
+  property test; the one that flipped a float writer's byte order was caught by
+  six tests, and only because the container assertions read bytes through an
+  independent reader. A suite that catches an omission can be blind to a
+  corruption.
+
+`check-boundaries.sh` refuses a PR whose `## Deferred verifications` names no
+phase, or that reaches REVIEW with neither a pasted result nor an explicit
+`WAIVED` and a reason. That is deliberate: the pattern worked the first time
+because an orchestrator had written the promise into its own report twice, and
+prose does not fail a build.
+
+### A round trip proves the application self-consistent, not the file sufficient
+
+"Encode it, decode it, assert you got the same thing back" is the most natural
+criterion for any persistence story, and by every rule above it is impeccable:
+observable, falsifiable, one line. It is also satisfied by an implementation that
+**never reads part of what it wrote**, as long as it can reconstruct that part by
+other means — and for a format whose promise is longevity those are very
+different guarantees.
+
+A codec story's round-trip property passed while the decoder never read the
+largest entry in the file. It size-checked the entry, discarded the result, and
+regenerated the data from a seed. The values survived because the generator is
+deterministic, not because the bytes were read. Three consequences, none visible
+from the criteria:
+
+- **The durability guarantee moved.** The product promise was "worlds open years
+  later"; as built, that rests on a mesh builder staying bit-identical forever,
+  which is far stronger and more fragile than "the bytes are on disk". The
+  implementer knew and wrote it at the call site. No criterion had asked.
+- **A documented limit came out backwards.** The wiki note said those values
+  "round-trip at float32 precision" — true of the test's comparison, false of the
+  system, which loses nothing today because it regenerates. The loss is *latent*:
+  it springs the day a reader actually parses those bytes.
+- **The mutation control does not catch it.** Corrupting the writer is caught, on
+  the write side. Deleting the *read* is caught by nothing, because there is no
+  read.
+
+So when a criterion is a round trip, a restore or a reload, it must also say
+**which stored artifacts the read path consumes**. An entry written but not read
+is a legitimate design — for future readers, for other tools, for a migration —
+and it must be *declared*, together with the invariant standing in for reading
+it, in the architecture document rather than only in a source comment. Where the
+mechanism is the point, phrase the criterion over the mechanism: *"decoding a
+container whose `mesh/params.json` has been removed fails"* is a test; *"the
+world round-trips"* is not, for this purpose.
+
+This is the same family as the blind metric above, with a different blindness.
+That one is a statistic that cannot move when its subject breaks; this one is a
+criterion whose subject is *broader* than the thing it was written to guarantee.
+
 ## Types
 
 | Type | When | Phase path |
