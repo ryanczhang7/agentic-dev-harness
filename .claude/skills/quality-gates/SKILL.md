@@ -217,10 +217,28 @@ anyone deciding it should. A test project that needs a real browser, an
 `integration` gate marked optional because it needs one, a coverage `include`
 that skips the same directory: each is right on its own, and together they put
 every test of a renderer where nothing could block on it while `All required
-gates passed` printed underneath. `gates.sh` cannot notice, because
-nothing in `project.conf` says which paths a gate exercises. So the story
-names, before RED, the required gate that would fail if its artifact broke -
-see `story-authoring` - and promotes one if the answer is "none".
+gates passed` printed underneath. `gates.sh` could not notice, because nothing
+in `project.conf` said which paths a gate exercises. Now something does:
+
+    covers | unit        | src/core/**
+    covers | integration | src/render/**
+
+With any `covers` line present and a story active, every run - `--fast`
+included, because GREEN ends with `--fast` and GREEN is where the source first
+exists - takes the story's changed source paths, the diff against `main`
+committed or not, and matches them. A path only optional gates read **fails
+the run** and names the fix: `required_gates` in the story, or a `covers` line
+for a required gate that reads it. A path no gate claims **warns**: the
+manifest is incomplete or the file is genuinely ungated, and only a person can
+say which. Tests are not the artifact and are not checked.
+
+Write what the runner can see, not what the layout suggests: a
+`covers | unit | src/**` over a vitest project whose include skips
+`src/render/` is a lie the check will believe. Pair each line with the
+`discovery` line that proves it. The story still names, before RED, the
+required gate that would fail if its artifact broke - see `story-authoring` -
+because the check catches the case at GREEN, and RED is where promoting a gate
+is a decision rather than a scramble.
 
 ## WARN must mean something changed
 

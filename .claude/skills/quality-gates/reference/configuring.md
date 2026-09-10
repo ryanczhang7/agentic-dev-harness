@@ -17,16 +17,18 @@ fail gets a waiver naming why:
 A waiver turns that gate's failure from `WARN` into `KNOWN` so that `WARN`
 always means something changed. It is refused on required gates.
 
-Three more kinds, each explained in the skill and in `project.conf`'s own
+Four more kinds, each explained in the skill and in `project.conf`'s own
 comments:
 
     floor     | <gate id> | <minimum count read out of the evidence match>
     slow      | <gate id> | <why it is too slow for gates.sh --fast>
+    covers    | <gate id> | <glob of the paths this gate actually reads>
     discovery | <id> | <cwd> | <command proving a runner can see a directory>
 
 `floor` catches a gate that quietly started doing much less; `slow` names what
-`--fast` leaves out, reason required; `discovery` lines are run by `doctor.sh`,
-never by the gates.
+`--fast` leaves out, reason required; `covers` is what lets `gates.sh` fail a
+run whose changed source only optional gates read; `discovery` lines are run
+by `doctor.sh`, never by the gates, and are how a `covers` line is proved.
 
 Once CI has run a gate for real, record how much slower one test is there:
 

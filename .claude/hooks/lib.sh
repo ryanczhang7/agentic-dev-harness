@@ -414,8 +414,11 @@ is_ignored() {
 # bracket expressions are a minefield here (POSIX treats "[." and "[]" as
 # collating-symbol openers). ENVIRON rather than -v for the conf path: -v
 # processes backslashes.
-classify_stdin() {
-  PATHS_CONF="$HARNESS_DIR/paths.conf" awk '
+# The paths.conf glob dialect as an awk function: `**` any number of path
+# segments, `*` within one segment, `?` one character, everything else
+# literal. One definition, shared by classify_stdin and glob_matches, so that
+# a `covers` glob in project.conf means exactly what a paths.conf glob means.
+_G2R_AWK='
     function g2r(s,   out, i, n, c) {
       out = ""; i = 1; n = length(s)
       while (i <= n) {
@@ -430,7 +433,21 @@ classify_stdin() {
         out = out c; i++
       }
       return out
-    }
+    }'
+
+# glob_matches <glob> <path>   True if the path matches the glob, relative to
+# the repository root and case-insensitively, as classify_stdin would judge
+# it. ENVIRON rather than -v: -v interprets backslashes.
+glob_matches() {
+  G="$1" P="$2" awk "$_G2R_AWK"'
+    BEGIN {
+      p = ENVIRON["P"]; sub(/^\.\//, "", p)
+      exit !(tolower(p) ~ ("^" tolower(g2r(ENVIRON["G"])) "$"))
+    }'
+}
+
+classify_stdin() {
+  PATHS_CONF="$HARNESS_DIR/paths.conf" awk "$_G2R_AWK"'
     BEGIN {
       n = 0; conf = ENVIRON["PATHS_CONF"]
       while ((getline line < conf) > 0) {

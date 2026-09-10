@@ -198,6 +198,32 @@ hits="$(grep -nE '(^|[[:space:]|;&(])sed[[:space:]]+(-[A-Za-z]*\s+)*-i([[:space:
 assert_eq "no GNU-only sed -i in shipped scripts" "" "$hits"
 
 # ---------------------------------------------------------------------------
+describe "glob_matches: the paths.conf glob dialect, reusable"
+
+# `covers` lines in project.conf use the same globs as paths.conf, through the
+# same function, so a glob that classifies a path also covers it.
+for pair in \
+  'src/**=src/render/mesh.ts' \
+  'src/**=src/a.ts' \
+  'src/render/**=src/render/deep/x.ts' \
+  '**/*.test.*=src/a.test.ts' \
+  'src/*.ts=src/a.ts' \
+  'SRC/**=src/a.ts' \
+  ; do
+  g="${pair%%=*}"; p="${pair#*=}"
+  if glob_matches "$g" "$p"; then _ok "matches: $g ~ $p"; else _bad "matches: $g ~ $p" "no match"; fi
+done
+for pair in \
+  'src/render/**=src/core/a.ts' \
+  'src/*.ts=src/deep/a.ts' \
+  'src/**=lib/src/a.ts' \
+  'src/a.ts=src/a.tsx' \
+  ; do
+  g="${pair%%=*}"; p="${pair#*=}"
+  if glob_matches "$g" "$p"; then _bad "does not match: $g ~ $p" "matched"; else _ok "does not match: $g ~ $p"; fi
+done
+
+# ---------------------------------------------------------------------------
 describe "gate_tree_hash: covers what the gates judge, and only that"
 
 # The hash is the identity of "the code the gates ran against". A change to a

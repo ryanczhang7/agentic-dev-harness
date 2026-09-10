@@ -71,7 +71,8 @@ ESC=$(printf '\033')
 # --- evidence, floor, waiver and slow tables --------------------------------
 # Read up front, so that --gate <id> still finds its own lines. Stored as
 # "<id><TAB><value>" lines; no associative arrays, for bash 3.2.
-EVIDENCE=""; WAIVERS=""; FLOORS=""; SLOWS=""; CIFACTORS=""; GATE_IDS=""
+EVIDENCE=""; WAIVERS=""; FLOORS=""; SLOWS=""; CIFACTORS=""; COVERS=""; GATE_IDS=""
+GATE_REQ=""   # "<id><TAB>required|optional" per gate, after any story escalation
 while IFS= read -r line; do
   line="${line%%$'\r'}"
   case "$(trim "$line")" in ''|'#'*) continue ;; esac
@@ -84,7 +85,7 @@ while IFS= read -r line; do
   # line", and a misspelt `floor` id fails the audit outright, but a misspelt
   # `slow` id is silent - the gate it meant to exclude simply stays in --fast.
   [ "$kind" = "gate" ] && { GATE_IDS="$GATE_IDS $tid"; continue; }
-  case "$kind" in evidence|waiver|floor|slow|ci-factor) ;; *) continue ;; esac
+  case "$kind" in evidence|waiver|floor|slow|ci-factor|covers) ;; *) continue ;; esac
   # -f3- so that a regex containing `|` (alternation) survives the split.
   tval=$(trim "$(printf '%s' "$line" | cut -d'|' -f3-)")
   [ -n "$tid" ] || continue
@@ -98,6 +99,8 @@ while IFS= read -r line; do
     slow)     SLOWS="$SLOWS$tid$TAB$tval
 " ;;
     ci-factor) CIFACTORS="$CIFACTORS$tid$TAB$tval
+" ;;
+    covers)   COVERS="$COVERS$tid$TAB$tval
 " ;;
   esac
 done < "$CONF"
@@ -215,6 +218,12 @@ while IFS= read -r line; do
       req=required ;;
   esac
 
+  # Recorded before any filter skips the gate: the changes check below needs
+  # to know whether `integration` is required even on a run that did not
+  # execute it.
+  GATE_REQ="$GATE_REQ$id$TAB$req
+"
+
   [ -n "$ONLY" ] && [ "$ONLY" != "$id" ] && continue
   [ "$REQUIRED_ONLY" = 1 ] && [ "$req" != "required" ] && continue
 
@@ -239,6 +248,9 @@ while IFS= read -r line; do
     printf '%-12s %-9s %-6s evidence: %s\n' "" "" "" "$exp"
     [ -n "$floor" ]  && printf '%-12s %-9s %-6s floor:    %s\n' "" "" "" "$floor"
     [ -n "$cifactor" ] && printf '%-12s %-9s %-6s ci-factor: %s\n' "" "" "" "$cifactor"
+    while IFS="$TAB" read -r cid cglob; do
+      [ "$cid" = "$id" ] && printf '%-12s %-9s %-6s covers:   %s\n' "" "" "" "$cglob"
+    done <<< "$COVERS"
     [ -n "$waiver" ] && printf '%-12s %-9s %-6s waiver:   %s\n' "" "" "" "$waiver"
     [ "$is_slow" = 0 ] && printf '%-12s %-9s %-6s slow:     %s (left out of --fast)\n' "" "" "" "${slowwhy:-no reason given}"
     [ -n "$escalated" ] && printf '%-12s %-9s %-6s optional for the repo,%s\n' "" "" "" "$escalated"
@@ -443,6 +455,21 @@ if [ "$AUDIT" = 1 ]; then
       *) printf 'FAIL %-12s a `ci-factor` line names no configured gate\n' "$cid"; fails=$((fails+1)) ;;
     esac
   done <<< "$CIFACTORS"
+  # A covers line naming no gate covers nothing; an empty glob covers nothing
+  # while looking like it covers everything.
+  while IFS="$TAB" read -r cid cglob; do
+    [ -n "$cid" ] || continue
+    case " $GATE_IDS " in
+      *" $cid "*) ;;
+      *) printf 'FAIL %-12s a `covers` line names no configured gate\n' "$cid"; fails=$((fails+1)); continue ;;
+    esac
+    [ -n "$cglob" ] || { printf 'FAIL %-12s a `covers` line has no glob\n' "$cid"; fails=$((fails+1)); }
+  done <<< "$COVERS"
+  if [ -z "$COVERS" ]; then
+    printf 'note         no `covers` lines: gates.sh cannot tell whether a story'"'"'s changed source\n'
+    printf '             paths are exercised by any required gate. Add one per gate, e.g.\n'
+    printf '               covers | unit | src/**\n'
+  fi
   if [ "$noevidence" -gt 0 ]; then
     printf '\n%d required gate(s) have no evidence line. Add one per gate:\n' "$noevidence"
     printf '  evidence | <id> | <regex proving the tool did work>\n'
@@ -455,7 +482,75 @@ if [ "$AUDIT" = 1 ]; then
   exit 0
 fi
 
+# --- what this story changed ------------------------------------------------
+# "All required gates passed" is true and meaningless when the gates that
+# passed never read the story's artifact. That happened: a renderer's tests in
+# a browser-only project, that project in an `optional` gate, the coverage
+# include skipping the same directory - three sound decisions that between
+# them put every test of the story where nothing could block on it. Nothing
+# in the manifest said which paths a gate reads, so nothing could notice.
+#
+# `covers` lines say. With any present and a story active, the story's changed
+# SOURCE paths - the diff against main, committed or not - are matched against
+# them. A path only optional gates read fails the run: the fix is the story's,
+# `required_gates`, and is meant to be made at RED rather than found here. A
+# path no gate claims warns: the manifest may be incomplete, or the file may
+# be genuinely ungated, and a person has to say which. Tests are not the
+# artifact and are not checked. Runs on --fast too, because GREEN ends with
+# --fast and GREEN is where the source first exists.
+changes_note=""; chwarn=0
+if [ -n "$COVERS" ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
+  base=""
+  for b in origin/main main; do
+    if git -C "$ROOT" rev-parse --verify -q "$b" >/dev/null 2>&1; then base="$b"; break; fi
+  done
+  if [ -z "$base" ]; then
+    changes_note="(changes not checked: no main branch to compare against)"
+  else
+    mb="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null || printf '%s' "$base")"
+    changed="$( { git -C "$ROOT" diff --name-only "$mb" 2>/dev/null
+                  git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null; } \
+                | sort -u | classify_stdin | awk -F'\t' '$1 == "source" { print $2 }')"
+    total=0; covered=0
+    while IFS= read -r path; do
+      [ -n "$path" ] || continue
+      [ -e "$ROOT/$path" ] || continue        # deleted: nothing left to exercise
+      total=$((total+1))
+      reqs=""; opts=""
+      while IFS="$TAB" read -r cid cglob; do
+        [ -n "$cid" ] && [ -n "$cglob" ] || continue
+        glob_matches "$cglob" "$path" || continue
+        creq="$(table_lookup "$GATE_REQ" "$cid")" || creq=""
+        case " $reqs $opts " in *" $cid "*) continue ;; esac
+        if [ "$creq" = "required" ]; then reqs="$reqs $cid"; else opts="$opts $cid"; fi
+      done <<< "$COVERS"
+      if [ -n "$reqs" ]; then
+        covered=$((covered+1))
+      elif [ -n "$opts" ]; then
+        results="$results\nFAIL         changes: $path is exercised only by optional gate(s):$opts - add required_gates: [$(printf '%s' "${opts# }" | sed 's/ /, /g')] to the story, or a covers line for a required gate"
+        fails=$((fails+1))
+      else
+        results="$results\nWARN         changes: $path is exercised by no gate with a covers line"
+        chwarn=$((chwarn+1))
+      fi
+    done <<< "$changed"
+    if [ "$total" -gt 0 ]; then
+      if [ "$covered" -eq "$total" ]; then
+        changes_note="$total changed source path(s), all exercised by a required gate"
+      else
+        changes_note="$total changed source path(s), $covered exercised by a required gate"
+      fi
+    fi
+  fi
+fi
+
 printf '\n--- gate summary ---%b\n' "$results"
+[ -n "$changes_note" ] && printf '\nchanges: %s\n' "$changes_note"
+if [ "$chwarn" -gt 0 ]; then
+  printf '\n%d changed source path(s) match no covers line. Either the manifest is missing\n' "$chwarn"
+  printf 'a line for the gate that reads them, or the file is genuinely ungated - say which\n'
+  printf 'in the story. A path no gate reads is a path no gate can fail on.\n'
+fi
 
 if [ "$BOOTSTRAPPED" != "yes" ]; then
   printf '\nNote: project.conf is not bootstrapped yet (BOOTSTRAPPED=no), so unconfigured\n'
