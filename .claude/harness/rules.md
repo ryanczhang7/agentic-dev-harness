@@ -68,6 +68,23 @@ is not a general permission system.
 
 - A test that has never been observed to fail is not a test. Run it in RED and
   record the failure output in the story's `## Handoff`.
+- **That is a property of the assertion, not of the phase or the run.** An
+  ordinary RED satisfies it as a side effect - the implementation does not
+  exist, so everything is red. Two situations look identical from outside and
+  satisfy nothing:
+  - a test **written or corrected while the implementation already exists** -
+    on a return to RED, or against a module an earlier story built. It passes
+    on its first execution and passes forever; it could assert nothing at all
+    and nothing would notice. Earn it by mutating the specific production
+    behaviour it claims to pin, watching that one assertion go red, reverting,
+    and pasting the output into `## Regressions`. One mutation, one run, one
+    revert.
+  - a suite that fails at **import**, where no assertion in the file has run.
+    Negative controls - the cases that make a threshold mean something - are
+    unverified for the whole of RED. Record each control's expected value in
+    the handoff and have GREEN confirm the measured one.
+  `check-boundaries.sh` refuses a PR whose `## Regressions` or `## Gate probes`
+  describes a failure without showing one.
 - A gate that has never been observed to fail is not a gate. When a story adds
   or changes one, break what it guards, watch it fail, and record that in the
   story's `## Gate probes`. Exit 0 means only that the tool did not complain,

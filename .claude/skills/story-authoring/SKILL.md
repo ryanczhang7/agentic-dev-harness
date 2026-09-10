@@ -99,6 +99,49 @@ Performance and accessibility criteria are welcome, with numbers: "renders a
 10,000-tile world in under 100ms on the reference machine", "every control is
 reachable by keyboard in visual order".
 
+### A criterion that names a measurement names a control too
+
+When an AC names a **statistic, a metric or a threshold**, it must arrive with a
+**negative control**: a deliberately broken input the metric is required to
+reject, and roughly what it should score. If you cannot name one, the criterion
+is not ready to leave PLANNED.
+
+Two different questions hide here, and only the first is usually asked:
+
+- *Is 25% the right threshold?* — a control on the **number**.
+- *Is variance the right quantity?* — a control on the **choice of metric**,
+  one level up. This is the one that had a wrong answer.
+
+An AC read as: "height **variance** in a polar band and an equatorial band of
+equal area are within 25% of each other — no smearing at the poles". Impeccably
+testable, reviewed, approved, and blind. Variance is a **one-point** statistic,
+and the marginal distribution of a stationary noise field does not change when
+the domain is stretched; "smearing" is a **two-point** property, about how fast
+the field varies with distance. Measured on 400,000 points, the AC's own metric
+separated a correct field from the exact defect it names by **9%**, against a
+25% threshold — which side of the line you land on is decided by sampling noise.
+The two-point statistic that replaced it separated them by **10x**.
+
+Every agent downstream would have implemented that faithfully, and the test
+would have passed on broken code.
+
+So write the control into the story next to the criterion:
+
+> **AC-5** — a polar band and an equal-area equatorial band have mean squared
+> gradients within 25% of each other.
+> *Control:* the same field sampled in the lon/lat plane instead of on the
+> sphere — the defect this AC exists to catch — must fail this check by a wide
+> margin (measured ~10x).
+
+**A criterion that is precise, measurable and blind is more dangerous than a
+vague one.** A vague criterion gets challenged in review; a blind one survives
+review and produces a green tick over a broken implementation.
+
+If the Test Developer reports that a criterion's metric cannot detect what the
+criterion is about, that is an AC change: it stops, the product owner decides,
+and the change is recorded under `## Amendments` — after the orchestrator has
+reproduced the finding independently, on its own inputs.
+
 ## Types
 
 | Type | When | Phase path |

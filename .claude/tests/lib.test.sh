@@ -119,4 +119,24 @@ fi
 assert_eq "an escaped operator is masked" "0" \
   "$(mask 'echo a \> b' | grep -cE '>')"
 
+# ---------------------------------------------------------------------------
+describe "path_is_implausible: a failed parse is inconclusive, not a violation"
+
+# The tokens on the left were all reported as the `path:` of a real denial, on
+# commands that wrote nothing. None of them is a path; the guard declines to
+# judge them rather than treating its own parse failure as evidence.
+for t in '=' '[^' '--' '>' '' '`mktemp`' '$TMPDIR/x' 'a(b)'; do
+  if path_is_implausible "$t"; then _ok "implausible: '$t'"
+  else _bad "implausible: '$t'" "the guard believed this was a path"; fi
+done
+
+# The other half of the rule, and the one that keeps it honest: everything a
+# real project actually names must still be judged. A bracketed route segment
+# is a real path in more than one framework.
+for t in 'src/main.ts' 'src/app/[id]/page.tsx' 'src/my file.ts' '.gitignore' \
+         'a' 'docs/wiki/architecture.md' 'src/a-b_c.2.ts'; do
+  if path_is_implausible "$t"; then _bad "plausible: '$t'" "the guard refused to judge a real path"
+  else _ok "plausible: '$t'"; fi
+done
+
 summary "lib"

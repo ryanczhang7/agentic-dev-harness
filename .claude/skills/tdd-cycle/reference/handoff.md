@@ -6,7 +6,7 @@ for someone who has read nothing.
 
 ## Filling in `## Handoff: RED -> GREEN`
 
-Five things, always:
+Five things, always, and a sixth whenever the story has a negative control:
 
 **1. The exact command.** Copy-pasteable, taken from
 `.claude/harness/project.conf`, not from memory. Include any filter that runs
@@ -55,6 +55,23 @@ test is not mistaken for a forgotten one.
 
 Also state, in one sentence, **why this is the right failure** - which assertion
 is unsatisfied, and why that assertion is the behaviour the story asks for.
+
+**6. The expected value of every negative control**, where the story has any.
+A control is the case a metric must reject - white noise that must not read as
+continents, a deliberately broken field a smoothness check has to catch - and it
+is what makes a threshold mean anything. In RED none of them ran: the file
+failed at import, so no assertion in it executed. Measure them outside the
+framework and write the numbers down:
+
+| Control | Threshold | Expected | Measured in RED |
+|---|---|---|---|
+| white noise | > 2 continents | 0-1 | 0.6 |
+| single blob | > 2 continents | 1 | 1.0 |
+| archipelago | continental share > 0.4 | well below | 0.11 |
+
+Say plainly that confirming these against the shipped module is GREEN's job.
+Until then they are a claim, and a control that measures the wrong thing makes
+every threshold in the suite look calibrated while proving nothing.
 
 ## `## Gate results` is not yours to write
 

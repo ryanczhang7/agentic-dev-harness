@@ -32,7 +32,12 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
 ## Acceptance criteria
 
 <!-- Each AC is independently testable and phrased as observable behaviour.
-     The Test Developer writes at least one failing test per AC. -->
+     The Test Developer writes at least one failing test per AC.
+     An AC that names a statistic, a metric or a threshold names a NEGATIVE
+     CONTROL too: the deliberately broken input the metric must reject, and
+     roughly what it should score. A criterion can be perfectly testable and
+     still be blind to the defect it exists to catch, and that is more
+     dangerous than a vague one - it survives review and goes green. -->
 
 - **AC-1** — Given <state>, when <action>, then <observable outcome>.
 - **AC-2** — Given <state>, when <action>, then <observable outcome>.
@@ -43,7 +48,11 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
      out to be wrong or unsatisfiable, stop, put it to the product owner, and
      record the change here: which AC, what it said, what it says now, who
      approved it and why. check-boundaries.sh fails a PR whose criteria differ
-     from the base branch without an entry here. Omit the section if unused. -->
+     from the base branch without an entry here. Omit the section if unused.
+     Where the change came from a subagent's claim that the criterion was
+     wrong, record the ORCHESTRATOR'S OWN reproduction of it - different
+     inputs, not the subagent's code. That claim is also what an agent says
+     when it wants to stop failing. -->
 
 ## Model guidance
 
@@ -87,6 +96,10 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
          too, so it stays the implementer's choice.
        * any test that passed on arrival, and the probe or negative control
          that earns it
+       * the EXPECTED VALUE of every negative control, as a table: threshold,
+         candidate range, and the number the control measured. In RED the
+         suite fails at import, so no assertion in it has run - the controls
+         are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
 
 ## Regressions
@@ -98,11 +111,15 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
        * which test, what it asserted, and what was wrong with it
        * how the defect was found
        * what it asserts now
-       * what earns it, since "watched it fail" usually cannot apply once the
-         implementation exists: either a PROBE (break what the test guards,
-         paste the red, confirm the revert) or, where the defect was cost
-         rather than correctness, a BEFORE/AFTER measurement taken under the
-         gate command - not the plain test command, which is the faster one
+       * what earns it, since "watched it fail" cannot apply once the
+         implementation exists - the corrected assertion passes on its first
+         run and every run after, whether or not it asserts anything: either a
+         PROBE (mutate the specific behaviour the test pins, paste the red,
+         confirm the revert) or, where the defect was cost rather than
+         correctness, a BEFORE/AFTER measurement taken under the gate command -
+         not the plain test command, which is the faster one.
+         PASTE THE OUTPUT. check-boundaries.sh refuses a PR whose Regressions
+         or Gate probes section describes a failure without showing one
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 

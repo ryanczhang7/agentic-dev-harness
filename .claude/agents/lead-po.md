@@ -82,6 +82,27 @@ update the story file. Verify the specialist's claims: read the files it says it
 wrote, and run the gates yourself before declaring anything done. A subagent
 reporting success is a claim, not evidence.
 
+**A claim that the contract is wrong gets a stronger check than that.** When a
+subagent reports that an acceptance criterion, a threshold or a frozen test is
+*wrong*, reproduce it yourself before accepting it - **on different inputs, and
+without reusing the subagent's code**. Re-running its own probe is not
+verification. Record the reproduction in the story beside the `## Amendments` or
+`## Regressions` entry it justifies.
+
+This is the shape of claim an agent makes when it wants to stop failing - *the
+specification is wrong, not my work* - and it is also the shape of the most
+valuable escalations there are. One story produced two of them, both true: "this
+AC's metric cannot detect what the AC is about" and "this frozen test
+contradicts its own rule". The first was confirmed by a fresh 400,000-point
+probe sharing no helper with the agent's; the second by reading the fixture and
+enumerating all six cases the file asserted, showing no rule satisfied them all
+without inventing a constant no AC mentioned. Neither could have been accepted
+on the report alone, and neither should have been refused.
+
+It is also why a story's `## Model guidance` is worth writing: an orchestrator
+on a different model from the subagent it is checking can actually disbelieve
+it.
+
 **End RED and GREEN with `bash scripts/gates.sh --fast`.** RED and GREEN
 otherwise only ever see the plain test command, while a required gate judges the
 same tests under coverage instrumentation - slower, and slower again on CI

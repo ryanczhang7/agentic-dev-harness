@@ -206,4 +206,43 @@ EOF
 out="$(gates --audit)"
 assert_contains "slow naming no gate fails the audit" "names no configured gate" "$out"
 
+# ---------------------------------------------------------------------------
+describe "ci-factor: a measurement, or nothing"
+
+# The number is how much slower ONE TEST is on CI under this gate. It is worth
+# recording because the obvious way to derive it - the gate's own wall time,
+# most of which is fixed overhead - overestimates it several-fold and sends
+# somebody optimising a test that was already fast enough.
+write_conf "$FIX" <<'EOF'
+gate      | coverage | required | . | printf 'Tests  47 passed (47)\n'
+evidence  | coverage | Tests +[1-9][0-9]* passed
+ci-factor | coverage | 3.4 | actions run 412, AC-4 file 1,262 ms instrumented
+EOF
+out="$(gates --audit)"
+assert_contains "a measured factor passes the audit" "ci-factor: 3.4" "$out"
+
+write_conf "$FIX" <<'EOF'
+gate      | coverage | required | . | printf 'Tests  47 passed (47)\n'
+evidence  | coverage | Tests +[1-9][0-9]* passed
+ci-factor | coverage | about 14x | eyeballed it
+EOF
+out="$(gates --audit)"
+assert_contains "a factor that is not a number fails" "is not a number" "$out"
+
+write_conf "$FIX" <<'EOF'
+gate      | coverage | required | . | printf 'Tests  47 passed (47)\n'
+evidence  | coverage | Tests +[1-9][0-9]* passed
+ci-factor | coverage | 3.4
+EOF
+out="$(gates --audit)"
+assert_contains "a factor with no source fails" "has no source" "$out"
+
+write_conf "$FIX" <<'EOF'
+gate      | coverage | required | . | printf 'Tests  47 passed (47)\n'
+evidence  | coverage | Tests +[1-9][0-9]* passed
+ci-factor | covrage  | 3.4 | actions run 412
+EOF
+out="$(gates --audit)"
+assert_contains "a factor naming no gate fails the audit" "names no configured gate" "$out"
+
 summary "gates"

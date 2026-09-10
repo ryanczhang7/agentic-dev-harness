@@ -17,6 +17,16 @@ fail gets a waiver naming why:
 A waiver turns that gate's failure from `WARN` into `KNOWN` so that `WARN`
 always means something changed. It is refused on required gates.
 
+Once CI has run a gate for real, record how much slower one test is there:
+
+    ci-factor | <gate id> | <per-test factor> | <the CI run it came from>
+
+Measured per test from a real log, never derived from the gate's own wall time,
+which is mostly fixed overhead and overestimates the factor several-fold.
+`--audit` refuses a factor that is not a number, one with no source, and one
+naming a gate that does not exist. See the skill's "How much slower is CI,
+actually".
+
 ## Rules
 
 - **Pin the runner, not the shell alias.** `pnpm exec vitest run` rather than

@@ -25,7 +25,11 @@ split it.
 ## The law
 
 1. **No production code without a failing test that demanded it.** The test is
-   written first, is watched to fail, and fails for the right reason.
+   written first, is watched to fail, and fails for the right reason. "Watched
+   to fail" is a property of the *assertion*, not of the run: a test written or
+   corrected while the implementation already exists passes on its first
+   execution and forever after, so it is earned instead by mutating what it
+   pins, watching it go red, and reverting.
 2. **Tests are frozen during GREEN.** If a test is wrong, go back to RED and say
    so in the story file under `## Regressions`. Never edit a test to make it
    pass. RED on a return is narrower than RED the first time: fix the test only,

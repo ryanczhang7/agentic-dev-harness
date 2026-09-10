@@ -40,6 +40,11 @@ how to verify it before the bootstrap story depends on it.
    `bash scripts/doctor.sh`.
 5. Have the bootstrap story prove each command actually runs. A profile is a
    starting point, not a guarantee - versions move.
+6. Once CI has run the gates for real, measure the per-test CI/local factor
+   from its log and record it as a `ci-factor` line in `project.conf`. No
+   profile can carry that number - it is a property of the runner, not of the
+   stack - and the ratio everyone derives instead, from the gate's own wall
+   time, overestimates it several-fold. See the `quality-gates` skill.
 
 ## Choosing
 

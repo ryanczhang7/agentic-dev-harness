@@ -27,6 +27,25 @@ to hold in your head.
 
 When they pass, run the whole suite. The story did not mention what you broke.
 
+## Confirm the negative controls, not just their tests
+
+RED could not run them. While the module under test was missing the suite failed
+at import, so every assertion in the file was unexecuted - including the
+controls that give the thresholds their meaning, whose numbers RED had to
+measure outside the framework.
+
+You are the first phase that can check them. For every control the handoff
+records an expected value for, compare the value it measures **now, against the
+shipped module**, with the number in the table. "The control test passes" is not
+the same check: a control can pass while measuring something else entirely, and
+then every threshold calibrated against it is decoration.
+
+Report any divergence in the story even when it is benign - RED often measures a
+candidate implementation and you are measuring the real one, so a small drift is
+expected and an unexplained one is a finding. One story recorded
+`0.54 -> 0.30 -> 0.18 -> 0.10` and measured `0.50 -> 0.30 -> 0.20 -> 0.12` for
+exactly that reason; noticing it cost a minute.
+
 ## Refactor with the net
 
 Once green, improve what you just wrote - naming, duplication, the function that

@@ -55,6 +55,46 @@ waivers are refused on required gates for the same reason.
 A `--fast` run is never recorded in a story. It is not a full run, and only a
 full run is evidence.
 
+### How much slower is CI, actually
+
+"Slower on CI" is only useful as a number, and the obvious number is wrong.
+
+Do **not** extrapolate from the gate's own wall time. A coverage gate at 3 s
+locally and 41 s in CI looks like 14x, and on that basis a 367 ms test looks
+like it will take 5,000 ms there and blow the framework's default timeout. It
+does not: most of a coverage gate's wall time is fixed overhead - process start,
+transform, instrumentation setup, report generation - and none of it scales with
+test compute. Measured **per test** from the CI log, the same gate was 3.4x.
+Acting on the 14x means optimising a test that was already fine.
+
+So measure the per-test factor once, from a real CI log - one test's duration
+there over the same test's duration locally, both under the same gate - and
+record it in `project.conf` next to the gate, where the next agent will find it:
+
+    ci-factor | coverage | 3.4 | actions run 412, "AC-4/AC-5 file 1,262 ms"
+
+`--audit` refuses a factor that is not a number, one with no source, and one
+naming a gate that does not exist. Re-measure it when the runner image or the
+test command changes.
+
+**Budget, not limit: keep any single test under a quarter of the framework's
+timeout** under local instrumentation. 4,275 ms against a 5,000 ms default is
+not a pass; it is a pending failure on hardware you do not control.
+
+**And the first question about a slow test is "is the cost in the helper?"** -
+because "make the test faster" must never become "weaken the test". In the case
+above the cost was entirely in a test helper doing a brute-force nearest-site
+scan, 4,000 sites against ~8,600 queries per seed; replacing it with a greedy
+walk over the mesh's existing adjacency took the test from 4,275 ms to 367 ms
+with `numRuns`, the thresholds, the seed lists and the timeouts all untouched
+and the measured statistics bit-identical. That is the one place cost can be
+removed for free. Verify the replacement against the thing it replaced - that
+one was checked on 80,000 random query/start pairs against the brute-force
+oracle, 0 mismatches - because a subtly wrong helper moves calibrated
+thresholds while every test stays green. Lowering `numRuns`, widening a
+tolerance or raising a timeout to fit the budget is weakening the test, and
+sends the story back to RED instead.
+
 ## The gates
 
 | Gate | Required | Answers |

@@ -34,9 +34,10 @@ section() {
   awk -v h="## $2" 'index($0, h) == 1 { on=1; next } on && /^## / { exit } on { print }' "$1"
 }
 
-# has_content   True if stdin holds anything besides whitespace and HTML
-# comments - i.e. somebody wrote something beyond the template.
-has_content() {
+# strip_comments   stdin with every HTML comment removed. The story template is
+# mostly comments, so "did anybody write anything here" and "is there evidence
+# in here" are both questions about what is left after they go.
+strip_comments() {
   awk '{ s = s $0 "\n" }
        END {
          while ((i = index(s, "<!--")) > 0) {
@@ -45,8 +46,19 @@ has_content() {
            s = substr(s, 1, i - 1) substr(r, j + 3)
          }
          printf "%s", s
-       }' | grep -q '[^[:space:]]'
+       }'
 }
+
+# has_content   True if stdin holds anything besides whitespace and HTML
+# comments - i.e. somebody wrote something beyond the template.
+has_content() { strip_comments | grep -q '[^[:space:]]'; }
+
+# has_pasted_output   True if stdin contains a fenced or indented block, which
+# is what a pasted command output looks like in a story file. It cannot tell
+# real output from prose in a fence, and does not try: it separates "here is
+# what happened" from "trust me, it happened", which is the distinction the
+# non-negotiables are actually about.
+has_pasted_output() { strip_comments | grep -qE '^[[:space:]]*(```|~~~)|^    [^[:space:]]'; }
 
 # story_field <file|-> <key>   A frontmatter value.
 story_field() { frontmatter_value "$1" "$2"; }   # lib.sh
@@ -207,5 +219,28 @@ case "$story_type" in
       problem "story $sid: ## Handoff is empty. It is the only channel to the next agent; RED is not finished without it."
     fi ;;
 esac
+
+# 3g. A corrected test was observed to fail too
+#
+# The first non-negotiable is a property of an ASSERTION, not of a phase: a
+# test that has never been seen to fail is not a test. An ordinary RED
+# discharges it as a side effect, because the implementation does not exist
+# yet. A test corrected on a RETURN cannot: the implementation is right there,
+# so the corrected assertion passes on its first execution and passes forever,
+# and it could assert nothing at all without anything noticing.
+#
+# That is why a return to RED has to leave evidence behind - the red from a
+# deliberate, reverted mutation, or a before/after measurement where the defect
+# was cost. Prose describing either is not either. The same rule already
+# applies to ## Gate probes, and for the same reason.
+for sec in Regressions "Gate probes"; do
+  body="$(section "$sfile" "$sec")"
+  printf '%s\n' "$body" | has_content || continue
+  if printf '%s\n' "$body" | has_pasted_output; then
+    ok "## $sec carries pasted output"
+  else
+    problem "story $sid: ## $sec describes something without showing it. Paste the output - the failure a reverted mutation produced, or the before/after measurement taken under the gate command. A test corrected while the implementation exists has never been observed to fail, and a description of red is not red."
+  fi
+done
 
 exit $fail

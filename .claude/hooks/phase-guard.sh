@@ -45,6 +45,18 @@ working around the lock:  bash scripts/phase.sh set ${STORY_ID:-<id>} <PHASE>"
   return 0
 }
 
+# decline <token>   A parse the guard does not believe. It notes the token in
+# .claude/state/phase-guard-declined.log and allows the command: a denial
+# nobody can act on costs more than the write it might have caught, and the
+# note is what turns "the guard is noisy" into a bug report with a token in it.
+# Machine-local, like the rest of .claude/state, and never fatal - a hook that
+# cannot write its own note still has to let the session continue.
+decline() {
+  printf 'declined %s in %s: implausible target %s\n' "${STORY_ID:-none}" "$PHASE" "$1" \
+    >> "$HARNESS_ROOT/.claude/state/phase-guard-declined.log" 2>/dev/null || true
+  return 0
+}
+
 case "$TOOL" in
   Write|Edit|MultiEdit|NotebookEdit)
     check_path "$(json_get_string file_path || true)"
@@ -61,6 +73,13 @@ case "$TOOL" in
     MASKED="$(printf '%s' "$CMD" | mask_shell_quotes)"
     # Candidate write targets. Deliberately conservative: we only look at
     # constructs that unambiguously name a destination file.
+    #
+    # Not by leading command. Exempting `grep`, `awk` and friends as "read-only"
+    # is tempting after a run of false positives on them, and it is wrong:
+    # `grep -r export src > src/index.ts` writes, and so does every read-only
+    # tool on the left of a redirect. What those false positives had in common
+    # was quoting, which masking handles, and unparseable output, which
+    # path_is_implausible handles. Neither is a property of the command name.
     CANDIDATES="$(
       {
         printf '%s\n' "$MASKED" | grep -oE '>>?[[:space:]]*[^|&;><[:space:]]+'      | sed -E 's/^>>?[[:space:]]*//'
@@ -78,6 +97,11 @@ case "$TOOL" in
     CWD_PREFIX="$(command_cwd "$MASKED")" || CWD_KNOWN=0
     while IFS= read -r target; do
       [ -z "$target" ] && continue
+      # Judged while still masked: a metacharacter that survives to here was
+      # leaked by the parse rather than quoted by the author. An implausible
+      # token means the parse failed, and a failed parse is inconclusive, not
+      # a violation - see path_is_implausible in lib.sh.
+      if path_is_implausible "$target"; then decline "$target"; continue; fi
       target="$(printf '%s' "$target" | unmask_shell_quotes)"
       # A restored candidate spanning a newline is not a filename; a guard that
       # cannot say what it is looking at does not block. Fail open, as ever.

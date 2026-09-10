@@ -40,10 +40,15 @@ the plain test command and slower again on CI hardware; a test that only just
 fits its timeout here does not fit there.
 
 **RED → GREEN.** Check the `## Handoff: RED -> GREEN` section is filled in; if
-it is not, the RED phase is not finished. Set the phase, then dispatch the
-**feature-developer** subagent with the story path, the handoff, and the test
-command. When it returns, run the tests yourself, then `bash scripts/gates.sh
---fast` — the same admissibility question, now expecting green.
+it is not, the RED phase is not finished. Where the story has negative controls
+— the deliberately broken inputs a threshold has to reject — the handoff must
+carry their **expected values**, not just the fact that they exist: in RED the
+suite failed at import, so no assertion in the file ran and every control is an
+unverified claim. Set the phase, then dispatch the **feature-developer** subagent
+with the story path, the handoff, and the test command, and tell it to confirm
+each recorded control value against the shipped module. When it returns, run the
+tests yourself, then `bash scripts/gates.sh --fast` — the same admissibility
+question, now expecting green.
 
 **GREEN → GATES.** Set the phase and run `bash scripts/gates.sh`. It writes
 its own summary into the story's `## Gate results`; never paste or edit one.
@@ -86,13 +91,18 @@ and may well be correct:
 - The **test-developer**'s remit is the defective test and nothing else. Source
   is frozen again by the lock, which is correct — do not treat that as a signal
   to change phase.
-- "Watch it fail" often does not apply, because the code that would make it fail
-  no longer exists to be absent. Two substitutes, and one of them is required:
-  **probe** the corrected test by breaking what it guards, watching it go red,
-  and reverting (this is `## Gate probes` applied to a test); or, where the
-  defect was about *cost* rather than correctness — a test too slow for its
-  timeout under instrumentation — record the before and after measurement under
-  the gate command, not the plain test command. Either goes in `## Regressions`.
+- "Watch it fail" cannot apply, because the code whose absence would make it
+  fail is no longer absent — so it is replaced, not waived. The corrected
+  assertion passes on its first execution and every one after, whether or not it
+  asserts anything, and one of these two is required before the phase ends:
+  **probe** it by mutating the *specific* production behaviour the test claims
+  to pin, watching that one assertion go red, and reverting (this is
+  `## Gate probes` applied to a test); or, where the defect was about *cost*
+  rather than correctness — a test too slow for its timeout under
+  instrumentation — record the before and after measurement under the gate
+  command, not the plain test command. The **output** goes in `## Regressions`,
+  not a description of it: `check-boundaries.sh` refuses a PR whose
+  `## Regressions` or `## Gate probes` shows none.
 - GREEN may then be a genuine no-op: the source is untouched and already passes.
   Verify that yourself by running the suite and the fast gates. Do **not**
   dispatch the feature-developer with nothing to do — an agent given no work
@@ -103,6 +113,17 @@ Rules for you as orchestrator:
 - Change phase only with `bash scripts/phase.sh set $1 <PHASE>`.
 - Verify every subagent claim against the filesystem and a real command run. A
   report of success is a claim.
+- **A claim that the contract itself is wrong — an acceptance criterion, a
+  threshold, a frozen test — you reproduce independently before accepting it:
+  different inputs, and without reusing the subagent's own code.** Running its
+  probe again is not verification. Record the reproduction in the story next to
+  the `## Amendments` or `## Regressions` entry it justifies. This is the exact
+  shape of claim an agent makes when it wants to stop failing — *the
+  specification is wrong, not my work* — and it is also the shape of the two
+  most valuable escalations this harness has seen. Independent reproduction is
+  the only thing that separates them, and it is cheap: a fresh probe on
+  different inputs, or reading the fixture and enumerating the cases the file
+  asserts to show no rule satisfies all of them.
 - Keep the story file current as you go — it is the only thing the next agent
   will see.
 - Stop and ask the user on any product ambiguity. Do not invent scope. A

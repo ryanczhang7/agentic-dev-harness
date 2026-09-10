@@ -44,6 +44,27 @@ exist, not because your assertion is unsatisfied. That is acceptable only for
 the very first test of a new module, and only if the next run - after the module
 exists but is empty - is red for your actual assertion.
 
+It has a second consequence, and it is the one that gets missed: while the file
+does not load, **no assertion in it has run at all**. Tests that take no
+production import - a negative control over a synthetic field, a metric applied
+to a fixture - are as unexecuted as the rest, and they are the tests everything
+else in the suite leans on. A control that silently measures the wrong thing
+makes a threshold look calibrated and prove nothing.
+
+So drive your controls outside the framework while the import is still missing:
+a plain interpreter, a small script, the helper called directly. Write helpers
+so this is possible - a control helper that imports nothing from the source tree
+can be run before the source tree exists. Then put the numbers in the handoff:
+
+| Control | Threshold | Expected | Measured in RED |
+|---|---|---|---|
+| white noise | > 2 continents | 0-1 | 0.6 |
+| single blob | > 2 continents | 1 | 1.0 |
+
+Those numbers are a claim until GREEN runs the same controls against the shipped
+module and confirms them. Say in the handoff that confirming them is GREEN's
+job, because it is the only phase that can.
+
 ## When a test passes the moment you write it
 
 Usually this means the test is theatre, and the rule is to delete it or fix it.
@@ -98,12 +119,19 @@ and is usually correct. The phase lock freezes it again, which is right - do not
 read that as a signal to change phase. Do not "tidy" the implementation while
 you are here; do not add tests for behaviour the story never claimed.
 
-**"Watch it fail" usually cannot apply.** The thing whose absence would make the
-corrected test fail is no longer absent, so the test may be green the moment you
-write it. It earns its place exactly as a green-on-arrival test does:
+**"Watch it fail" cannot apply, so it is replaced, not waived.** The thing whose
+absence would make the corrected test fail is no longer absent, so the corrected
+assertion is green the moment you write it - and stays green forever, whether or
+not it asserts anything. A corrected test that has not been observed to fail is
+not yet a test, exactly as the law says; the only difference is which mechanism
+discharges it. One of these two, before the phase ends:
 
-- **Probe it.** Break what the test guards, watch it go red, revert. Prefer
-  this. It is the strongest evidence available and it costs a minute.
+- **Probe it.** Mutate the *specific* production behaviour the test claims to
+  pin - not any nearby line - watch that one assertion go red, revert, and
+  confirm `git diff` is clean. Prefer this. It costs a minute, and a mutation
+  that produces one failure with the right name is proof the assertion
+  discriminates rather than merely passes. `check-boundaries.sh` refuses a PR
+  whose `## Regressions` section describes a failure without showing one.
 - **Measure it**, where the defect was cost rather than correctness - a test too
   slow for its timeout. Before and after, taken **under the gate command**, not
   the plain test command. The plain one is the fast one; it is the reason the
