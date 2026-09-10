@@ -126,12 +126,19 @@ not it asserts anything. A corrected test that has not been observed to fail is
 not yet a test, exactly as the law says; the only difference is which mechanism
 discharges it. One of these two, before the phase ends:
 
-- **Probe it.** Mutate the *specific* production behaviour the test claims to
-  pin - not any nearby line - watch that one assertion go red, revert, and
-  confirm `git diff` is clean. Prefer this. It costs a minute, and a mutation
-  that produces one failure with the right name is proof the assertion
-  discriminates rather than merely passes. `check-boundaries.sh` refuses a PR
-  whose `## Regressions` section describes a failure without showing one.
+- **Probe it**, with `scripts/mutate.sh` - which is allowed in RED precisely
+  because it puts the file back and checks that it did:
+
+      bash scripts/mutate.sh src/camera.ts 's/Math.min(90/Math.min(900/' \
+        -- pnpm exec vitest run tests/camera.test.ts
+
+  Mutate the *specific* production behaviour the test claims to pin - not any
+  nearby line - watch that one assertion go red, and let the script restore and
+  verify. Prefer this. It costs a minute, and a mutation that produces one
+  failure with the right name is proof the assertion discriminates rather than
+  merely passes. `check-boundaries.sh` refuses a PR whose `## Regressions`
+  section describes a failure without showing one. Do **not** reach for `sed -i`
+  to do this: source is frozen in RED, and that is working around the lock.
 - **Measure it**, where the defect was cost rather than correctness - a test too
   slow for its timeout. Before and after, taken **under the gate command**, not
   the plain test command. The plain one is the fast one; it is the reason the

@@ -42,6 +42,18 @@ One page, written for someone setting up this project on a fresh machine:
 Keep it to what this project actually uses. A generic install guide is worse
 than none, because it will not be trusted.
 
+**Every recorded workaround says what was measured and on what.** A workaround is
+evidence, not a decision, and the difference is expensive. One line here read
+"can fail once with `os error 4551` — retry before believing it". That was true
+of a freshly built *test* binary, whose hash changes on every build; the day a
+required gate was blocked it was the package's cached *build script*, which the
+toolchain never rebuilds, so retrying could not possibly help. An orchestrator
+retried six times on the strength of that sentence. Written as evidence —
+"measured 2026-08-14 on a fresh test binary under Smart App Control; a rebuilt
+binary got a new hash and passed" — it would have said, correctly, that it did not
+apply. So: what you saw, on which machine and tool version, what you did, and
+whether it worked. Not a rule.
+
 ## 3. Install
 
 **Do not install anything yourself without asking.** Installing a runtime

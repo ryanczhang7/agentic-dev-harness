@@ -23,6 +23,11 @@
 # summary always means something changed. All three are described in the
 # quality-gates skill.
 #
+# A gate can also be neither: BLOCKED, where the environment would not let the
+# process start at all. That exits 3, stamps RESULT=blocked, and is a decision
+# rather than a defect - see the quality-gates skill, and `blocked-when` in
+# project.conf for a runner that words a launch failure its own way.
+#
 # `slow` lines name the gates a --fast run leaves out. --fast exists so that RED
 # and GREEN can ask the gates whether the tests are even ADMISSIBLE - lint, types,
 # and the instrumented test command they will actually be judged by - without
@@ -71,7 +76,7 @@ ESC=$(printf '\033')
 # --- evidence, floor, waiver and slow tables --------------------------------
 # Read up front, so that --gate <id> still finds its own lines. Stored as
 # "<id><TAB><value>" lines; no associative arrays, for bash 3.2.
-EVIDENCE=""; WAIVERS=""; FLOORS=""; SLOWS=""; CIFACTORS=""; COVERS=""; GATE_IDS=""
+EVIDENCE=""; WAIVERS=""; FLOORS=""; SLOWS=""; CIFACTORS=""; COVERS=""; BLOCKEDWHEN=""; GATE_IDS=""
 GATE_REQ=""   # "<id><TAB>required|optional" per gate, after any story escalation
 while IFS= read -r line; do
   line="${line%%$'\r'}"
@@ -85,7 +90,7 @@ while IFS= read -r line; do
   # line", and a misspelt `floor` id fails the audit outright, but a misspelt
   # `slow` id is silent - the gate it meant to exclude simply stays in --fast.
   [ "$kind" = "gate" ] && { GATE_IDS="$GATE_IDS $tid"; continue; }
-  case "$kind" in evidence|waiver|floor|slow|ci-factor|covers) ;; *) continue ;; esac
+  case "$kind" in evidence|waiver|floor|slow|ci-factor|covers|blocked-when) ;; *) continue ;; esac
   # -f3- so that a regex containing `|` (alternation) survives the split.
   tval=$(trim "$(printf '%s' "$line" | cut -d'|' -f3-)")
   [ -n "$tid" ] || continue
@@ -102,8 +107,35 @@ while IFS= read -r line; do
 " ;;
     covers)   COVERS="$COVERS$tid$TAB$tval
 " ;;
+    blocked-when) BLOCKEDWHEN="$BLOCKEDWHEN$tid$TAB$tval
+" ;;
   esac
 done < "$CONF"
+
+# --- BLOCKED: the environment would not let the gate run --------------------
+# A gate's result used to be a boolean derived from an exit code, and there is a
+# third state that is neither. A required gate failed eight consecutive runs on
+# one machine with `could not execute process ... (never executed) ... An
+# Application Control policy has blocked this file. (os error 4551)` - Windows
+# Smart App Control refusing an unsigned, locally built executable by
+# reputation. Nothing about it was a test failure: the crate was untouched and
+# the same command passed on CI three times the same day. The runner reported
+# FAIL, the Stop hook then refused every report with "fix it or move the story
+# back to RED", and neither applied. An hour and a user decision went into
+# inventing a third path the harness had no word for.
+#
+# These patterns describe a process that never STARTED. They are deliberately
+# not "anything that looks environmental": a compile error, a missing module, a
+# failing assertion are all the gate doing its job. A project whose runner
+# reports a launch failure differently adds its own:
+#
+#     blocked-when | integration | emulator device offline
+#
+# BLOCKED is not a pass. The run still exits non-zero (3, distinct from 1) and
+# still needs a decision - it just names the decision correctly. That also
+# bounds the cost of a misclassification: a real failure mistaken for a block
+# still stops the story.
+BLOCKED_DEFAULT='could not execute process|\(never executed\)|os error 4551|Application Control policy has blocked|cannot execute binary file|error while loading shared libraries|command not found|[^[:space:]]+/[^[:space:]:]+: Permission denied'
 
 # A typo in --gate ran nothing and reported "All required gates passed (0
 # ran)", exit 0. Nothing to run is not a pass.
@@ -192,7 +224,7 @@ if [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
   STORY_REQUIRES=" $(frontmatter_list "$STORY_FILE" required_gates) "
 fi
 
-fails=0; warns=0; known=0; unconfigured=0; ran=0; noevidence=0; skipped=""
+fails=0; warns=0; known=0; unconfigured=0; ran=0; noevidence=0; blocked=0; skipped=""
 results=""
 
 while IFS= read -r line; do
@@ -252,6 +284,9 @@ while IFS= read -r line; do
       [ "$cid" = "$id" ] && printf '%-12s %-9s %-6s covers:   %s\n' "" "" "" "$cglob"
     done <<< "$COVERS"
     [ -n "$waiver" ] && printf '%-12s %-9s %-6s waiver:   %s\n' "" "" "" "$waiver"
+    while IFS="$TAB" read -r bid bpat; do
+      [ "$bid" = "$id" ] && printf '%-12s %-9s %-6s blocked-when: %s\n' "" "" "" "$bpat"
+    done <<< "$BLOCKEDWHEN"
     [ "$is_slow" = 0 ] && printf '%-12s %-9s %-6s slow:     %s (left out of --fast)\n' "" "" "" "${slowwhy:-no reason given}"
     [ -n "$escalated" ] && printf '%-12s %-9s %-6s optional for the repo,%s\n' "" "" "" "$escalated"
     continue
@@ -384,6 +419,16 @@ while IFS= read -r line; do
   outcome=pass; why=""; observed=""
   if [ "$rc" -ne 0 ]; then
     outcome=fail
+    # Did it fail, or did it never start? Asked only of a gate that already
+    # exited non-zero, and only against patterns describing a process that
+    # could not be launched.
+    blockpat="$BLOCKED_DEFAULT"
+    extra=$(table_lookup "$BLOCKEDWHEN" "$id") || extra=""
+    [ -n "$extra" ] && blockpat="$blockpat|$extra"
+    if clean_log "$log" | grep -Eq -- "$blockpat"; then
+      outcome=blocked
+      why="could not launch: $(clean_log "$log" | grep -Eom1 -- "$blockpat" | head -1)"
+    fi
   elif [ "$exp" != "<none>" ] && [ "$exp" != "-" ] && ! clean_log "$log" | grep -Eq -- "$exp"; then
     outcome=noevidence
     why="ran but produced no evidence of work: expected /$exp/"
@@ -432,6 +477,17 @@ while IFS= read -r line; do
       else
         results="$results\nWARN         $id (${dur}s, exit $rc, optional) -> $logrel"; warns=$((warns+1))
       fi ;;
+    blocked)
+      # An OPTIONAL gate the environment blocked is nobody's decision: it was
+      # never going to stop the story. Only a required one opens the third path.
+      if [ "$req" = "required" ]; then
+        results="$results\nBLOCKED      $id$escalated (${dur}s, exit $rc, $why) -> $logrel"
+        blocked=$((blocked+1))
+      elif [ -n "$waiver" ]; then
+        results="$results\nKNOWN        $id (${dur}s, $why; $waiver) -> $logrel"; known=$((known+1))
+      else
+        results="$results\nWARN         $id (${dur}s, $why, optional) -> $logrel"; warns=$((warns+1))
+      fi ;;
   esac
 done < "$CONF"
 
@@ -455,6 +511,18 @@ if [ "$AUDIT" = 1 ]; then
       *) printf 'FAIL %-12s a `ci-factor` line names no configured gate\n' "$cid"; fails=$((fails+1)) ;;
     esac
   done <<< "$CIFACTORS"
+  # A blocked-when line is what makes BLOCKED reachable for a runner whose
+  # launch failures the built-in patterns do not describe. One naming no gate
+  # never fires; one with no pattern would match every line of every log and
+  # turn every failure into a block, which is the opposite of the point.
+  while IFS="$TAB" read -r bid bpat; do
+    [ -n "$bid" ] || continue
+    case " $GATE_IDS " in
+      *" $bid "*) ;;
+      *) printf 'FAIL %-12s a `blocked-when` line names no configured gate\n' "$bid"; fails=$((fails+1)); continue ;;
+    esac
+    [ -n "$bpat" ] || { printf 'FAIL %-12s a `blocked-when` line has no pattern\n' "$bid"; fails=$((fails+1)); }
+  done <<< "$BLOCKEDWHEN"
   # A covers line naming no gate covers nothing; an empty glob covers nothing
   # while looking like it covers everything.
   while IFS="$TAB" read -r cid cglob; do
@@ -570,13 +638,27 @@ if [ "$warns" -gt 0 ]; then
   printf '  waiver | <id> | <why this optional gate is expected to fail, and where that is recorded>\n'
 fi
 
+# FULL says whether this was a whole run. The Stop hook decides from this stamp
+# whether a phase's gate obligation has been met, and `--fast`, `--gate` and
+# `--required` all write it too - so without the line a `--gate unit` could
+# discharge GATES, whose entire job is the full suite.
+FULLRUN=yes
+{ [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ]; } && FULLRUN=no
+
 if [ "$fails" -gt 0 ]; then
-  result="fail ($fails required gate(s) failed)"
-  printf 'RESULT=fail\nWHEN=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STAMP"
+  result="fail ($fails required gate(s) failed$([ "$blocked" -gt 0 ] && printf ', %d blocked' "$blocked"))"
+  printf 'RESULT=fail\nWHEN=%s\nFULL=%s\nBLOCKED=%d\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$FULLRUN" "$blocked" > "$STAMP"
+elif [ "$blocked" -gt 0 ]; then
+  # Not a pass and not a failure: the machine refused to run a required gate,
+  # so the story has no verdict on it and needs one from somewhere else.
+  result="blocked ($blocked required gate(s) could not run; $ran ran, $unconfigured unconfigured, $known known)"
+  printf 'RESULT=blocked\nWHEN=%s\nFULL=%s\nBLOCKED=%d\nRAN=%d\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$FULLRUN" "$blocked" "$ran" > "$STAMP"
 else
   result="pass ($ran ran, $unconfigured unconfigured, $known known)"
-  printf 'RESULT=pass\nWHEN=%s\nRAN=%d\nUNCONFIGURED=%d\nNOEVIDENCE=%d\nKNOWN=%d\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ran" "$unconfigured" "$noevidence" "$known" > "$STAMP"
+  printf 'RESULT=pass\nWHEN=%s\nFULL=%s\nRAN=%d\nUNCONFIGURED=%d\nNOEVIDENCE=%d\nKNOWN=%d\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$FULLRUN" "$ran" "$unconfigured" "$noevidence" "$known" > "$STAMP"
 fi
 
 if [ "$FAST" = 1 ]; then
@@ -605,10 +687,24 @@ else
   fi
 fi
 
+if [ "$blocked" -gt 0 ]; then
+  printf '\n%d required gate(s) could not run: the environment refused to launch them.\n' "$blocked"
+  printf 'This is not a failure and not a pass. Do not retry on a hunch and do not\n'
+  printf 'treat it as a code defect - read the log, then take the third path:\n'
+  printf '  1. Record it in the story as a PO decision: which gate, the quoted log line,\n'
+  printf '     and what makes this the environment rather than the code.\n'
+  printf '  2. The story may reach REVIEW with that gate marked *pending CI*.\n'
+  printf '  3. It may not reach DONE until the PR CI log for that gate is quoted in\n'
+  printf '     ## Gate results. CI is a different machine; that is the whole point.\n'
+  printf 'If the block is a missing tool rather than a policy, bash scripts/doctor.sh\n'
+  printf 'and docs/wiki/environment.md are where that gets fixed and written down.\n'
+fi
+
 if [ "$fails" -gt 0 ]; then
   printf '\n%d required gate(s) failed.\n' "$fails"
   exit 1
 fi
+if [ "$blocked" -gt 0 ]; then exit 3; fi
 printf '\nAll required gates passed (%d ran, %d unconfigured, %d known).\n' "$ran" "$unconfigured" "$known"
 if [ "$FAST" = 0 ] && [ -z "$ONLY" ] && [ "$REQUIRED_ONLY" = 0 ]; then
   printf 'CI runs one more script that this does not: bash scripts/check-boundaries.sh\n'

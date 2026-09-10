@@ -47,9 +47,19 @@ approval between phases is exactly when they get quietly reordered:
   escalation and a plausible excuse for not failing.
 - **A mutation table in the handoff is a claim until you run one.** When RED
   says the suite discriminates, pick a mutation it predicts a count for — the
-  one whose predicted catch is a single assertion, for preference — run it
-  against the committed implementation, compare the count, restore the file
-  byte-for-byte and confirm green. Unattended is when this gets skipped too.
+  one whose predicted catch is a single assertion, for preference — run it with
+  `bash scripts/mutate.sh <file> '<expression>' -- <test command>`, which
+  restores the file and verifies the restore, then compare the count and confirm
+  green. Unattended is when this gets skipped too, and when a hand-rolled
+  `sed -i` leaves a mutation in the tree.
+- **A required gate that reports `BLOCKED` (exit 3) is one of the reasons to
+  stop and ask.** The environment would not let it start, so it has no verdict;
+  do not retry it on a hunch, and do not treat it as a code defect. The path —
+  a PO decision recorded in the story, REVIEW with the gate *pending CI*, DONE
+  only once the PR's CI log for it is quoted — is in `/advance-story`.
+- **PLANNED → RED pins the `## Contract` and lists the callers of every changed
+  signature.** RED cannot find those callers itself: the old signature still
+  exists during RED, so they still compile and never appear in its typecheck.
 - **PLANNED → RED names the required gate that would fail if the artifact
   broke.** If only an optional gate can, `required_gates` gets it before the
   phase moves. Every required gate once passed over a story none of them had
@@ -58,7 +68,10 @@ approval between phases is exactly when they get quietly reordered:
 Stop and ask the user only when:
 
 - an acceptance criterion is ambiguous and the readings lead to different code;
-- a required gate fails in a way that needs a product decision;
+- a required gate fails in a way that needs a product decision, or reports
+  `BLOCKED` for anything other than a tool you can install;
+- the epic's done-when needs something no story so far delivers, so this story
+  has to close the gap;
 - the tests turn out to be wrong, so the story must return to RED;
 - the story is bigger than one cycle and needs splitting;
 - something outside the story is broken and fixing it would exceed this scope.

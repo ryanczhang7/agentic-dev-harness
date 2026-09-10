@@ -182,4 +182,89 @@ commit_all "T-1 review"
 out="$(boundaries)"
 assert_contains "changed criteria with no amendment" "## Acceptance criteria differ from main" "$out"
 
+
+# ---------------------------------------------------------------------------
+describe "a BLOCKED gate can reach REVIEW, but only with the decision written down"
+
+# H16's third state. A required gate that the environment would not launch has
+# no verdict: it neither passed nor failed. The story may go to REVIEW with that
+# gate pending CI, because CI is a different machine under a different policy -
+# and it may not go to DONE until CI has actually run it. Before this, the
+# recorded result had to start with "pass", so the path the loop now prescribes
+# was one CI would have refused.
+#
+# The record has to be a real one: gates.sh writes the marker and the tree hash,
+# and nothing else can. So the fixture runs it.
+story_blocked() { # <phase> ; body on stdin
+  local phase="$1" extra; extra="$(cat)"
+  git -C "$FIX" checkout -q main 2>/dev/null
+  git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+  git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+  write_conf "$FIX" <<'CONF'
+gate     | unit  | required | . | printf 'Tests  47 passed (47)\n'
+gate     | types | required | . | printf 'error: could not execute process (never executed)\n'; exit 101
+evidence | unit  | Tests +[1-9][0-9]* passed
+evidence | types | Tests +[1-9][0-9]* passed
+CONF
+  mkdir -p "$FIX/docs/backlog/stories"
+  {
+    printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: %s\nbranch: story/T-1-fixture\n---\n\n' "$phase"
+    printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n\n'
+    printf -- '## Notes\n\n%s\n\n## Gate results\n\n' "$extra"
+  } > "$FIX/docs/backlog/stories/T-1.md"
+  # project.conf is code the gate hash covers, so it is committed BEFORE the run.
+  commit_all "T-1 conf"
+  ( cd "$FIX" && bash scripts/gates.sh --story T-1 >/dev/null 2>&1 )
+  commit_all "T-1 $phase"
+}
+
+story_blocked REVIEW <<'EOF'
+1. PO decision: the `types` gate is BLOCKED here, not failing - Smart App Control
+   refuses the locally built binary by reputation (os error 4551), the branch does
+   not touch it, and the same command passes elsewhere. Marking types pending CI.
+EOF
+out="$(boundaries)"
+assert_contains "a blocked gate at REVIEW with the decision recorded" "recorded gate result: blocked" "$out"
+assert_contains "and the gate is named as pending CI" "types" "$out"
+case "$out" in
+  *"recorded gate result is 'blocked"*) _bad "and it is not refused" "refused anyway: $out" ;;
+  *) _ok "and it is not refused" ;;
+esac
+
+story_blocked REVIEW <<'EOF'
+Ran the gates. One of them did not work on this machine.
+EOF
+out="$(boundaries)"
+assert_contains "a blocked gate with nothing written down is refused" "pending CI" "$out"
+
+story_blocked DONE <<'EOF'
+1. PO decision: types is BLOCKED locally by Smart App Control. Marking it
+   pending CI.
+EOF
+out="$(boundaries)"
+assert_contains "DONE needs more than pending: it needs the CI run" "has not been verified on CI" "$out"
+
+story_blocked DONE <<'EOF'
+1. PO decision: types was BLOCKED locally by Smart App Control (os error 4551).
+2. types passed on CI: https://github.com/o/r/actions/runs/412 - "Tests 47 passed".
+EOF
+out="$(boundaries)"
+assert_contains "DONE with the CI run quoted is accepted" "verified on CI" "$out"
+
+# The distinction has to cut both ways: an ordinary failure is still refused.
+story_blocked REVIEW <<'EOF'
+1. types is pending CI.
+EOF
+write_conf "$FIX" <<'CONF'
+gate     | unit  | required | . | printf 'Tests  47 passed (47)\n'
+gate     | types | required | . | printf 'error TS2322: Type string is not assignable to number\n'; exit 2
+evidence | unit  | Tests +[1-9][0-9]* passed
+evidence | types | Tests +[1-9][0-9]* passed
+CONF
+commit_all "T-1 conf ordinary failure"
+( cd "$FIX" && bash scripts/gates.sh --story T-1 >/dev/null 2>&1 )
+commit_all "T-1 review failing"
+out="$(boundaries)"
+assert_contains "a recorded failure is still refused" "recorded gate result is 'fail" "$out"
+
 summary "boundaries"

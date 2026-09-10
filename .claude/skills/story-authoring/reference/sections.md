@@ -23,6 +23,25 @@ first and needs orientation, not history.
 
 Numbered, observable, testable. See the main skill file.
 
+## Contract - Lead PO before RED, amendable by RED
+
+The shape the story will be built in, written before RED so that RED and GREEN
+cannot each pick a different one: module paths and exported names, exact
+signatures, the semantics behind every number, the accessible markup, the oracle
+partition, and any baseline measurement the story may read out rather than
+re-derive (with what it was measured on).
+
+**RED may amend any block, in place, with a reason**, and GREEN builds what the
+amended block says. That is where the value showed up: seventeen amendments in one
+story, two of them design traps GREEN would have hit late. This section does not
+inherit the criteria's freeze - the criteria say what must be true and change only
+through `## Amendments`; this says how, and RED is expected to sharpen it.
+
+It also carries the caller list for every existing export whose signature the
+story changes, source and test, grep-listed before dispatch. RED cannot derive
+that list: during RED the old signature still exists, so its callers still
+compile and do not appear in RED's typecheck. See the main skill file.
+
 ## Amendments - Lead PO, with the user
 
 Acceptance criteria are frozen once the story leaves PLANNED. If one is wrong or
@@ -43,6 +62,14 @@ End it with a success condition that could come out either way, and record the
 **verdict** against that condition when the phase ends, with evidence. The
 verdict is the part that gets skipped, and a model choice with no verdict is
 folklore: nobody can argue with it and nobody can undo it.
+
+Record the **resolved model** of every dispatch by name, never the word
+"default". Agent definitions under `.claude/agents/` carry a `model:` field so
+the choice is a fact of the harness, but a session setting or an explicit
+override can still win, and the orchestrator cannot see which did unless it
+writes it down. Two stories once compared "the default model" against a stronger
+one and neither could say what the default resolved to - so the experiment may
+have been the stronger model against itself, and the verdict rests on nothing.
 
 Carry the **oracle partition** here too - which criteria are settled and to be
 read out, which are oracle-free and want an invented metric with a negative

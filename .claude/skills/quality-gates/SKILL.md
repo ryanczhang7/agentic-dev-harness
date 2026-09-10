@@ -81,6 +81,36 @@ test command changes.
 timeout** under local instrumentation. 4,275 ms against a 5,000 ms default is
 not a pass; it is a pending failure on hardware you do not control.
 
+### Hooks have their own timeout, and a GPU hides the cost in teardown
+
+Everything above is about `it` blocks and about CPU. Both gaps have now cost a
+story its REVIEW.
+
+A story reached REVIEW with a green CI run. The next CI run, on a **docs-only
+commit with identical code**, failed a required gate; so did the one after:
+`Hook timed out in 30000ms`. The test that panned and zoomed a 100,000-cell
+world carried its own 60 s budget, and so did the `beforeAll` and `beforeEach`
+that built and mounted it - RED had sized all three from measurement. The
+`afterEach` that destroyed the map carried none, so it had the framework's
+30 s default, and it took just over that.
+
+- **Every hook in a file that owns a test timeout gets a budget too**, sized
+  from the same measurement. A file with a 60 s test and a default-timeout
+  `afterEach` has a 30 s hole in it, and the hole is invisible until the day it
+  is not.
+- **For a test that drives a GPU, the cost is in teardown, not in your step
+  timer.** That run reported a step mean of 0.27 ms; the 90 frames it queued
+  were rasterised by the runner's software GL when the context was torn down, at
+  roughly 300 ms a frame. Locally, on a real GPU, the whole file ran in five
+  seconds and there was nothing to see - so the per-test CI factor above does
+  not transfer, because the deferred cost is *zero* on the machine you measure
+  it on. Either end the measured sequence with `gl.finish()` so the number means
+  what it says, or budget the teardown from a CI log rather than a local one.
+- **A CI pass within 10 % of a limit is a pending failure.** The green run
+  cleared the 30 s default by three seconds, and that margin was the whole
+  story. Read the hook and test timings out of the *first* CI log before calling
+  the PR green.
+
 **And the first question about a slow test is "is the cost in the helper?"** -
 because "make the test faster" must never become "weaken the test". In the case
 above the cost was entirely in a test helper doing a brute-force nearest-site
@@ -262,6 +292,56 @@ Waivers are refused on required gates - that would be a bypass with a nicer
 name. Leaving a gate unconfigured is not an alternative: a required gate with
 no command fails once `BOOTSTRAPPED=yes`, deliberately.
 
+## BLOCKED: the gate the machine would not run
+
+A gate's result used to be a boolean derived from an exit code, and there is a
+third state that is neither pass nor fail: **the environment would not let the
+gate start.** A required gate failed eight consecutive runs on one machine with
+
+    error: failed to run custom build command for `fantasy-world-builder v0.1.0`
+    Caused by: could not execute process `...build-script-build` (never executed)
+    Caused by: An Application Control policy has blocked this file. (os error 4551)
+
+which is Windows Smart App Control refusing an unsigned, locally built
+executable by reputation. The crate was untouched on the branch, and the same
+command passed on CI three times the same day. Reported as FAIL, it produced six
+pointless retries, a Stop hook that offered only "fix it or move the story back
+to RED" - neither of which applied - and an hour spent inventing a third path.
+
+`gates.sh` now recognises the shapes that mean *this process never started* and
+reports `BLOCKED`, with `RESULT=blocked` in the stamp and **exit 3**, distinct
+from a failure's 1. A runner that says it differently gets a `blocked-when` line
+in `project.conf`. What BLOCKED is *not* is a pass: the run is still non-zero and
+the story still has no verdict on that gate.
+
+The path, when a required gate is BLOCKED:
+
+1. **Read the log before theorising, and do not retry on a hunch.** Retrying
+   helps only where the blocked file is rebuilt with a different hash. In that
+   story the blocked file was the package's *cached build script*, which cargo
+   never rebuilds, so six retries could not have worked - and deleting the cache
+   rebuilt a byte-identical binary. What sent the orchestrator down that road was
+   a line in `environment.md` recording a *measurement* as a *rule*: "can fail
+   once with os error 4551 - retry before believing it", true of a fresh test
+   binary and false of this. A recorded workaround states **what was measured and
+   on what**, or it costs more than it saves.
+2. If the block is a **missing or unrunnable tool** rather than a policy, that is
+   `scripts/doctor.sh` and `docs/wiki/environment.md`, and it is fixable.
+3. Otherwise it is a **PO decision recorded in the story's `## Notes`** - not in
+   `## Gate results`, which `gates.sh` rewrites on every run: which gate, the log
+   line quoted, and what makes this the environment and not the code (the branch
+   does not touch what the gate builds; the same command passed elsewhere). One
+   line of it carries **the gate id and the words `pending CI`** together.
+4. The story **may reach REVIEW**. `check-boundaries.sh` accepts a recorded result
+   of `blocked` there when that line exists, and refuses it when it does not.
+5. The story **may not reach DONE** until the PR's CI run for that gate is quoted
+   in `## Notes`, on a line carrying **the gate id and the run URL**. CI is a
+   different machine under a different policy, which is the entire reason this
+   path exists rather than a waiver, and `check-boundaries.sh` enforces it.
+
+Never reach for a waiver here: waivers are for optional gates, and an
+environment-blocked required gate has not been verified by anything yet.
+
 ## The gate record is written by the tool
 
 A full run of `gates.sh` writes its own summary into the active story's
@@ -311,6 +391,10 @@ probe before moving on, and say in the story that you did.
    the rule itself is wrong, and it is recorded in the story.
 4. If a gate failure means a **test** is wrong, the story returns to RED. Say so
    and record why.
+
+4b. If the gate reported `BLOCKED` it did not run, and neither rule 2 nor rule 4
+   applies. Take the path in "BLOCKED: the gate the machine would not run"
+   above. Do not retry it six times, and do not paper over it with a waiver.
 
 5. A gate that fails because it produced no evidence of work is **not** fixed by
    deleting its `evidence` line. Fix the command so it does the work, or - if

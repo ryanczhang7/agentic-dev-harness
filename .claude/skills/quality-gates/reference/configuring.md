@@ -17,18 +17,28 @@ fail gets a waiver naming why:
 A waiver turns that gate's failure from `WARN` into `KNOWN` so that `WARN`
 always means something changed. It is refused on required gates.
 
-Four more kinds, each explained in the skill and in `project.conf`'s own
+Five more kinds, each explained in the skill and in `project.conf`'s own
 comments:
 
-    floor     | <gate id> | <minimum count read out of the evidence match>
-    slow      | <gate id> | <why it is too slow for gates.sh --fast>
-    covers    | <gate id> | <glob of the paths this gate actually reads>
-    discovery | <id> | <cwd> | <command proving a runner can see a directory>
+    floor        | <gate id> | <minimum count read out of the evidence match>
+    slow         | <gate id> | <why it is too slow for gates.sh --fast>
+    covers       | <gate id> | <glob of the paths this gate actually reads>
+    discovery    | <id> | <cwd> | <command proving a runner can see a directory>
+    blocked-when | <gate id> | <regex meaning this runner could not START>
 
 `floor` catches a gate that quietly started doing much less; `slow` names what
 `--fast` leaves out, reason required; `covers` is what lets `gates.sh` fail a
 run whose changed source only optional gates read; `discovery` lines are run
 by `doctor.sh`, never by the gates, and are how a `covers` line is proved.
+
+`blocked-when` extends the built-in list of shapes that mean the environment
+would not launch the gate - `could not execute process`, `never executed`, `os
+error 4551`, `cannot execute binary file`, `command not found`, a Permission
+denied on a path - so that such a gate reports `BLOCKED` (exit 3) rather than
+FAIL. Add one only for a launch failure your runner words differently. A compile
+error, a missing module and a failed assertion are the gate doing its job, and a
+pattern that catches them turns real failures into decisions nobody makes.
+`--audit` refuses a line naming no gate, and one with no pattern.
 
 Once CI has run a gate for real, record how much slower one test is there:
 

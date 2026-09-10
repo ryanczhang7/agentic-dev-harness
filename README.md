@@ -226,6 +226,7 @@ bash scripts/gates.sh --gate unit  # one
 bash scripts/gates.sh --audit      # check the manifest, run nothing
 bash scripts/check-boundaries.sh   # the other half of CI: the commit, not the code
 bash scripts/task.sh dev           # run the app
+bash scripts/mutate.sh F 'EXPR' -- CMD   # a diagnostic mutation, restored and verified
 ```
 
 The `evidence` lines exist because **exit 0 does not mean a gate did anything**.
@@ -275,9 +276,15 @@ committed frontmatter and checks the gate record against the tree being merged,
 neither of which exists yet while the gates are running. Run it after committing
 and before opening the PR.
 
-Two more things `gates.sh` does that a plain test runner does not. A `waiver`
+Three more things `gates.sh` does that a plain test runner does not. A `waiver`
 line names an optional gate that is known to fail and why, so it reports as
-`KNOWN` and `WARN` stays reserved for something that changed. And a full run
+`KNOWN` and `WARN` stays reserved for something that changed. A gate the
+*environment* refused to launch — a policy blocking an unsigned local binary, a
+missing runtime — reports `BLOCKED` and exits 3, because "the machine would not
+run it" is neither a pass nor a failure, and reporting it as a failure sends an
+orchestrator hunting a defect that is not there. A BLOCKED required gate is a
+recorded decision, REVIEW with that gate *pending CI*, and DONE only once the
+PR's CI run for it is quoted. And a full run
 writes its own summary into the story's `## Gate results`, stamped with the
 commit and a hash of the code it ran against; nobody pastes it, and
 `check-boundaries.sh` refuses a PR whose recorded run does not match the code
@@ -287,9 +294,13 @@ requires a scaffold story to name every source file it wrote, and requires
 `## Regressions` and `## Gate probes` to *show* the failure they claim rather
 than describe it — a corrected test runs for the first time against code that
 already satisfies it, so pasted red from a reverted mutation is the only thing
-separating it from an assertion that checks nothing. `phase.sh`
-refuses to start a story whose `depends_on` are not DONE or from the wrong
-branch.
+separating it from an assertion that checks nothing. That mutation goes through
+`mutate.sh`, which is allowed in every phase — including the one that freezes
+source — precisely because it restores the file and checks with `cmp` that it
+did; the harness demanded such a mutation for several stories before it provided
+a way to make one, and every agent quietly reached for `sed -i` instead.
+`phase.sh` refuses to start a story whose `depends_on` are not DONE or from the
+wrong branch.
 
 That indirection is what lets the same agents drive a Python service, a
 TypeScript app and a Godot game. `.claude/skills/stack-profiles/` holds command
