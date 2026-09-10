@@ -35,6 +35,30 @@
 
 TAB="$(printf '\t')"
 
+# The tools a `no` row must be denied to. Add one here and every `no` row needs a
+# matching rule; that is the point, so this list is short and each entry is a
+# decision.
+#
+#   Write, Edit    the two that exist in every build and can write any file.
+#   MultiEdit      BELONGS HERE, and is missing because no rule names it yet.
+#                  It can edit arbitrary text files where it exists, and the
+#                  phase lock is no fallback: paths.conf classifies
+#                  `.claude/state/**` as `harness` (first matching rule,
+#                  `.claude/**`) and phases.conf lets every phase write
+#                  `harness`, so settings.json is the ONLY protection these two
+#                  files have. It could not be probed on this build - MultiEdit
+#                  does not exist here - but settings.json's own PreToolUse
+#                  matcher lists it, so the harness already expects builds that
+#                  have it. Once the four rules exist, add MultiEdit to this
+#                  string and the suite starts enforcing them.
+#   NotebookEdit   deliberately absent. It refuses anything that is not a
+#                  `.ipynb` before any permission check runs (probed), and
+#                  nothing under .claude/state/ is a notebook - phase.sh,
+#                  gates.sh, mutate.sh and the guard all write plain text. A rule
+#                  for it would be dead weight, and a rule nobody can justify is
+#                  one somebody widens back to a glob.
+TOOLS="Write Edit"
+
 # rows <readme>   "<path><TAB><yes|no>" per table row.
 rows() {
   awk -F'|' '
@@ -64,10 +88,11 @@ problems() {
     esac
   done <<< "$r"
 
-  # 2. Forwards: a `no` row is denied for both tools, a `yes` row for neither.
+  # 2. Forwards: a `no` row is denied for every tool in $TOOLS, a `yes` row for
+  #    none of them.
   while IFS="$TAB" read -r path editable; do
     [ -n "$path" ] || continue
-    for tool in Write Edit; do
+    for tool in $TOOLS; do
       rule="\"$tool(./.claude/state/$path)\""
       if grep -qF -- "$rule" "$settings"; then has=1; else has=0; fi
       if [ "$editable" = "no" ] && [ "$has" = 0 ]; then
@@ -81,8 +106,14 @@ problems() {
   # 3. Backwards, and this is the one that catches a re-widened glob: a rule
   #    naming `**`, or a path the README never mentions, is a rule whose reason
   #    has been lost. That is how the directory came to be denied wholesale.
-  denied="$(grep -oE '"(Write|Edit)\(\./\.claude/state/[^)]*\)"' "$settings" \
-    | sed -E 's/^"(Write|Edit)\(\.\/\.claude\/state\///; s/\)"$//' | sort -u)"
+  # The tool alternation is built from $TOOLS rather than written out, so that
+  # adding a tool to that list also makes this direction see its rules. Written
+  # out, a `MultiEdit(...)` rule for an undocumented path would slip past here
+  # while the forwards check was busy demanding it.
+  local alt
+  alt="$(printf '%s' "$TOOLS" | tr ' ' '|')"
+  denied="$(grep -oE "\"($alt)\\(\\./\\.claude/state/[^)]*\\)\"" "$settings" \
+    | sed -E 's/^"[A-Za-z]+\(\.\/\.claude\/state\///; s/\)"$//' | sort -u)"
   [ -n "$denied" ] || printf 'settings.json denies nothing under .claude/state/\n'
   while IFS= read -r d; do
     [ -n "$d" ] || continue
@@ -114,7 +145,7 @@ describe "the two files that carry evidence stay denied"
 # whether a phase's gate obligation was met, so hand-writing RESULT=pass into it
 # forges exactly what law 3 exists to prevent.
 for f in current-story.env last-gate-run; do
-  for tool in Write Edit; do
+  for tool in $TOOLS; do
     if grep -qF -- "\"$tool(./.claude/state/$f)\"" "$SETTINGS"; then
       _ok "$tool(./.claude/state/$f) is denied"
     else
@@ -215,5 +246,36 @@ assert_contains "and it says which files wanted it" "current-story.env: not hand
 good_settings
 printf 'There used to be a table here.\n' > "$FIX/README.md"
 assert_contains "an unparseable README" "no parseable table" "$(p)"
+
+# $TOOLS is load-bearing, not decoration. This is the migration the header
+# describes: the day MultiEdit rules are added, putting the tool in that list is
+# what starts enforcing them - and until the rules exist, doing so fails loudly
+# rather than quietly passing. Asserted here so the instruction is verified
+# instead of aspirational.
+good_settings; good_readme
+out="$(TOOLS="Write Edit MultiEdit" p)"
+assert_contains "adding a tool demands rules for it" \
+  'current-story.env: not hand-editable, but settings.json has no "MultiEdit' "$out"
+assert_contains "for every protected file" \
+  'last-gate-run: not hand-editable, but settings.json has no "MultiEdit' "$out"
+assert_eq "and the shipped list does not demand it yet" "" "$(p)"
+
+# And the backwards direction sees the tools in that list too, which is why the
+# alternation is built from it. Hardcoded, a rule for an undocumented path under
+# a third tool would slip past here while the forwards check demanded it.
+good_readme
+cat > "$FIX/settings.json" <<'EOF'
+{ "permissions": { "deny": [
+  "Write(./.claude/state/current-story.env)",
+  "Edit(./.claude/state/current-story.env)",
+  "MultiEdit(./.claude/state/current-story.env)",
+  "Write(./.claude/state/last-gate-run)",
+  "Edit(./.claude/state/last-gate-run)",
+  "MultiEdit(./.claude/state/last-gate-run)",
+  "MultiEdit(./.claude/state/mystery)"
+] } }
+EOF
+assert_contains "an undocumented path under a third tool" \
+  "denied path 'mystery' is not in the README table" "$(TOOLS="Write Edit MultiEdit" p)"
 
 summary "settings"

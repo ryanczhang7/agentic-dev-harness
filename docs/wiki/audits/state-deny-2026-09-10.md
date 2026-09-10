@@ -71,6 +71,37 @@ could not be deleted.
 - **Full selftest:** 10 suites, 436 assertions, 0 failures. New this round:
   `settings` (14).
 
+## Which tools the rules cover — the one finding left open
+
+The rules name `Write` and `Edit`, as the glob did before them. Probing that:
+
+- **`NotebookEdit` cannot reach these files, so no rule is wanted.** It refuses
+  anything that is not a `.ipynb` *before* any permission check runs - measured by
+  pointing it at `.claude/state/last-gate-run`, which returned "File must be a
+  Jupyter notebook". Inconclusive about permissions and conclusive about reach:
+  nothing under `.claude/state/` is a notebook, because `phase.sh`, `gates.sh`,
+  `mutate.sh` and the guard all write plain text. A rule for it would be dead
+  weight, and a rule nobody can justify is one somebody widens back to a glob.
+- **`MultiEdit` is a real gap and it is still open.** It does not exist in this
+  build - `ToolSearch` resolves `NotebookEdit` and not `MultiEdit` - so it could
+  not be probed here at all. But it edits arbitrary text files where it does
+  exist, and `settings.json`'s own `PreToolUse` matcher already lists it, so the
+  harness expects builds that have it. **Adding four rules would close it**, and
+  they were not added because the permissions block cannot be edited from here.
+- **The phase lock is not a fallback for either.** `paths.conf` classifies
+  `.claude/state/**` as `harness` on its first matching rule (`.claude/**`), and
+  `phases.conf` lets every phase write `harness`. So the lock permits these files
+  in every phase by design, and `settings.json` is the *only* thing protecting
+  them. That is what makes the tool list worth being exact about rather than
+  approximately right.
+
+The suite carries this as a live migration rather than a comment: `TOOLS="Write
+Edit"` at the top of `settings.test.sh` drives both directions of the check, and a
+case asserts that setting it to `Write Edit MultiEdit` **fails** today with
+`settings.json has no "MultiEdit(...)"` for both protected files. So the day the
+rules are added, putting the tool in that list starts enforcing them, and doing it
+early fails loudly instead of passing quietly.
+
 ## What would have to be true for this to be wrong
 
 - A deny rule's path glob is matched against the path a Bash command writes, and
@@ -89,11 +120,8 @@ could not be deleted.
 
 ## What was not checked
 
-- **Whether `MultiEdit` and `NotebookEdit` are covered.** The rules name `Write`
-  and `Edit` only, as the glob did before. Neither was probed, and a
-  `MultiEdit(...)` deny was not added, so if `MultiEdit` is not implied by
-  `Write` there is a gap - present before this change too, and unmeasured either
-  way.
+- **`MultiEdit` is a real gap, and it is open.** See the finding below; it could
+  not be probed on this build and no rule names it.
 - **`.gitkeep`.** It is tracked, empty, and now editable. Nothing reads it; no
   row was added for it, so the table does not mention it and no rule names it.
   Consistent, but it means the table is not an inventory of the directory - only
