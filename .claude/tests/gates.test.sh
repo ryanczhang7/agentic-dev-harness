@@ -220,6 +220,120 @@ out="$(gates --audit)"
 assert_contains "slow naming no gate fails the audit" "names no configured gate" "$out"
 
 # ---------------------------------------------------------------------------
+describe "covers: is what this story changed exercised by a required gate"
+
+# The failure this exists for: a renderer's tests lived in a browser-only
+# project, that project ran in an `optional` integration gate, and the
+# coverage include skipped the same directory. Each decision was right on its
+# own. Together they put every test of the story's artifact where nothing
+# could block on it, and "All required gates passed" printed underneath.
+# gates.sh could not notice, because nothing said which paths a gate reads.
+# `covers` lines say. Then the story's changed source paths - the diff against
+# main, committed or not - are checked against them after every run.
+
+git -C "$FIX" -c user.email=t@t -c user.name=t branch -M main >/dev/null 2>&1
+git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+mkdir -p "$FIX/src/render" "$FIX/src/core" "$FIX/src/shaders"
+story "$FIX" T-1 GATES <<'EOF'
+EOF
+set_phase "$FIX" GATES
+
+# No covers lines: the check does not exist, and says nothing.
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+printf 'export const m = 1\n' > "$FIX/src/render/mesh.ts"
+out="$(gates)"
+case "$out" in
+  *"changed source"*|*"covers"*) _bad "no covers lines means no check" "spoke anyway: $out" ;;
+  *) _ok "no covers lines means no check" ;;
+esac
+
+# A changed path that only an OPTIONAL gate reads fails the run, and the
+# message names the fix, which is the story's to make.
+write_conf "$FIX" <<'EOF'
+gate     | unit        | required | . | printf 'Tests  47 passed (47)\n'
+gate     | integration | optional | . | printf 'Tests  25 passed (25)\n'
+evidence | unit        | Tests +[1-9][0-9]* passed
+evidence | integration | Tests +[1-9][0-9]* passed
+covers   | unit        | src/core/**
+covers   | integration | src/render/**
+EOF
+out="$(gates)"
+assert_contains "only an optional gate reads it" "FAIL         changes: src/render/mesh.ts is exercised only by optional gate(s): integration" "$out"
+assert_contains "and names the fix"              "required_gates: [integration]" "$out"
+assert_contains "and the run fails"              "required gate(s) failed" "$out"
+
+# The story escalates the gate, and the same change is covered.
+story "$FIX" T-1 GATES <<'EOF'
+required_gates: [integration]
+EOF
+out="$(gates)"
+assert_contains "escalated, it counts as required" "changed source path(s), all exercised by a required gate" "$out"
+assert_contains "and the run passes" "All required gates passed" "$out"
+
+# A change a required gate reads is fine without any escalation.
+story "$FIX" T-1 GATES <<'EOF'
+EOF
+rm -f "$FIX/src/render/mesh.ts"
+printf 'export const c = 1\n' > "$FIX/src/core/thing.ts"
+out="$(gates)"
+assert_contains "a required gate reads it" "1 changed source path(s), all exercised by a required gate" "$out"
+
+# A change NO gate claims is a warning: the manifest may be incomplete, or the
+# file may genuinely be ungated, and only a person can tell which.
+printf 'void main() {}\n' > "$FIX/src/shaders/sky.glsl"
+out="$(gates)"
+assert_contains "no gate claims it" "WARN         changes: src/shaders/sky.glsl is exercised by no gate with a covers line" "$out"
+assert_contains "and the run still passes" "All required gates passed" "$out"
+
+# Committed changes count the same as uncommitted ones: the diff is against
+# main, not against HEAD.
+git -C "$FIX" add -A >/dev/null 2>&1
+git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "story work" >/dev/null 2>&1
+out="$(gates)"
+assert_contains "committed changes are still the story's" "WARN         changes: src/shaders/sky.glsl" "$out"
+
+# Test files are not the artifact; a changed test in a gated directory is not
+# reported even when no covers line names the tests directory.
+rm -f "$FIX/src/shaders/sky.glsl"
+printf 'test("y", () => {})\n' > "$FIX/tests/other.test.ts"
+out="$(gates)"
+case "$out" in
+  *"tests/other.test.ts"*) _bad "a test file is not a changed source path" "reported it: $out" ;;
+  *) _ok "a test file is not a changed source path" ;;
+esac
+
+# --fast runs the check too: GREEN is where the source first exists, and
+# GREEN ends with --fast.
+printf 'export const m = 1\n' > "$FIX/src/render/mesh.ts"
+out="$(gates --fast)"
+assert_contains "--fast checks it as well" "FAIL         changes: src/render/mesh.ts" "$out"
+
+# --list shows the lines; --audit refuses one naming no gate.
+out="$(gates --list)"
+assert_contains "--list shows covers" "covers:   src/render/**" "$out"
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+covers   | unti | src/**
+EOF
+out="$(gates --audit)"
+assert_contains "covers naming no gate fails the audit" "a \`covers\` line names no configured gate" "$out"
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates --audit)"
+assert_contains "no covers lines is noted by the audit" "no \`covers\` lines" "$out"
+
+rm -f "$FIX/src/render/mesh.ts" "$FIX/tests/other.test.ts"
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+git -C "$FIX" checkout -q main 2>/dev/null
+
+# ---------------------------------------------------------------------------
 describe "ci-factor: a measurement, or nothing"
 
 # The number is how much slower ONE TEST is on CI under this gate. It is worth

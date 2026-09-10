@@ -19,10 +19,12 @@ Read `docs/backlog/stories/$1.md` first. Then, based on its current phase:
 the user if they are not — this is the last phase in which they may change
 without an `## Amendments` entry. Then name the gate that would fail if this
 story's artifact broke, and check it is `required`. Read the criteria against
-`bash scripts/gates.sh --list`: if the only gate that exercises what the story
-builds is `optional` — a browser-driven `integration` suite, most often — put it
-in the story's `required_gates` now. That is a PO decision made here, not a
-discovery for GATES. Three individually sound exclusions (a test project that
+`bash scripts/gates.sh --list`, whose `covers` lines say which paths each gate
+reads: if the only gate that exercises what the story builds is `optional` — a
+browser-driven `integration` suite, most often — put it in the story's
+`required_gates` now. That is a PO decision made here, not a discovery for
+GATES; `gates.sh` will fail a GREEN run whose changed source only optional
+gates read, and by then it is a scramble. Three individually sound exclusions (a test project that
 needs a real browser, an `optional` integration gate because it needs one, a
 coverage `include` that skips the same directory) once combined so that every
 test of a renderer ran where nothing could block on it, and `All required gates

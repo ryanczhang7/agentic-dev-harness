@@ -34,7 +34,9 @@ running a command:
 - linter, formatter and type checker configured
 - a `.gitignore` for the ecosystem, and `.dockerignore` if containerised - both
   excluding `.claude/`, `docs/` and `scripts/` from production images
-- `project.conf` filled in, with an `evidence` line per gate, and
+- `project.conf` filled in, with an `evidence` line per gate, a `covers` line
+  per gate per directory it reads - taken from the runners' real include
+  lists and backed by a `discovery` line each, never from the layout - and
   `BOOTSTRAPPED=yes`
 - a `## Gate probes` section recording each gate observed failing
 - a `## Scaffold inventory` naming every production file written and, for

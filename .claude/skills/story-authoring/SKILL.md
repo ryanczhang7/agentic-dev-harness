@@ -62,8 +62,11 @@ that browser (correct), a coverage `include` that skips the same directory
 could block on them, and `All required gates passed` was printed over a story
 whose artifact no required gate had exercised. `optional` means "this
 gate reports information"; it must never be the only thing testing a shipped
-feature. `gates.sh` cannot warn you, because nothing in `project.conf` says
-which paths a gate exercises - so the story says it.
+feature. `gates.sh` checks this on every run once `project.conf` carries
+`covers` lines saying which paths each gate reads (see `quality-gates`), and
+fails a run whose changed source is read only by optional gates - but it
+checks at GREEN, when the source exists, and the fix is a story decision best
+made here.
 
 ## Brief RED by oracle
 

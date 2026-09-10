@@ -39,9 +39,14 @@ reading the code, and the selftest now greps for the constructs concerned.
 - **`spike` may commit source without tests** if `## Scaffold inventory` names
   it. The script already allowed this; the docs now say so, rather than the
   script being narrowed.
-- **The structural half of H7** (a `gates.sh` warning when a story's changed
-  paths fall outside every required gate) is still not built. It needs a
-  gate-to-path map `project.conf` does not have. Deferred again, on purpose.
+- **The structural half of H7** (a `gates.sh` check that a story's changed
+  paths are exercised by a required gate) needed a gate-to-path map
+  `project.conf` did not have. It was deferred from this audit's first round
+  and then built in the same PR, at the user's direction: a `covers | <gate>
+  | <glob>` line, the paths.conf glob dialect through the same matcher. With
+  any present and a story active, every run diffs the story branch against
+  `main`, keeps the source paths, fails on one read only by optional gates and
+  warns on one no gate claims. Silent with no lines; `--audit` says so.
 
 ## Evidence
 
