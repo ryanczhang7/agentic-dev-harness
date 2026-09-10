@@ -71,7 +71,7 @@ ESC=$(printf '\033')
 # --- evidence, floor, waiver and slow tables --------------------------------
 # Read up front, so that --gate <id> still finds its own lines. Stored as
 # "<id><TAB><value>" lines; no associative arrays, for bash 3.2.
-EVIDENCE=""; WAIVERS=""; FLOORS=""; SLOWS=""; GATE_IDS=""
+EVIDENCE=""; WAIVERS=""; FLOORS=""; SLOWS=""; CIFACTORS=""; GATE_IDS=""
 while IFS= read -r line; do
   line="${line%%$'\r'}"
   case "$(trim "$line")" in ''|'#'*) continue ;; esac
@@ -84,7 +84,7 @@ while IFS= read -r line; do
   # line", and a misspelt `floor` id fails the audit outright, but a misspelt
   # `slow` id is silent - the gate it meant to exclude simply stays in --fast.
   [ "$kind" = "gate" ] && { GATE_IDS="$GATE_IDS $tid"; continue; }
-  case "$kind" in evidence|waiver|floor|slow) ;; *) continue ;; esac
+  case "$kind" in evidence|waiver|floor|slow|ci-factor) ;; *) continue ;; esac
   # -f3- so that a regex containing `|` (alternation) survives the split.
   tval=$(trim "$(printf '%s' "$line" | cut -d'|' -f3-)")
   [ -n "$tid" ] || continue
@@ -96,6 +96,8 @@ while IFS= read -r line; do
     floor)    FLOORS="$FLOORS$tid$TAB$tval
 " ;;
     slow)     SLOWS="$SLOWS$tid$TAB$tval
+" ;;
+    ci-factor) CIFACTORS="$CIFACTORS$tid$TAB$tval
 " ;;
   esac
 done < "$CONF"
@@ -220,12 +222,14 @@ while IFS= read -r line; do
   waiver=$(table_lookup "$WAIVERS" "$id") || waiver=""
   slowwhy=$(table_lookup "$SLOWS" "$id"); is_slow=$?
   floor=$(table_lookup "$FLOORS" "$id") || floor=""
+  cifactor=$(table_lookup "$CIFACTORS" "$id") || cifactor=""
   logrel=".claude/state/gate-logs/$id.log"
 
   if [ "$LIST" = 1 ]; then
     printf '%-12s %-9s %-6s %s\n' "$id" "$req" "$cwd" "${cmd:-<unconfigured>}"
     printf '%-12s %-9s %-6s evidence: %s\n' "" "" "" "$exp"
     [ -n "$floor" ]  && printf '%-12s %-9s %-6s floor:    %s\n' "" "" "" "$floor"
+    [ -n "$cifactor" ] && printf '%-12s %-9s %-6s ci-factor: %s\n' "" "" "" "$cifactor"
     [ -n "$waiver" ] && printf '%-12s %-9s %-6s waiver:   %s\n' "" "" "" "$waiver"
     [ "$is_slow" = 0 ] && printf '%-12s %-9s %-6s slow:     %s (left out of --fast)\n' "" "" "" "${slowwhy:-no reason given}"
     [ -n "$escalated" ] && printf '%-12s %-9s %-6s optional for the repo,%s\n' "" "" "" "$escalated"
@@ -264,6 +268,36 @@ while IFS= read -r line; do
     fails=$((fails+1)); continue
   fi
 
+  # A ci-factor is a measurement, so it carries the number AND where the number
+  # came from. Without the second half nobody can tell a figure read off a CI
+  # log from one somebody assumed, and an assumed factor is worse than none: it
+  # is acted on. The whole-gate ratio is the wrong number here and reads
+  # plausible - 14x for a coverage gate whose per-test compute factor is 3.4x -
+  # so a story can spend a day optimising a test that was already fine.
+  cifactor_broken=""
+  if [ -n "$cifactor" ]; then
+    cif_n=$(trim "$(printf '%s' "$cifactor" | cut -d'|' -f1)")
+    # cut prints the whole field when the delimiter is absent, which would
+    # read a missing source as a source repeating the number.
+    case "$cifactor" in
+      *'|'*) cif_src=$(trim "$(printf '%s' "$cifactor" | cut -d'|' -f2-)") ;;
+      *)     cif_src="" ;;
+    esac
+    case "$cif_n" in
+      ''|*[!0-9.]*|*.*.*|.|.*|*.) cifactor_broken="ci-factor '$cif_n' is not a number" ;;
+    esac
+    [ -z "$cifactor_broken" ] && [ -z "$cif_src" ] \
+      && cifactor_broken="ci-factor has no source; say which CI run it was measured from"
+  fi
+  if [ -n "$cifactor_broken" ]; then
+    if [ "$AUDIT" = 1 ]; then
+      printf 'FAIL %-12s %s\n' "$id" "$cifactor_broken"
+    else
+      results="$results\nFAIL         $id ($cifactor_broken)"
+    fi
+    fails=$((fails+1)); continue
+  fi
+
   # A waiver on a required gate is a bypass, not a waiver - including when the
   # story is what made it required.
   if [ -n "$waiver" ] && [ "$req" = "required" ]; then
@@ -297,6 +331,7 @@ while IFS= read -r line; do
       printf 'ok   %-12s evidence: %s\n' "$id" "$exp"
     fi
     [ -n "$floor" ]  && printf '     %-12s floor:  %s\n' "" "$floor"
+    [ -n "$cifactor" ] && printf '     %-12s ci-factor: %s\n' "" "$cifactor"
     [ "$is_slow" = 0 ] && printf '     %-12s slow:   %s\n' "" "$slowwhy"
     [ -n "$waiver" ] && printf '     %-12s waiver: %s\n' "" "$waiver"
     continue
@@ -390,6 +425,15 @@ if [ "$AUDIT" = 1 ]; then
       *) printf 'FAIL %-12s a `slow` line names no configured gate\n' "$sid"; fails=$((fails+1)) ;;
     esac
   done <<< "$SLOWS"
+  # Same for a ci-factor: a measurement filed against a gate that does not
+  # exist is a number nobody will ever find when they need it.
+  while IFS="$TAB" read -r cid _; do
+    [ -n "$cid" ] || continue
+    case " $GATE_IDS " in
+      *" $cid "*) ;;
+      *) printf 'FAIL %-12s a `ci-factor` line names no configured gate\n' "$cid"; fails=$((fails+1)) ;;
+    esac
+  done <<< "$CIFACTORS"
   if [ "$noevidence" -gt 0 ]; then
     printf '\n%d required gate(s) have no evidence line. Add one per gate:\n' "$noevidence"
     printf '  evidence | <id> | <regex proving the tool did work>\n'

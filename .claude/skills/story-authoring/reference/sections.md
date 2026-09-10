@@ -71,13 +71,18 @@ Required for any story that returned to RED after GREEN or GATES; omitted
 otherwise. One block per return: which test, what was wrong with it, how that
 was found, what it asserts now, and what earns the correction.
 
-That last part is the whole section. On a return, "watched it fail" usually
-cannot apply - the implementation exists and is often correct, so the corrected
-test may be green the moment it is written. It earns its place the same way a
-green-on-arrival test does: a **probe** (break what it guards, paste the red,
-confirm the revert), or - where the defect was cost rather than correctness, a
-test too slow for its timeout - a **before and after measurement taken under the
-gate command**, which is the instrumented one, not the plain test command.
+That last part is the whole section. On a return, "watched it fail" cannot apply
+- the implementation exists and is often correct, so the corrected assertion is
+green the moment it is written, and green on every run after, whether or not it
+asserts anything. It earns its place the same way a green-on-arrival test does:
+a **probe** (mutate the specific behaviour it pins, paste the red, confirm the
+revert), or - where the defect was cost rather than correctness, a test too slow
+for its timeout - a **before and after measurement taken under the gate
+command**, which is the instrumented one, not the plain test command.
+
+Paste the output. `check-boundaries.sh` refuses a PR whose `## Regressions` or
+`## Gate probes` describes a failure without showing one, because a description
+of red is the one thing an agent that skipped the probe would also write.
 
 Record too whether GREEN was a no-op, with the output proving the source was
 untouched and still passes. A no-op GREEN is a legitimate outcome that the
@@ -98,6 +103,8 @@ gates again, which is the point.
 Required for any story that adds or changes a gate, its command, or its
 `evidence` line; omitted entirely otherwise. For each such gate: what was broken
 to make it fail, the failure output, and confirmation the probe was reverted.
+The output, not an account of it - `check-boundaries.sh` checks for a pasted
+block here for the same reason it does in `## Regressions`.
 
 This is RED applied to the gates. Without it a story can add a gate that has
 never been seen to do anything, and every story afterwards inherits it as proof.

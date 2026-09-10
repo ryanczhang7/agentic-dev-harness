@@ -99,6 +99,45 @@ assert_allowed "$FIX" 'cd /tmp/harness-scratch-xyz && rm -rf gate-logs' \
   'rm of a relative path after cd out of the repo'
 
 # ---------------------------------------------------------------------------
+describe "RED: four more false positives, all of them read-only commands"
+set_phase "$FIX" RED
+
+# A second field report, a second story, four more denials - and every one of
+# these commands only READ. The running total is eleven, which is the reason
+# the guard now declines a parse it cannot believe instead of denying on it.
+assert_allowed "$FIX" 'node --input-type=module <<'"'"'JS'"'"'
+const p = process.argv[2]
+console.log(p.length > 3)
+JS' 'a heredoc-fed interpreter with no redirect anywhere in it'
+assert_allowed "$FIX" 'grep -oE "> [^>]+ [0-9]+ms$" docs/notes.md' \
+  'a grep pattern containing a redirect and a bracket expression'
+assert_allowed "$FIX" 'grep -o "class=\"strong\">[^<]*" docs/notes.md' \
+  'a grep pattern with an embedded double quote'
+
+# The self-referential one: a heredoc writing a DOCS file was blocked because
+# the prose inside it quoted the character the guard reads as a redirect. The
+# guard classified a docs write as `source` on the strength of the file's own
+# contents - while that file was documenting this very bug.
+assert_allowed "$FIX" 'cat >> docs/notes.md <<'"'"'MARKDOWN'"'"'
+The guard reported `path: >` for a command with no redirect in it.
+Prose that quotes `>` or `>>` is data, not syntax.
+MARKDOWN' 'a docs heredoc whose prose quotes the redirect character'
+
+# ---------------------------------------------------------------------------
+describe "RED: a parse the guard cannot believe declines rather than denies"
+set_phase "$FIX" RED
+
+# Backticks are not masked - the masker knows quotes and heredocs, not command
+# substitution - so this extracts the token `\`mktemp\``, which has no
+# extension and therefore classified as source and blocked. It names no file in
+# this repository and the guard now says so by allowing it.
+assert_allowed "$FIX" 'printf x > `mktemp`' 'a target the parse could not resolve'
+
+# Fail-open has a floor: it applies to what the guard cannot read, never to
+# what it can.
+assert_blocked "$FIX" 'printf x > src/main.ts' src/main.ts 'a target it can read is still judged'
+
+# ---------------------------------------------------------------------------
 describe "RED: relative paths resolve against the command's own cwd"
 
 # Out of the repo: nothing relative afterwards is a repo path.

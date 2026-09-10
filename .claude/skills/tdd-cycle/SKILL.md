@@ -17,10 +17,11 @@ specific way software goes wrong.
 ## Non-negotiables
 
 1. The test is written first and is **observed failing**. Paste the failure.
-   The one exception is a regression guard for an invariant an earlier story
-   established, which is green on arrival by definition; it survives only with
-   a probe or a negative control, and only if the handoff says which. See
-   `reference/red-phase.md`.
+   Where it cannot be - a regression guard for an invariant an earlier story
+   established, an assertion corrected while the implementation exists - the
+   observation is replaced, never waived: a deliberate, reverted mutation of
+   what the test pins, with the red pasted. See "Red is a property of an
+   assertion" below and `reference/red-phase.md`.
 2. The failure must be the *right* failure - your assertion, not an unrelated
    error that happens to be red.
 3. During GREEN the tests are frozen. A test that is wrong sends the story back
@@ -41,6 +42,62 @@ specific way software goes wrong.
 8. A test that is wrong sends the story back to RED, and RED on a return is
    narrower: fix the defective test, touch nothing else, and earn the correction
    with a probe or a measurement. See `reference/red-phase.md`.
+9. Rule 1 is about an **assertion**, not about a run. See below - it is the one
+   place the cycle can look completely correct and prove nothing.
+
+## Red is a property of an assertion, not of a run
+
+A suite that goes red tells you *some* assertion in it failed. The law needs
+more than that: **this** assertion, the one that pins **this** behaviour, has
+been seen to fail. In an ordinary RED the two coincide, because nothing is
+implemented and everything is red. Two situations, both routine, pull them
+apart - and in both the story passes every written rule while shipping a test
+that proves nothing.
+
+**A test written or corrected while the implementation exists.** The clearest
+case is a return to RED. A test asserted the wrong thing, GREEN caught it, the
+Test Developer corrects the assertion - and the corrected assertion runs for the
+first time against code that already satisfies it. It goes green on its first
+execution and every execution after. Nothing distinguishes it from an assertion
+that checks nothing at all. The same holds outside a return: a story adding
+tests to a module an earlier story built starts from a working implementation.
+
+Real example. A test demanded a `RangeError` for `seaFloorM: -1000` against a
+sea level of `+1500`, but the rule was "the floor is below sea level", which
+-1000 satisfies. Corrected to a floor below sea level, it passed instantly.
+Mutating the guard from `seaFloorM < seaLevelM` to `seaFloorM < 0` - the exact
+bug the test names - produced one failure, the right one:
+
+    x compares seaFloorM against the document's sea level, not against zero
+    Tests  1 failed | 27 passed (28)
+
+That is what earns it: one mutation of the specific production behaviour the
+test claims to pin, one run, one revert, output pasted into `## Regressions`.
+`check-boundaries.sh` refuses a PR whose `## Regressions` describes a failure
+without showing one. Nothing in the harness asked for that mutation before this
+rule existed, and a less suspicious orchestrator would have shipped the
+unobserved assertion in full compliance with every other rule.
+
+**A suite that fails at import.** In RED the module under test does not exist,
+so the file does not load and **not one assertion in it has executed** -
+including assertions that never touch the missing module. Negative controls are
+the casualty: the white-noise field that must score near zero, the archipelago
+that must not read as continents, the deliberately broken input a threshold has
+to reject. They are what make every number in the suite mean something, and they
+are unverified for the whole of RED.
+
+Bridge it in two steps, both cheap:
+
+- **RED records the expected value of every negative control** in the handoff -
+  threshold, candidate range, and the value the control actually measured when
+  driven outside the test framework (a plain interpreter, a script, whatever
+  runs without the missing import). Not "controls exist": the numbers.
+- **GREEN confirms each recorded value**, not merely that the control test
+  passes. It costs one comparison and it works: a story recorded
+  `0.54 -> 0.30 -> 0.18 -> 0.10` in RED and measured `0.50 -> 0.30 -> 0.20 ->
+  0.12` in GREEN, because RED had measured a candidate pipeline and GREEN
+  measured the shipped module. Benign, explained in the story, and exactly the
+  kind of divergence that is cheap now and expensive later.
 
 ## The gates run your tests differently
 
@@ -64,6 +121,13 @@ So:
 - Set an explicit, generous timeout on property tests and anything that loops
   over a generated collection. The framework default is measured against the
   plain run, which is the fast one.
+- **Budget every single test at under a quarter of the framework's timeout,
+  measured under local instrumentation.** 4,275 ms against a 5,000 ms default
+  is not a pass, it is a pending failure on hardware you do not control. When a
+  test is over budget the first question is *is the cost in the helper?* - that
+  is the one place it can be removed for free, without touching a threshold, a
+  seed list or `numRuns`. Do not extrapolate to CI from the gate's whole wall
+  time; see `quality-gates`, "How much slower is CI, actually".
 - In a property test or a whole-collection loop, do not call the assertion once
   per item. Accumulate the violations and assert once at the end. On identical
   work this is routinely an order of magnitude cheaper - in the case above, 260

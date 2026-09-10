@@ -53,12 +53,22 @@ stub to make the import resolve.
 ## When the story returns to RED from GREEN or GATES
 
 Your remit is the defective test and nothing else. The source exists and is
-usually correct; the lock freezes it, which is right. "Watch it fail" will
-usually not apply, so earn the correction another way — a probe (break what the
-test guards, paste the red, revert), or a before/after measurement taken under
-the **gate** command where the defect was cost rather than correctness. Write it
-into `## Regressions`, not the handoff. See `tdd-cycle`,
-`reference/red-phase.md`.
+usually correct; the lock freezes it, which is right.
+
+"Watch it fail" cannot apply here, so it is **replaced, not waived**. A
+corrected assertion runs for the first time against code that already satisfies
+it: it goes green immediately and stays green whether or not it asserts
+anything. Before the phase ends, earn it one of two ways:
+
+- **a probe** — mutate the *specific* production behaviour the corrected test
+  claims to pin, run the file, confirm exactly that assertion goes red and the
+  message names the right thing, revert, and check `git diff` is clean;
+- **a before/after measurement** taken under the **gate** command, where the
+  defect was cost rather than correctness.
+
+Paste the output into `## Regressions`, not the handoff — a description of red
+is not red, and `check-boundaries.sh` refuses a PR whose `## Regressions`
+section shows none. See `tdd-cycle`, `reference/red-phase.md`.
 
 ## Handoff
 
@@ -76,6 +86,14 @@ The Feature Developer starts with no memory of you. Before finishing, write into
   so it stays the implementer's choice.
 - any test that passed on arrival, with the probe or negative control that
   earns it (see `tdd-cycle`, `reference/red-phase.md`)
+- **the expected value of every negative control**, as a table: threshold,
+  candidate range, and the number the control actually measured. Not that
+  controls exist — the numbers. While the module under test was missing the
+  suite failed at import, so *no assertion in the file ran*, controls included;
+  measure them outside the framework (a plain interpreter, the helper called
+  directly) and say that confirming them against the shipped module is GREEN's
+  job. A control that measures the wrong thing makes every threshold in the
+  suite look calibrated and prove nothing.
 - anything you discovered that should change the implementation approach
 
 Then report back: files written, command to run, current failure summary, and

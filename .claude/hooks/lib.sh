@@ -202,6 +202,45 @@ to_rel() {
   printf '%s' "${p#./}"
 }
 
+# path_is_implausible <masked candidate>   True when the token an extractor
+# produced cannot be a filesystem path at all.
+#
+# The Bash branch of the guard parses a command STRING with grep and awk. When
+# that parse goes wrong it does not fail loudly: it yields a fragment, the
+# fragment is classified, and a fragment classifies as `source`, because
+# `source` is what classify() falls back to. Denials reported from the field
+# have named `=`, `[^` and a backquoted word as the path they were protecting;
+# every one of those commands wrote nothing at all.
+#
+# So a failed parse must be INCONCLUSIVE rather than positive. A guard that
+# cannot say what it is looking at is not protecting anything - it is guessing,
+# and law 5 ("never work around the phase lock") only holds while a block means
+# something. This is the fail-open rule the rest of this file follows, applied
+# to the parser's own output rather than to its crashes.
+#
+# Two rules, deliberately blunt:
+#
+#   * No alphanumeric character anywhere. `=`, `[^`, `--` and `>` are
+#     operators or regex fragments; nobody keeps production code in a file
+#     whose name is pure punctuation.
+#   * A shell metacharacter that cannot reach a redirect target unquoted. The
+#     candidate is tested while still MASKED, so one that was genuinely quoted
+#     - `> "src/a>b.ts"` - is a control character by this point and does not
+#     trip the rule; one still visible was leaked by the parse.
+#
+# Both are chosen to have no plausible false negative: `src/app/[id]/page.tsx`
+# is a real path in more than one framework, and passes, because it has letters
+# in it.
+path_is_implausible() {
+  local t="${1:-}"
+  [ -z "$t" ] && return 0
+  case "$t" in
+    *'`'*|*'$'*|*'('*|*')'*) return 0 ;;
+  esac
+  printf '%s' "$t" | grep -q '[[:alnum:]]' || return 0
+  return 1
+}
+
 # path_is_absolute <path>   True for /x and for C:/x or C:\x.
 path_is_absolute() {
   case "$(printf '%s' "$1" | tr '\134' '/')" in
@@ -372,6 +411,67 @@ classify_stdin() {
       for (i = 1; i <= n; i++) if (lp ~ rr[i]) { c = rc[i]; break }
       print c "\t" path
     }'
+}
+
+# --- Staleness --------------------------------------------------------------
+
+# code_changed_since <stamp file>   The first path modified after <stamp> that
+# the gates would have hashed, or nothing. Used by the Stop hook to tell "the
+# gates are stale" from "the gates ran and then something regenerated".
+#
+# The naive version - `find -newer` over the worktree - counts the gates' own
+# exhaust as a change. A coverage report, a build directory, a bundler cache:
+# all of them are written BY the gate run, all of them are gitignored, and any
+# ad-hoc verification run afterwards recreates them. The Stop hook then blocks
+# on `coverage/base.css` with a clean `git status`, which punishes exactly the
+# extra verification the harness spends the rest of its documentation asking
+# for. Observed in the field, twice.
+#
+# The set that matters is already defined: it is the one gate_tree_hash covers
+# - source, test, config and harness, never docs, vendor or ignored. So the
+# question this asks is precisely "would the recorded gate hash still match",
+# and the two answers cannot drift apart.
+#
+# Ignored TOP-LEVEL directories are pruned before the walk rather than filtered
+# after it, because `src-tauri/target` holds six figures of files and a Stop
+# hook has twenty seconds. Everything deeper is filtered by git, one batch call
+# for all candidates.
+code_changed_since() {
+  local stamp="$1" d rel
+  [ -f "$stamp" ] || return 0
+  set -- "$HARNESS_ROOT" \
+    -path "$HARNESS_ROOT/.git" -prune -o \
+    -path "$HARNESS_ROOT/.claude/state" -prune -o \
+    -path "$HARNESS_ROOT/node_modules" -prune -o \
+    -path "$HARNESS_ROOT/docs" -prune -o
+  for d in "$HARNESS_ROOT"/*/ "$HARNESS_ROOT"/.*/; do
+    [ -d "$d" ] || continue
+    rel="${d%/}"; rel="${rel##*/}"
+    case "$rel" in .|..|.git|.claude|docs|node_modules) continue ;; esac
+    is_ignored "$rel" || continue
+    set -- "$@" -path "$HARNESS_ROOT/$rel" -prune -o
+  done
+  local cands kept out rc
+  cands="$(find "$@" -type f -newer "$stamp" -print 2>/dev/null \
+    | while IFS= read -r d; do printf '%s\n' "${d#"$HARNESS_ROOT"/}"; done)"
+  [ -n "$cands" ] || return 0
+  # One batch call, and the only reading of .gitignore anywhere in here. Exit 1
+  # just means nothing was ignored; anything above that is git failing, and a
+  # Stop hook that cannot reach git must keep blocking rather than quietly
+  # stop watching.
+  out="$(printf '%s\n' "$cands" \
+    | git -C "$HARNESS_ROOT" check-ignore --stdin --verbose --non-matching 2>/dev/null)"
+  rc=$?
+  if [ "$rc" -gt 1 ]; then
+    kept="$cands"
+  else
+    kept="$(printf '%s\n' "$out" | awk -F'\t' '$1 == "::" && $2 != "" { print $2 }')"
+  fi
+  [ -n "$kept" ] || return 0
+  printf '%s\n' "$kept" | classify_stdin \
+    | awk -F'\t' '$1 == "source" || $1 == "test" || $1 == "config" || $1 == "harness" \
+                  { print $2; exit }'
+  return 0
 }
 
 # --- Gate tree hash ---------------------------------------------------------

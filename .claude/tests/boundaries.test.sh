@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# Tests for scripts/check-boundaries.sh - the half of CI that judges the
+# COMMIT rather than the code.
+#
+# It reads a story file as it was committed and as it stands on the base
+# branch, so every case here is a real two-branch repository: a base commit, a
+# story branch, and a diff between them.
+
+. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+
+FIX="$(make_project_fixture)"
+trap 'rm -rf "$FIX"' EXIT
+
+git -C "$FIX" -c user.email=t@t -c user.name=t branch -M main >/dev/null 2>&1
+
+boundaries() { ( cd "$FIX" && bash scripts/check-boundaries.sh main 2>&1 ); }
+commit_all() { git -C "$FIX" add -A >/dev/null 2>&1
+               git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "${1:-wip}" >/dev/null 2>&1; }
+
+# story_on_branch   Writes docs/backlog/stories/T-1.md on a fresh story branch
+# cut from main, with the body on stdin appended after the frontmatter.
+story_on_branch() {
+  git -C "$FIX" checkout -q main 2>/dev/null
+  git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+  git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+  mkdir -p "$FIX/docs/backlog/stories"
+  {
+    printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n'
+    printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n\n'
+    cat
+  } > "$FIX/docs/backlog/stories/T-1.md"
+  commit_all "story T-1"
+}
+
+# ---------------------------------------------------------------------------
+describe "a return to RED has to show the red"
+
+# The first non-negotiable is a property of an assertion, not of a phase. On a
+# corrective RED the implementation already exists, so the corrected assertion
+# passes on its first execution and passes forever unless somebody deliberately
+# breaks what it pins. Prose saying that happened is not evidence that it did.
+story_on_branch <<'EOF'
+## Regressions
+
+The seaFloorM test asserted a RangeError the rule does not require. Corrected
+to a floor below sea level, and it passes now.
+EOF
+out="$(boundaries)"
+assert_contains "described but not shown" "## Regressions describes something without showing it" "$out"
+
+story_on_branch <<'EOF'
+## Regressions
+
+The seaFloorM test asserted a RangeError the rule does not require. Corrected
+to a floor below sea level. Probed by mutating the guard to compare against
+zero, which is the bug the test names:
+
+```
+ x compares seaFloorM against the document's sea level, not against zero
+ Tests  1 failed | 27 passed (28)
+```
+
+Reverted; `git diff` clean.
+EOF
+out="$(boundaries)"
+assert_contains "shown in a fence" "ok    ## Regressions carries pasted output" "$out"
+
+story_on_branch <<'EOF'
+## Regressions
+
+Corrected the AC-4 helper, which was too slow for the coverage gate. Before and
+after, both under `bash scripts/gates.sh --gate coverage`:
+
+    AC-4 property test   4,275 ms  ->  367 ms
+
+Thresholds, seeds and numRuns untouched; the measured statistics are identical.
+EOF
+out="$(boundaries)"
+assert_contains "shown as an indented measurement" "ok    ## Regressions carries pasted output" "$out"
+
+# The section is optional. A story that never returned to RED omits it, and
+# the template's own commented-out block is not a claim about anything.
+story_on_branch <<'EOF'
+## Notes
+
+One clean cycle.
+EOF
+out="$(boundaries)"
+case "$out" in
+  *"## Regressions"*) _bad "an absent section is not a failure" "complained anyway: $out" ;;
+  *) _ok "an absent section is not a failure" ;;
+esac
+
+story_on_branch <<'EOF'
+## Regressions
+
+<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
+     otherwise. One block per return:
+       * which test, what it asserted, and what was wrong with it
+       * what earns it, since "watched it fail" cannot apply once the
+         implementation exists -->
+EOF
+out="$(boundaries)"
+case "$out" in
+  *"## Regressions"*) _bad "an untouched template block is not a claim" "complained anyway: $out" ;;
+  *) _ok "an untouched template block is not a claim" ;;
+esac
+
+# ---------------------------------------------------------------------------
+describe "the same rule covers gate probes"
+
+story_on_branch <<'EOF'
+## Gate probes
+
+Broke the import boundary and the lint gate failed, as expected. Reverted.
+EOF
+out="$(boundaries)"
+assert_contains "a gate probe described but not shown" "## Gate probes describes something without showing it" "$out"
+
+# ---------------------------------------------------------------------------
+describe "acceptance criteria are frozen"
+
+# The anchor case: this is what 3d exists for, and it also proves the suite is
+# reading the base branch rather than the working tree.
+git -C "$FIX" checkout -q main 2>/dev/null
+mkdir -p "$FIX/docs/backlog/stories"
+printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: PLANNED\nbranch: story/T-1-fixture\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works.\n' \
+  > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "T-1 planned"
+
+git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works differently now.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n' \
+  > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "T-1 review"
+out="$(boundaries)"
+assert_contains "changed criteria with no amendment" "## Acceptance criteria differ from main" "$out"
+
+summary "boundaries"

@@ -170,8 +170,14 @@ actually run in, so `cd /tmp/scratch && rm -rf logs` names no repo path at all
 and `cd src && echo x > main.ts` names `src/main.ts` rather than a file at the
 root. Anything the project's `.gitignore` covers is classified `ignored` and
 writable in every phase, so deleting a test runner's scratch directory is not a
-phase violation. When no story is active the lock is off entirely: it protects a
-cycle in flight, it is not a general permission system.
+phase violation. And a parse the guard cannot believe — a "path" that is an
+operator, a regex fragment or a leftover backquote — is treated as
+inconclusive rather than as a violation: it is logged to
+`.claude/state/phase-guard-declined.log` and allowed, because a guard that
+cannot say what it is looking at is guessing, and every denial that turns out
+to be a guess makes the real ones easier to ignore. When no story is active the
+lock is off entirely: it protects a cycle in flight, it is not a general
+permission system.
 
 The lock has its own regression suite, since it is the mechanism everything
 else rests on, and so do the gate machinery and the stack profiles - the
@@ -191,7 +197,10 @@ bash scripts/phase.sh set PROJ-014 GREEN   # the only supported way to change ph
 
 A `Stop` hook refuses to let a story be called finished while the gates have not
 been run since the last code change, or while the last run failed. "Done" is
-measured, not asserted.
+measured, not asserted. "Code" there means what the gates would have hashed —
+source, test, config, harness — so a coverage report or a build directory the
+gates themselves produced does not count as a change, and re-running a gate to
+check something never blocks the report that follows it.
 
 ## Gates
 
@@ -243,6 +252,19 @@ CI hardware that is slower again. That gap cost one real story a full round
 trip. `--fast` is what lets RED ask whether its tests are even admissible to the
 gates, and it is never recorded — only a full run is evidence.
 
+A `ci-factor` line records how much slower **one test** is on CI under a given
+gate, measured once from a real CI log and cited:
+
+```
+ci-factor | coverage | 3.4 | actions run 412, "AC-4/AC-5 file 1,262 ms"
+```
+
+It is worth a line in the manifest because the number everyone reaches for
+instead — the gate's own local-to-CI wall-time ratio — is several times too
+large. Most of a coverage gate's wall time is fixed overhead that does not scale
+with test compute: one project measured 14x for the gate and 3.4x per test, and
+acting on the 14x means optimising a test that was already fine.
+
 And `gates.sh` is not all of CI. `check-boundaries.sh` judges the **commit**
 rather than the code, so it cannot be a gate: it reads the phase out of the
 committed frontmatter and checks the gate record against the tree being merged,
@@ -257,7 +279,11 @@ commit and a hash of the code it ran against; nobody pastes it, and
 `check-boundaries.sh` refuses a PR whose recorded run does not match the code
 being merged. That script also freezes acceptance criteria once a story leaves
 PLANNED (changes need an `## Amendments` entry), requires a filled-in handoff,
-and requires a scaffold story to name every source file it wrote. `phase.sh`
+requires a scaffold story to name every source file it wrote, and requires
+`## Regressions` and `## Gate probes` to *show* the failure they claim rather
+than describe it — a corrected test runs for the first time against code that
+already satisfies it, so pasted red from a reverted mutation is the only thing
+separating it from an assertion that checks nothing. `phase.sh`
 refuses to start a story whose `depends_on` are not DONE or from the wrong
 branch.
 

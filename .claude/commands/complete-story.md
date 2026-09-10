@@ -30,6 +30,22 @@ approval between phases is exactly when they get quietly reordered:
   a commit made while the story still says `phase: GATES` is one CI rejects —
   intermittently, depending on when that job runs, which is worse than always.
 
+- **A return to RED ends with pasted red, not with a note saying it went red.**
+  A corrected test runs for the first time against code that already satisfies
+  it, so it passes immediately and forever; the Test Developer earns it by
+  mutating the specific behaviour it pins, watching that assertion fail,
+  reverting, and pasting the output into `## Regressions`. `check-boundaries.sh`
+  refuses the PR otherwise. GREEN on re-entry may legitimately be a no-op you
+  verify yourself rather than delegate.
+- **GREEN confirms the negative-control values RED recorded**, not just that
+  the control tests pass. RED could not run them: its suite failed at import.
+- **A claim that the contract is wrong is reproduced before it is accepted.**
+  When a subagent reports that an acceptance criterion, a threshold or a frozen
+  test is wrong, verify it yourself on different inputs, without reusing the
+  subagent's code, and record the reproduction in the story. Running unattended
+  is exactly when this gets skipped, and it is the difference between a correct
+  escalation and a plausible excuse for not failing.
+
 Stop and ask the user only when:
 
 - an acceptance criterion is ambiguous and the readings lead to different code;
