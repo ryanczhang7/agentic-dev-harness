@@ -446,3 +446,15 @@ tooling. Keep them out of production images.
 - Add a stack: write a profile in `.claude/skills/stack-profiles/reference/`
 - Give the designer real eyes: copy `.mcp.json.example` to `.mcp.json`
   (needs Node)
+
+## Licence
+
+**All rights reserved.** This repository is readable, not reusable: no licence
+is granted to use, copy, modify or distribute any part of it. See
+[`LICENSE`](LICENSE), and ask if you want permission.
+
+Note that the repository is public, and a public repository on GitHub can be
+viewed and forked by any GitHub user under GitHub's own terms of service. That
+is a platform permission, not a licence from the copyright holder, and it is not
+something this file can withdraw. If nobody is to hold a copy at all, the
+repository has to be private.
