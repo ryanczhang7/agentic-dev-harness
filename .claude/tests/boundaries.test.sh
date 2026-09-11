@@ -343,4 +343,94 @@ case "$out" in
   *"Deferred verifications"*) _bad "silent when the section is absent" "said something about it: $out" ;;
   *) _ok "silent when the section is absent" ;;
 esac
+
+# ---------------------------------------------------------------------------
+describe "a harness change bumps the stamp"
+
+# The stamp only helps if it is current, and a stamp somebody has to remember
+# to bump is a stamp that will be wrong exactly when it matters. So CI refuses
+# a harness change that leaves it alone.
+#
+# The scoping is the careful part. This must NOT fire in a project built on the
+# harness, where .claude/ is edited all the time - project.conf, paths.conf,
+# .gitignore - by people who are not upstream and have nothing to stamp. Two
+# conditions together: the branch is not a story branch (downstream work is,
+# upstream harness rounds are not), and the repo has not been bootstrapped
+# (which every real project does, and the template never does).
+harness_branch() { # <file to touch> ... ; body of VERSION on stdin
+  local ver; ver="$(cat)"
+  git -C "$FIX" checkout -q main 2>/dev/null
+  git -C "$FIX" branch -D harness/thing >/dev/null 2>&1
+  git -C "$FIX" checkout -q -b harness/thing 2>/dev/null
+  [ -n "$ver" ] && printf '%s\n' "$ver" > "$FIX/.claude/harness/VERSION"
+  commit_all "harness change"
+}
+bnd_harness() { ( cd "$FIX" && GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh main 2>&1 ); }
+
+# Baseline: main carries a stamp, and the fixture is the unbootstrapped
+# template.
+git -C "$FIX" checkout -q main 2>/dev/null
+printf '2026-01-01\n' > "$FIX/.claude/harness/VERSION"
+printf 'BOOTSTRAPPED=no\n' > "$FIX/.claude/harness/project.conf"
+commit_all "baseline stamp"
+
+printf 'touched by a harness change\n' >> "$FIX/.claude/hooks/lib.sh"
+harness_branch </dev/null
+out="$(bnd_harness)"
+assert_contains "a harness change with a stale stamp is refused" "does not bump" "$out"
+
+printf 'touched again\n' >> "$FIX/.claude/hooks/lib.sh"
+harness_branch <<'EOF'
+2026-02-02
+EOF
+out="$(bnd_harness)"
+assert_contains "bumping it satisfies the check" "ok    harness version bumped" "$out"
+
+# Downstream safety, both halves. A bootstrapped project editing .claude/ on a
+# non-story branch is not upstream and has nothing to stamp.
+git -C "$FIX" checkout -q main 2>/dev/null
+printf 'BOOTSTRAPPED=yes\n' > "$FIX/.claude/harness/project.conf"
+commit_all "bootstrapped now"
+printf 'a project edit\n' >> "$FIX/.claude/hooks/lib.sh"
+harness_branch </dev/null
+out="$(bnd_harness)"
+case "$out" in
+  *"does not bump"*) _bad "a bootstrapped project is not asked to bump" "it fired: $out" ;;
+  *) _ok "a bootstrapped project is not asked to bump" ;;
+esac
+
+# And a change that touches no harness file is not asked either, bootstrapped
+# or not: the stamp describes the harness, not the commit.
+git -C "$FIX" checkout -q main 2>/dev/null
+printf 'BOOTSTRAPPED=no\n' > "$FIX/.claude/harness/project.conf"
+commit_all "unbootstrapped again"
+printf 'just a document\n' >> "$FIX/docs/notes.md"
+harness_branch </dev/null
+out="$(bnd_harness)"
+case "$out" in
+  *"does not bump"*) _bad "a docs-only change is not asked to bump" "it fired: $out" ;;
+  *) _ok "a docs-only change is not asked to bump" ;;
+esac
+
+# The other half of the scoping, and the half a mutation caught as untested.
+# An unbootstrapped repo on a STORY branch is not a hypothetical: it is the
+# bootstrap story of every new project, which touches .claude/ by definition -
+# it writes project.conf. Without the story-branch guard this check refuses the
+# first PR of every project generated from this template, and no case here
+# noticed until the guard was deliberately removed and nothing went red.
+git -C "$FIX" checkout -q main 2>/dev/null
+printf 'BOOTSTRAPPED=no\n' > "$FIX/.claude/harness/project.conf"
+commit_all "unbootstrapped, pre-bootstrap-story"
+story_on_branch <<'EOF'
+## Scaffold inventory
+
+vite.config.ts - configuration, no behaviour
+EOF
+printf 'BOOTSTRAPPED=no\ngate | unit | required | . | printf x\n' > "$FIX/.claude/harness/project.conf"
+commit_all "the bootstrap story configures the project"
+out="$(boundaries)"
+case "$out" in
+  *"does not bump"*) _bad "a story branch is never asked to bump" "the bootstrap story would be refused: $out" ;;
+  *) _ok "a story branch is never asked to bump" ;;
+esac
 summary "boundaries"
