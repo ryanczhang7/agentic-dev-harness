@@ -254,6 +254,7 @@ case "$story_type" in
     fi ;;
 esac
 
+
 # 3g. A corrected test was observed to fail too
 #
 # The first non-negotiable is a property of an ASSERTION, not of a phase: a
@@ -276,5 +277,36 @@ for sec in Regressions "Gate probes"; do
     problem "story $sid: ## $sec describes something without showing it. Paste the output - the failure a reverted mutation produced, or the before/after measurement taken under the gate command. A test corrected while the implementation exists has never been observed to fail, and a description of red is not red."
   fi
 done
+
+
+# 3h. A deferred verification is discharged, or waived in writing
+#
+# Some verifications provably cannot run in the phase that wants them. RED
+# cannot mutate an encoder to prove a round-trip property discriminates when
+# the encoder is what the story is about to build; the honest move is to name
+# the control at PLANNED, say which phase owns it, and run it there. That
+# pattern worked - and then somebody noticed the commitment was prose, and
+# prose does not fail a build. The story that ran its deferred control ran it
+# because it had written the promise into its own report twice.
+#
+# So the block has two obligations, and each is one line of grep: it names the
+# phase that owns the entry, and by the time a PR exists it carries either the
+# output of having run it or an explicit waiver. A waiver is a decision the
+# next person can argue with; silence is not.
+dv="$(section "$sfile" "Deferred verifications")"
+if printf '%s\n' "$dv" | has_content; then
+  if printf '%s\n' "$dv" | strip_comments | grep -qE '\b(RED|GREEN|GATES|REVIEW|DONE)\b'; then
+    ok "## Deferred verifications names the phase that owns each entry"
+  else
+    problem "story $sid: ## Deferred verifications names no phase. A verification RED cannot perform is a commitment, and a commitment with no owner is a note: say which phase runs it - RED, GREEN, GATES or REVIEW - beside what it verifies."
+  fi
+  if printf '%s\n' "$dv" | has_pasted_output; then
+    ok "## Deferred verifications carries its result"
+  elif printf '%s\n' "$dv" | strip_comments | grep -qiE '\bwaived\b'; then
+    ok "## Deferred verifications carries an explicit waiver"
+  else
+    problem "story $sid: ## Deferred verifications has no result and no waiver. The phase that owned it has passed and nothing says what happened. Run it and paste the output - what was mutated and what failed - or write WAIVED with the reason. This is the control that makes a threshold or a round trip mean anything; skipping it silently is the failure it was filed against."
+  fi
+fi
 
 exit $fail

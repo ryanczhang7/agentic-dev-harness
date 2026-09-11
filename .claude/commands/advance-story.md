@@ -53,6 +53,20 @@ GREEN deleted the old signature, and turned 25 tests — the only verification o
 change GREEN had just made — into 25 silent skips. Running the gates at the end
 of RED would not have caught it; every gate was green.
 
+**Name the verifications RED cannot perform, and the phase that owns each.** A
+negative control for a codec, a threshold or a round trip has to break the real
+implementation to mean anything, and in RED there is nothing built to break. Write
+each one into `## Deferred verifications` now, as a falsifiable condition with an
+owning phase — *"with one field dropped from the encoder, AC-1's property must
+fail; RED cannot run this; owner: GATES"* — and expect RED to *decline* it in the
+handoff rather than claim it. Prefer GATES as the owner: source is writable there,
+and a story that bounces back to RED mid-cycle then earns its corrected
+assertions from the same experiment for free. `check-boundaries.sh` refuses a PR
+whose block names no phase, or that reaches REVIEW with neither a pasted result
+nor an explicit `WAIVED`; before that check existed the one story that ran its
+deferred control ran it because it had written the promise into its own report
+twice.
+
 **Check the epic's done-when against these criteria.** If the epic promises
 something no story between the last one and this one delivers — "the app opens on
 a generated landmass", when `mount()` still draws a graticule — that gap is
@@ -96,7 +110,21 @@ each recorded control value against the shipped module. When it returns, run the
 tests yourself, then `bash scripts/gates.sh --fast` — the same admissibility
 question, now expecting green.
 
-**GREEN → GATES.** Set the phase and run `bash scripts/gates.sh`. It writes
+**GREEN → GATES.** Set the phase, then — **before** `gates.sh` — run every entry
+in `## Deferred verifications` that names GATES as its owner, and paste what
+happened into the block: what was mutated, which assertion went red, and that the
+file was restored. Use `scripts/mutate.sh`, which is allowed in every phase and
+verifies its own restore. Do three mutations rather than one where the entry is
+about a format or a codec, and make one of them a wrong **value** rather than a
+missing field: two dropped-field mutations of one codec were each caught only by
+its property test, while the one that flipped a float writer's byte order was
+caught by six tests — and only because the container assertions read the bytes
+through a reader importing nothing from the source tree. A round-trip suite that
+verifies a format through its own reader passes against an encoder that is
+uniformly wrong. If an entry can no longer run, write `WAIVED` and the reason;
+leaving it silent is what `check-boundaries.sh` now refuses.
+
+Then run `bash scripts/gates.sh`. It writes
 its own summary into the story's `## Gate results`; never paste or edit one.
 On failure, dispatch the **feature-developer** to fix it, unless the failure
 means a test is wrong — in which case return the story to RED (see below). A
@@ -168,7 +196,17 @@ here too, and its CI run quoted into `## Notes` on a line carrying the gate id
 and the run URL, or `check-boundaries.sh` refuses to call the story DONE.
 
 **Returning to RED from GREEN or GATES.** A test that is wrong sends the story
-back to RED; it is never edited into passing. On arrival RED means something
+back to RED; it is never edited into passing. The trigger is wider than that,
+though, and the wider form is the one to hold: **any gate failure whose only
+legal fix is a write the current phase forbids.** A `format` gate WARNing on one
+test file the story itself added, needing a one-line reflow with the assertion
+entirely correct, is the everyday instance — GREEN freezes test files and so does
+GATES, so the phase whose stated job is fixing lint failures cannot fix that one.
+Take the return deliberately and record why; the two wrong answers are
+documenting a whitespace failure as an expected WARN and reaching for a tool the
+lock does not inspect.
+
+On arrival RED means something
 narrower than it did the first time, because the implementation already exists
 and may well be correct:
 
@@ -192,7 +230,17 @@ and may well be correct:
 - GREEN may then be a genuine no-op: the source is untouched and already passes.
   Verify that yourself by running the suite and the fast gates. Do **not**
   dispatch the feature-developer with nothing to do — an agent given no work
-  will find some.
+  will find some. *May* be a no-op, not *is* one: the same return has also needed
+  a real source fix, when the corrected test turned out to pin a real defect.
+
+**Returning to RED from REVIEW is the same return with one extra hazard.** The
+branch is published and CI has already run against a commit that is now
+superseded, so the correction lands as a *second* commit on an open PR rather than
+as a fix nobody saw. Everything above still applies, and one thing more: **the
+ordering rule from GATES → REVIEW applies again on the way out.** Set the phase
+back to REVIEW *before* the second commit, or that commit carries `phase: RED` in
+its frontmatter and the `boundaries` job fails a PR that was green ten minutes
+earlier. It applies on every exit from REVIEW, not only the first.
 
 Rules for you as orchestrator:
 
@@ -210,6 +258,18 @@ Rules for you as orchestrator:
   the only thing that separates them, and it is cheap: a fresh probe on
   different inputs, or reading the fixture and enumerating the cases the file
   asserts to show no rule satisfies all of them.
+- **And it runs the other way: an instruction of yours that names a *mechanism*
+  is a claim too.** When you tell a subagent *how* — call this function to force
+  the work to complete, read the value from here, use that API — you are asserting
+  something you may not have measured. A story's own PO decision named a GL call
+  as the way to obtain a GPU-inclusive frame rate; the feature-developer probed
+  the instruction instead of following it and found that the call does not wait on
+  that browser, nor does the fence-based alternative, and that only a one-pixel
+  read-back does. Followed literally, the decision would have published ~8,000 fps
+  at every input size — a plausible number with nothing behind it. So say in the
+  dispatch that a named mechanism is checkable, not sacred: a subagent that can
+  cheaply verify one should, and should report when it does not hold. Treat that
+  report as the valuable escalation it is.
 - **When the claim is "this suite discriminates", the check is a mutation you
   run.** A handoff's mutation table — *changing X fails 9 tests, changing Y
   fails 1* — could not be verified in RED, where the suite did not load, and

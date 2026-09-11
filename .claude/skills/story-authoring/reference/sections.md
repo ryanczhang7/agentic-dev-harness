@@ -42,6 +42,26 @@ story changes, source and test, grep-listed before dispatch. RED cannot derive
 that list: during RED the old signature still exists, so its callers still
 compile and do not appear in RED's typecheck. See the main skill file.
 
+## Deferred verifications - Lead PO at PLANNED; the owning phase records the result
+
+Required when the story depends on a verification that provably cannot run in the
+phase that wants it, omitted otherwise. The usual case is a negative control that
+has to break the real implementation - a codec, a threshold, a round trip - which
+in RED does not exist yet.
+
+One block per entry: the falsifiable condition ("with one field dropped from the
+encoder, AC-1's property test **must** fail"), why the phase that wants it cannot
+run it, **the phase that owns it by name**, and the pasted result once that phase
+runs it - what was mutated, what went red, that the file was restored - or the
+word `WAIVED` with a reason. `check-boundaries.sh` refuses a PR whose block names
+no phase, and one that reaches REVIEW with neither a result nor a waiver.
+
+Prefer GATES as the owner where you have the choice: source is writable there, so
+the mutation needs no exemption, and a story that bounced back to RED mid-cycle
+earns its corrected assertions from the same experiment. Three mutations beat one
+for anything format-shaped, and one of them should corrupt a **value** rather than
+drop a field.
+
 ## Amendments - Lead PO, with the user
 
 Acceptance criteria are frozen once the story leaves PLANNED. If one is wrong or

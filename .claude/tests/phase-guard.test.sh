@@ -200,6 +200,55 @@ The guard reported `path: >` for a command with no redirect in it.
 Prose that quotes `>` or `>>` is data, not syntax.
 MARKDOWN' 'a docs heredoc whose prose quotes the redirect character'
 
+
+# ---------------------------------------------------------------------------
+describe "A read-only command with no write in it, in any phase"
+set_phase "$FIX" RED
+
+# Two more field reports, and a kind no earlier case covers: every shape above
+# was at least a command that wrote SOMETHING somewhere, so a guard that
+# guessed the wrong target was still refusing a write. These write nothing
+# under any parse. `node -e` counting characters in a file was refused on a
+# path of `1`; an arrow function on a path of `n`; an awk program printing a
+# string containing the operator on a path of `b`. The guard was not choosing
+# the wrong target - it was inventing one.
+assert_allowed "$FIX" "node -e 'console.log([1,2].filter(function(n){ return n > 1 }))'" \
+  'a numeric comparison inside node -e'
+assert_allowed "$FIX" "node -e 'console.log([1,2].filter(n => n === 1))'" \
+  'an arrow function inside node -e'
+assert_allowed "$FIX" "awk 'BEGIN{ print \"a>b\" }'" \
+  'the operator inside a printed string literal'
+assert_allowed "$FIX" "node -e 'console.log([\"x\"].filter(c => !(c.codePointAt(0) > 127)))'" \
+  'an arrow function whose body negates a comparison'
+assert_allowed "$FIX" "awk 'FNR>=791' docs/notes.md" \
+  'a comparison operator inside an awk pattern'
+
+# And the reason this block does not live under a phase heading. The bogus
+# token falls through paths.conf to the fallback category, which is `source`,
+# which every phase but SCAFFOLD freezes - so the defect is phase-independent
+# and these fired in REVIEW, where a story is only meant to be answering
+# review comments. A suite that only ever asserted in RED would have called
+# this fixed while it still refused the same commands three phases later.
+set_phase "$FIX" REVIEW
+assert_allowed "$FIX" "node -e 'console.log([1,2].filter(function(n){ return n > 1 }))'" \
+  'a numeric comparison inside node -e, in REVIEW'
+assert_allowed "$FIX" "node -e 'console.log([1,2].filter(n => n === 1))'" \
+  'an arrow function inside node -e, in REVIEW'
+assert_allowed "$FIX" "awk 'BEGIN{ print \"a>b\" }'" \
+  'the operator inside a printed string literal, in REVIEW'
+
+# The easy wrong fix for all of the above is a scanner that gives up on any
+# command it finds hard, which deletes the protection the guard exists for.
+# These two pin what must survive it: a plain redirect, and - because case 4
+# of the field report is "a heredoc BODY is data" - a real redirect on a line
+# that also opens a heredoc. Meeting the heredoc rule by skipping heredoc
+# commands wholesale fails here.
+set_phase "$FIX" RED
+assert_blocked "$FIX" 'echo x > src/main.ts' src/main.ts \
+  'a plain redirect is still a write'
+assert_blocked "$FIX" 'cat > src/main.ts <<'"'"'EOF'"'"'
+export const x = 2
+EOF' src/main.ts 'a real redirect on the same line as a heredoc'
 # ---------------------------------------------------------------------------
 describe "RED: the harness's own vocabulary in a commit message"
 set_phase "$FIX" RED
