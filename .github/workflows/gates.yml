@@ -15,12 +15,12 @@ jobs:
       # project.conf gate commands actually invoke - the bootstrap story should
       # add the setup step for the chosen stack here.
       #
-      # - uses: actions/setup-python@v5
+      # - uses: actions/setup-python@v7
       #   with: { python-version: "3.12" }
-      # - uses: astral-sh/setup-uv@v5
+      # - uses: astral-sh/setup-uv@v10
       #
-      # - uses: pnpm/action-setup@v4
-      # - uses: actions/setup-node@v4
+      # - uses: pnpm/action-setup@v6
+      # - uses: actions/setup-node@v7
       #   with: { node-version: "22", cache: pnpm }
 
       # The harness's own tests. They need nothing but bash and git, and they
