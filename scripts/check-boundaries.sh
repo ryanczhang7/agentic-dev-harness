@@ -134,6 +134,32 @@ else
   ok "source changes accompanied by test changes ($src source, $tst test)"
 fi
 
+# 3a-bis. An upstream harness change bumps the version stamp
+#
+# A vendored copy cannot be dated from the outside - it carries the consuming
+# project's git history, not this one's - so `.claude/harness/VERSION` is the
+# only thing that can answer "which harness is this". A stamp somebody has to
+# remember to bump is wrong exactly when it matters, so CI asks.
+#
+# The scoping is the careful part, and it is two conditions rather than one.
+# This must never fire in a project BUILT on the harness, where .claude/ is
+# edited routinely - project.conf, paths.conf, .gitignore - by people who are
+# not upstream and have no version to stamp. So: only on a branch that is not a
+# story branch (downstream work always is; an upstream harness round never is),
+# and only while the repo is unbootstrapped (every real project sets
+# BOOTSTRAPPED=yes; the template never does).
+if [ -z "$sid" ] && ! grep -qE '^BOOTSTRAPPED=yes' .claude/harness/project.conf 2>/dev/null; then
+  touched_harness=$(printf '%s\n' "$changed" | grep -cE '^(\.claude/|scripts/|\.github/)' || true)
+  if [ "${touched_harness:-0}" -gt 0 ]; then
+    if git cat-file -e "$BASE:.claude/harness/VERSION" 2>/dev/null \
+       && [ "$(git show "$BASE:.claude/harness/VERSION" 2>/dev/null)" = "$(cat .claude/harness/VERSION 2>/dev/null)" ]; then
+      problem "this changes the harness ($touched_harness file(s) under .claude/, scripts/ or .github/) and does not bump .claude/harness/VERSION. A vendored copy has no other way to tell how old it is, and two field reports have already been spent re-verifying defects that were fixed upstream."
+    else
+      ok "harness version bumped alongside the change"
+    fi
+  fi
+fi
+
 [ -n "$sid" ] || exit $fail
 if [ ! -f "$sfile" ]; then
   problem "branch '$br' names story $sid but $sfile does not exist"

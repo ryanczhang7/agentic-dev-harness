@@ -31,6 +31,16 @@ check git  "everything"
 check bash "the hooks and these scripts"
 printf '  ok       %-12s %s\n' "bash ver" "${BASH_VERSION%%(*}"
 
+# Which harness this is. Printed here rather than anywhere else because this is
+# the output a project quotes into environment.md and a field report quotes back
+# upstream - and the question "which harness did you measure" has now gone
+# unanswered twice, at the cost of re-verifying findings that were already fixed.
+# An absent stamp is not a blank field: it is a copy from before stamping, which
+# is older than every stamped version.
+hv="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$ROOT/.claude/harness/VERSION" 2>/dev/null | head -1)"
+hv="$(trim "${hv:-}")"
+printf '  ok       %-12s %s\n' "harness ver" "${hv:-unstamped (predates versioning; treat as older than any dated release)}"
+
 printf '\nHarness integrity\n'
 for f in phase-guard.sh inject-state.sh gate-reminder.sh statusline.sh lib.sh; do
   if [ -f "$ROOT/.claude/hooks/$f" ]; then

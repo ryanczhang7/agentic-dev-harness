@@ -60,6 +60,9 @@ make_fixture() {
   mkdir -p "$d/.claude/harness" "$d/.claude/state" "$d/src" "$d/tests" "$d/docs/backlog/stories"
   cp "$REPO_ROOT/.claude/harness/paths.conf"  "$d/.claude/harness/paths.conf"
   cp "$REPO_ROOT/.claude/harness/phases.conf" "$d/.claude/harness/phases.conf"
+  # The real stamp, for the same reason the confs are the real ones: a fixture
+  # carrying a made-up version would let doctor.sh print anything and pass.
+  cp "$REPO_ROOT/.claude/harness/VERSION"     "$d/.claude/harness/VERSION" 2>/dev/null
   printf 'export const x = 1\n' > "$d/src/main.ts"
   printf 'test("x", () => {})\n' > "$d/tests/main.test.ts"
   printf '# notes\n' > "$d/docs/notes.md"

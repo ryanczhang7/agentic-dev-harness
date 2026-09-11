@@ -58,7 +58,9 @@ Either way, check `git remote -v` before your first push. If it still says
 
 Improvements you make to the harness while working on a project do not flow back
 automatically. When you find one worth keeping, copy the file into this
-repository deliberately.
+repository deliberately. Neither does anything flow the other way — see
+[Refreshing a vendored harness](#refreshing-a-vendored-harness), which is the
+direction that has actually cost something.
 
 **2. Check the machine.** `bash scripts/doctor.sh` — at this point it should
 report the harness is fine and there is no toolchain configured yet. That is the
@@ -446,6 +448,58 @@ tooling. Keep them out of production images.
 - Add a stack: write a profile in `.claude/skills/stack-profiles/reference/`
 - Give the designer real eyes: copy `.mcp.json.example` to `.mcp.json`
   (needs Node)
+
+
+## Refreshing a vendored harness
+
+A project made from this template gets a **copy**. Nothing updates it, and the
+copy going stale is not a theoretical problem: two consecutive field reports from
+a real project filed defects that had been fixed upstream for weeks, and the
+cost was not the reports — it was re-verifying every finding by hand before it
+could be called already-fixed. One of those reports described agents working
+around a rule with `sed -i` because the sanctioned tool for it "did not exist";
+`scripts/mutate.sh` had been upstream for three rounds.
+
+**First, find out how stale it is.** `bash scripts/doctor.sh` prints
+`harness ver` in both repositories — compare them. A copy that reports
+`unstamped` predates versioning entirely, and is older than any dated release.
+
+**Then copy, and know which half you are copying.** The split is not by
+directory, and getting it wrong either loses project configuration or keeps the
+bug you were trying to remove:
+
+| Upstream-owned — replace wholesale | Project-owned — never overwrite |
+|---|---|
+| `.claude/agents/`, `.claude/commands/`, `.claude/skills/` | `.claude/harness/project.conf` — gates, tasks, the whole stack indirection |
+| `.claude/hooks/`, `.claude/tests/` | `docs/**` — wiki, backlog, stories, audits |
+| `scripts/*.sh` | `.gitignore` — the project adds its stack's output |
+| `.claude/harness/phases.conf`, `rules.md`, `VERSION` | `.github/workflows/gates.yml` — the project adds its toolchain setup steps |
+
+`.claude/harness/paths.conf` and `CLAUDE.md` are the two that need reading rather
+than copying: both are upstream documents a project is invited to extend, so
+merge them instead of replacing them.
+
+```bash
+HARNESS=../agentic-dev-harness            # a checkout of this repository
+rsync -a --delete "$HARNESS"/.claude/{agents,commands,skills,hooks,tests} .claude/
+cp "$HARNESS"/.claude/harness/{phases.conf,rules.md,VERSION} .claude/harness/
+cp "$HARNESS"/scripts/*.sh scripts/       # adds new scripts; leaves yours alone
+```
+
+`--delete` on the first line is deliberate: a skill or hook that upstream
+*removed* has to go, or the project keeps running a rule this harness no longer
+believes. It is also why `scripts/` uses `cp` instead — a project legitimately
+adds its own scripts there, and `--delete` would take them.
+
+**Finally, re-run the checks, in this order.** `bash scripts/selftest.sh` first —
+it tests the machinery everything else depends on, and it is the file set you
+just replaced. Then `bash scripts/doctor.sh`, then `bash scripts/gates.sh`. Do it
+between stories, never mid-cycle: the hooks you are replacing are the ones
+enforcing the phase you are standing in.
+
+**When you next write a field report**, state the version you measured. That one
+line is the difference between "here are twenty findings" and "here are the three
+you have not already fixed".
 
 ## Licence
 
