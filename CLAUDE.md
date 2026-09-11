@@ -93,6 +93,7 @@ bash scripts/gates.sh            # all gates
 bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and GREEN
 bash scripts/gates.sh --gate unit
 bash scripts/check-boundaries.sh # the other half of CI: the commit, not the code
+bash scripts/ci-local.sh         # every step CI runs, in order, on this machine
 bash scripts/task.sh dev         # run the app
 bash scripts/mutate.sh F 'EXPR' -- CMD   # the only sanctioned diagnostic mutation
 ```
@@ -108,6 +109,17 @@ the phase in the committed frontmatter, the acceptance criteria against the base
 branch, whether the recorded gate run still matches the tree. CI runs both, so
 "all gates pass" is not the same as "CI will pass". Run it after committing and
 before opening the PR.
+
+`ci-local.sh` runs the whole CI sequence — both of those plus `selftest.sh`,
+`--list` and `--audit` — in order, stopping at the first failure as a runner
+does. `.claude/tests/ci-local.test.sh` derives the expected step list *from the
+workflow files*, so a step added to `.github/workflows/` and not to the script
+fails the selftest; that test is the only thing making "the same sequence" a
+fact rather than a claim. What it cannot replace: it is **one machine** — every
+CI-only failure this file warns about is green here — it runs only when invoked,
+so it cannot cover the diff no hook and no agent saw, and branch protection
+cannot require it. Use it to know a PR will pass before opening one, never as
+evidence that the PR's own checks did.
 
 `--fast` exists because RED and GREEN otherwise only ever run the test command,
 while the gates judge those tests with a slower one — the same suite under

@@ -189,7 +189,13 @@ project and a bad line arrives pre-installed:
 
 ```bash
 bash scripts/selftest.sh                   # the harness's own tests
+bash scripts/ci-local.sh                   # every step CI runs, in order, here
 ```
+
+`ci-local.sh` is the whole CI sequence on your machine — useful when a runner is
+slow, metered or unavailable, and the right way to know a PR will pass before
+opening one. It is not a substitute for the checks themselves: it is one machine,
+it runs only when invoked, and no branch rule can require it.
 
 ```bash
 bash scripts/phase.sh show                 # what is active, what may be written
