@@ -18,7 +18,7 @@
 #     runs-on: ubuntu-latest
 #     environment: production      # require an approval gate here
 #     steps:
-#       - uses: actions/checkout@v4
+#       - uses: actions/checkout@v5
 #
 #       - name: Build
 #         run: bash scripts/gates.sh --gate build
