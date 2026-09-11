@@ -9,7 +9,7 @@ jobs:
   gates:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # The harness itself needs nothing but bash. Add the toolchain your
       # project.conf gate commands actually invoke - the bootstrap story should
