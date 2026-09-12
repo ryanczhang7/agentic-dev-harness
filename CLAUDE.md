@@ -94,6 +94,7 @@ bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and 
 bash scripts/gates.sh --gate unit
 bash scripts/check-boundaries.sh # the other half of CI: the commit, not the code
 bash scripts/ci-local.sh         # every step CI runs, in order, on this machine
+bash scripts/classify.sh --list source src   # what the lock thinks a path is
 bash scripts/task.sh dev         # run the app
 bash scripts/mutate.sh F 'EXPR' -- CMD   # the only sanctioned diagnostic mutation
 ```

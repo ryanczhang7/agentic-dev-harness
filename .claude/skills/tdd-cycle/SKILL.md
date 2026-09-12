@@ -196,6 +196,64 @@ not share the implementation's assumptions. And mutate in two directions - a
 missing field and a wrong value fail differently, and a suite that catches an
 omission can be blind to a corruption.
 
+## A test that writes into the tree and a test that reads it are not independent
+
+Two patterns this skill recommends, put in the same suite, produce a defect
+neither has on its own.
+
+**Writing into the tree** is how you test a *rule* rather than today's code. A
+guard that greps the current imports passes on a repository where the lint rule
+has been deleted; a guard that writes a deliberately offending module, runs the
+real linter over it, asserts the rejection and removes it, does not. It is the
+negative-control idea applied to tooling, and it is right. The offending file has
+to live at the **real** path, too, because lint overrides are path-scoped - a
+probe linted from a temp directory is linted under the wrong rules, and then both
+the probe and the rule silently stop testing anything while still passing.
+
+**Reading the tree** is how you assert a structural property of all source: walk
+the directory, read each file, check the property.
+
+Run both and the second enumerates the first. When the owning worker's delete
+lands between another worker's *list* and its *read*, the read dies:
+
+    Error: ENOENT: no such file or directory, open 'src/ui/__import_guard_probe.ts'
+
+Note where the failure surfaced: in a guard that is correct, about a subject that
+is correct, naming a file belonging to a different guard testing a different
+rule. **Your test runner will not save you** - worker isolation isolates module
+state, not the filesystem.
+
+Three things to take from it:
+
+1. **The race is the symptom; the wrong result set is the defect.** Those
+   scanners had been returning probe artifacts as source modules for six
+   stories - asserting real properties over files written deliberately to
+   violate a rule. It never fired only because the rule the probes violated was
+   not the rule being asserted. Two guards were one overlap away from a failure
+   that would have read as a genuine defect in `src/`.
+2. **Ask the harness what a path is; do not answer it yourself.**
+   `bash scripts/classify.sh --list source src` gives the same answer the phase
+   lock gives, and `paths.conf` classifies a `__probe_*` artifact as `test`. A
+   private regex per guard is how four copies in one project drifted apart, two
+   of them excluding a file extension the other two did not.
+3. **Do not fix it by catching the read error.** Tolerating `ENOENT` treats the
+   symptom, hides every future cause, and lets a scanner degrade toward scanning
+   nothing while still reporting green - the vacuous pass from three directions
+   at once.
+
+The invariant is testable even though the race is not reproducible on demand:
+write a probe-named file into a fixture, call the scanner, and assert the probe
+is absent **and** a genuine module is still present. Both halves, because an
+exclusion that is too broad is the same defect reversed - match `*_probe.*` and a
+real `heat_probe.ts` becomes invisible to every guard. Seal it from both
+directions: no guard writes an artifact the scanners would not skip, and no
+probe-named file sits under `src/` without a guard that owns it.
+
+And if you are harmonising guards that had drifted, prove the cleanup did not
+narrow one: run every old variant against the new shared one over the live tree
+and compare the file lists. Byte-identical, or you have quietly stopped checking
+something.
+
 ## The gates run your tests differently
 
 RED and GREEN validate with the test command. At least one required gate does
