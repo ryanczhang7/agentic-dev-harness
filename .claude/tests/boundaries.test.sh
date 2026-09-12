@@ -433,4 +433,166 @@ case "$out" in
   *"does not bump"*) _bad "a story branch is never asked to bump" "the bootstrap story would be refused: $out" ;;
   *) _ok "a story branch is never asked to bump" ;;
 esac
+
+# ---------------------------------------------------------------------------
+describe "RED may add a test dependency, and only a test dependency"
+
+# H22. RED now owns the manifest, because a failing test routinely needs a
+# test-only dependency and every ecosystem declares that in the same file as the
+# production dependencies. The permission is only safe if something reads what
+# RED actually wrote - otherwise "RED may edit the manifest" is "RED may add a
+# production dependency", and the phase that may not write production code gets
+# to pull production code in from a registry instead.
+#
+# The lock cannot do this: it sees a path, not a diff. So the commit does.
+
+# manifest_story <phase> <manifest> <content>   A branch whose FIRST commit
+# carries the manifest change with the story in <phase>, and whose second moves
+# the story to REVIEW so the PR itself is well formed. That shape matters: by
+# the time CI sees a PR the story says REVIEW, so a check that only looked at
+# the tip would never see a RED commit at all.
+manifest_story() {
+  local phase="$1" file="$2" body="$3"
+  git -C "$FIX" checkout -q main 2>/dev/null
+  git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+  git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+  mkdir -p "$FIX/docs/backlog/stories"
+  _story_file "$phase"
+  printf '%s' "$body" > "$FIX/$file"
+  commit_all "T-1 $phase manifest"
+  _story_file REVIEW
+  commit_all "T-1 to review"
+}
+_story_file() {
+  {
+    printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: %s\nbranch: story/T-1-fixture\n---\n\n' "$1"
+    printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n'
+  } > "$FIX/docs/backlog/stories/T-1.md"
+}
+
+# The baseline both branches diverge from.
+git -C "$FIX" checkout -q main
+cat > "$FIX/Cargo.toml" <<'TOML'
+[package]
+name = "fixture"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+
+[dev-dependencies]
+TOML
+cat > "$FIX/package.json" <<'JSON'
+{
+  "name": "fixture",
+  "dependencies": {
+    "left-pad": "1.0.0"
+  },
+  "devDependencies": {
+  }
+}
+JSON
+commit_all "baseline manifests"
+
+# --- the case the finding is about: a test-only dependency in RED -----------
+manifest_story RED Cargo.toml '[package]
+name = "fixture"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
+'
+out="$(boundaries)"
+assert_contains "a dev-dependency added in RED is fine" "ok    RED touched only test dependencies" "$out"
+
+manifest_story RED package.json '{
+  "name": "fixture",
+  "dependencies": {
+    "left-pad": "1.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.0.0"
+  }
+}
+'
+out="$(boundaries)"
+assert_contains "the same in package.json" "ok    RED touched only test dependencies" "$out"
+
+# --- what the permission must not become -----------------------------------
+manifest_story RED Cargo.toml '[package]
+name = "fixture"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+regex = "1"
+
+[dev-dependencies]
+'
+out="$(boundaries)"
+assert_contains "a production dependency added in RED is refused" "outside the test-dependency block" "$out"
+assert_contains "and the file is named" "Cargo.toml" "$out"
+
+# A version bump is the same defect wearing a smaller costume: it changes what
+# production code resolves to, from the phase that may not write production code.
+manifest_story RED Cargo.toml '[package]
+name = "fixture"
+version = "0.1.0"
+
+[dependencies]
+serde = "2.0"
+
+[dev-dependencies]
+'
+out="$(boundaries)"
+assert_contains "so is bumping an existing production dependency" "outside the test-dependency block" "$out"
+
+manifest_story RED package.json '{
+  "name": "fixture",
+  "dependencies": {
+    "left-pad": "1.0.0",
+    "express": "4.0.0"
+  },
+  "devDependencies": {
+  }
+}
+'
+out="$(boundaries)"
+assert_contains "and a production dependency in package.json" "outside the test-dependency block" "$out"
+
+# --- GREEN is not RED ------------------------------------------------------
+# The asymmetry is deliberate and stays: GREEN's whole job is making the tests
+# pass, and pulling in a library is a legitimate way to do it.
+manifest_story GREEN Cargo.toml '[package]
+name = "fixture"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+regex = "1"
+
+[dev-dependencies]
+'
+out="$(boundaries)"
+case "$out" in
+  *"outside the test-dependency block"*) _bad "GREEN may add a production dependency" "refused: $out" ;;
+  *) _ok "GREEN may add a production dependency" ;;
+esac
+
+# --- the honest gap --------------------------------------------------------
+# A lockfile has no dev/production split to read, so nothing here can verify
+# one. It is permitted unchecked, which is sound only because the manifest it
+# follows from IS checked: a dependency nobody declared cannot be used.
+manifest_story RED Cargo.lock 'version = 3
+[[package]]
+name = "anything"
+'
+out="$(boundaries)"
+case "$out" in
+  *"outside the test-dependency block"*) _bad "a lockfile is permitted unchecked" "refused: $out" ;;
+  *) _ok "a lockfile is permitted unchecked" ;;
+esac
 summary "boundaries"

@@ -46,7 +46,14 @@ for case in \
   ".editorconfig=harness" \
   ".mailmap=harness" \
   "CODEOWNERS=harness" \
-  "package.json=config" \
+  "package.json=manifest" \
+  "pyproject.toml=manifest" \
+  "Cargo.toml=manifest" \
+  "Cargo.lock=manifest" \
+  "pnpm-lock.yaml=manifest" \
+  "uv.lock=manifest" \
+  "go.mod=config" \
+  "requirements.txt=config" \
   "tsconfig.json=config" \
   "vite.config.ts=config" \
   "vitest.config.ts=test" \

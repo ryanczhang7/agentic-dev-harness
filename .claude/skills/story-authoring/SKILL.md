@@ -114,6 +114,13 @@ whatever of these the story touches:
 - **The oracle partition** of the criteria (above).
 - **Baseline measurements** the story may read out rather than re-derive, each
   with what it was measured on.
+- **Test-only dependencies** the story is likely to need, by name. RED can add
+  these itself - manifests are writable there, for the dev block only - so this
+  is not a permission question. It is a *classification* question, and getting it
+  wrong costs a phase: a library production will also use is a GREEN change, and
+  an ecosystem with no dev block at all (`go.mod`, `requirements.txt`, `*.csproj`)
+  means RED cannot declare one and the round trip has to be planned for rather
+  than discovered mid-phase.
 
 And one standing rule, in the section itself: **RED may amend any block, in
 place, with a reason** - and GREEN then builds what the amended block says. That
