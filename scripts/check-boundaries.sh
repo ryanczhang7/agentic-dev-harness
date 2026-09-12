@@ -100,7 +100,41 @@ src=$(printf '%s\n' "$src_files" | grep -c '[^[:space:]]')
 tst=$(printf '%s\n' "$classified" | awk -F'\t' '$1 == "test"' | grep -c '[^[:space:]]')
 
 br="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null)}"
+
+# Which story is this? Every check from 3b onward is gated behind the answer, so
+# getting it wrong is not a missing check - it is eight of them passing in
+# silence.
+#
+# The old answer parsed the branch name for `story/<ID>`. That works only while
+# every branch is named the way new-story.sh defaults to naming it, and a real
+# project's bug and chore stories were not: `bug/world-storage-megabyte-timeout`
+# and `chore/tauri-capability-acl-guard` carry no story id anywhere, so `sid`
+# came back empty and this script exited before checking the phase, the frozen
+# criteria, the gate record or the handoff. The job went green in four seconds.
+#
+# Loosening the pattern cannot fix that - there is no id in the name to find. So
+# the lookup is inverted: ask which story CLAIMS this branch. That datum already
+# exists in every story's frontmatter and `phase.sh` already refuses to start a
+# story whose `branch:` is not the checkout, so it is the authoritative side of
+# the relationship rather than a convention.
 sid=$(printf '%s' "$br" | sed -nE 's|^story/([A-Za-z0-9]+-[0-9]+).*|\1|p')
+if [ -n "$sid" ] && [ ! -f "docs/backlog/stories/$sid.md" ]; then sid=""; fi
+if [ -z "$sid" ] && [ -n "$br" ]; then
+  claimants=""
+  for f in docs/backlog/stories/*.md; do
+    [ -e "$f" ] || continue
+    [ "$(story_field "$f" branch)" = "$br" ] || continue
+    claimants="$claimants $(basename "$f" .md)"
+  done
+  set -- $claimants
+  case $# in
+    0) ;;
+    1) sid="$1" ;;
+    # Silently taking the first would be the same defect wearing a smaller
+    # costume: a wrong answer that looks like an answer.
+    *) problem "branch '$br' is claimed by more than one story ($*). One branch, one story: fix the frontmatter of whichever is wrong." ;;
+  esac
+fi
 sfile="docs/backlog/stories/$sid.md"
 story_type=""; ph=""
 if [ -n "$sid" ] && [ -f "$sfile" ]; then
@@ -160,7 +194,14 @@ if [ -z "$sid" ] && ! grep -qE '^BOOTSTRAPPED=yes' .claude/harness/project.conf 
   fi
 fi
 
-[ -n "$sid" ] || exit $fail
+if [ -z "$sid" ]; then
+  # Not an error: a harness PR, or a branch whose story does not exist yet.
+  # But it is said out loud, because eight skipped checks and eight passing
+  # ones look identical in a job summary - which is how six stories' worth of
+  # PRs went unverified without anyone noticing.
+  note "no story claims branch '$br'; the story checks below did not run"
+  exit $fail
+fi
 if [ ! -f "$sfile" ]; then
   problem "branch '$br' names story $sid but $sfile does not exist"
   exit $fail

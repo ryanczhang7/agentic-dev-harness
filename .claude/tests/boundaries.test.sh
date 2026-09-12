@@ -595,4 +595,96 @@ case "$out" in
   *"outside the test-dependency block"*) _bad "a lockfile is permitted unchecked" "refused: $out" ;;
   *) _ok "a lockfile is permitted unchecked" ;;
 esac
+
+# ---------------------------------------------------------------------------
+describe "the story is found by what claims the branch, not by the branch's name"
+
+# Every check from 3b onward is gated behind knowing WHICH story this is, and
+# that was read out of the branch name with ^story/. A real project names two of
+# its three story types differently - bug/world-storage-megabyte-timeout,
+# chore/tauri-capability-acl-guard - and those names carry no story id at all,
+# so the id came back empty and the script exited before a single story check
+# ran. The PR went green in four seconds having verified nothing: the phase, the
+# frozen criteria, the gate record against the tree, the handoff, all skipped.
+#
+# Loosening the pattern cannot fix it, because there is no id in the name to
+# find. The lookup has to be inverted: ask which story CLAIMS this branch. That
+# datum already exists and is already enforced - phase.sh refuses to start a
+# story whose frontmatter branch is not the checkout.
+
+# story_claiming <branch> <phase> [id]
+story_claiming() {
+  local br="$1" phase="$2" id="${3:-T-1}"
+  git -C "$FIX" checkout -q main 2>/dev/null
+  git -C "$FIX" branch -D "$br" >/dev/null 2>&1
+  git -C "$FIX" checkout -q -b "$br" 2>/dev/null
+  mkdir -p "$FIX/docs/backlog/stories"
+  {
+    printf -- '---\nid: %s\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: %s\nbranch: %s\n---\n\n' "$id" "$phase" "$br"
+    printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n'
+  } > "$FIX/docs/backlog/stories/$id.md"
+  commit_all "$id on $br"
+}
+
+# A bug/ branch, deliberately left in GATES: if the story is found, the
+# open-a-PR-from-REVIEW check fires. That it fires is the whole assertion - it
+# is proof the eight gated checks are running at all.
+story_claiming bug/world-storage-megabyte-timeout GATES
+out="$(boundaries)"
+assert_contains "a bug/ branch is matched to its story" "story T-1 is in phase 'GATES'" "$out"
+
+story_claiming chore/tauri-capability-acl-guard GATES
+out="$(boundaries)"
+assert_contains "so is a chore/ branch" "story T-1 is in phase 'GATES'" "$out"
+
+# The old form keeps working, and keeps working by the fast path rather than by
+# accident: this one's frontmatter names the branch too, as every story's does.
+story_claiming story/T-1-fixture GATES
+out="$(boundaries)"
+assert_contains "story/ still resolves" "story T-1 is in phase 'GATES'" "$out"
+
+# A branch no story claims is not an error - a harness PR is exactly that - but
+# it must SAY so. Exiting in silence is how eight skipped checks looked like
+# eight passing ones for six stories.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" branch -D harness/some-fix >/dev/null 2>&1
+git -C "$FIX" checkout -q -b harness/some-fix 2>/dev/null
+printf 'x\n' > "$FIX/docs/notes.md"; commit_all "a harness change"
+out="$(boundaries)"
+assert_contains "an unclaimed branch says so" "no story claims branch" "$out"
+
+# Two stories claiming one branch is ambiguous, and picking one silently is the
+# same defect in a smaller costume.
+story_claiming bug/shared-branch GATES T-1
+{
+  printf -- '---\nid: T-2\ntitle: Second\nslug: second\ntype: feature\nstatus: todo\nphase: GATES\nbranch: bug/shared-branch\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n'
+} > "$FIX/docs/backlog/stories/T-2.md"
+commit_all "a second story claiming the same branch"
+out="$(boundaries)"
+assert_contains "two claimants is a problem, not a coin flip" "claimed by more than one story" "$out"
+rm -f "$FIX/docs/backlog/stories/T-2.md"
+
+# The story/ fast path is not redundant with the lookup, and a mutation proved
+# the suite could not tell: disabling the pattern left all assertions green.
+# What it is FOR is the case where the frontmatter is wrong - a story/<ID>
+# branch whose `branch:` field names something else. The lookup cannot match
+# that, and without the fast path the story goes unidentified and every check
+# below is skipped with a note, when what the author needs is the mismatch
+# reported as the problem it is.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" branch -D story/T-1-renamed >/dev/null 2>&1
+git -C "$FIX" checkout -q -b story/T-1-renamed 2>/dev/null
+{
+  printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-the-old-name\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n'
+} > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "T-1 on a branch its frontmatter does not name"
+out="$(boundaries)"
+assert_contains "a story/ branch with stale frontmatter is still identified" \
+  "frontmatter says branch" "$out"
+case "$out" in
+  *"no story claims branch"*) _bad "and is not written off as unclaimed" "it was skipped: $out" ;;
+  *) _ok "and is not written off as unclaimed" ;;
+esac
 summary "boundaries"
