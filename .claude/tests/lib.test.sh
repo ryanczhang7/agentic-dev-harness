@@ -29,6 +29,11 @@ for case in \
   ".github/workflows/gates.yml=harness" \
   "CLAUDE.md=harness" \
   ".gitignore=harness" \
+  "src/ui/__import_guard_probe.ts=test" \
+  "src/core/__probe_offending_import.ts=test" \
+  "src/__probe_a.py=test" \
+  "src/ui/heat_probe.ts=source" \
+  "src/core/probe.ts=source" \
   "LICENSE=docs" \
   "LICENSE.md=docs" \
   "COPYING=docs" \

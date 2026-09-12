@@ -48,8 +48,37 @@ Categories are decided by `.claude/harness/paths.conf`, not by intuition. To see
 how a path is classified:
 
 ```bash
-bash -c '. .claude/hooks/lib.sh; classify "src/app/main.ts"'
+bash scripts/classify.sh src/app/main.ts
 ```
+
+**A test that needs this answer asks for it; it does not reimplement it.** A
+guard asserting a property of every source module - no module-level constant of
+some shape, no import crossing some boundary - needs to know which files count,
+and the answer is the one the phase lock uses:
+
+```bash
+bash scripts/classify.sh --list source src     # every source file under src/
+bash scripts/classify.sh --only test PATH...   # filter a list you already have
+```
+
+It enumerates through git, so a module written five minutes ago and not yet
+committed is still returned, and build output is not. The alternative is each
+guard carrying its own regex for "a source module", and that is not
+hypothetical: four private copies in one project drifted apart and spent six
+stories returning **probe artifacts** as production source - deliberately
+offending files a guard writes to test a lint rule - asserting real properties
+over files written to violate a rule, and passing only because the rule violated
+was not the rule being asserted.
+
+Probes are why `paths.conf` has a `__probe_` convention. A guard that tests a
+*rule* rather than today's code has to write an offending module and run the real
+tool over it, under the **real** path, because lint overrides are path-scoped and
+a probe linted from a temp directory is linted under the wrong rules. Name it
+`__probe_*.*` or `__*_probe.*` and one rule makes both the scanner and the lock
+agree: the scanner skips it, and RED may write it, because it classifies as
+`test`. The leading `__` is deliberate - matching `*_probe.*` would make a real
+`heat_probe.ts` invisible to every guard, which is the same defect pointing the
+other way.
 
 # The model each agent runs on
 
