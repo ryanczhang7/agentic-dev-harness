@@ -105,15 +105,46 @@ resolved model of every dispatch, by name, in the story.**
 |---|---|---|
 | any | vendor, ignored | installed dependencies, build output, and anything the project's `.gitignore` covers — generated, not authored |
 | `PLANNED` | docs, harness | story is being written |
-| `RED` | test, docs, harness | failing tests only; source frozen |
-| `GREEN` | source, config, docs, harness | make them pass; tests frozen |
-| `GATES` | source, config, docs, harness | fix lint/type/build; tests frozen |
+| `RED` | test, manifest, docs, harness | failing tests only; source frozen. The manifest is writable for **test** dependencies only — see below |
+| `GREEN` | source, config, manifest, docs, harness | make them pass; tests frozen |
+| `GATES` | source, config, manifest, docs, harness | fix lint/type/build; tests frozen |
 | `REVIEW` | docs, harness | PR is open |
 | `SCAFFOLD` | everything | bootstrap/chore stories only; every source file named in `## Scaffold inventory` |
 | `DONE` | docs, harness | closed |
 
 No active story means no restrictions. The lock protects a cycle in flight; it
 is not a general permission system.
+
+**RED may declare a test dependency, and only a test dependency.** A failing
+test routinely needs one — a temp-directory crate, an async `pytest` plugin, a
+snapshot matcher — and every ecosystem declares it in the same file as the
+production dependencies. So dependency manifests are their own category,
+`manifest`, and RED can write them; `config` stays frozen, because a build
+config or a container definition is production surface.
+
+The lock cannot tell a test dependency from a production one — it sees a path,
+never a diff — so `check-boundaries.sh` reads the commit instead. For every
+commit whose committed story says `phase: RED`, it deletes the dev-dependency
+block from both sides of the manifest and requires what is left to be identical.
+A production dependency added in RED is refused, and so is bumping one: that
+changes what production code resolves to, from the phase that may not write
+production code. It has to be per-commit, because by the time a PR exists the
+story says REVIEW and the merged diff cannot say which phase added which line.
+
+Two limits worth knowing before you meet them:
+
+- **Lockfiles are permitted unchecked.** They have no dev/production split to
+  read. That is sound only because the manifest they follow from *is* checked: a
+  dependency nobody declared cannot be used.
+- **Some ecosystems have no in-file split at all** — `go.mod`, `requirements.txt`,
+  `*.csproj`. They stay `config`, so RED cannot add a test dependency there.
+  That is the documented excursion below, not a bug to route around.
+
+**When RED needs something the manifest cannot carry, it stops and says so.**
+The orchestrator changes phase deliberately, the dependency goes in, and the
+story records why. What RED does *not* do is meet a refusal and reach for a
+different tool — that is law 5, and a refusal with no sanctioned next step is
+exactly the condition under which an agent invents one.
 
 **A gate failure whose only legal fix is a write the current phase forbids is a
 return to RED, not a reason to route around the lock.** The return is usually

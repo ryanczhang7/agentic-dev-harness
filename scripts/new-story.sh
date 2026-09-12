@@ -73,6 +73,12 @@ cat >> "$file" <<'TEMPLATE'
          mechanical - see story-authoring)
        * baseline measurements the story may read out rather than re-derive,
          each with what it was measured on
+       * TEST-ONLY DEPENDENCIES this story is likely to need, by name. RED
+         may add them itself, but only inside the dev block - so a library
+         production will ALSO use is a GREEN change and is better decided
+         here than discovered mid-phase. Where the ecosystem has no dev
+         block at all (go.mod, requirements.txt, *.csproj), RED cannot
+         declare one and the phase round trip is yours to plan for
        * FOR EVERY EXISTING EXPORT WHOSE SIGNATURE THIS STORY CHANGES: every
          caller, source and test, grep-listed here before dispatch. RED cannot
          find these itself - the old signature still exists during RED, so a

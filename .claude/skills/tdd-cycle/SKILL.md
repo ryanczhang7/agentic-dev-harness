@@ -196,6 +196,32 @@ not share the implementation's assumptions. And mutate in two directions - a
 missing field and a wrong value fail differently, and a suite that catches an
 omission can be blind to a corruption.
 
+## When the failing test needs a dependency
+
+A test-only dependency is an ordinary thing for RED to need: `tempfile` for
+scratch directories, `pytest-asyncio`, `@testing-library/*`, `testcontainers`, a
+snapshot matcher. Every ecosystem declares it in the same manifest as the
+production dependencies, which is why `Cargo.toml`, `package.json` and
+`pyproject.toml` are a category of their own — `manifest`, writable in RED, while
+`config` stays frozen.
+
+**Put it in the dev block and nothing else.** `[dev-dependencies]`,
+`devDependencies`, `[dependency-groups]`. `check-boundaries.sh` reads every RED
+commit, deletes that block from both sides of the manifest and requires the rest
+to be identical, so a production dependency added in RED is refused — and so is
+bumping one, because that changes what production code resolves to from the
+phase that may not write production code. If the library you need is one
+production will also use, that is a GREEN change; say so in the handoff and let
+GREEN add it.
+
+**Where there is no dev block, stop and ask.** `go.mod`, `requirements.txt` and
+`*.csproj` have no in-file split, so they stay `config` and RED cannot write
+them. The sanctioned move is to stop and tell the orchestrator, who changes phase
+deliberately and records why in the story. It is a phase round trip and it is
+meant to be visible. What you do not do is meet the refusal and reach for a
+different tool: a blocked write is information, and an agent that routes around
+it has turned the one mechanism this repository relies on into a speed bump.
+
 ## A test that writes into the tree and a test that reads it are not independent
 
 Two patterns this skill recommends, put in the same suite, produce a defect

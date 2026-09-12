@@ -90,6 +90,44 @@ assert_contains "Edit tool is blocked on an absolute path" "category: source" "$
 
 
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+describe "RED may declare what its tests need, and nothing else"
+
+# H22. RED writes the failing test; a failing test routinely needs a test-only
+# dependency - a temp-directory crate, an async pytest plugin, a snapshot
+# matcher - and in every ecosystem that is declared in the same manifest as the
+# production dependencies. The lock classified the whole manifest as `config`,
+# froze it in RED, and left the agent a refusal with no sanctioned next step,
+# which is the condition under which agents invent one.
+#
+# Note the asymmetry that made it more than an inconvenience: GREEN could add
+# ANY dependency it liked, because config is writable there. The phase forbidden
+# from touching production code was the only one that could not say what its
+# tests needed.
+set_phase "$FIX" RED
+assert_allowed "$FIX" 'echo x >> Cargo.toml'      'RED may write Cargo.toml'
+assert_allowed "$FIX" 'echo x >> package.json'    'RED may write package.json'
+assert_allowed "$FIX" 'echo x >> pyproject.toml'  'RED may write pyproject.toml'
+# The lockfile too, or the install that follows the declaration cannot complete.
+assert_allowed "$FIX" 'echo x >> Cargo.lock'      'RED may write the lockfile'
+assert_allowed "$FIX" 'echo x >> pnpm-lock.yaml'  'RED may write pnpm-lock.yaml'
+
+# What the manifest permission is NOT. Splitting manifests out of `config` must
+# not hand RED the rest of the configuration: a build config, a container
+# definition or a tsconfig is production surface and stays frozen.
+assert_blocked "$FIX" 'echo x >> tsconfig.json'   tsconfig.json   'tsconfig is still config'
+assert_blocked "$FIX" 'echo x >> vite.config.ts'  vite.config.ts  'a build config is still config'
+assert_blocked "$FIX" 'echo x >> Dockerfile'      Dockerfile      'a Dockerfile is still config'
+assert_blocked "$FIX" 'echo x >> go.mod'          go.mod          'go.mod has no dev section, so it stays config'
+
+# And the phases that could always write these still can.
+set_phase "$FIX" GREEN
+assert_allowed "$FIX" 'echo x >> Cargo.toml'   'GREEN may still write a manifest'
+assert_allowed "$FIX" 'echo x >> tsconfig.json' 'GREEN may still write config'
+set_phase "$FIX" REVIEW
+assert_blocked "$FIX" 'echo x >> Cargo.toml'   Cargo.toml 'REVIEW may not write a manifest'
+set_phase "$FIX" RED
 describe "RED: a path in a variable is still a path"
 
 # The loophole every agent found. The guard used to discard any candidate

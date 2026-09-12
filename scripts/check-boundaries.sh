@@ -335,4 +335,112 @@ if printf '%s\n' "$dv" | has_content; then
   fi
 fi
 
+
+# 3i. A RED commit may declare a test dependency, and nothing else
+#
+# RED owns the manifest now, because a failing test routinely needs a test-only
+# dependency - a temp-directory crate, an async pytest plugin, a snapshot
+# matcher - and every ecosystem declares that in the same file as the production
+# dependencies. Frozen as `config`, RED could not say what its tests needed
+# while GREEN could add anything at all: the phase forbidden from writing
+# production code was the only one that could not declare a test dependency.
+#
+# That permission is only safe if something reads what RED actually wrote.
+# Otherwise "RED may edit the manifest" means "RED may add a production
+# dependency", and the phase that may not write production code gets to pull
+# production code in from a registry instead. The lock cannot do this - it sees
+# a path, never a diff - so the commit does.
+#
+# It has to be per-COMMIT, not on the branch diff. By the time a PR exists the
+# story says REVIEW, and the merged diff cannot say which phase added which
+# line; only the story file as committed alongside each change can.
+#
+# The comparison is whole-file rather than hunk-parsing: take each side of the
+# commit, delete the dev-dependency block, and require what is left to be
+# identical. A diff-hunk reader has to understand context lines and section
+# boundaries; this only has to find one block.
+manifest_strip_dev() { # <path> ; content on stdin
+  case "$(basename "$1")" in
+    *.toml)
+      # A section runs until the next header. Dev sections are Cargo's
+      # dev-dependencies (including target-specific ones), PEP 735 dependency
+      # groups, and poetry's dev/test groups. project.optional-dependencies is
+      # deliberately NOT here: extras can be production extras, and the safe
+      # error is a refusal RED can escalate, never a permission nobody checks.
+      awk '
+        /^[[:space:]]*\[/ {
+          h = $0
+          sub(/^[[:space:]]*\[+/, "", h); sub(/\][[:space:]]*$/, "", h); sub(/\]$/, "", h)
+          gsub(/["'"'"']/, "", h)
+          indev = (h ~ /(^|\.)dev-dependencies$/) ||
+                  (h == "dependency-groups") || (h ~ /^dependency-groups\./) ||
+                  (h ~ /^tool\.poetry\.group\.(dev|test)[^.]*\.dependencies$/)
+          if (indev) next
+        }
+        !indev { print }
+      ' ;;
+    *.json)
+      # Brace depth from the key, so a nested object inside devDependencies
+      # cannot end the block early.
+      awk '
+        !skip && /"devDependencies"[[:space:]]*:/ {
+          rest = substr($0, index($0, ":"))
+          o = gsub(/\{/, "{", rest); c = gsub(/\}/, "}", rest)
+          depth = o - c
+          if (depth > 0) skip = 1
+          next
+        }
+        skip {
+          o = gsub(/\{/, "{"); c = gsub(/\}/, "}")
+          depth += o - c
+          if (depth <= 0) skip = 0
+          next
+        }
+        { print }
+      ' ;;
+    *)
+      # A manifest whose format nobody taught this. Say so rather than compare
+      # raw text and report a mystery - and never pass it silently.
+      printf '__UNPARSEABLE__\n' ;;
+  esac
+}
+
+# Punctuation is not a dependency. Adding a dev block where none existed leaves
+# a trailing comma or a blank line behind on one side only, and a check that
+# calls that a production change is a check people route around.
+manifest_norm() { sed -e 's/[[:space:]]*$//' -e 's/,$//' | grep -v '^[[:space:]]*$' || true; }
+
+red_manifest_problem=0
+red_manifest_checked=0
+for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
+  ph_at="$(git show "$c:$sfile" 2>/dev/null | sed -nE 's/^phase:[[:space:]]*//p' | head -1 | tr -d '[:space:]')"
+  [ "$ph_at" = "RED" ] || continue
+  for f in $(git diff-tree --no-commit-id --name-only -r "$c" 2>/dev/null); do
+    [ "$(classify "$f")" = "manifest" ] || continue
+    # A lockfile has no dev/production split to read, so nothing here can verify
+    # one. It is permitted unchecked, and that is sound only because the
+    # manifest it follows from IS checked: a dependency nobody declared cannot
+    # be used by production code.
+    case "$(basename "$f")" in
+      *.lock|*-lock.json|*lock.yaml|*lock.yml) continue ;;
+    esac
+    before="$(git show "$c^:$f" 2>/dev/null | manifest_strip_dev "$f" | manifest_norm)"
+    after="$(git show "$c:$f"  2>/dev/null | manifest_strip_dev "$f" | manifest_norm)"
+    red_manifest_checked=$((red_manifest_checked+1))
+    case "$after" in
+      *__UNPARSEABLE__*)
+        red_manifest_problem=1
+        problem "story $sid: commit ${c%${c#???????}} changed '$f' in RED, and this check does not know how to find the test-dependency block in that format. Teach manifest_strip_dev in scripts/check-boundaries.sh, or make the change in GREEN." ;;
+      *)
+        if [ "$before" != "$after" ]; then
+          red_manifest_problem=1
+          problem "story $sid: commit ${c%${c#???????}} changed '$f' outside the test-dependency block while the story was in RED. RED may declare what its TESTS need - a dev-dependency, a dependency group - and nothing else; a production dependency is a GREEN change, and so is bumping one. Move it to GREEN, or if the test genuinely needs it, say which block it belongs in."
+        fi ;;
+    esac
+  done
+done
+if [ "$red_manifest_checked" -gt 0 ] && [ "$red_manifest_problem" -eq 0 ]; then
+  ok "RED touched only test dependencies ($red_manifest_checked manifest change(s))"
+fi
+
 exit $fail
