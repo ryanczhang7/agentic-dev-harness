@@ -171,7 +171,20 @@ while IFS= read -r line; do
   cmd=$(trim "$(printf '%s' "$line" | cut -d'|' -f4-)")
   [ -n "$cmd" ] || continue
   disc_found=1
-  if ( cd "$ROOT/$cwd" 2>/dev/null && eval "$cmd" ) >/dev/null 2>&1; then
+  # `pipefail` is OFF for a discovery command, and only for a discovery command.
+  #
+  # These lines end in a matcher by nature - `... | grep -q "src/ui/"` - and
+  # `grep -q` exits on its first match. The producer is still writing, takes
+  # SIGPIPE, and dies 141; under pipefail that corpse becomes the pipeline's
+  # status, and doctor reports "nothing discovered" about a tree where
+  # everything is discovered. It is size-dependent, so it passes on a small
+  # project and on every fixture in the suite, and starts failing later.
+  #
+  # A discovery line asks one question - does this find anything - and the
+  # matcher's own status is the answer. That is not true of a GATE command,
+  # whose status means "did the tool succeed", so gates.sh keeps pipefail: there,
+  # a failing test runner whose output still matched would be a vacuous pass.
+  if ( set +o pipefail; cd "$ROOT/$cwd" 2>/dev/null && eval "$cmd" ) >/dev/null 2>&1; then
     printf '  ok       %-12s discovered\n' "$id"
   else
     printf '  MISSING  %-12s nothing discovered by: %s\n' "$id" "$cmd"

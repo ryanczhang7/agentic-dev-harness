@@ -227,7 +227,17 @@ Neither is visible in the configuration — reading the configuration is how it
 stays invisible. It is visible immediately if you ask the runner what it can
 see, so `project.conf` carries commands that do exactly that:
 
-    discovery | platform | . | pnpm exec vitest list | grep -q "src/platform/"
+    discovery | platform | . | pnpm exec vitest list | grep "src/platform/" > /dev/null
+
+Write the matcher as `grep PATTERN > /dev/null`, never `grep -q PATTERN`.
+`grep -q` exits on its first match, the runner upstream is still writing, and
+it dies of SIGPIPE - so `doctor` reports *nothing discovered* about a tree
+where everything is discovered. This skill taught the broken form, and so did
+four stack profiles; a real project hit it. It is **size-dependent**: a short
+listing finishes before `grep` exits and nothing happens, so it works until the
+suite grows. That is the worst property a check can have, because the wrong
+lesson from a spurious MISSING is to delete the line - and the line is the only
+thing that notices a gate whose scope has collapsed to nothing.
 
 `bash scripts/doctor.sh` runs them. Add one for every directory carrying a
 coverage threshold and every workspace member whose tests must run. **A claim

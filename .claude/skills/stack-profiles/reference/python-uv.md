@@ -49,8 +49,8 @@ expected to live, and one for every directory carrying a coverage threshold - a
 `--cov=src` that no longer resolves to anything is satisfied silently.
 
     # UNVERIFIED - correct the grep targets against your own layout.
-    discovery | tests | . | uv run pytest --collect-only -q | grep -q "tests/"
-    discovery | src   | . | uv run pytest --collect-only -q | grep -qE "[1-9][0-9]* tests? collected"
+    discovery | tests | . | uv run pytest --collect-only -q | grep "tests/" > /dev/null
+    discovery | src   | . | uv run pytest --collect-only -q | grep -E "[1-9][0-9]* tests? collected" > /dev/null
 
 `pytest --collect-only -q` prints the collected node ids and a count. A
 `testpaths` entry that stopped matching, or a package that lost its `__init__`,

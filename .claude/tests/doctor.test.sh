@@ -28,6 +28,47 @@ out="$(doctor)"
 assert_contains "a directory it cannot" "MISSING  platform" "$out"
 assert_contains "says what that costs"  "committed and never run" "$out"
 
+
+# ---------------------------------------------------------------------------
+describe "discovery survives a consumer that stops reading"
+
+# Reported from a consuming project: doctor said "e2e: nothing discovered" on a
+# tree where everything was discovered. The line was
+#
+#   pnpm exec vitest list --project ui | grep -q "src/ui/"
+#
+# `grep -q` exits on its FIRST match. The producer is still writing, gets
+# SIGPIPE, and dies with 141 - and doctor runs the command under `pipefail`, so
+# the pipeline's status is the producer's corpse rather than grep's success.
+#
+# The harness taught this exact shape in six places: project.conf's template,
+# the quality-gates skill, and the godot, node-typescript and python-uv
+# profiles. Every project that copied one got discovery lines that report
+# nothing-discovered at random, on a check whose entire job is noticing when a
+# gate's scope has collapsed to nothing. The wrong lesson from a spurious
+# "nothing discovered" is to delete the line.
+#
+# The suite could not see it because every fixture here pipes ONE LINE into
+# grep: the producer finishes before grep exits, so there is no signal to
+# receive. The size of the producer is the whole variable, so this one is big.
+write_conf "$FIX" <<'EOF'
+gate      | unit | required | . | printf 'Tests  1 passed (1)\n'
+evidence  | unit | Tests +[1-9][0-9]* passed
+discovery | wide | . | seq 1 200000 | grep -q "^5$"
+EOF
+out="$(doctor)"
+assert_contains "a large producer piped into grep -q still counts as discovered" \
+  "ok       wide         discovered" "$out"
+
+# And the check still has teeth: a command that genuinely finds nothing is still
+# reported. Fixing the false negative must not turn discovery into a formality.
+write_conf "$FIX" <<'EOF'
+gate      | unit | required | . | printf 'Tests  1 passed (1)\n'
+evidence  | unit | Tests +[1-9][0-9]* passed
+discovery | none | . | seq 1 200000 | grep -q "^NOTHING$"
+EOF
+out="$(doctor)"
+assert_contains "a genuinely empty discovery is still MISSING" "MISSING  none" "$out"
 describe "discovery: nothing declared is reported, not skipped silently"
 
 write_conf "$FIX" <<'EOF'
