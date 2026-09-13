@@ -132,4 +132,32 @@ case "$out" in
   *"never run"*) _bad "no workflows is not a complaint" "complained anyway: $out" ;;
   *) _ok "no workflows is not a complaint" ;;
 esac
+
+# ---------------------------------------------------------------------------
+describe "the CI check runs even before a stack is chosen"
+
+# Caught immediately after shipping the check, by running doctor on this
+# repository: `project.conf has no commands` exits early, and the CI block sat
+# AFTER that exit. So the check was dead in exactly the state the template
+# itself is in, and every fixture above had already been given a project.conf -
+# which is why nothing noticed.
+#
+# It is also the state a project is in for its first few stories, and its
+# workflows can be wrong from the bootstrap commit onward.
+write_conf "$FIX" <<'EOF'
+EOF
+mkdir -p "$FIX/.github/workflows"
+cat > "$FIX/.github/workflows/gates.yml" <<'YML'
+name: gates
+on: [pull_request]
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - run: bash scripts/gates.sh
+YML
+out="$(doctor)"
+assert_contains "an unbootstrapped project still gets the CI check" "selftest.sh" "$out"
+assert_contains "and is still told there is no toolchain yet" "no commands" "$out"
+rm -rf "$FIX/.github"
 summary "doctor"
