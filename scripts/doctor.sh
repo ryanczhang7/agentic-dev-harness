@@ -38,7 +38,7 @@ printf '  ok       %-12s %s\n' "bash ver" "${BASH_VERSION%%(*}"
 # is older than every stamped version.
 hv="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$ROOT/.claude/harness/VERSION" 2>/dev/null | head -1)"
 hv="$(trim "${hv:-}")"
-printf '  ok       %-12s %s\n' "harness ver" "${hv:-unstamped (predates versioning; treat as older than any dated release)}"
+printf '  ok       %-12s %s\n' "harness ver" "${hv:-unstamped (predates versioning; older than any release)}"
 
 printf '\nHarness integrity\n'
 for f in phase-guard.sh inject-state.sh gate-reminder.sh statusline.sh lib.sh; do

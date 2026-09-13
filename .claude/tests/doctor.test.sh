@@ -160,4 +160,39 @@ out="$(doctor)"
 assert_contains "an unbootstrapped project still gets the CI check" "selftest.sh" "$out"
 assert_contains "and is still told there is no toolchain yet" "no commands" "$out"
 rm -rf "$FIX/.github"
+
+# ---------------------------------------------------------------------------
+describe "the version is a release number, not a date pretending to be one"
+
+# The stamp was specified as "one ISO date", and bumping it per round drifted it
+# off the calendar immediately: nine releases landed across three real days
+# (2026-09-11 to -13) and were stamped 2026-09-11 through 2026-09-19. Every one
+# of those dates was a claim about when, and six of them were false.
+#
+# Nothing ever read it as a date - check-boundaries.sh asks only whether it
+# CHANGED, doctor prints it - so the date was decoration that could only mislead.
+# It is a monotonic release number now, with the true date beside it.
+first="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$REPO_ROOT/.claude/harness/VERSION" | head -1)"
+# A plain integer, so that a date cannot satisfy this by starting with a digit -
+# which `2026-09-19` does, and which is exactly the value being corrected.
+case "${first%% *}" in
+  ''|*[!0-9]*) _bad "the shipped version starts with a release number" "got: $first" ;;
+  *) _ok "the shipped version starts with a release number" ;;
+esac
+case "$first" in
+  *"("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]")"*) _ok "and carries the real release date" ;;
+  *) _bad "and carries the real release date" "got: $first" ;;
+esac
+
+# A copy vendored before this change holds a bare date. It must keep working -
+# doctor prints whatever it finds, and a reader can tell a date-shaped value
+# predates the numbering and is therefore older than any number.
+printf '2026-09-16\n' > "$FIX/.claude/harness/VERSION"
+out="$(doctor)"
+assert_contains "a legacy date-shaped stamp still reports" "2026-09-16" "$out"
+case "$out" in
+  *unstamped*) _bad "and is not mistaken for unstamped" "called it unstamped: $out" ;;
+  *) _ok "and is not mistaken for unstamped" ;;
+esac
+printf '%s\n' "$first" > "$FIX/.claude/harness/VERSION"
 summary "doctor"

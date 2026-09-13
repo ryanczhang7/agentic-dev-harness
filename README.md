@@ -461,8 +461,11 @@ around a rule with `sed -i` because the sanctioned tool for it "did not exist";
 `scripts/mutate.sh` had been upstream for three rounds.
 
 **First, find out how stale it is.** `bash scripts/doctor.sh` prints
-`harness ver` in both repositories — compare them. A copy that reports
-`unstamped` predates versioning entirely, and is older than any dated release.
+`harness ver` in both repositories — compare them. It reads `10 (2026-09-13)`: a
+release number, which is what to compare, and the real date of that release,
+which is what to quote. Two older shapes both mean "older than every number": a
+bare date like `2026-09-16`, stamped but from before the numbering; and
+`unstamped`, from before stamping entirely.
 
 **Then copy, and know which half you are copying.** The split is not by
 directory, and getting it wrong either loses project configuration or keeps the
