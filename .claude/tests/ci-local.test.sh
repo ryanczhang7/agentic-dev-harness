@@ -25,39 +25,97 @@ describe "it runs what the workflows run"
 dry="$( bash "$SCRIPT" --dry-run 2>&1 )"
 assert_eq "--dry-run succeeds" 0 "$?"
 
-# Every `run:` line in either workflow, normalised: the Actions expression for
-# the base ref becomes the literal the script uses, and nothing else is touched.
-# A step added to a workflow and not here fails this, which is the point.
+
+# The script must RUN what the workflows say, and the only way to guarantee that
+# in a project whose workflows this repository does not control is to read them.
+#
+# The first version hardcoded five steps and this test asserted they matched the
+# workflow files. In THIS repository they matched by construction, so the test
+# passed and looked meaningful. In a consuming project the workflow legitimately
+# gains `pnpm install --frozen-lockfile` and `pnpm exec playwright install`, and
+# the assertion then failed permanently, in a suite nobody could make green - the
+# precise shape of red that teaches people to stop reading test output.
+#
+# So: derive. These assert the derivation, not a list.
 missing=""
 while IFS= read -r cmd; do
   [ -z "$cmd" ] && continue
-  case "$cmd" in
-    *'${{'*) cmd="$(printf '%s' "$cmd" | sed -E 's/origin\/\$\{\{ github\.base_ref \}\}/origin\/BASE/')" ;;
-  esac
-  printf '%s\n' "$dry" | sed -E 's/origin\/[A-Za-z0-9._\/-]+/origin\/BASE/' \
-    | grep -qF -- "$cmd" || missing="$missing
+  case "$cmd" in *'${{'*) continue ;; esac
+  printf '%s\n' "$dry" | grep -qF -- "$cmd" || missing="$missing
   $cmd"
 done <<< "$(grep -hE '^[[:space:]]*run:' "$WF"/gates.yml "$WF"/boundaries.yml \
              | sed -E 's/^[[:space:]]*run:[[:space:]]*//')"
 assert_eq "every workflow step appears in the script" "" "$missing"
 
-# And the reverse direction, because a local script that quietly runs MORE than
-# CI is a different kind of lie: a green local run would then be a stronger
-# claim than the PR check it stands in for.
-extra=""
-while IFS= read -r line; do
-  case "$line" in
-    ''|'#'*) continue ;;
-    *"scripts/"*) ;;
-    *) continue ;;
-  esac
-  norm="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//; s/origin\/[A-Za-z0-9._\/-]+/origin\/BASE/')"
-  grep -hE '^[[:space:]]*run:' "$WF"/gates.yml "$WF"/boundaries.yml \
-    | sed -E 's/^[[:space:]]*run:[[:space:]]*//; s/origin\/\$\{\{ github\.base_ref \}\}/origin\/BASE/' \
-    | grep -qF -- "$norm" || extra="$extra
-  $norm"
-done <<< "$dry"
-assert_eq "the script runs no step CI does not" "" "$extra"
+# ---------------------------------------------------------------------------
+describe "a project whose workflow has its own steps"
+
+# The regression. A consuming project adds toolchain setup to gates.yml; those
+# steps ARE part of what CI runs, so a local stand-in that skips them is not a
+# stand-in. Nothing here may be specific to this repository's own five commands.
+PFIX="$(make_project_fixture)"
+mkdir -p "$PFIX/.github/workflows"
+cat > "$PFIX/.github/workflows/gates.yml" <<'YML'
+name: gates
+on: [pull_request]
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install npm dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run gates
+        run: bash scripts/gates.sh
+YML
+cat > "$PFIX/.github/workflows/boundaries.yml" <<'YML'
+name: boundaries
+on: [pull_request]
+jobs:
+  boundaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check agent boundaries
+        run: bash scripts/check-boundaries.sh origin/${{ github.base_ref }}
+YML
+pdry="$( cd "$PFIX" && bash scripts/ci-local.sh --dry-run 2>&1 )"
+assert_contains "a project's install step is run"    "pnpm install --frozen-lockfile" "$pdry"
+assert_contains "and its browser install"            "pnpm exec playwright install --with-deps chromium" "$pdry"
+assert_contains "alongside the harness's own"        "bash scripts/gates.sh" "$pdry"
+# The base_ref expression resolves rather than being passed through literally.
+assert_contains "the base ref expression is resolved" "bash scripts/check-boundaries.sh origin/" "$pdry"
+case "$pdry" in
+  *'${{'*) _bad "no unresolved workflow expression survives" "found one: $pdry" ;;
+  *) _ok "no unresolved workflow expression survives" ;;
+esac
+# And nothing this repository happens to run is invented for a project that
+# does not: the fixture's gates.yml has no selftest step.
+case "$pdry" in
+  *selftest*) _bad "it does not invent steps the workflow lacks" "selftest appeared: $pdry" ;;
+  *) _ok "it does not invent steps the workflow lacks" ;;
+esac
+
+# A `run: |` block is one step spanning lines, and dropping its body would run a
+# truncated command - worse than skipping it.
+cat > "$PFIX/.github/workflows/gates.yml" <<'YML'
+name: gates
+on: [pull_request]
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Two things
+        run: |
+          bash scripts/selftest.sh
+          bash scripts/gates.sh --list
+YML
+pdry="$( cd "$PFIX" && bash scripts/ci-local.sh --dry-run 2>&1 )"
+assert_contains "a block scalar's first line"  "bash scripts/selftest.sh"     "$pdry"
+assert_contains "and its second"               "bash scripts/gates.sh --list" "$pdry"
+rm -rf "$PFIX"
 
 # PR_HEAD_SHA is not decoration. Without it check-boundaries.sh hashes the
 # WORKING TREE, and with it the commit - so a local run that omits it answers a
@@ -68,6 +126,21 @@ assert_contains "it sets PR_HEAD_SHA the way the workflow does" "PR_HEAD_SHA" "$
 describe "it stops at the first failing step, like a runner"
 
 FIX="$(make_project_fixture)"
+mkdir -p "$FIX/.github/workflows"
+# Steps are read from the workflows now, so a fixture needs them to have any.
+# selftest first, so that stubbing it red exercises the fail-fast path.
+cat > "$FIX/.github/workflows/gates.yml" <<'YML'
+name: gates
+on: [pull_request]
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harness self-test
+        run: bash scripts/selftest.sh
+      - name: Run gates
+        run: bash scripts/gates.sh
+YML
 trap 'rm -rf "$FIX"' EXIT
 write_conf "$FIX" <<'CONF'
 gate     | unit | required | . | printf 'Tests  3 passed (3)\n'
