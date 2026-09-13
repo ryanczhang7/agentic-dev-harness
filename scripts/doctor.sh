@@ -10,7 +10,6 @@
 #
 # Run it after cloning, after picking a stack, and any time a gate fails with
 # "command not found".
-
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONF="$ROOT/.claude/harness/project.conf"
@@ -77,6 +76,45 @@ while IFS= read -r line; do
   seen="$seen $exe"
   check "$exe" "$kind '$id'"
 done < "$CONF"
+
+# --- does CI run the harness's own checks? ----------------------------------
+#
+# .github/workflows/** is PROJECT-owned: a refresh never touches it, correctly,
+# because a project adds its toolchain setup there. The consequence is that the
+# template's workflow and the project's diverge from bootstrap onward with
+# nothing comparing them - and one real project's CI ran gates.sh but never
+# selftest.sh, so the harness's own tests had not executed there once. That is
+# how a re-vendor went green with two suites failing.
+#
+# This lives in doctor rather than in the selftest on purpose: a check that only
+# runs inside the suite CI is not running cannot report that CI is not running
+# it. doctor is run by hand, at setup, and after a refresh.
+#
+# It asks only for what the harness cannot do without, and is satisfied by any
+# workflow file, because splitting jobs across files is a legitimate layout.
+WFDIR="$ROOT/.github/workflows"
+if [ -d "$WFDIR" ] && ls "$WFDIR"/*.yml >/dev/null 2>&1; then
+  printf 'Continuous integration\n'
+  wf_all="$(cat "$WFDIR"/*.yml 2>/dev/null)"
+  ci_missing=0
+  for want in selftest.sh gates.sh check-boundaries.sh; do
+    case "$wf_all" in
+      *"scripts/$want"*) ;;
+      *)
+        printf '  MISSING  %-12s no workflow runs scripts/%s\n' "ci" "$want"
+        ci_missing=$((ci_missing+1)) ;;
+    esac
+  done
+  if [ "$ci_missing" -gt 0 ]; then
+    printf '  %-10s   those checks are never run on a machine that is not yours\n' ""
+    printf '  %-10s   .github/workflows/** is project-owned, so a harness refresh\n' ""
+    printf '  %-10s   cannot add them for you - add the steps from the template\n' ""
+    missing=$((missing+ci_missing))
+  else
+    printf '  ok       %-12s runs the self-test, the gates and the boundaries check\n' "ci"
+  fi
+  printf '\n'
+fi
 
 if [ "$found_any" = 0 ] && ! grep -qE '^[[:space:]]*discovery[[:space:]]*\|' "$CONF"; then
   printf '  (nothing configured yet)\n'
@@ -145,44 +183,6 @@ done < "$CONF"
 printf '
 '
 
-# --- does CI run the harness's own checks? ----------------------------------
-#
-# .github/workflows/** is PROJECT-owned: a refresh never touches it, correctly,
-# because a project adds its toolchain setup there. The consequence is that the
-# template's workflow and the project's diverge from bootstrap onward with
-# nothing comparing them - and one real project's CI ran gates.sh but never
-# selftest.sh, so the harness's own tests had not executed there once. That is
-# how a re-vendor went green with two suites failing.
-#
-# This lives in doctor rather than in the selftest on purpose: a check that only
-# runs inside the suite CI is not running cannot report that CI is not running
-# it. doctor is run by hand, at setup, and after a refresh.
-#
-# It asks only for what the harness cannot do without, and is satisfied by any
-# workflow file, because splitting jobs across files is a legitimate layout.
-WFDIR="$ROOT/.github/workflows"
-if [ -d "$WFDIR" ] && ls "$WFDIR"/*.yml >/dev/null 2>&1; then
-  printf 'Continuous integration\n'
-  wf_all="$(cat "$WFDIR"/*.yml 2>/dev/null)"
-  ci_missing=0
-  for want in selftest.sh gates.sh check-boundaries.sh; do
-    case "$wf_all" in
-      *"scripts/$want"*) ;;
-      *)
-        printf '  MISSING  %-12s no workflow runs scripts/%s\n' "ci" "$want"
-        ci_missing=$((ci_missing+1)) ;;
-    esac
-  done
-  if [ "$ci_missing" -gt 0 ]; then
-    printf '  %-10s   those checks are never run on a machine that is not yours\n' ""
-    printf '  %-10s   .github/workflows/** is project-owned, so a harness refresh\n' ""
-    printf '  %-10s   cannot add them for you - add the steps from the template\n' ""
-    missing=$((missing+ci_missing))
-  else
-    printf '  ok       %-12s runs the self-test, the gates and the boundaries check\n' "ci"
-  fi
-  printf '\n'
-fi
 
 if [ "$missing" -gt 0 ]; then
   printf '%d thing(s) missing.\n' "$missing"
