@@ -85,13 +85,28 @@ case "$TOOL" in
     # used to yield `a.ts)`, which the guard declined as unreadable - a hole
     # in the shape of a subshell. `>|` is a redirect too. And `<` ends the
     # rm/touch operand list, because `xargs touch < list` reads `list`.
+    # A redirect is the FIRST rule's business and no other rule's. Every rule
+    # below it takes a word off the end of its match, and none of them knew a
+    # redirect could be attached to the command: `cp a b 2>/dev/null` was refused
+    # on a path of `2>/dev/null`, and `rm a 2>/dev/null` on a path of `2`, since
+    # that rule's character class excludes `>` and so truncates at it, leaving
+    # the file descriptor behind as the candidate. Both were denials of ordinary
+    # commands, and the second is the reason this is done here rather than by
+    # declining candidates that contain a `>`: such a rule cures `cp` and `mv`
+    # and leaves `rm` and `touch` refusing on `2`. Enumerating shapes is how this
+    # defect has survived nine of them.
+    #
+    # So strip redirect clauses once, and let every rule after the first read the
+    # stripped text. A quoted `>` is already a control character by now, so only
+    # real operators match.
+    NOREDIR="$(printf '%s' "$MASKED" | sed -E 's/[0-9]*>>?[[:space:]]*[^|&;()[:space:]]*//g')"
     CANDIDATES="$(
       {
-        printf '%s\n' "$MASKED" | grep -oE '>(>|\|)?[[:space:]]*[^|&;><()[:space:]]+'  | sed -E 's/^>(>|\|)?[[:space:]]*//'
-        printf '%s\n' "$MASKED" | grep -oE '\btee\b([[:space:]]+-a)?[[:space:]]+[^|&;><()[:space:]]+' | awk '{print $NF}'
-        printf '%s\n' "$MASKED" | grep -oE '\bsed\b[^|&;()]*-i[^|&;()]*'              | awk '{print $NF}'
-        printf '%s\n' "$MASKED" | grep -oE '\b(cp|mv)\b[[:space:]]+[^|&;()]+'         | awk '{print $NF}'
-        printf '%s\n' "$MASKED" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;<>()]+'    | tr ' ' '\n' | grep -vE '^(rm|touch|-.*)$'
+        printf '%s\n' "$MASKED"  | grep -oE '>(>|\|)?[[:space:]]*[^|&;><()[:space:]]+'  | sed -E 's/^>(>|\|)?[[:space:]]*//'
+        printf '%s\n' "$NOREDIR" | grep -oE '\btee\b([[:space:]]+-a)?[[:space:]]+[^|&;><()[:space:]]+' | awk '{print $NF}'
+        printf '%s\n' "$NOREDIR" | grep -oE '\bsed\b[^|&;()]*-i[^|&;()]*'              | awk '{print $NF}'
+        printf '%s\n' "$NOREDIR" | grep -oE '\b(cp|mv)\b[[:space:]]+[^|&;()]+'         | awk '{print $NF}'
+        printf '%s\n' "$NOREDIR" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;<>()]+'    | tr ' ' '\n' | grep -vE '^(rm|touch|-.*)$'
       } 2>/dev/null | tr -d '"'"'" | grep -vE '^\s*$|^-|\*|^/dev/' | sort -u
     )"
     # `$` is no longer filtered out here. It was, silently, which made the ONE

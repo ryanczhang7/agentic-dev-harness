@@ -128,6 +128,43 @@ assert_allowed "$FIX" 'echo x >> tsconfig.json' 'GREEN may still write config'
 set_phase "$FIX" REVIEW
 assert_blocked "$FIX" 'echo x >> Cargo.toml'   Cargo.toml 'REVIEW may not write a manifest'
 set_phase "$FIX" RED
+
+# ---------------------------------------------------------------------------
+describe "a redirect belongs to the redirect rule and to no other"
+set_phase "$FIX" RED
+
+# H1 again, in the shipped harness, found by a consuming project re-verifying
+# the field report against the version it had just vendored.
+#
+# Every rule except the redirect one takes a word off the end of its match, and
+# none of them knew a redirect could be attached. So `cp a b 2>/dev/null` was
+# refused on a path of `2>/dev/null`, and `rm a 2>/dev/null` on a path of `2` -
+# a different token, because THAT rule's character class excludes `>` and so
+# truncates at it, leaving the bare file descriptor behind as the candidate.
+#
+# The two shapes matter to keep separate. A fix that only declines candidates
+# containing `>` cures cp and mv and leaves rm and touch refusing on `2`, which
+# is this finding's standing warning arriving on schedule: do not enumerate
+# shapes, because the next one is already out there.
+assert_allowed "$FIX" 'cp docs/notes.md docs/copy.md 2>/dev/null'    'cp with stderr redirected'
+assert_allowed "$FIX" 'cp docs/notes.md docs/copy.md >/dev/null'     'cp with stdout redirected'
+assert_allowed "$FIX" 'cp docs/notes.md docs/copy.md 1>/dev/null'    'cp with an explicit fd'
+assert_allowed "$FIX" 'mv docs/notes.md docs/copy.md 2>/dev/null'    'mv with stderr redirected'
+assert_allowed "$FIX" 'rm docs/notes.md 2>/dev/null'                 'rm with stderr redirected'
+assert_allowed "$FIX" 'touch docs/notes.md 2>/dev/null'              'touch with stderr redirected'
+assert_allowed "$FIX" 'cat docs/notes.md | tee docs/copy.md > /dev/null' 'tee whose output is discarded'
+assert_allowed "$FIX" "sed -i 's/a/b/' .gitignore 2>/dev/null"       'sed -i with stderr redirected'
+
+# The controls, and they are the point: a real write does not become invisible
+# by having a redirect attached to it. Each must still be refused, and refused
+# on the FILE - a guard that blocks the right command on the wrong path is
+# right by accident and will be wrong next time.
+assert_blocked "$FIX" 'cp docs/notes.md src/main.ts 2>/dev/null'  src/main.ts 'a real cp, stderr redirected'
+assert_blocked "$FIX" 'mv docs/notes.md src/main.ts 2>/dev/null'  src/main.ts 'a real mv, stderr redirected'
+assert_blocked "$FIX" 'rm src/main.ts 2>/dev/null'                src/main.ts 'a real rm, stderr redirected'
+assert_blocked "$FIX" 'touch src/new.ts 2>/dev/null'              src/new.ts  'a real touch, stderr redirected'
+assert_blocked "$FIX" 'echo x | tee src/main.ts > /dev/null'      src/main.ts 'a real tee whose output is discarded'
+assert_blocked "$FIX" 'echo x > src/main.ts 2>/dev/null'          src/main.ts 'a real redirect, with stderr also redirected'
 describe "RED: a path in a variable is still a path"
 
 # The loophole every agent found. The guard used to discard any candidate
