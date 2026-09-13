@@ -481,43 +481,25 @@ bug you were trying to remove:
 than copying: both are upstream documents a project is invited to extend, so
 merge them instead of replacing them.
 
-```bash
-HARNESS=../agentic-dev-harness            # a checkout of this repository
-for d in agents commands skills hooks tests; do
-  rm -rf ".claude/$d" && cp -r "$HARNESS/.claude/$d" ".claude/$d"
-done
-cp "$HARNESS"/.claude/harness/{phases.conf,rules.md,VERSION} .claude/harness/
-cp "$HARNESS"/.claude/settings.json .claude/
-cp "$HARNESS"/.claude/state/README.md .claude/state/
-cp "$HARNESS"/scripts/*.sh scripts/       # adds new scripts; leaves yours alone
-```
-
-`rm -rf` before the copy is deliberate: a skill or hook that upstream *removed*
-has to go, or the project keeps running a rule this harness no longer believes.
-It is also why `scripts/` uses `cp "$HARNESS"/scripts/*.sh` instead — a project
-legitimately adds its own scripts and its own subdirectories there, and a
-directory replace would take them. (An earlier version of this recipe used
-`rsync`. It is not present in Git Bash, which is the shell this harness runs in
-on Windows, so it failed on the first real refresh.)
-
-**Before you run it, save anything of yours inside those directories.** The
-`rm -rf` is wholesale, and one of those directories is not purely upstream's:
-`.claude/skills/stack-profiles/reference/` is exactly where a project writes the
-profile for a stack this harness does not ship. On the first real refresh that
-was a 17 KB `tauri-react-webgl.md` referenced by four documents, and the recipe
-as written would have deleted it without a word.
+**Run it, do not follow it.** From the project being refreshed:
 
 ```bash
-mkdir -p /tmp/keep && cp .claude/skills/stack-profiles/reference/<yours>.md /tmp/keep/
-# ... run the copy above ...
-cp /tmp/keep/<yours>.md .claude/skills/stack-profiles/reference/
+bash scripts/refresh-harness.sh --dry-run ../agentic-dev-harness   # read it first
+bash scripts/refresh-harness.sh ../agentic-dev-harness
 ```
 
-**And read `CLAUDE.md` after copying it, do not just take it.** Most of it is
-upstream's, but its table describes *this* repository's conventions — including
-that the harness ships an empty backlog because its own chores live in GitHub
-issues. That row is false in a project whose backlog is the point. Copy the file,
-then put back any row that describes you rather than the template.
+It refuses a dirty tree and refuses to run mid-story, preserves every file in a
+replaced directory that upstream does not ship — printing each one as `KEPT` —
+and leaves `paths.conf` and `CLAUDE.md` alone, naming them for you to merge.
+
+This is a script rather than a list because the list was got wrong on its first
+real outing, by the agent that had written it a day earlier: it called for
+`rsync`, which Git Bash does not have; a wholesale replace of `.claude/skills`
+would have deleted a project's own 17 KB stack profile, cited by four of its
+documents, in silence; and it omitted two upstream-owned files, which left six
+assertions failing until they were copied by hand. Every one of those was a step
+somebody had to get right by reading carefully, and this repository does not
+accept that requirement anywhere else.
 
 **Finally, re-run the checks, in this order.** `bash scripts/selftest.sh` first —
 it tests the machinery everything else depends on, and it is the file set you
