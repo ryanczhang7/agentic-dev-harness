@@ -105,8 +105,8 @@ blind in one place.
 Reading the globs is how it stays hidden. Ask the runner instead, and record
 the answer:
 
-    discovery | platform | . | pnpm exec vitest list | grep -q "src/platform/"
-    discovery | e2e      | . | pnpm exec playwright test --list | grep -q "e2e/"
+    discovery | platform | . | pnpm exec vitest list | grep "src/platform/" > /dev/null
+    discovery | e2e      | . | pnpm exec playwright test --list | grep "e2e/" > /dev/null
 
 `bash scripts/doctor.sh` runs these. Add one for every directory carrying a
 threshold, and check `vitest list` yourself whenever you add a project or a
