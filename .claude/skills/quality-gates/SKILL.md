@@ -357,6 +357,47 @@ in `project.conf` beside it — and worth asking whether a threshold that travel
 (a ratio, a relative regression against a committed baseline) could replace a
 number that does not.
 
+### An absolute threshold on a drifting machine measures the machine
+
+The section above is about a gate that *stops judging*. This one never stops: it
+compares correctly on every run, reports PASS honestly, and still cannot see a
+third of a regression. It is the worse of the two because there is nothing
+degraded to notice.
+
+A `perf` gate compares against a baseline of 455 ms with a 25% tolerance — a
+fixed number, which is the obvious way to write one. The machine's steady-state
+cost drifts about 20% between time windows. So the regression the gate can
+actually detect is `limit / current-clean − 1`, and that is a property of the
+machine on the day, not of the code:
+
+| machine window | clean reading | regression needed to fire |
+|---|---|---|
+| fast | ~385 ms | **~+45%** |
+| slow | ~520 ms | **~+9%** |
+
+Measured rather than reasoned: injecting a change worth about **+34% of real
+work** passed silently; a larger injection at +128% failed. The gate is not
+broken. It is least sensitive exactly when the machine is fastest, which is also
+when a developer is most likely to be running it.
+
+So add a second question to the one above. The first has a reassuring answer
+here and the second does not:
+
+- *Which run, on which machine, would anyone ever see this fail?*
+- **And how large would the regression have to be today for it to fail?**
+
+The fix is to anchor on something that travels. A ratio against a control
+measured in the same run, a relative regression against a committed baseline, a
+per-test factor rather than a wall-clock number — anything whose denominator
+moves with the machine. Where that is genuinely impossible, say in
+`project.conf` beside the gate that its sensitivity is machine-dependent, and do
+not let a PASS from it stand as evidence that performance held.
+
+And record the partial result honestly. The story that found this recorded its
+deferred verification as **PARTIALLY satisfied** rather than as a pass, which is
+the harder call and the correct one: the control fired at +128% and not at +34%,
+and "it passed" would have described neither.
+
 ## BLOCKED: the gate the machine would not run
 
 A gate's result used to be a boolean derived from an exit code, and there is a
