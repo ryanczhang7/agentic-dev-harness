@@ -317,6 +317,46 @@ Waivers are refused on required gates - that would be a bypass with a nicer
 name. Leaving a gate unconfigured is not an alternative: a required gate with
 no command fails once `BOOTSTRAPPED=yes`, deliberately.
 
+### A gate that degrades to "reporting only" reports to nobody
+
+The subtlest member of the vacuous-pass family, because every individual
+decision in it is defensible.
+
+A real project's `perf` gate compares timings against a baseline recorded on the
+developer's machine. On a CI runner there is no comparable baseline, so rather
+than fail on hardware it cannot judge, it prints *"no comparable baseline for
+this machine — reporting only"* and passes. Sensible. It is also marked `slow`,
+because it is, so `--fast` skips it. Also sensible.
+
+Put together: **the gate passes unconditionally on CI, is skipped in RED and
+GREEN, and the only place its verdict exists at all is a full local `GATES` run
+on one particular machine, as an optional WARN.** It was masking a real 29–39%
+regression. Nothing was misconfigured; the check was correct and almost nothing
+had to listen to it.
+
+The general shape, and it is worth checking for by hand because no gate can
+report it about itself:
+
+- **Ask where a gate's verdict actually lands.** Not "is it configured" but
+  "which run, on which machine, would a human or a job ever see it fail?" If the
+  honest answer is one developer's local full run, the gate is a note.
+- **A degradation path is a second gate, and it needs the same scrutiny as the
+  first.** "Falls back to reporting only" is a branch that always passes; write
+  down what makes it fire and how you would know it fired more often than you
+  expected.
+- **`slow` plus `optional` plus a machine-specific baseline is three exclusions
+  multiplying.** Each is individually right — that is exactly the pattern from
+  "the directory nobody was testing", where three correct decisions combined to
+  leave a renderer untested.
+- **Where CI cannot judge, say so loudly rather than pass quietly.** BLOCKED
+  exists for the gate the machine *would not run*; a gate that runs and declines
+  to judge should be at least as visible, not less.
+
+If a gate can only be meaningful on one machine, that is worth knowing out loud
+in `project.conf` beside it — and worth asking whether a threshold that travels
+(a ratio, a relative regression against a committed baseline) could replace a
+number that does not.
+
 ## BLOCKED: the gate the machine would not run
 
 A gate's result used to be a boolean derived from an exit code, and there is a
