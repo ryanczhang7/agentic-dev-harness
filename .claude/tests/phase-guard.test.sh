@@ -166,6 +166,22 @@ assert_blocked "$FIX" 'touch src/new.ts 2>/dev/null'              src/new.ts  'a
 assert_blocked "$FIX" 'echo x | tee src/main.ts > /dev/null'      src/main.ts 'a real tee whose output is discarded'
 assert_blocked "$FIX" 'echo x > src/main.ts 2>/dev/null'          src/main.ts 'a real redirect, with stderr also redirected'
 
+# TWO clauses, not one. `>/dev/null 2>&1` is the commonest redirect idiom in
+# shell, and every fixture above uses a single clause - so dropping the `g` from
+# the NOREDIR sed leaves all of them green while turning each of these into a
+# denial on a path of `2` or `2>`. One character, no assertion, and H1 reopened
+# after three field reports and two audits closed it.
+assert_allowed "$FIX" 'rm docs/notes.md >/dev/null 2>&1'              'rm, stdout and stderr both redirected'
+assert_allowed "$FIX" 'cp docs/notes.md docs/copy.md >/dev/null 2>&1' 'cp, two clauses'
+assert_allowed "$FIX" 'mv docs/notes.md docs/copy.md >/dev/null 2>&1' 'mv, two clauses'
+assert_allowed "$FIX" 'touch docs/notes.md >/dev/null 2>&1'           'touch, two clauses'
+assert_allowed "$FIX" 'rm -rf dist 1>/dev/null 2>/dev/null'           'two clauses, both with explicit fds'
+
+# The controls: a strip greedy enough to swallow a second clause is also greedy
+# enough to swallow the target, and that failure looks identical from outside.
+assert_blocked "$FIX" 'cp docs/notes.md src/main.ts >/dev/null 2>&1' src/main.ts 'a real cp behind two clauses'
+assert_blocked "$FIX" 'rm src/main.ts >/dev/null 2>&1'               src/main.ts 'a real rm behind two clauses'
+
 # ---------------------------------------------------------------------------
 describe "an option's argument is not the file being written"
 set_phase "$FIX" RED

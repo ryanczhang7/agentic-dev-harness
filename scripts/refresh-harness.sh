@@ -115,23 +115,35 @@ if [ "$DRY" = 0 ]; then
       cp "$dst/$rel" "$KEEP/$d/$rel"
     done <<< "$(cd "$dst" && find . -type f 2>/dev/null | sed 's|^\./||')"
   done
-  for d in agents commands skills hooks tests; do
-    [ -d "$UP/.claude/$d" ] || continue
+fi
+
+# One loop decides and reports. It used to be two - a copy loop inside the
+# dry-run guard, and a report loop outside it walking a second copy of the same
+# list - with nothing tying them together, so shortening the copy loop left the
+# report printing `REPLACED .claude/hooks/` over a hook that had not been
+# touched. A refresh that silently skips the phase lock and then says it updated
+# it is the worst thing this script can do. The report is now a side effect of
+# the work rather than a second opinion about it.
+replaced_dirs=""
+for d in agents commands skills hooks tests; do
+  [ -d "$UP/.claude/$d" ] || continue
+  if [ "$DRY" = 0 ]; then
     rm -rf "$PROJ/.claude/$d"
     cp -r "$UP/.claude/$d" "$PROJ/.claude/$d"
-  done
-  if [ -d "$KEEP" ]; then
-    while IFS= read -r rel; do
-      [ -n "$rel" ] || continue
-      mkdir -p "$PROJ/.claude/$(dirname "$rel")"
-      cp "$KEEP/$rel" "$PROJ/.claude/$rel"
-    done <<< "$(cd "$KEEP" && find . -type f 2>/dev/null | sed 's|^\./||')"
-    rm -rf "$KEEP"
   fi
-fi
-for d in agents commands skills hooks tests; do
-  [ -d "$UP/.claude/$d" ] && say "  REPLACED  .claude/$d/"
+  replaced_dirs="$replaced_dirs $d"
 done
+
+if [ "$DRY" = 0 ] && [ -d "$KEEP" ]; then
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    mkdir -p "$PROJ/.claude/$(dirname "$rel")"
+    cp "$KEEP/$rel" "$PROJ/.claude/$rel"
+  done <<< "$(cd "$KEEP" && find . -type f 2>/dev/null | sed 's|^\./||')"
+  rm -rf "$KEEP"
+fi
+
+for d in $replaced_dirs; do say "  REPLACED  .claude/$d/"; done
 
 # --- single files upstream owns ---------------------------------------------
 for f in .claude/harness/phases.conf .claude/harness/rules.md .claude/harness/VERSION \
