@@ -221,6 +221,17 @@ assert_eq "no \${var,,} or \${var^^} in shipped scripts" "" "$hits"
 hits="$(grep -nE '(^|[[:space:]|;&(])sed[[:space:]]+(-[A-Za-z]*\s+)*-i([[:space:]]|$)' $shipped || true)"
 assert_eq "no GNU-only sed -i in shipped scripts" "" "$hits"
 
+# A fallback that cannot fire is not a fallback. Every suite opens with
+# `mktemp -d 2>/dev/null || mktemp -d -t harness`, and GNU's -t wants X's in the
+# template: `mktemp -d -t harness` is "too few X's in template". So on the only
+# platform where the first half could fail, the second half fails too. Latent,
+# because plain `mktemp -d` is universal - and exactly the kind of guard that
+# reads as handled in review. Found by a consuming project pre-checking this
+# repository's suites for Linux hazards before running them there.
+hits="$(grep -rnE 'mktemp -d[^|)]*-t [A-Za-z0-9_.-]+' "$REPO_ROOT"/.claude/tests/*.sh "$REPO_ROOT"/scripts/*.sh 2>/dev/null \
+  | grep -vE ':[0-9]+:[[:space:]]*#' | grep -v 'XXX' || true)"
+assert_eq "no mktemp -t template without X's" "" "$hits"
+
 # $TMPDIR is unset in some of the shells this harness runs in, and the one place
 # that mattered - a mutation backup - lost its backup to exactly that, leaving
 # the restore to depend on the sed expression happening to be an exact inverse.

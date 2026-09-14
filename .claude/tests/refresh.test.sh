@@ -18,7 +18,7 @@
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
-WORK="$(mktemp -d 2>/dev/null || mktemp -d -t harness)"
+WORK="$(mktemp -d 2>/dev/null || mktemp -d -t harness.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
 # A stand-in upstream: the real script and hooks, plus marker files we can

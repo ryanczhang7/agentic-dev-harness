@@ -165,6 +165,40 @@ assert_blocked "$FIX" 'rm src/main.ts 2>/dev/null'                src/main.ts 'a
 assert_blocked "$FIX" 'touch src/new.ts 2>/dev/null'              src/new.ts  'a real touch, stderr redirected'
 assert_blocked "$FIX" 'echo x | tee src/main.ts > /dev/null'      src/main.ts 'a real tee whose output is discarded'
 assert_blocked "$FIX" 'echo x > src/main.ts 2>/dev/null'          src/main.ts 'a real redirect, with stderr also redirected'
+
+# ---------------------------------------------------------------------------
+describe "an option's argument is not the file being written"
+set_phase "$FIX" RED
+
+# H1's tenth shape, found by the second mutation audit. The rm/touch rule splits
+# its match into words and drops anything starting with `-`, but never the WORD
+# AFTER an option that takes one. So a timestamp became the write target:
+#
+#   touch -t 202601010000 docs/notes.md   refused, path: 202601010000
+#   touch -d 2026-01-01   docs/notes.md   refused, path: 2026-01-01
+#
+# The third case is the one that matters most, because it is not a nonsense
+# path - it is a real file, and a READ of it:
+#
+#   touch -r src/main.ts docs/a.md        refused, path: src/main.ts
+#
+# `-r` names the reference file whose timestamp is copied FROM. Refusing on it
+# denies a legitimate command by pointing at a file it only reads, which is
+# the most convincing kind of wrong denial: the path is real, so the message
+# looks correct.
+assert_allowed "$FIX" 'touch -t 202601010000 docs/notes.md' 'touch -t, timestamp is not a path'
+assert_allowed "$FIX" 'touch -d 2026-01-01 docs/notes.md'   'touch -d, date is not a path'
+assert_allowed "$FIX" 'touch -r src/main.ts docs/a.md'      'touch -r, the reference is only read'
+assert_allowed "$FIX" 'touch --reference=src/main.ts docs/a.md' 'touch --reference=, attached form'
+assert_allowed "$FIX" 'rm -f docs/notes.md'                 'rm -f still fine'
+
+# And the controls, because an option-skipping rule that skips one word too many
+# stops seeing the target. Each of these must still be refused, on the FILE.
+assert_blocked "$FIX" 'touch -t 202601010000 src/main.ts' src/main.ts 'a real touch behind -t'
+assert_blocked "$FIX" 'touch -d 2026-01-01 src/main.ts'   src/main.ts 'a real touch behind -d'
+assert_blocked "$FIX" 'touch -r docs/notes.md src/main.ts' src/main.ts 'the TARGET of -r is still judged'
+assert_blocked "$FIX" 'rm -rf src/main.ts'                src/main.ts 'rm -rf still refused'
+assert_blocked "$FIX" 'touch src/new.ts'                  src/new.ts  'plain touch still refused'
 describe "RED: a path in a variable is still a path"
 
 # The loophole every agent found. The guard used to discard any candidate

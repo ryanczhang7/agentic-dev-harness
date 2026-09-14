@@ -362,10 +362,17 @@ done
 # next person can argue with; silence is not.
 dv="$(section "$sfile" "Deferred verifications")"
 if printf '%s\n' "$dv" | has_content; then
-  if printf '%s\n' "$dv" | strip_comments | grep -qE '\b(RED|GREEN|GATES|REVIEW|DONE)\b'; then
+  # `Owner: <PHASE>`, declared - not a phase word loose in the prose. The first
+  # version grepped the whole block for any phase name, and the story template
+  # asks the author to write "why the phase that wants it cannot run it", so the
+  # very sentence the template prompts ("RED cannot run this") satisfied the
+  # check with no owner named. A check that its own boilerplate discharges is
+  # not a check.
+  if printf '%s\n' "$dv" | strip_comments \
+       | grep -qiE '(^|[^a-z])owner[^a-z]*:?[^a-z]*(RED|GREEN|GATES|REVIEW|DONE)\b'; then
     ok "## Deferred verifications names the phase that owns each entry"
   else
-    problem "story $sid: ## Deferred verifications names no phase. A verification RED cannot perform is a commitment, and a commitment with no owner is a note: say which phase runs it - RED, GREEN, GATES or REVIEW - beside what it verifies."
+    problem "story $sid: ## Deferred verifications does not declare an owner. Write 'Owner: GATES' (or RED, GREEN, REVIEW) beside what it verifies. A phase merely NAMED in the prose is not an owner - the template asks you to say why the phase that wants it cannot run it, so 'RED cannot run this' would otherwise discharge this check while naming nobody."
   fi
   if printf '%s\n' "$dv" | has_pasted_output; then
     ok "## Deferred verifications carries its result"

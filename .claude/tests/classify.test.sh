@@ -96,6 +96,37 @@ assert_eq "a module merely named 'probe' is source" "source	src/heat_probe.ts" \
   "$(cls src/heat_probe.ts)"
 
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+describe "the category list cannot drift from paths.conf"
+
+# The bug this closes, found by a mutation audit: classify.sh printed `manifest`
+# for Cargo.toml and then refused `--only manifest` as an unknown category. The
+# whitelist was a hand-copied list, and when paths.conf gained `manifest` the
+# copy did not. A script that contradicts itself in two lines is worse than one
+# with no validation, because the validation is what you trust.
+#
+# So it is derived from paths.conf now, plus the four the classifier produces
+# without a rule. Deriving is the fix; a longer copy would just drift later.
+assert_eq "--only manifest is accepted" "Cargo.toml" "$(cls --only manifest Cargo.toml src/main.ts)"
+printf "[package]
+" > "$FIX/Cargo.toml"
+assert_contains "and --list manifest" "Cargo.toml" "$(cls --list manifest .)"
+assert_contains "the usage lists it too" "manifest" "$(cls --only 2>&1)"
+
+# A category invented in paths.conf is accepted without touching this script.
+printf 'weird | src/weird/**\n' >> "$FIX/.claude/harness/paths.conf"
+mkdir -p "$FIX/src/weird" && printf 'x\n' > "$FIX/src/weird/thing.ts"
+assert_eq "a category added to paths.conf needs no code change" "weird	src/weird/thing.ts" \
+  "$(cls src/weird/thing.ts)"
+assert_eq "and filters by it"  "src/weird/thing.ts" "$(cls --only weird src/weird/thing.ts src/main.ts)"
+
+# Still refuses a real typo, which is the whole point of having a list: a
+# mistyped --only returns nothing, and nothing reads exactly like "this tree has
+# no such files".
+out="$(cls --only sources src/main.ts 2>&1)"; rc=$?
+assert_eq "a typo is still refused" 2 "$rc"
+assert_contains "and named" "sources" "$out"
 describe "it refuses what it cannot answer"
 
 out="$(cls --only 2>&1)"; rc=$?

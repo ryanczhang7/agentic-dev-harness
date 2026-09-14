@@ -285,8 +285,43 @@ With one field dropped from the encoder, AC-1's property test must fail, and
 the orchestrator should watch it fail rather than take the claim.
 EOF
 out="$(boundaries)"
-assert_contains "no phase owns it" "names no phase" "$out"
+assert_contains "no phase owns it" "does not declare an owner" "$out"
 
+
+# The owner has to be DECLARED, not merely mentioned. The first version grepped
+# the whole block for any phase word, and the story template tells an author to
+# write "why the phase that wants it cannot run it" - so the sentence the
+# template asks for ("RED cannot run this") discharged the obligation with no
+# owner named anywhere. A check satisfied by the boilerplate that prompts it is
+# not a check. Found by the second mutation audit.
+story_on_branch <<'EOF'
+## Deferred verifications
+
+With one field dropped from the encoder, AC-1's property test must fail. RED
+cannot run this - there is no encoder to mutate yet.
+
+```
+ x round-trips an arbitrary world document
+ Tests  1 failed | 44 passed (45)
+```
+EOF
+out="$(boundaries)"
+assert_contains "a phase merely mentioned is not an owner" "does not declare an owner" "$out"
+
+# Declared, in the form the template teaches.
+story_on_branch <<'EOF'
+## Deferred verifications
+
+With one field dropped from the encoder, AC-1's property test must fail. RED
+cannot run this - there is no encoder to mutate yet. **Owner: GATES.**
+
+```
+ x round-trips an arbitrary world document
+ Tests  1 failed | 44 passed (45)
+```
+EOF
+out="$(boundaries)"
+assert_contains "an explicit Owner: satisfies it" "ok    ## Deferred verifications names the phase" "$out"
 # Naming the phase is half of it. A block that names GATES and reaches the PR
 # with nothing recorded is the failure K6 describes exactly: a commitment that
 # outlived the phase that owed it.
