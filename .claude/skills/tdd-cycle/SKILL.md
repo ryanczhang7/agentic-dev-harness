@@ -280,6 +280,44 @@ narrow one: run every old variant against the new shared one over the live tree
 and compare the file lists. Byte-identical, or you have quietly stopped checking
 something.
 
+## Code no machine you have can execute: grep for the shape
+
+Rule 1 refuses a test that cannot fail. That refusal has a consequence people
+reach past: **some code cannot be reached by any test you are able to run**, and
+for that code a static check is not a weaker substitute for a test — it is the
+only instrument that addresses it at all.
+
+The case that made this concrete. Every suite here opens with
+
+    WORK="$(mktemp -d 2>/dev/null || mktemp -d -t harness.XXXXXX)"
+
+and the `||` branch exists for a platform where the first call fails. It had been
+written without the `X`s, so on that platform the fallback would have failed too
+— a guard that could not rescue the one case it was for. Now ask how to test it.
+The branch does not execute on Windows. It does not execute on Linux. A "test"
+for it would run the second call directly, which proves the call works and proves
+nothing about the branch; or it would assert the branch is reached, which on
+every machine either author could touch is an assertion that cannot fail. That is
+the thing rule 1 exists to refuse.
+
+So the check is a `grep` over the shipped suites for the broken shape, sitting
+beside the ones for bash-3.2 expansions and GNU-only `sed -i`. It pins **the
+shape, not the behaviour**, and that is the honest description of what it can do.
+
+Two things follow, and the second is the one worth carrying:
+
+- **A green run on two platforms is compatible with that branch never having run
+  on either.** It is, here. The fix was verified by calling the corrected
+  expression directly and seeing a real directory come back — by *effect*, not by
+  the rule going quiet, because a rule going quiet is also exactly what a wrong
+  fix looks like.
+- **"We could not test it so we grepped for it" and "a test here would be the
+  untestable kind, so a grep is the correct instrument" read identically in a
+  diff and mean opposite things.** The first is an excuse for skipping rule 1;
+  the second is rule 1 applied. Say which one you mean, in the check, next to it —
+  because the next reader sees a grep where they expected a test, and their
+  default reading is the first one.
+
 ## The gates run your tests differently
 
 RED and GREEN validate with the test command. At least one required gate does

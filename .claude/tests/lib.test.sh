@@ -228,9 +228,39 @@ assert_eq "no GNU-only sed -i in shipped scripts" "" "$hits"
 # because plain `mktemp -d` is universal - and exactly the kind of guard that
 # reads as handled in review. Found by a consuming project pre-checking this
 # repository's suites for Linux hazards before running them there.
+#
+# The failure MESSAGE carries two facts, and both are load-bearing for a reader
+# who is not in this conversation. This check scans `.claude/tests/*.sh`, which
+# in a vendored copy includes the PROJECT'S OWN suites - so an upstream
+# portability rule can fail on a file the project wrote. That is deliberate: the
+# hazard is identical wherever the idiom appears, and a rule that stops applying
+# the moment it is vendored is one more check nothing has to listen to. But an
+# agent with a fresh context sees an upstream rule failing on its own file and
+# reads "the vendored suite is stale", which makes skipping it feel like the
+# careful move. So the message says that project files are in scope on purpose,
+# and gives the exact replacement rather than making the reader derive it.
 hits="$(grep -rnE 'mktemp -d[^|)]*-t [A-Za-z0-9_.-]+' "$REPO_ROOT"/.claude/tests/*.sh "$REPO_ROOT"/scripts/*.sh 2>/dev/null \
   | grep -vE ':[0-9]+:[[:space:]]*#' | grep -v 'XXX' || true)"
-assert_eq "no mktemp -t template without X's" "" "$hits"
+if [ -z "$hits" ]; then
+  _ok "no mktemp -t template without X's"
+else
+  # The example below is deliberately NOT written as a contiguous
+  # 'mktemp' + '-d' + '-t name', because this message is itself inside a file
+  # this check scans - writing the broken form here makes the message a hit and
+  # the check report itself. It did, on the first run.
+  _bad "no mktemp -t template without X's" "GNU's -t needs X's in the template: a -t given a bare name fails with
+\"too few X's in template\", so the fallback cannot run on the one platform
+where the plain create-a-temp-dir call before it could fail.
+
+Fix each site by adding them:   -t name   ->   -t name.XXXXXX
+
+PROJECT-OWNED SUITES ARE IN SCOPE ON PURPOSE. If one of the files below is
+yours rather than the harness's, that is not a stale vendored suite and not a
+reason to skip this - the idiom is broken wherever it appears, and this rule
+reaching your files is the point of it. Fix it in place; it is one line.
+
+$hits"
+fi
 
 # $TMPDIR is unset in some of the shells this harness runs in, and the one place
 # that mattered - a mutation backup - lost its backup to exactly that, leaving
