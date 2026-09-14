@@ -56,7 +56,7 @@ actual:               $3" ;;
 # this repository actually ships.
 make_fixture() {
   local d
-  d="$(mktemp -d 2>/dev/null || mktemp -d -t harness)"
+  d="$(mktemp -d 2>/dev/null || mktemp -d -t harness.XXXXXX)"
   mkdir -p "$d/.claude/harness" "$d/.claude/state" "$d/src" "$d/tests" "$d/docs/backlog/stories"
   cp "$REPO_ROOT/.claude/harness/paths.conf"  "$d/.claude/harness/paths.conf"
   cp "$REPO_ROOT/.claude/harness/phases.conf" "$d/.claude/harness/phases.conf"

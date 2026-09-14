@@ -98,7 +98,8 @@ cat >> "$file" <<'TEMPLATE'
        * what it verifies, as a falsifiable condition - "with one field dropped
          from the encoder, AC-1's property test MUST fail"
        * why the phase that wants it cannot run it
-       * THE PHASE THAT OWNS IT, by name. check-boundaries.sh refuses a PR
+       * THE PHASE THAT OWNS IT, declared as `Owner: GATES` (or RED, GREEN,
+         REVIEW). check-boundaries.sh refuses a PR
          whose block names no phase
        * the RESULT, pasted, once that phase runs it: what was mutated, what
          failed, and that the file was restored - or the word WAIVED with the

@@ -106,7 +106,25 @@ case "$TOOL" in
         printf '%s\n' "$NOREDIR" | grep -oE '\btee\b([[:space:]]+-a)?[[:space:]]+[^|&;><()[:space:]]+' | awk '{print $NF}'
         printf '%s\n' "$NOREDIR" | grep -oE '\bsed\b[^|&;()]*-i[^|&;()]*'              | awk '{print $NF}'
         printf '%s\n' "$NOREDIR" | grep -oE '\b(cp|mv)\b[[:space:]]+[^|&;()]+'         | awk '{print $NF}'
-        printf '%s\n' "$NOREDIR" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;<>()]+'    | tr ' ' '\n' | grep -vE '^(rm|touch|-.*)$'
+        # Words, minus the command, minus options - and minus the ARGUMENT of an
+        # option that takes one. That last clause is the tenth shape of the
+        # false-positive family: `touch -t 202601010000 docs/a.md` was refused on
+        # a path of `202601010000`, and `touch -r src/main.ts docs/a.md` on
+        # `src/main.ts` - which `-r` only READS, so the denial pointed at a real
+        # file the command never writes. A wrong denial naming a real path is the
+        # most convincing kind, because the message looks right.
+        printf '%s\n' "$NOREDIR" | grep -oE '\b(rm|touch)\b[[:space:]]+[^|&;<>()]+' \
+          | awk '{ skip = 0
+                   for (i = 1; i <= NF; i++) {
+                     w = $i
+                     if (skip) { skip = 0; continue }
+                     if (w ~ /^(rm|touch)$/) continue
+                     if (w ~ /^-/) {
+                       if (w ~ /^(-t|-d|-r|--date|--reference|--time)$/) skip = 1
+                       continue
+                     }
+                     print w
+                   } }'
       } 2>/dev/null | tr -d '"'"'" | grep -vE '^\s*$|^-|\*|^/dev/' | sort -u
     )"
     # `$` is no longer filtered out here. It was, silently, which made the ONE

@@ -16,7 +16,7 @@
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
-WORK="$(mktemp -d 2>/dev/null || mktemp -d -t harness)"
+WORK="$(mktemp -d 2>/dev/null || mktemp -d -t harness.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
 SCRIPT="$REPO_ROOT/scripts/new-story.sh"

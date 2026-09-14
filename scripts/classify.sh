@@ -6,10 +6,12 @@
 #   bash scripts/classify.sh --only source PATH...          just the paths, one per line
 #   bash scripts/classify.sh --list source [PATHSPEC...]    every such file in the tree
 #
-# Categories are vendor, harness, docs, test, config, ignored, source, decided by
-# .claude/harness/paths.conf and by what .gitignore covers. This is the SAME
-# answer .claude/hooks/phase-guard.sh uses to allow or refuse a write, which is
-# the entire point of the script existing.
+# Categories come from .claude/harness/paths.conf, plus ignored, source, outside
+# and vendor, which the classifier returns without a rule. `--only` and `--list`
+# accept any of them, DERIVED rather than listed here, so the set cannot drift
+# from paths.conf the way a hand-copied list did. This is the SAME answer
+# .claude/hooks/phase-guard.sh uses to allow or refuse a write, which is the
+# entire point of the script existing.
 #
 # WHY IT EXISTS. `classify` was a bash function in .claude/hooks/lib.sh, so the
 # only thing that could reach it was another bash script. A project's own
@@ -35,10 +37,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 . "$ROOT/.claude/hooks/lib.sh" || { printf 'classify: cannot load .claude/hooks/lib.sh\n' >&2; exit 1; }
 
+categories() {
+  { awk -F'|' '/^[[:space:]]*[a-z]+[[:space:]]*\|/ { gsub(/[[:space:]]/, "", $1); print $1 }' \
+      "$ROOT/.claude/harness/paths.conf" 2>/dev/null
+    printf 'ignored\nsource\noutside\nvendor\n'; } | sort -u
+}
+
 usage() {
   printf 'usage: classify.sh [--only CATEGORY | --list CATEGORY] [PATH...]\n\n' >&2
   sed -n '5,8p' "$0" | sed 's/^# \{0,1\}//' >&2
-  printf '\ncategories: vendor harness docs test config ignored source\n' >&2
+  printf '\ncategories: %s\n' "$(categories | tr '\n' ' ')" >&2
   exit 2
 }
 
@@ -64,11 +72,20 @@ done
 # `--only sources` otherwise returns nothing at all, which reads exactly like
 # "this tree has no source files" and is the failure mode the script exists to
 # prevent.
+#
+# DERIVED from paths.conf, not listed here. It was listed here, as a copy of
+# that file's categories, and the copy drifted the moment paths.conf gained
+# `manifest`: this script printed `manifest` for Cargo.toml and then refused
+# `--only manifest` as unknown, contradicting itself in two lines. A longer
+# hand-written list would drift again the next time.
+#
+# The four added to whatever paths.conf declares are the ones classify returns
+# without a rule: `ignored` from git, `source` as the fallback, `outside` for a
+# path that is not in this repository, and `vendor` in case no rule names it.
 if [ -n "$WANT" ]; then
-  case "$WANT" in
-    vendor|harness|docs|test|config|ignored|source|outside) ;;
-    *) printf 'classify: unknown category "%s"\n\n' "$WANT" >&2; usage ;;
-  esac
+  if ! categories | grep -qx -- "$WANT"; then
+    printf 'classify: unknown category "%s"\n\n' "$WANT" >&2; usage
+  fi
 fi
 
 emit() { # <category> <path>
