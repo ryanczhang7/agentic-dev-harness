@@ -25,10 +25,12 @@ trap 'rm -rf "$WORK"' EXIT
 # follow through the copy.
 UP="$WORK/upstream"; PROJ="$WORK/project"
 mkdir -p "$UP/.claude/harness" "$UP/.claude/skills/stack-profiles/reference" "$UP/.claude/hooks" \
-         "$UP/.claude/agents" "$UP/.claude/tests" "$UP/.claude/state" "$UP/scripts" "$UP/.github/workflows"
+         "$UP/.claude/agents" "$UP/.claude/tests" "$UP/.claude/state" "$UP/scripts" \
+         "$UP/.claude/commands" "$UP/.github/workflows"
 printf 'upstream hook\n'       > "$UP/.claude/hooks/phase-guard.sh"
 cp "$REPO_ROOT/scripts/refresh-harness.sh" "$UP/scripts/" 2>/dev/null
 printf 'upstream agent\n'      > "$UP/.claude/agents/lead-po.md"
+printf 'upstream command\n'    > "$UP/.claude/commands/advance-story.md"
 printf 'upstream profile\n'    > "$UP/.claude/skills/stack-profiles/reference/python-uv.md"
 printf 'upstream suite\n'      > "$UP/.claude/tests/lib.test.sh"
 printf '2026-09-17\n'          > "$UP/.claude/harness/VERSION"
@@ -42,8 +44,15 @@ printf 'echo new\n'            > "$UP/scripts/brand-new.sh"
 
 new_project() {
   rm -rf "$PROJ"; mkdir -p "$PROJ/.claude/harness" "$PROJ/.claude/skills/stack-profiles/reference" \
-                           "$PROJ/.claude/agents" "$PROJ/.claude/state" "$PROJ/scripts/vitest" "$PROJ/docs/wiki" "$PROJ/.github/workflows"
+                           "$PROJ/.claude/agents" "$PROJ/.claude/state" "$PROJ/scripts/vitest" "$PROJ/docs/wiki" \
+                           "$PROJ/.claude/commands" "$PROJ/.claude/hooks" "$PROJ/.claude/tests" "$PROJ/.github/workflows"
   printf 'OLD agent\n'          > "$PROJ/.claude/agents/lead-po.md"
+  # One stale marker per replaced directory. Without these, the staleness grep
+  # below has nothing to find in hooks/tests/commands and passes for the reason
+  # that the directory was empty - which is what a vacuous assertion looks like.
+  printf 'OLD command\n'        > "$PROJ/.claude/commands/advance-story.md"
+  printf 'OLD HOOK\n'           > "$PROJ/.claude/hooks/phase-guard.sh"
+  printf 'OLD suite\n'          > "$PROJ/.claude/tests/lib.test.sh"
   printf 'OLD profile\n'        > "$PROJ/.claude/skills/stack-profiles/reference/python-uv.md"
   # The project's OWN profile: upstream does not ship it and must not remove it.
   printf 'PROJECT profile\n'    > "$PROJ/.claude/skills/stack-profiles/reference/tauri-react-webgl.md"
@@ -87,6 +96,26 @@ rm -f "$PROJ/.claude/state/current-story.env"
 out="$(refresh /nowhere/at/all)"; rc=$?
 assert_eq "a bad upstream path stops it" 2 "$rc"
 
+# Both halves are required of an upstream checkout, and each was unasserted: a
+# directory with `scripts` but no `.claude/hooks` is not a harness, and neither
+# is the reverse. Copying from one would produce a project missing its lock.
+mkdir -p "$WORK/half-a/scripts" "$WORK/half-b/.claude/hooks"
+out="$(refresh "$WORK/half-a")"; rc=$?
+assert_eq "an upstream with no .claude/hooks is refused" 2 "$rc"
+out="$(refresh "$WORK/half-b")"; rc=$?
+assert_eq "an upstream with no scripts is refused" 2 "$rc"
+
+# THE false-positive case, and the one that matters most: a DONE story must NOT
+# block a refresh. `phase.sh set <id> DONE` leaves PHASE=DONE in the state file
+# and only `phase.sh clear` removes it, so DONE is the ordinary between-stories
+# state - exactly the window the procedure tells you to refresh in. A refusal
+# here would refuse the correct moment and teach people to delete the lock file.
+new_project
+printf 'STORY_ID=W-1\nPHASE=DONE\n' > "$PROJ/.claude/state/current-story.env"
+out="$(refresh "$UP")"; rc=$?
+assert_eq "a DONE story does not block a refresh" 0 "$rc"
+rm -f "$PROJ/.claude/state/current-story.env"
+
 # ---------------------------------------------------------------------------
 describe "what it replaces, and what it refuses to touch"
 
@@ -115,6 +144,27 @@ assert_eq "workflows untouched"     "project workflow" "$(cat "$PROJ/.github/wor
 assert_eq "a project script survives" "project bench"  "$(cat "$PROJ/scripts/bench.mjs")"
 assert_eq "and a project script directory" "project helper" "$(cat "$PROJ/scripts/vitest/setup.ts")"
 
+# EVERY directory the report calls REPLACED has actually been replaced, checked
+# by content rather than by the report's own text. The report and the copy used
+# to come from two separate loops over two separate lists, and nothing compared
+# them: shortening the copy loop left all 28 assertions green while the report
+# still printed `REPLACED .claude/hooks/` over a hook that still held OLD HOOK.
+# A refresh that silently skips the phase lock and says it updated it is the
+# worst thing this script can do, and the assertions above only happened to
+# cover `agents`.
+for d in agents commands skills hooks tests; do
+  case "$out" in
+    *"REPLACED  .claude/$d/"*) ;;
+    *) _bad "report names .claude/$d" "not in the report"; continue ;;
+  esac
+  stale="$(grep -rl 'OLD ' "$PROJ/.claude/$d" 2>/dev/null | head -1)"
+  if [ -n "$stale" ]; then
+    _bad "REPLACED .claude/$d is true" "reported replaced, but $stale still holds the project's old content"
+  else
+    _ok "REPLACED .claude/$d is true"
+  fi
+done
+
 # The two that need a human. Copying them blind loses project rules; the script
 # leaves them alone and says so rather than pretending it merged them.
 assert_eq "paths.conf is NOT overwritten" "OLD paths" "$(cat "$PROJ/.claude/harness/paths.conf")"
@@ -126,9 +176,25 @@ assert_contains "CLAUDE.md too"                 "CLAUDE.md"  "$out"
 describe "it reports before it acts"
 
 new_project
+# Every file the script can write, fingerprinted before and after. The old
+# assertion checked one file - `.claude/agents/lead-po.md` - which is protected
+# by a DIFFERENT guard (`if [ "$DRY" = 0 ]` around the copy block), so making
+# `act()` eval unconditionally left every assertion green while a dry run
+# overwrote settings.json, state/README.md, three harness files and every
+# scripts/*.sh.
+before="$(find "$PROJ/.claude" "$PROJ/scripts" "$PROJ/CLAUDE.md" -type f -exec cksum {} \; 2>/dev/null | sort)"
 out="$(refresh --dry-run "$UP")"; rc=$?
+after="$(find "$PROJ/.claude" "$PROJ/scripts" "$PROJ/CLAUDE.md" -type f -exec cksum {} \; 2>/dev/null | sort)"
 assert_eq "--dry-run succeeds" 0 "$rc"
+assert_eq "and writes nothing at all" "$before" "$after"
 assert_eq "and changes nothing" "OLD agent" "$(cat "$PROJ/.claude/agents/lead-po.md")"
+
+# A dry run is a report, so it must work on the trees a report is most wanted
+# on - including a dirty one, where the real run correctly refuses.
+printf 'uncommitted\n' >> "$PROJ/docs/wiki/stack.md"
+out="$(refresh --dry-run "$UP")"; rc=$?
+assert_eq "--dry-run works on a dirty tree" 0 "$rc"
+( cd "$PROJ" && git checkout -q -- . 2>/dev/null )
 assert_contains "while still naming what it would keep" "tauri-react-webgl.md" "$out"
 assert_contains "and the version it would move to" "2026-09-17" "$out"
 
