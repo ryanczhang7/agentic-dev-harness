@@ -20,8 +20,46 @@ git -C "$FIX" -c user.email=t@t -c user.name=t branch -M main >/dev/null 2>&1
 # and fails on a runner, which is the failure mode the harness spends the rest
 # of its documentation warning about. PR_HEAD_SHA goes for the same reason: it
 # would recompute the gate hash at a commit in the real repository.
-boundaries() {
-  ( cd "$FIX" && GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh main 2>&1 )
+#
+# run_boundaries sets BOTH $out and $rc, because they are two different claims
+# and this suite spent its whole life making only the first. It passed 52/52
+# against a check-boundaries.sh mutated to `exit 1` unconditionally - a script
+# refusing every pull request it was ever handed - and it passes today with the
+# two-claimant rule downgraded from `problem` to `note`, because `note` prints
+# the same words. The status is what CI acts on; the message is only what the
+# author reads. A helper that returns the output through a command substitution
+# cannot carry the status back, which is why this one sets globals instead.
+run_boundaries() { # sets $out and $rc
+  out="$( cd "$FIX" && GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh main 2>&1 )"
+  rc=$?
+}
+
+# refused <what> <needle>   Reads $out and $rc from the run just made. Both
+# halves, always: a message with exit 0 is a warning nobody is stopped by, and a
+# non-zero exit carrying the wrong message sends the next person to the wrong
+# rule.
+refused() {
+  case "$out" in
+    *"$2"*) ;;
+    *) _bad "$1" "expected a refusal saying: $2
+actual:                    $out"; return ;;
+  esac
+  if [ "${rc:-0}" -eq 0 ]; then
+    _bad "$1" "said '$2' but exited 0, so CI would merge this"; return
+  fi
+  _ok "$1"
+}
+
+# accepts_manifest <what>   The other direction, where the run legitimately
+# still exits non-zero: these fixture stories carry no ## Gate results, so the
+# gate-record rule refuses them for a reason that has nothing to do with the
+# manifest. What is asserted is therefore the absence of THIS rule's refusal,
+# not a clean exit.
+accepts_manifest() {
+  case "$out" in
+    *"outside the test-dependency block"*) _bad "$1" "refused: $out" ;;
+    *) _ok "$1" ;;
+  esac
 }
 commit_all() { git -C "$FIX" add -A >/dev/null 2>&1
                git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "${1:-wip}" >/dev/null 2>&1; }
@@ -54,8 +92,8 @@ story_on_branch <<'EOF'
 The seaFloorM test asserted a RangeError the rule does not require. Corrected
 to a floor below sea level, and it passes now.
 EOF
-out="$(boundaries)"
-assert_contains "described but not shown" "## Regressions describes something without showing it" "$out"
+run_boundaries
+refused "described but not shown" "## Regressions describes something without showing it"
 
 story_on_branch <<'EOF'
 ## Regressions
@@ -71,7 +109,7 @@ zero, which is the bug the test names:
 
 Reverted; `git diff` clean.
 EOF
-out="$(boundaries)"
+run_boundaries
 assert_contains "shown in a fence" "ok    ## Regressions carries pasted output" "$out"
 
 story_on_branch <<'EOF'
@@ -84,7 +122,7 @@ after, both under `bash scripts/gates.sh --gate coverage`:
 
 Thresholds, seeds and numRuns untouched; the measured statistics are identical.
 EOF
-out="$(boundaries)"
+run_boundaries
 assert_contains "shown as an indented measurement" "ok    ## Regressions carries pasted output" "$out"
 
 # The section is optional. A story that never returned to RED omits it, and
@@ -94,7 +132,7 @@ story_on_branch <<'EOF'
 
 One clean cycle.
 EOF
-out="$(boundaries)"
+run_boundaries
 case "$out" in
   *"## Regressions"*) _bad "an absent section is not a failure" "complained anyway: $out" ;;
   *) _ok "an absent section is not a failure" ;;
@@ -109,7 +147,7 @@ story_on_branch <<'EOF'
        * what earns it, since "watched it fail" cannot apply once the
          implementation exists -->
 EOF
-out="$(boundaries)"
+run_boundaries
 case "$out" in
   *"## Regressions"*) _bad "an untouched template block is not a claim" "complained anyway: $out" ;;
   *) _ok "an untouched template block is not a claim" ;;
@@ -129,7 +167,7 @@ Described, not shown.
 EOF
 head_sha="$(git -C "$FIX" rev-parse HEAD)"
 git -C "$FIX" checkout -q --detach "$head_sha" 2>/dev/null
-out="$( cd "$FIX" && GITHUB_HEAD_REF=story/T-1-fixture PR_HEAD_SHA= bash scripts/check-boundaries.sh main 2>&1 )"
+out="$( cd "$FIX" && GITHUB_HEAD_REF=story/T-1-fixture PR_HEAD_SHA= bash scripts/check-boundaries.sh main 2>&1 )"; rc=$?
 assert_contains "a detached checkout still finds the story" "story T-1 is in REVIEW" "$out"
 git -C "$FIX" checkout -q story/T-1-fixture 2>/dev/null
 
@@ -149,8 +187,8 @@ mkdir -p "$FIX/docs/backlog/stories"
 printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: GATES\nbranch: story/T-1-fixture\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n' \
   > "$FIX/docs/backlog/stories/T-1.md"
 commit_all "T-1 committed before the phase was set"
-out="$(boundaries)"
-assert_contains "a commit carrying GATES is refused" "a PR should be opened from REVIEW or DONE" "$out"
+run_boundaries
+refused "a commit carrying GATES is refused" "a PR should be opened from REVIEW or DONE"
 
 # ---------------------------------------------------------------------------
 describe "the same rule covers gate probes"
@@ -160,8 +198,8 @@ story_on_branch <<'EOF'
 
 Broke the import boundary and the lint gate failed, as expected. Reverted.
 EOF
-out="$(boundaries)"
-assert_contains "a gate probe described but not shown" "## Gate probes describes something without showing it" "$out"
+run_boundaries
+refused "a gate probe described but not shown" "## Gate probes describes something without showing it"
 
 # ---------------------------------------------------------------------------
 describe "acceptance criteria are frozen"
@@ -179,8 +217,8 @@ git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
 printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works differently now.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n' \
   > "$FIX/docs/backlog/stories/T-1.md"
 commit_all "T-1 review"
-out="$(boundaries)"
-assert_contains "changed criteria with no amendment" "## Acceptance criteria differ from main" "$out"
+run_boundaries
+refused "changed criteria with no amendment" "## Acceptance criteria differ from main"
 
 
 # ---------------------------------------------------------------------------
@@ -195,8 +233,8 @@ describe "a BLOCKED gate can reach REVIEW, but only with the decision written do
 #
 # The record has to be a real one: gates.sh writes the marker and the tree hash,
 # and nothing else can. So the fixture runs it.
-story_blocked() { # <phase> ; body on stdin
-  local phase="$1" extra; extra="$(cat)"
+story_blocked() { # <phase> [required_gates] ; body on stdin
+  local phase="$1" rg="${2:-}" extra; extra="$(cat)"
   git -C "$FIX" checkout -q main 2>/dev/null
   git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
   git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
@@ -208,7 +246,9 @@ evidence | types | Tests +[1-9][0-9]* passed
 CONF
   mkdir -p "$FIX/docs/backlog/stories"
   {
-    printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: %s\nbranch: story/T-1-fixture\n---\n\n' "$phase"
+    printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: %s\nbranch: story/T-1-fixture\n' "$phase"
+    [ -n "$rg" ] && printf -- 'required_gates: %s\n' "$rg"
+    printf -- '---\n\n'
     printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n\n'
     printf -- '## Notes\n\n%s\n\n## Gate results\n\n' "$extra"
   } > "$FIX/docs/backlog/stories/T-1.md"
@@ -223,7 +263,7 @@ story_blocked REVIEW <<'EOF'
    refuses the locally built binary by reputation (os error 4551), the branch does
    not touch it, and the same command passes elsewhere. Marking types pending CI.
 EOF
-out="$(boundaries)"; rc=$?
+run_boundaries
 assert_contains "a blocked gate at REVIEW with the decision recorded" "recorded gate result: blocked" "$out"
 assert_contains "and the gate is named as pending CI" "types" "$out"
 # The EXIT STATUS, which is what "not refused" actually means and what CI acts
@@ -236,21 +276,21 @@ assert_eq "and it is not refused" 0 "$rc"
 story_blocked REVIEW <<'EOF'
 Ran the gates. One of them did not work on this machine.
 EOF
-out="$(boundaries)"
-assert_contains "a blocked gate with nothing written down is refused" "pending CI" "$out"
+run_boundaries
+refused "a blocked gate with nothing written down is refused" "pending CI"
 
 story_blocked DONE <<'EOF'
 1. PO decision: types is BLOCKED locally by Smart App Control. Marking it
    pending CI.
 EOF
-out="$(boundaries)"
-assert_contains "DONE needs more than pending: it needs the CI run" "has not been verified on CI" "$out"
+run_boundaries
+refused "DONE needs more than pending: it needs the CI run" "has not been verified on CI"
 
 story_blocked DONE <<'EOF'
 1. PO decision: types was BLOCKED locally by Smart App Control (os error 4551).
 2. types passed on CI: https://github.com/o/r/actions/runs/412 - "Tests 47 passed".
 EOF
-out="$(boundaries)"
+run_boundaries
 assert_contains "DONE with the CI run quoted is accepted" "verified on CI" "$out"
 
 # The distinction has to cut both ways: an ordinary failure is still refused.
@@ -266,8 +306,8 @@ CONF
 commit_all "T-1 conf ordinary failure"
 ( cd "$FIX" && bash scripts/gates.sh --story T-1 >/dev/null 2>&1 )
 commit_all "T-1 review failing"
-out="$(boundaries)"
-assert_contains "a recorded failure is still refused" "recorded gate result is 'fail" "$out"
+run_boundaries
+refused "a recorded failure is still refused" "recorded gate result is 'fail"
 
 
 # ---------------------------------------------------------------------------
@@ -286,8 +326,8 @@ story_on_branch <<'EOF'
 With one field dropped from the encoder, AC-1's property test must fail, and
 the orchestrator should watch it fail rather than take the claim.
 EOF
-out="$(boundaries)"
-assert_contains "no phase owns it" "does not declare an owner" "$out"
+run_boundaries
+refused "no phase owns it" "does not declare an owner"
 
 
 # The owner has to be DECLARED, not merely mentioned. The first version grepped
@@ -307,8 +347,8 @@ cannot run this - there is no encoder to mutate yet.
  Tests  1 failed | 44 passed (45)
 ```
 EOF
-out="$(boundaries)"
-assert_contains "a phase merely mentioned is not an owner" "does not declare an owner" "$out"
+run_boundaries
+refused "a phase merely mentioned is not an owner" "does not declare an owner"
 
 # Declared, in the form the template teaches.
 story_on_branch <<'EOF'
@@ -322,7 +362,7 @@ cannot run this - there is no encoder to mutate yet. **Owner: GATES.**
  Tests  1 failed | 44 passed (45)
 ```
 EOF
-out="$(boundaries)"
+run_boundaries
 assert_contains "an explicit Owner: satisfies it" "ok    ## Deferred verifications names the phase" "$out"
 # Naming the phase is half of it. A block that names GATES and reaches the PR
 # with nothing recorded is the failure K6 describes exactly: a commitment that
@@ -333,8 +373,8 @@ story_on_branch <<'EOF'
 1. Drop a field from the encoder; AC-1's property must fail. RED cannot run
    this - there is no encoder to mutate. Owner: GATES.
 EOF
-out="$(boundaries)"
-assert_contains "named, owned, and never run" "no result and no waiver" "$out"
+run_boundaries
+refused "named, owned, and never run" "no result and no waiver"
 
 # Discharged: the phase ran it and pasted what happened. Same predicate as
 # ## Regressions and ## Gate probes, for the same reason - "we ran it" is not
@@ -353,7 +393,7 @@ story_on_branch <<'EOF'
 
    Reverted; `cmp` clean.
 EOF
-out="$(boundaries)"
+run_boundaries
 assert_contains "run, with the failure shown" "ok    ## Deferred verifications carries its result" "$out"
 
 # Waived: the story decided not to run it, in writing. A waiver is a decision
@@ -365,7 +405,7 @@ story_on_branch <<'EOF'
 1. Owner: GATES. WAIVED - the encoder this control mutates moved to WORLD-010
    with the criterion it belonged to, so there is nothing here to break.
 EOF
-out="$(boundaries)"
+run_boundaries
 assert_contains "waived in writing" "ok    ## Deferred verifications carries an explicit waiver" "$out"
 
 # And the section is optional: most stories defer nothing, and a story that
@@ -375,7 +415,7 @@ story_on_branch <<'EOF'
 
 Nothing deferred.
 EOF
-out="$(boundaries)"
+run_boundaries
 case "$out" in
   *"Deferred verifications"*) _bad "silent when the section is absent" "said something about it: $out" ;;
   *) _ok "silent when the section is absent" ;;
@@ -402,7 +442,6 @@ harness_branch() { # <file to touch> ... ; body of VERSION on stdin
   [ -n "$ver" ] && printf '%s\n' "$ver" > "$FIX/.claude/harness/VERSION"
   commit_all "harness change"
 }
-bnd_harness() { ( cd "$FIX" && GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh main 2>&1 ); }
 
 # Baseline: main carries a stamp, and the fixture is the unbootstrapped
 # template.
@@ -413,14 +452,14 @@ commit_all "baseline stamp"
 
 printf 'touched by a harness change\n' >> "$FIX/.claude/hooks/lib.sh"
 harness_branch </dev/null
-out="$(bnd_harness)"
-assert_contains "a harness change with a stale stamp is refused" "does not bump" "$out"
+run_boundaries
+refused "a harness change with a stale stamp is refused" "does not bump"
 
 printf 'touched again\n' >> "$FIX/.claude/hooks/lib.sh"
 harness_branch <<'EOF'
 2026-02-02
 EOF
-out="$(bnd_harness)"
+run_boundaries
 assert_contains "bumping it satisfies the check" "ok    harness version bumped" "$out"
 
 # Downstream safety, both halves. A bootstrapped project editing .claude/ on a
@@ -430,7 +469,7 @@ printf 'BOOTSTRAPPED=yes\n' > "$FIX/.claude/harness/project.conf"
 commit_all "bootstrapped now"
 printf 'a project edit\n' >> "$FIX/.claude/hooks/lib.sh"
 harness_branch </dev/null
-out="$(bnd_harness)"
+run_boundaries
 case "$out" in
   *"does not bump"*) _bad "a bootstrapped project is not asked to bump" "it fired: $out" ;;
   *) _ok "a bootstrapped project is not asked to bump" ;;
@@ -443,7 +482,7 @@ printf 'BOOTSTRAPPED=no\n' > "$FIX/.claude/harness/project.conf"
 commit_all "unbootstrapped again"
 printf 'just a document\n' >> "$FIX/docs/notes.md"
 harness_branch </dev/null
-out="$(bnd_harness)"
+run_boundaries
 case "$out" in
   *"does not bump"*) _bad "a docs-only change is not asked to bump" "it fired: $out" ;;
   *) _ok "a docs-only change is not asked to bump" ;;
@@ -465,7 +504,7 @@ vite.config.ts - configuration, no behaviour
 EOF
 printf 'BOOTSTRAPPED=no\ngate | unit | required | . | printf x\n' > "$FIX/.claude/harness/project.conf"
 commit_all "the bootstrap story configures the project"
-out="$(boundaries)"
+run_boundaries
 case "$out" in
   *"does not bump"*) _bad "a story branch is never asked to bump" "the bootstrap story would be refused: $out" ;;
   *) _ok "a story branch is never asked to bump" ;;
@@ -550,7 +589,7 @@ serde = "1.0"
 [dev-dependencies]
 tempfile = "3"
 '
-out="$(boundaries)"
+run_boundaries
 assert_contains "a dev-dependency added in RED is fine" "ok    RED touched only test dependencies" "$out"
 
 manifest_story RED package.json '{
@@ -563,7 +602,7 @@ manifest_story RED package.json '{
   }
 }
 '
-out="$(boundaries)"
+run_boundaries
 assert_contains "the same in package.json" "ok    RED touched only test dependencies" "$out"
 
 # --- what the permission must not become -----------------------------------
@@ -577,8 +616,8 @@ regex = "1"
 
 [dev-dependencies]
 '
-out="$(boundaries)"
-assert_contains "a production dependency added in RED is refused" "outside the test-dependency block" "$out"
+run_boundaries
+refused "a production dependency added in RED is refused" "outside the test-dependency block"
 assert_contains "and the file is named" "Cargo.toml" "$out"
 
 # A version bump is the same defect wearing a smaller costume: it changes what
@@ -592,8 +631,8 @@ serde = "2.0"
 
 [dev-dependencies]
 '
-out="$(boundaries)"
-assert_contains "so is bumping an existing production dependency" "outside the test-dependency block" "$out"
+run_boundaries
+refused "so is bumping an existing production dependency" "outside the test-dependency block"
 
 manifest_story RED package.json '{
   "name": "fixture",
@@ -605,8 +644,8 @@ manifest_story RED package.json '{
   }
 }
 '
-out="$(boundaries)"
-assert_contains "and a production dependency in package.json" "outside the test-dependency block" "$out"
+run_boundaries
+refused "and a production dependency in package.json" "outside the test-dependency block"
 
 # --- GREEN is not RED ------------------------------------------------------
 # The asymmetry is deliberate and stays: GREEN's whole job is making the tests
@@ -621,7 +660,7 @@ regex = "1"
 
 [dev-dependencies]
 '
-out="$(boundaries)"
+run_boundaries
 case "$out" in
   *"outside the test-dependency block"*) _bad "GREEN may add a production dependency" "refused: $out" ;;
   *) _ok "GREEN may add a production dependency" ;;
@@ -662,7 +701,7 @@ version = "3.10.1"
 commit_all "T-1 RED dev-dependency, and the lockfile that follows it"
 _story_file REVIEW
 commit_all "T-1 to review"
-out="$(boundaries)"
+run_boundaries
 assert_contains "a lockfile is permitted unchecked" \
   "ok    RED touched only test dependencies (1 manifest change(s))" "$out"
 
@@ -681,8 +720,6 @@ assert_contains "a lockfile is permitted unchecked" \
 # from passing it. "Treat any [target.*] section as dev" satisfies the first
 # assertion and fails the second.
 
-assert_ok_manifest()      { case "$1" in *"outside the test-dependency block"*) _bad "$2" "refused: $1" ;; *) _ok "$2" ;; esac; }
-assert_refused_manifest() { case "$1" in *"outside the test-dependency block"*) _ok "$2" ;; *) _bad "$2" "accepted: $1" ;; esac; }
 
 # Cargo: a platform-gated test dependency is still a test dependency.
 manifest_story RED Cargo.toml '[package]
@@ -697,7 +734,7 @@ serde = "1.0"
 [target.'"'"'cfg(unix)'"'"'.dev-dependencies]
 nix = "0.27"
 '
-assert_ok_manifest "$(boundaries)" "a target-specific dev-dependency is a dev-dependency"
+run_boundaries; accepts_manifest "a target-specific dev-dependency is a dev-dependency"
 
 manifest_story RED Cargo.toml '[package]
 name = "fixture"
@@ -711,7 +748,7 @@ serde = "1.0"
 [target.'"'"'cfg(unix)'"'"'.dependencies]
 nix = "0.27"
 '
-assert_refused_manifest "$(boundaries)" "but a target-specific PRODUCTION dependency is not"
+run_boundaries; refused "but a target-specific PRODUCTION dependency is not" "outside the test-dependency block"
 
 # PEP 735. The block a modern Python project actually puts its test deps in.
 manifest_story RED pyproject.toml '[project]
@@ -724,7 +761,7 @@ test = ["pytest"]
 [tool.ruff]
 line-length = 100
 '
-assert_ok_manifest "$(boundaries)" "a PEP 735 dependency group is a dev block"
+run_boundaries; accepts_manifest "a PEP 735 dependency group is a dev block"
 
 # poetry, which the same file may use instead.
 manifest_story RED pyproject.toml '[project]
@@ -737,7 +774,7 @@ pytest = "^8"
 [tool.ruff]
 line-length = 100
 '
-assert_ok_manifest "$(boundaries)" "so is a poetry dev group"
+run_boundaries; accepts_manifest "so is a poetry dev group"
 
 # The control that keeps the TOML rule honest, and the one the code comment
 # already argues for: an extra is not a test dependency. It can be a production
@@ -752,7 +789,7 @@ pdf = ["reportlab"]
 [tool.ruff]
 line-length = 100
 '
-assert_refused_manifest "$(boundaries)" "an optional-dependencies extra is NOT a dev block"
+run_boundaries; refused "an optional-dependencies extra is NOT a dev block" "outside the test-dependency block"
 
 # --- JSON: the block ends at ITS closing brace, not the first one -----------
 # A nested object inside devDependencies is ordinary, and the depth counter is
@@ -786,7 +823,7 @@ manifest_story RED package.json '{
   }
 }
 '
-assert_ok_manifest "$(boundaries)" "a nested object does not end the dev block early"
+run_boundaries; accepts_manifest "a nested object does not end the dev block early"
 
 # THE control. An exit condition that swallows the rest of the file passes the
 # assertion above and makes every production change after a dev block invisible.
@@ -801,7 +838,7 @@ manifest_story RED package.json '{
   }
 }
 '
-assert_refused_manifest "$(boundaries)" "and production AFTER the dev block is still read"
+run_boundaries; refused "and production AFTER the dev block is still read" "outside the test-dependency block"
 
 # --- punctuation is not a dependency ---------------------------------------
 # Adding a dev block where none existed leaves a trailing comma behind on one
@@ -830,7 +867,7 @@ manifest_story RED package.json '{
   }
 }
 '
-assert_ok_manifest "$(boundaries)" "a first dev block, and the comma it leaves behind"
+run_boundaries; accepts_manifest "a first dev block, and the comma it leaves behind"
 
 manifest_story RED package.json '{
   "name": "fixture",
@@ -843,7 +880,7 @@ manifest_story RED package.json '{
   }
 }
 '
-assert_ok_manifest "$(boundaries)" "and the blank line somebody put between them"
+run_boundaries; accepts_manifest "and the blank line somebody put between them"
 
 # ---------------------------------------------------------------------------
 describe "the story is found by what claims the branch, not by the branch's name"
@@ -879,17 +916,17 @@ story_claiming() {
 # open-a-PR-from-REVIEW check fires. That it fires is the whole assertion - it
 # is proof the eight gated checks are running at all.
 story_claiming bug/world-storage-megabyte-timeout GATES
-out="$(boundaries)"
+run_boundaries
 assert_contains "a bug/ branch is matched to its story" "story T-1 is in phase 'GATES'" "$out"
 
 story_claiming chore/tauri-capability-acl-guard GATES
-out="$(boundaries)"
+run_boundaries
 assert_contains "so is a chore/ branch" "story T-1 is in phase 'GATES'" "$out"
 
 # The old form keeps working, and keeps working by the fast path rather than by
 # accident: this one's frontmatter names the branch too, as every story's does.
 story_claiming story/T-1-fixture GATES
-out="$(boundaries)"
+run_boundaries
 assert_contains "story/ still resolves" "story T-1 is in phase 'GATES'" "$out"
 
 # A branch no story claims is not an error - a harness PR is exactly that - but
@@ -899,7 +936,7 @@ git -C "$FIX" checkout -q main 2>/dev/null
 git -C "$FIX" branch -D harness/some-fix >/dev/null 2>&1
 git -C "$FIX" checkout -q -b harness/some-fix 2>/dev/null
 printf 'x\n' > "$FIX/docs/notes.md"; commit_all "a harness change"
-out="$(boundaries)"
+run_boundaries
 assert_contains "an unclaimed branch says so" "no story claims branch" "$out"
 
 # Two stories claiming one branch is ambiguous, and picking one silently is the
@@ -910,8 +947,8 @@ story_claiming bug/shared-branch GATES T-1
   printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n'
 } > "$FIX/docs/backlog/stories/T-2.md"
 commit_all "a second story claiming the same branch"
-out="$(boundaries)"
-assert_contains "two claimants is a problem, not a coin flip" "claimed by more than one story" "$out"
+run_boundaries
+refused "two claimants is a problem, not a coin flip" "claimed by more than one story"
 rm -f "$FIX/docs/backlog/stories/T-2.md"
 
 # The story/ fast path is not redundant with the lookup, and a mutation proved
@@ -929,11 +966,106 @@ git -C "$FIX" checkout -q -b story/T-1-renamed 2>/dev/null
   printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n'
 } > "$FIX/docs/backlog/stories/T-1.md"
 commit_all "T-1 on a branch its frontmatter does not name"
-out="$(boundaries)"
+run_boundaries
 assert_contains "a story/ branch with stale frontmatter is still identified" \
   "frontmatter says branch" "$out"
 case "$out" in
   *"no story claims branch"*) _bad "and is not written off as unclaimed" "it was skipped: $out" ;;
   *) _ok "and is not written off as unclaimed" ;;
 esac
+
+# ---------------------------------------------------------------------------
+describe "a story is located by its filename, so the id inside must agree"
+
+# phase.sh, gates.sh and this script all find a story by filename and then read
+# its frontmatter. A disagreement between the two points three tools at
+# different things and none of them says a word; check 1 is the only place that
+# can notice. It had no fixture at all, so relaxing it to `[ -n "$fid" ]` - any
+# non-empty id will do - changed nothing any assertion read.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+mkdir -p "$FIX/docs/backlog/stories"
+{
+  printf -- '---\nid: T-9\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n'
+} > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "a story whose id does not match its filename"
+run_boundaries
+refused "an id that disagrees with the filename" \
+  "frontmatter id 'T-9' does not match filename 'T-1'"
+
+# ---------------------------------------------------------------------------
+describe "the handoff is the only channel to the next agent"
+
+# A subagent starts with empty context, so an empty ## Handoff ends the phase
+# having handed over nothing - "as discussed above" does not survive the
+# boundary. The rule is scoped to feature and fix stories, and nothing pinned
+# that scope: renaming the case labels to a type no story has, which switches
+# the rule off entirely, left every assertion green.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+{
+  printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\n'
+  printf -- '<!-- REQUIRED. The command that fails, its output, and the shape the\n     next agent has to build against. -->\n'
+} > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "a story whose handoff was never written"
+run_boundaries
+refused "a feature story with a template-only handoff" "## Handoff is empty"
+
+# ---------------------------------------------------------------------------
+describe "a gate the story escalated for itself appears in the record"
+
+# gates.sh enforces required_gates while it runs; this catches the record
+# written BEFORE the escalation was added, where the gate is optional again by
+# the time anyone looks. No fixture ever set required_gates, so the loop body
+# never executed once - and a loop that never runs cannot be broken by anything
+# done to its condition.
+story_blocked REVIEW '[types]' <<'EOF'
+1. PO decision: the `types` gate is BLOCKED here, not failing - Smart App Control
+   refuses the locally built binary by reputation (os error 4551), the branch does
+   not touch it, and the same command passes elsewhere. Marking types pending CI.
+EOF
+run_boundaries
+refused "a required gate the record has no PASS for" \
+  "frontmatter requires gate 'types', but the recorded run has no PASS for it"
+
+# The other direction, and this fixture IS clean, so it asserts the exit status
+# rather than the absence of a message.
+story_blocked REVIEW '[unit]' <<'EOF'
+1. PO decision: the `types` gate is BLOCKED here, not failing - Smart App Control
+   refuses the locally built binary by reputation (os error 4551), the branch does
+   not touch it, and the same command passes elsewhere. Marking types pending CI.
+EOF
+run_boundaries
+assert_contains "one that did pass is reported as passing" \
+  "ok    story-required gate 'unit' passed in the recorded run" "$out"
+assert_eq "and the run is clean" 0 "$rc"
+
+# ---------------------------------------------------------------------------
+describe "machine-local state is never committed"
+
+# current-story.env carries the phase the guard reads. Committing it publishes
+# one machine's idea of which story is active to everyone who checks the branch
+# out. rules.md says it must never happen - and the check had no fixture, so
+# inverting its condition, to fire only when the file is ABSENT, was invisible.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" branch -D harness/committed-state >/dev/null 2>&1
+git -C "$FIX" checkout -q -b harness/committed-state 2>/dev/null
+mkdir -p "$FIX/.claude/state"
+printf 'STORY_ID=T-1\nPHASE=GREEN\n' > "$FIX/.claude/state/current-story.env"
+git -C "$FIX" add -f .claude/state/current-story.env >/dev/null 2>&1
+commit_all "somebody committed the lock file"
+run_boundaries
+refused "a committed current-story.env is refused" "is tracked; it is machine-local state"
+# And it does not say the opposite in the same breath. The `ok` sat OUTSIDE the
+# `if`, so the one repository this rule exists for was told both at once.
+case "$out" in
+  *"ok    harness state not tracked"*)
+    _bad "and does not also report it clean" "both, in one run: $out" ;;
+  *) _ok "and does not also report it clean" ;;
+esac
+
 summary "boundaries"
