@@ -552,4 +552,124 @@ assert_eq "MultiEdit with no story" "" "$r"
 r="$(guard "$FIX" NotebookEdit notebook_path src/analysis.ipynb)"
 assert_eq "NotebookEdit with no story" "" "$r"
 
+# ---------------------------------------------------------------------------
+describe "WORLD-080: a filename containing -i is not the sed -i option"
+
+# The report: `sed -n '1,5p' tests/guards/layer-imports.test.ts` - a pure read
+# that writes nothing - refused with a message about frozen production code.
+# The extractor matched `-i` as a BARE SUBSTRING anywhere after the word `sed`,
+# the substring occurs inside `layer-imports`, and `awk '{print $NF}'` then took
+# the file being READ as the write target. Sibling files in the same directory
+# were allowed because their names contain no `-i`. The file's CONTENTS are
+# irrelevant - the guard never opens it.
+#
+# The phase of each case is chosen from the category it has to freeze, which is
+# the trap the original report fell into: `test` is WRITABLE in RED, so a
+# misparsed read of a test path cannot block in RED however badly it is parsed.
+# AC-1 therefore runs in DONE.
+
+# The controls first, because they are what stops every "must be permitted"
+# case below from passing vacuously. If notes-inline.txt classified as docs, or
+# src/lib/layer-imports.ts as test, those reads would be permitted for a reason
+# with nothing to do with this defect.
+set_phase "$FIX" RED
+assert_blocked "$FIX" 'echo x > src/lib/layer-imports.ts' src/lib/layer-imports.ts \
+  'control: the -i bearing SOURCE path is frozen in RED'
+assert_blocked "$FIX" 'echo x > notes-inline.txt' notes-inline.txt \
+  'control: the -i bearing ROOT path is frozen in RED, via the paths.conf fallback'
+set_phase "$FIX" DONE
+assert_blocked "$FIX" 'echo x > tests/guards/layer-imports.test.ts' tests/guards/layer-imports.test.ts \
+  'control: the -i bearing TEST path is frozen in DONE'
+
+# AC-1. The literal command from the report, in a phase that freezes `test`.
+assert_allowed "$FIX" "sed -n '1,5p' tests/guards/layer-imports.test.ts" \
+  'AC-1: sed -n read of an -i bearing test path, in DONE'
+
+set_phase "$FIX" RED
+# AC-2. The same misparse on a source path, in the phase that freezes source.
+assert_allowed "$FIX" "sed -n '1,5p' src/lib/layer-imports.ts" \
+  'AC-2: sed -n read of an -i bearing source path, in RED'
+
+# AC-3. Unquoted, so masking cannot help: there is nothing quoted to mask.
+assert_allowed "$FIX" 'sed -n 1,5p notes-inline.txt' \
+  'AC-3: an unquoted -i bearing token in a sed read'
+
+# AC-4. Other short options, none of them i.
+assert_allowed "$FIX" "sed -En '1,5p' src/main.ts" \
+  'AC-4: sed -En read of frozen source'
+
+# Three shapes beyond the enumerated criteria, found by probing the guard
+# rather than by reading it.
+#
+# A read naming TWO input files, the first -i bearing. `$NF` is the second, so
+# the guard refused this on src/main.ts - a real file it only reads, which is
+# the most convincing kind of wrong denial. A fix that merely exempts the word
+# containing `-i` still fails here.
+assert_allowed "$FIX" "sed -n '1,5p' src/lib/layer-imports.ts src/main.ts" \
+  'a two-file sed read whose first file is -i bearing'
+
+# A read whose sed SCRIPT contains the literal text `-i` - which is what an
+# agent auditing this very defect types. Masking does not save it: the masker
+# rewrites operators and whitespace inside quotes, not letters, so a quoted
+# `-i` reaches the extractor intact.
+assert_allowed "$FIX" "sed -n '/sed -i/p' src/main.ts" \
+  'a sed read whose script mentions -i'
+
+# A long option that merely CONTAINS the letter i and is not --in-place.
+# `--silent` is GNU sed's long form of -n, so this writes nothing; the obvious
+# wrong fix - "a word starting with - and containing i" - refuses it.
+assert_allowed "$FIX" "sed --silent '1,5p' src/main.ts" \
+  'sed --silent, a long option containing i that is not --in-place'
+
+# --- and the writes that must STILL be refused ------------------------------
+# These matter more than everything above. Deleting the rule cures every false
+# positive and removes the only thing stopping an agent from editing frozen
+# source with sed -i. AC-5 (the / and | delimiters) and AC-9 (a target held in
+# a variable) are asserted where they have always been - at the top of this
+# file and under "RED: a path in a variable is still a path" - and are
+# deliberately not repeated here.
+
+# AC-6. A backup suffix attached to the option.
+assert_blocked "$FIX" "sed -i.bak 's/a/b/' src/main.ts" src/main.ts \
+  'AC-6: sed -i.bak writing frozen source'
+
+# AC-7. The long option, bare and with a suffix.
+assert_blocked "$FIX" "sed --in-place 's/a/b/' src/main.ts" src/main.ts \
+  'AC-7: sed --in-place writing frozen source'
+assert_blocked "$FIX" "sed --in-place=.bak 's/a/b/' src/main.ts" src/main.ts \
+  'AC-7: sed --in-place=.bak writing frozen source'
+
+# AC-8. A bundled short-option cluster whose letters include i. These were NOT
+# already caught: `-ni` and `-Ei` contain no `-i` substring, so the extractor
+# never matched them, and both of these in-place writes to frozen source were
+# PERMITTED before this story. The false positive and a live hole are the same
+# bug read from two ends.
+assert_blocked "$FIX" "sed -ni 's/a/b/' src/main.ts" src/main.ts \
+  'AC-8: sed -ni writing frozen source'
+assert_blocked "$FIX" "sed -Ei 's/a/b/' src/main.ts" src/main.ts \
+  'AC-8: sed -Ei writing frozen source'
+
+# GNU getopt_long accepts any unambiguous abbreviation, and --in-place is the
+# only long option of GNU sed 4.9 that begins `--i`: `sed --i 's/a/b/' f`
+# rewrites f in place, verified against the sed this harness runs on. The
+# current extractor catches it only by accident, because `--i` happens to
+# contain the substring `-i`. A fix matching the literal `--in-place` cures the
+# false positives and opens this hole.
+assert_blocked "$FIX" "sed --i 's/a/b/' src/main.ts" src/main.ts \
+  'sed --i, an abbreviated --in-place, writing frozen source'
+
+# And the pair that guards the fix's own mechanism: an -i bearing filename is
+# not exempt from being written. "Skip candidates whose name contains -i"
+# satisfies every must-permit case above and deletes the protection for these.
+assert_blocked "$FIX" "sed -i 's/a/b/' src/lib/layer-imports.ts" src/lib/layer-imports.ts \
+  'a real sed -i onto the -i bearing source path is still refused'
+assert_blocked "$FIX" "sed -i 's/a/b/' notes-inline.txt" notes-inline.txt \
+  'a real sed -i onto the -i bearing root path is still refused'
+
+# AC-11. The redirect scanner is a different rule and this story must not
+# disturb it.
+assert_blocked "$FIX" 'echo x > src/main.ts' src/main.ts \
+  'AC-11: a redirect into frozen source is untouched by this fix'
+
+
 summary "phase-guard"
