@@ -30,6 +30,40 @@
 #             copied - paths.conf and CLAUDE.md
 
 set -uo pipefail
+
+# This script replaces scripts/*.sh, and one of those is this file.
+#
+# Bash reads a script by byte offset as it executes it. Overwrite the file
+# underneath and execution resumes at the old offset in the NEW bytes: mid-line,
+# mid-block, as whatever that happens to parse as. The first real refresh to hit
+# this printed `line 151: ------------: command not found` and ran its
+# single-file block a second time; the fixture in refresh.test.sh, with
+# different padding, gets a syntax error and dies half way through instead. The
+# tree came out correct that once only because the re-entered block was
+# idempotent `cp` calls. A few hundred bytes the other way is the `rm -rf` loop
+# re-entered with different state, in the one script whose whole purpose is not
+# destroying a project's files without saying so.
+#
+# So run from a private copy. Then the file being READ is never the file being
+# WRITTEN, whatever the copy loop does to scripts/. `$0` stays a file with
+# identical content, so `--help` still reads its own header out of it.
+# The copy goes to a path this script NAMES, under the machine-local state
+# directory the harness already owns - not to $TMPDIR and not through mktemp.
+# That variable is unset in some of the shells this runs in, and the one place
+# it mattered, a mutation backup, lost its backup to exactly that. lib.test.sh
+# enforces the rule; .claude/state/README.md carries the row.
+if [ -z "${REFRESH_SELF_COPY:-}" ]; then
+  _self="$(pwd)/.claude/state/refresh-self.$$.sh"
+  if mkdir -p "$(pwd)/.claude/state" 2>/dev/null && cp "$0" "$_self" 2>/dev/null; then
+    REFRESH_SELF_COPY="$_self" exec bash "$_self" "$@"
+  fi
+  # Could not make the copy. Carry on in place rather than refusing: a refresh
+  # that runs with this hazard beats one that cannot run at all, and the hazard
+  # is only reachable once the copy loop is already underway.
+  rm -f "$_self" 2>/dev/null
+fi
+[ -n "${REFRESH_SELF_COPY:-}" ] && trap 'rm -f "$REFRESH_SELF_COPY"' EXIT
+
 PROJ="$(pwd)"
 DRY=0
 UP=""
