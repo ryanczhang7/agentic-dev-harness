@@ -1068,4 +1068,147 @@ case "$out" in
   *) _ok "and does not also report it clean" ;;
 esac
 
+# ---------------------------------------------------------------------------
+describe "the gate record is a stamp on a tree, not a sentence about one"
+
+# Law 3: the record carries a hash of the code the gates ran against, and this
+# script refuses a PR where that hash does not describe the code being merged.
+# Nothing observed any part of that. Deleting the comparison outright -
+# `[ "$rec" = "$now" ]` replaced by `true` - passed 59 of 59, because no fixture
+# ever produced a mismatch for it to miss.
+#
+# Writing a CONSTANT stamp is already caught, by the exit-status assertions
+# added for the story checks: a stamp that describes no tree makes the clean
+# fixture refuse, and something finally reads the status. That is the opposite
+# direction from this one. A broken comparison makes runs more PERMISSIVE, and
+# nothing permissive is visible without an input that ought to have been
+# refused.
+GATE_STORY_NOTE='1. PO decision: the `types` gate is BLOCKED here, not failing - Smart App Control
+   refuses the locally built binary by reputation (os error 4551), the branch does
+   not touch it, and the same command passes elsewhere. Marking types pending CI.'
+
+printf '%s\n' "$GATE_STORY_NOTE" | story_blocked REVIEW
+run_boundaries
+assert_contains "a record made against this tree matches it" \
+  "ok    gate record matches the working tree" "$out"
+
+# End to end, and the direct form of "the stamp is a real hash": what gates.sh
+# wrote equals gate_tree_hash computed independently over the same tree. The
+# assertion above would also fail against a constant, but only as a side effect
+# of the constant happening not to match - this one says what is actually
+# claimed.
+rec_tree="$(sed -nE 's/^[[:space:]]*tree:[[:space:]]*([0-9a-f]+).*/\1/p' \
+  "$FIX/docs/backlog/stories/T-1.md" | head -1)"
+live_tree="$( cd "$FIX" && CLAUDE_PROJECT_DIR="$FIX" bash -c \
+  '. .claude/hooks/lib.sh; gate_tree_hash' 2>/dev/null )"
+assert_eq "and the stamp gates.sh wrote IS that hash" "$live_tree" "$rec_tree"
+
+# Source moved after the run. The test moves with it, so that section 3a is
+# satisfied and the only thing left to refuse this PR is the stamp.
+printf 'export const x = 2\n'                       > "$FIX/src/main.ts"
+printf 'test("x", () => {})\n// and one more\n'     > "$FIX/tests/main.test.ts"
+commit_all "code changed after the gates ran"
+run_boundaries
+refused "a stamp describing a different tree is refused" "gates were recorded against tree"
+
+# And a TEST changing is enough on its own. The hash covers test files because a
+# suite edited after the last full run is exactly the case law 3 exists for -
+# the gates passed against code nobody is merging. Dropping `test` from the
+# gated set left the stamp matching, and passed all 14 suites.
+printf '%s\n' "$GATE_STORY_NOTE" | story_blocked REVIEW
+printf 'test("x", () => {})\n// a case added after the run\n' > "$FIX/tests/main.test.ts"
+commit_all "only a test changed after the gates ran"
+run_boundaries
+refused "a test changing alone breaks the stamp too" "gates were recorded against tree"
+
+# ---------------------------------------------------------------------------
+describe "production code arrives with tests, or with an inventory"
+
+# Law 1, at the commit. Replacing the condition with `false` sends every PR down
+# the else branch, where it prints
+#   ok    source changes accompanied by test changes (3 source, 0 test)
+# which is the line a CORRECT pr gets. The rule off, and reporting a pass in the
+# same breath - the same shape as the `harness state not tracked` defect, and
+# 59 of 59 green. No fixture changed source without changing tests.
+
+story_on_branch <<'EOF'
+## Notes
+
+One clean cycle.
+EOF
+printf 'export const x = 99\n' > "$FIX/src/main.ts"
+commit_all "source with no test"
+run_boundaries
+refused "a feature story whose source moved alone" \
+  "Production code ships with the test that demanded it"
+
+# The control. Without it, "refuse every diff that touches source" passes the
+# assertion above, and the else branch - the one that prints the reassuring
+# line - is never shown to be reachable for the right reason.
+story_on_branch <<'EOF'
+## Notes
+
+One clean cycle.
+EOF
+printf 'export const x = 100\n'                      > "$FIX/src/main.ts"
+printf 'test("x", () => {})\n// covering it\n'       > "$FIX/tests/main.test.ts"
+commit_all "source with the test that demanded it"
+run_boundaries
+assert_contains "but source WITH a test is accepted" \
+  "ok    source changes accompanied by test changes" "$out"
+
+# scaffold_story <type>   A story of <type> at REVIEW whose ## Scaffold
+# inventory is whatever arrives on stdin. The bootstrap exception is the only
+# way source may arrive without tests, and it is not free: every production file
+# written has to be named.
+scaffold_story() {
+  local t="$1" inv; inv="$(cat)"
+  git -C "$FIX" checkout -q main 2>/dev/null
+  git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+  git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+  mkdir -p "$FIX/docs/backlog/stories"
+  {
+    printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: %s\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n' "$t"
+    printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n\n'
+    printf -- '## Scaffold inventory\n\n%s\n' "$inv"
+  } > "$FIX/docs/backlog/stories/T-1.md"
+}
+
+# Template-only is empty: the template is mostly comments, and a story that
+# never filled it in has claimed nothing.
+scaffold_story chore <<'EOF'
+<!-- REQUIRED for a bootstrap or chore story that writes production code: every
+     file written, and the test that covers it. -->
+EOF
+printf 'export const x = 1\nexport const y = 2\n' > "$FIX/src/main.ts"
+commit_all "a chore that writes source and lists nothing"
+run_boundaries
+refused "a chore with a template-only inventory" "## Scaffold inventory is empty"
+
+# Named, but not all of them. The per-file check is what makes the inventory an
+# inventory rather than a paragraph.
+scaffold_story chore <<'EOF'
+src/main.ts - the entry point, covered by tests/main.test.ts
+EOF
+printf 'export const x = 1\n'      > "$FIX/src/main.ts"
+printf 'export const helper = 1\n' > "$FIX/src/helper.ts"
+commit_all "a chore that writes two files and lists one"
+run_boundaries
+refused "a source file missing from the inventory" "not named in ## Scaffold inventory:"
+assert_contains "and the refusal names the file it missed" "src/helper.ts" "$out"
+
+# The control for both of the above: an inventory that does account for
+# everything is accepted, so neither is satisfied by a check that refuses every
+# scaffold story it sees.
+scaffold_story chore <<'EOF'
+src/main.ts   - the entry point, covered by tests/main.test.ts
+src/helper.ts - the helper it calls, covered by tests/main.test.ts
+EOF
+printf 'export const x = 1\n'      > "$FIX/src/main.ts"
+printf 'export const helper = 1\n' > "$FIX/src/helper.ts"
+commit_all "a chore that lists everything it wrote"
+run_boundaries
+assert_contains "an inventory naming every file is accepted" \
+  "ok    every changed source file is named in ## Scaffold inventory" "$out"
+
 summary "boundaries"
