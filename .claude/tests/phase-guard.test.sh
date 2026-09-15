@@ -88,6 +88,21 @@ assert_contains "Write tool is blocked in RED" "category: source" "$r"
 r="$(guard "$FIX" Edit file_path "$FIX/src/main.ts")"
 assert_contains "Edit tool is blocked on an absolute path" "category: source" "$r"
 
+# The other two tool names CLAUDE.md promises the lock covers. Neither string
+# appeared anywhere in this suite, so narrowing the case to `Write|Edit)` -
+# which switches the lock OFF for both - passed 145 of 145. MultiEdit is the
+# ordinary tool for a multi-hunk edit, so that is not the lock failing on an
+# exotic path; it is the lock failing on the routine one.
+r="$(guard "$FIX" MultiEdit file_path src/main.ts)"
+assert_contains "MultiEdit is blocked in RED" "category: source" "$r"
+assert_contains "and names the path it refused" "path:     src/main.ts" "$r"
+
+# NotebookEdit names its target in `notebook_path`, never in `file_path`, so it
+# needs its own check_path call - and deleting that call passed 145 of 145 too.
+r="$(guard "$FIX" NotebookEdit notebook_path src/analysis.ipynb)"
+assert_contains "NotebookEdit is blocked on notebook_path" "category: source" "$r"
+assert_contains "and names the notebook" "path:     src/analysis.ipynb" "$r"
+
 
 # ---------------------------------------------------------------------------
 
@@ -493,6 +508,17 @@ assert_blocked "$FIX" 'echo x > tests/main.test.ts' tests/main.test.ts 'writing 
 r="$(guard "$FIX" Write file_path tests/main.test.ts)"
 assert_contains "Write to a test is blocked in GREEN" "category: test" "$r"
 
+# The control for the two assertions added in RED above, and it has to run in
+# BOTH directions to be worth anything. "Deny whenever the tool is MultiEdit"
+# satisfies a denial-only test perfectly well; what distinguishes a real lock is
+# that the same tool in the same phase gets opposite verdicts from the CATEGORY.
+r="$(guard "$FIX" MultiEdit file_path tests/main.test.ts)"
+assert_contains "MultiEdit to a test is blocked in GREEN" "category: test" "$r"
+r="$(guard "$FIX" MultiEdit file_path src/main.ts)"
+assert_eq "but MultiEdit to source is allowed in GREEN" "" "$r"
+r="$(guard "$FIX" NotebookEdit notebook_path tests/explore.ipynb)"
+assert_contains "NotebookEdit to a test notebook is blocked in GREEN" "category: test" "$r"
+
 # ---------------------------------------------------------------------------
 describe "Generated output is not source"
 set_phase "$FIX" RED
@@ -518,5 +544,12 @@ set_phase "$FIX" ""
 assert_allowed "$FIX" 'echo x > src/main.ts' 'writing source with no story'
 r="$(guard "$FIX" Write file_path src/main.ts)"
 assert_eq "Write tool with no story" "" "$r"
+# The lock protects a cycle in flight; it is not a general permission system,
+# and that has to hold for every tool it covers rather than for the two that
+# happened to be tested.
+r="$(guard "$FIX" MultiEdit file_path src/main.ts)"
+assert_eq "MultiEdit with no story" "" "$r"
+r="$(guard "$FIX" NotebookEdit notebook_path src/analysis.ipynb)"
+assert_eq "NotebookEdit with no story" "" "$r"
 
 summary "phase-guard"
