@@ -223,13 +223,15 @@ story_blocked REVIEW <<'EOF'
    refuses the locally built binary by reputation (os error 4551), the branch does
    not touch it, and the same command passes elsewhere. Marking types pending CI.
 EOF
-out="$(boundaries)"
+out="$(boundaries)"; rc=$?
 assert_contains "a blocked gate at REVIEW with the decision recorded" "recorded gate result: blocked" "$out"
 assert_contains "and the gate is named as pending CI" "types" "$out"
-case "$out" in
-  *"recorded gate result is 'blocked"*) _bad "and it is not refused" "refused anyway: $out" ;;
-  *) _ok "and it is not refused" ;;
-esac
+# The EXIT STATUS, which is what "not refused" actually means and what CI acts
+# on. The old form looked for one refusal message and would have accepted a run
+# that refused this PR for any other reason - and nothing in this suite read the
+# status at all, so `check-boundaries.sh` could have exited 1 through every case
+# here without a single assertion noticing.
+assert_eq "and it is not refused" 0 "$rc"
 
 story_blocked REVIEW <<'EOF'
 Ran the gates. One of them did not work on this machine.
@@ -629,15 +631,40 @@ esac
 # A lockfile has no dev/production split to read, so nothing here can verify
 # one. It is permitted unchecked, which is sound only because the manifest it
 # follows from IS checked: a dependency nobody declared cannot be used.
-manifest_story RED Cargo.lock 'version = 3
+#
+# The real shape of that commit is BOTH files - you add a dev-dependency and the
+# lockfile moves with it - and that is what makes a positive assertion possible.
+# Asserting the ABSENCE of one message was satisfied by a lockfile refused with
+# a DIFFERENT one: dropping `*.lock` from the skip sent Cargo.lock to a parser
+# that has no rule for it, refused it as `__UNPARSEABLE__`, and left all 52
+# assertions green. The count is the load-bearing half - `1`, not `2`, is what
+# says the lockfile was skipped rather than merely tolerated.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+_story_file RED
+printf '%s' '[package]
+name = "fixture"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
+' > "$FIX/Cargo.toml"
+printf '%s' 'version = 3
+
 [[package]]
-name = "anything"
-'
+name = "tempfile"
+version = "3.10.1"
+' > "$FIX/Cargo.lock"
+commit_all "T-1 RED dev-dependency, and the lockfile that follows it"
+_story_file REVIEW
+commit_all "T-1 to review"
 out="$(boundaries)"
-case "$out" in
-  *"outside the test-dependency block"*) _bad "a lockfile is permitted unchecked" "refused: $out" ;;
-  *) _ok "a lockfile is permitted unchecked" ;;
-esac
+assert_contains "a lockfile is permitted unchecked" \
+  "ok    RED touched only test dependencies (1 manifest change(s))" "$out"
 
 # --- every shape of dev block the parser claims to know ---------------------
 #

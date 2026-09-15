@@ -86,7 +86,19 @@ assert_contains "a project's install step is run"    "pnpm install --frozen-lock
 assert_contains "and its browser install"            "pnpm exec playwright install --with-deps chromium" "$pdry"
 assert_contains "alongside the harness's own"        "bash scripts/gates.sh" "$pdry"
 # The base_ref expression resolves rather than being passed through literally.
-assert_contains "the base ref expression is resolved" "bash scripts/check-boundaries.sh origin/" "$pdry"
+#
+# STDOUT ONLY, and the whole resolved command. When the substitution fails the
+# step is skipped with a note - on stderr - that quotes the command verbatim:
+#   note: skipping a boundaries step this cannot resolve locally:
+#     bash scripts/check-boundaries.sh origin/${{ github.base_ref }}
+# so a haystack that folds stderr into stdout contains
+# `bash scripts/check-boundaries.sh origin/` precisely BECAUSE resolution
+# failed. Deleting the substitution outright left this assertion green and was
+# caught only by the guard below - which means the thing this one names was not
+# the thing it tested.
+pout="$( cd "$PFIX" && bash scripts/ci-local.sh --dry-run 2>/dev/null )"
+assert_contains "the base ref expression is resolved" \
+  "bash scripts/check-boundaries.sh origin/main" "$pout"
 case "$pdry" in
   *'${{'*) _bad "no unresolved workflow expression survives" "found one: $pdry" ;;
   *) _ok "no unresolved workflow expression survives" ;;
