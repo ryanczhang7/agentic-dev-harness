@@ -527,6 +527,14 @@ cat > "$FIX/package.json" <<'JSON'
   }
 }
 JSON
+cat > "$FIX/pyproject.toml" <<'TOML'
+[project]
+name = "fixture"
+dependencies = ["httpx"]
+
+[tool.ruff]
+line-length = 100
+TOML
 commit_all "baseline manifests"
 
 # --- the case the finding is about: a test-only dependency in RED -----------
@@ -630,6 +638,185 @@ case "$out" in
   *"outside the test-dependency block"*) _bad "a lockfile is permitted unchecked" "refused: $out" ;;
   *) _ok "a lockfile is permitted unchecked" ;;
 esac
+
+# --- every shape of dev block the parser claims to know ---------------------
+#
+# The cases above pin exactly two ecosystems' happy paths: one plain
+# `[dev-dependencies]` and one flat `devDependencies`. Everything else
+# manifest_strip_dev recognises was unasserted, so four separate narrowings of
+# it survived the whole suite - and each one turns a LEGITIMATE dev-dependency
+# into `changed '<file>' outside the test-dependency block`, in the phase least
+# able to argue with the refusal. A false positive here is worse than a false
+# negative: it is the exact condition under which an agent meets a refusal with
+# no sanctioned next step and invents one.
+#
+# Each positive below is followed by the control that stops an over-broad fix
+# from passing it. "Treat any [target.*] section as dev" satisfies the first
+# assertion and fails the second.
+
+assert_ok_manifest()      { case "$1" in *"outside the test-dependency block"*) _bad "$2" "refused: $1" ;; *) _ok "$2" ;; esac; }
+assert_refused_manifest() { case "$1" in *"outside the test-dependency block"*) _ok "$2" ;; *) _bad "$2" "accepted: $1" ;; esac; }
+
+# Cargo: a platform-gated test dependency is still a test dependency.
+manifest_story RED Cargo.toml '[package]
+name = "fixture"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+
+[dev-dependencies]
+
+[target.'"'"'cfg(unix)'"'"'.dev-dependencies]
+nix = "0.27"
+'
+assert_ok_manifest "$(boundaries)" "a target-specific dev-dependency is a dev-dependency"
+
+manifest_story RED Cargo.toml '[package]
+name = "fixture"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+
+[dev-dependencies]
+
+[target.'"'"'cfg(unix)'"'"'.dependencies]
+nix = "0.27"
+'
+assert_refused_manifest "$(boundaries)" "but a target-specific PRODUCTION dependency is not"
+
+# PEP 735. The block a modern Python project actually puts its test deps in.
+manifest_story RED pyproject.toml '[project]
+name = "fixture"
+dependencies = ["httpx"]
+
+[dependency-groups]
+test = ["pytest"]
+
+[tool.ruff]
+line-length = 100
+'
+assert_ok_manifest "$(boundaries)" "a PEP 735 dependency group is a dev block"
+
+# poetry, which the same file may use instead.
+manifest_story RED pyproject.toml '[project]
+name = "fixture"
+dependencies = ["httpx"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8"
+
+[tool.ruff]
+line-length = 100
+'
+assert_ok_manifest "$(boundaries)" "so is a poetry dev group"
+
+# The control that keeps the TOML rule honest, and the one the code comment
+# already argues for: an extra is not a test dependency. It can be a production
+# extra, and the safe error is a refusal RED can escalate.
+manifest_story RED pyproject.toml '[project]
+name = "fixture"
+dependencies = ["httpx"]
+
+[project.optional-dependencies]
+pdf = ["reportlab"]
+
+[tool.ruff]
+line-length = 100
+'
+assert_refused_manifest "$(boundaries)" "an optional-dependencies extra is NOT a dev block"
+
+# --- JSON: the block ends at ITS closing brace, not the first one -----------
+# A nested object inside devDependencies is ordinary, and the depth counter is
+# the only thing keeping it from ending the block early. Both sides need the
+# same shape, so the baseline moves - with production AFTER the dev block,
+# which is what makes the control below able to fail.
+git -C "$FIX" checkout -q main
+cat > "$FIX/package.json" <<'JSON'
+{
+  "name": "fixture",
+  "devDependencies": {
+    "jest": "29.0.0",
+    "c8": { "reporter": ["text"], "exclude": ["dist/**"] }
+  },
+  "dependencies": {
+    "left-pad": "1.0.0"
+  }
+}
+JSON
+commit_all "a nested dev block, with production after it"
+
+manifest_story RED package.json '{
+  "name": "fixture",
+  "devDependencies": {
+    "jest": "29.0.0",
+    "c8": { "reporter": ["text"], "exclude": ["dist/**"] },
+    "msw": "2.0.0"
+  },
+  "dependencies": {
+    "left-pad": "1.0.0"
+  }
+}
+'
+assert_ok_manifest "$(boundaries)" "a nested object does not end the dev block early"
+
+# THE control. An exit condition that swallows the rest of the file passes the
+# assertion above and makes every production change after a dev block invisible.
+manifest_story RED package.json '{
+  "name": "fixture",
+  "devDependencies": {
+    "jest": "29.0.0",
+    "c8": { "reporter": ["text"], "exclude": ["dist/**"] }
+  },
+  "dependencies": {
+    "left-pad": "2.0.0"
+  }
+}
+'
+assert_refused_manifest "$(boundaries)" "and production AFTER the dev block is still read"
+
+# --- punctuation is not a dependency ---------------------------------------
+# Adding a dev block where none existed leaves a trailing comma behind on one
+# side only, and a blank separator that has no counterpart. Both are the edit's
+# punctuation, not its content. A check that calls either a production change
+# is a check people route around - which is the whole argument for manifest_norm
+# and, until now, the only place that argument was written down.
+git -C "$FIX" checkout -q main
+cat > "$FIX/package.json" <<'JSON'
+{
+  "name": "fixture",
+  "dependencies": {
+    "left-pad": "1.0.0"
+  }
+}
+JSON
+commit_all "a manifest with no dev block at all"
+
+manifest_story RED package.json '{
+  "name": "fixture",
+  "dependencies": {
+    "left-pad": "1.0.0"
+  },
+  "devDependencies": {
+    "jest": "29.0.0"
+  }
+}
+'
+assert_ok_manifest "$(boundaries)" "a first dev block, and the comma it leaves behind"
+
+manifest_story RED package.json '{
+  "name": "fixture",
+  "dependencies": {
+    "left-pad": "1.0.0"
+  },
+
+  "devDependencies": {
+    "jest": "29.0.0"
+  }
+}
+'
+assert_ok_manifest "$(boundaries)" "and the blank line somebody put between them"
 
 # ---------------------------------------------------------------------------
 describe "the story is found by what claims the branch, not by the branch's name"
