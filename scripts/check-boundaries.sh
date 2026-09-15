@@ -84,8 +84,12 @@ done
 # --- 2. Runtime state must never be committed -------------------------------
 if git ls-files --error-unmatch .claude/state/current-story.env >/dev/null 2>&1; then
   problem ".claude/state/current-story.env is tracked; it is machine-local state"
+else
+  # The `ok` used to sit outside this `if`, so the one repository this rule
+  # exists for - the one that HAS committed the file - was told both things in
+  # the same run: the refusal, and a line saying its state was not tracked.
+  ok "harness state not tracked"
 fi
-ok "harness state not tracked"
 
 # --- 3. The diff, and the story it belongs to --------------------------------
 if ! git rev-parse --verify "$BASE" >/dev/null 2>&1; then
