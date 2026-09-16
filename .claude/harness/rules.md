@@ -99,6 +99,17 @@ compared "the default model" against a stronger one, and neither could say what
 against itself. Hence the other half of the rule: **`lead-po` records the
 resolved model of every dispatch, by name, in the story.**
 
+**The per-phase plan is `.claude/harness/models.conf`, not a judgement made
+fresh each story.** `bash scripts/plan.sh write <id>` renders it into the
+story's `## Model guidance` at the end of PLANNED, once the contract exists. Its
+rows follow the measurement above rather than taste: RED moves to the weaker
+model **when the brief it depends on exists**, because the brief is what was
+measured; GREEN and GATES never move, because a weaker model's failure there is
+reaching green by weakening a test. A story that wants a different answer says
+so in its own `## Model guidance` with a success condition that could come out
+either way - it does not edit the policy file. And the plan is still not the
+record: what each dispatch RESOLVED to goes in underneath it, by name.
+
 # Phase permissions
 
 | Phase | May write | Meaning |
