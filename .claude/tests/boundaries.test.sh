@@ -1069,6 +1069,94 @@ case "$out" in
 esac
 
 # ---------------------------------------------------------------------------
+describe "a section is not empty because it was too big to read"
+
+# Reported from a consuming project, reproduced here before being fixed:
+#
+#   strip_comments | grep -q '[^[:space:]]'
+#
+# `strip_comments` is an awk that buffers the whole input and writes it in ONE
+# printf at END. `grep -q` exits at its first match, the writer dies of SIGPIPE,
+# and `set -uo pipefail` promotes 141 to the pipeline's status - so the predicate
+# returns FALSE for a section that plainly has content. Measured on this machine:
+# 1,000 and 50,000 bytes exit 0; 200,000 and 1,500,000 exit 141.
+#
+# It fails CLOSED, which is the better direction, but it refuses a good PR and it
+# strikes exactly the stories that wrote the most. And the threshold is a RACE on
+# the pipe buffer rather than a constant: the same shape passed on Windows and
+# failed on ubuntu-latest in the reporting project.
+#
+# 1.5 MiB rather than the ~200 KB that reproduces here, because the buffer size
+# is what varies between machines and this test must fail on the defect wherever
+# it runs.
+big_section() { yes 'the handoff says what the next agent needs to know' | head -c 1572864; }
+
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+{
+  printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\n'
+  big_section; printf '\n'
+} > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "a story whose handoff is enormous"
+run_boundaries
+case "$out" in
+  *"## Handoff is empty"*)
+    _bad "a 1.5 MiB handoff is not reported empty" "it was called empty: the predicate died of SIGPIPE" ;;
+  *) _ok "a 1.5 MiB handoff is not reported empty" ;;
+esac
+
+# THE CONTROL. Without it, a predicate rewritten to answer "yes" unconditionally
+# passes the assertion above, and the rule stops being a rule.
+{
+  printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\n'
+  printf -- '<!-- REQUIRED. Still not written. -->\n'
+} > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "and one whose handoff is still the template"
+run_boundaries
+refused "while a template-only one still is" "## Handoff is empty"
+
+# The same shape guards ## Regressions, where the question is whether the
+# section SHOWS its failure rather than merely describing one. A fenced block a
+# megabyte in is still a fenced block.
+{
+  printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n\n'
+  printf -- '## Regressions\n\nCorrected the AC-2 assertion. Probed by mutation:\n\n```\n'
+  big_section; printf '\n x the assertion fails against the mutant\n```\n'
+} > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "a regressions section with a very large fenced block"
+run_boundaries
+# ASSERTED ON THE `ok` LINE, not on the absence of the complaint. When
+# has_content dies of SIGPIPE the section reads as ABSENT, and an absent
+# ## Regressions is not a complaint - so "the complaint is missing" was true
+# for a reason that had nothing to do with the fence being found. That version
+# of this assertion passed against the defect it was written for.
+assert_contains "a fenced block a megabyte in is still shown" \
+  "ok    ## Regressions carries pasted output" "$out"
+
+# THE FOURTH INSTANCE, and the one that proves the point about not fixing this
+# by dropping `pipefail`. It is not one of the two named helpers - it is an
+# inline `printf | strip_comments | grep -qiE` looking for the owner of a
+# deferred verification, with the same buffering writer and the same
+# early-exiting reader. Fixing only `has_content` and `has_pasted_output` would
+# have left a large ## Deferred verifications refused for naming no owner while
+# naming one in its first line.
+{
+  printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n\n'
+  printf -- '## Deferred requirements placeholder\n\n'
+  printf -- '## Deferred verifications\n\nAC-2 cannot run until the renderer exists. Owner: GATES\n\nResult, run at GATES:\n\n```\n x the property fails against the lossy encoder\n```\n\n'
+  big_section; printf '\n'
+} > "$FIX/docs/backlog/stories/T-1.md"
+commit_all "a very large deferred-verifications section that names its owner"
+run_boundaries
+assert_contains "an owner named a megabyte from the end is still found" \
+  "ok    ## Deferred verifications names the phase that owns each entry" "$out"
+
+# ---------------------------------------------------------------------------
 describe "the gate record is a stamp on a tree, not a sentence about one"
 
 # Law 3: the record carries a hash of the code the gates ran against, and this
