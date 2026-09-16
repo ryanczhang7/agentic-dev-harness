@@ -544,6 +544,56 @@ set_phase "$FIX" ""
 assert_allowed "$FIX" 'echo x > src/main.ts' 'writing source with no story'
 r="$(guard "$FIX" Write file_path src/main.ts)"
 assert_eq "Write tool with no story" "" "$r"
+
+# ---------------------------------------------------------------------------
+describe "a phase the table does not list is refused, not waved through"
+
+# phase_allows used to end `# Unknown phase: don't block. return 0`, and that
+# fallback is a lock that opens on a typo. Measured on the real hook before this
+# was written: PHASE=RED refused a source write; GREE, ZZZ, GREEN. and empty all
+# ALLOWED it. `phase.sh set` validates its argument, so the state file should
+# never carry one of these - but "should never" is the whole of the defence, and
+# the state file is a file: hand-edited, half-written, restored from a stale
+# copy, or produced by a phase.sh whose own validation regressed.
+#
+# `no active story` is a DIFFERENT condition and still means no lock: the guard
+# exits on PHASE=IDLE before reaching here, and IDLE is a row in phases.conf.
+# An unrecognised phase is not an absent one.
+unknown_phase() { # <phase>
+  printf 'STORY_ID=T-1\nSTORY_SLUG=fixture\nSTORY_TYPE=feature\nPHASE=%s\nBRANCH=story/T-1-fixture\n' \
+    "$1" > "$FIX/.claude/state/current-story.env"
+}
+
+for ph in GREE ZZZ 'GREEN.'; do
+  unknown_phase "$ph"
+  r="$(guard "$FIX" Write file_path src/main.ts)"
+  if [ -z "$r" ]; then
+    _bad "PHASE=$ph refuses a source write" "it was allowed - the lock is off on a typo"
+  else
+    case "$r" in
+      *"$ph"*) _ok "PHASE=$ph refuses a source write" ;;
+      *) _bad "PHASE=$ph refuses a source write" "refused, but the reason never names the phase: $r" ;;
+    esac
+  fi
+done
+
+# Empty is its own case: it is what a truncated or half-written state file
+# leaves behind, and it is not IDLE.
+printf 'STORY_ID=T-1\nSTORY_SLUG=fixture\nSTORY_TYPE=feature\nPHASE=\nBRANCH=story/T-1-fixture\n' \
+  > "$FIX/.claude/state/current-story.env"
+r="$(guard "$FIX" Write file_path src/main.ts)"
+if [ -z "$r" ]; then
+  _bad "an empty PHASE refuses a source write" "it was allowed"
+else
+  _ok "an empty PHASE refuses a source write"
+fi
+
+# THE CONTROL. Without it, "refuse everything" passes all four above and the
+# fix has simply frozen the tree.
+set_phase "$FIX" GREEN
+r="$(guard "$FIX" Write file_path src/main.ts)"
+assert_eq "while a phase the table DOES list still allows it" "" "$r"
+set_phase "$FIX" ""
 # The lock protects a cycle in flight; it is not a general permission system,
 # and that has to hold for every tool it covers rather than for the two that
 # happened to be tested.
