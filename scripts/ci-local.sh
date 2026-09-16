@@ -143,8 +143,24 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
+# SAID FIRST, and under the same `ci-local:` prefix as the verdict.
+#
+# check-boundaries.sh judges the COMMIT, so a run started before committing
+# returns a perfectly green verdict about the PREVIOUS commit - a right answer
+# to a question nobody asked. That happened three times in one day, and the
+# information was not missing: the note below already named HEAD whenever the
+# tree was dirty. It was read past twice, because the verdict line begins
+# `ci-local:` and that is what a reader greps, while the note did not and only
+# appeared when the tree happened to be dirty.
+#
+# So the subject goes first, unconditionally, in the verdict's own shape. One
+# `grep '^ci-local:'` now returns what was judged and what the answer was, in
+# that order - and the note joins the same prefix, because it is also about
+# what is being judged.
+printf 'ci-local: judging commit %s against base %s\n' "${PR_HEAD_SHA:0:7}" "$BASE"
 dirty="$(git status --porcelain 2>/dev/null | grep -vE '^\?\?' | head -1)"
-[ -n "$dirty" ] && printf 'note: uncommitted changes are staged out of the boundaries check, which judges HEAD (%s) as CI does\n\n' "${PR_HEAD_SHA:0:7}"
+[ -n "$dirty" ] && printf 'ci-local: uncommitted changes are staged out of the boundaries check, which judges HEAD (%s) as CI does\n' "${PR_HEAD_SHA:0:7}"
+printf '\n'
 
 # Fail fast, exactly as a runner does. A wrapper that runs every step and
 # summarises at the end can print four passes under a failure, and a CI
