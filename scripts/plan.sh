@@ -59,11 +59,42 @@ field() { printf '%s' "$1" | awk -F'|' -v n="$2" '{ gsub(/^[[:space:]]+|[[:space
 
 # --- the model plan ---------------------------------------------------------
 
+# True when the contract names paths and EVERY one of them is a path the lock
+# will not freeze. `harness` is in every phase's allowed list in phases.conf, and
+# `.claude/tests/*`, `scripts/*` and `.claude/hooks/*` all classify as `harness`
+# - so for a story that maintains the harness itself, RED may write the
+# mechanism and GREEN may rewrite the frozen tests with nothing to stop either.
+#
+# That changes what the RED row rests on. Everywhere else the contract is an aid
+# to the model and the LOCK is the enforcement; here the contract is the
+# enforcement, the only one there is. Reported from a consuming project, which
+# measured gates.sh --fast at 13/13 with identical counts across a GREEN that
+# added a script, a config file and 25 assertions.
+#
+# One source path is enough for the lock to bite, so this needs ALL of them:
+# otherwise every story that touches a helper script would trip it.
+contract_unenforced() { # <file>
+  local paths p found=0 enforced=0
+  paths="$(section "$1" "Contract" | strip_comments \
+    | grep -oE '\.claude/[A-Za-z0-9_./-]+|[A-Za-z0-9_][A-Za-z0-9_./-]*\.[A-Za-z0-9]+' | sort -u)"
+  [ -n "$paths" ] || return 1
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    found=1
+    case "$(classify "$p")" in
+      harness|docs|ignored) ;;
+      *) enforced=1 ;;
+    esac
+  done <<< "$paths"
+  [ "$found" = 1 ] && [ "$enforced" = 0 ]
+}
+
 cmd_models() {
   local file id; id="$1"; file="$(story_file "$id")"
-  local type contract_has=0
+  local type contract_has=0 unenforced=0
   type="$(frontmatter_value "$file" type)"; [ -n "$type" ] || type=feature
   section "$file" "Contract" | has_content && contract_has=1
+  contract_unenforced "$file" && unenforced=1
 
   local row ph agent model why
   while IFS= read -r row; do
@@ -79,6 +110,7 @@ cmd_models() {
       econd="$(field "$erow" 3)"; emodel="$(field "$erow" 4)"; ewhy="$(field "$erow" 5)"
       case "$econd" in
         no-contract) [ "$contract_has" = 0 ] || continue ;;
+        unenforced)  [ "$unenforced" = 1 ] || continue ;;
         type=*)      [ "$type" = "${econd#type=}" ] || continue ;;
         *)           continue ;;
       esac

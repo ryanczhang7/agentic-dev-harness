@@ -101,6 +101,37 @@ assert_contains "with no contract, RED goes back to the stronger model" \
   "RED	test-developer	opus" "$out"
 assert_contains "and says it is the brief that is missing" "contract" "$out"
 
+# THE STORY THE LOCK DOES NOT COVER, reported from the field and confirmed
+# here: `.claude/tests/*.test.sh`, `scripts/*` and `.claude/hooks/*` all
+# classify as `harness`, and `harness` is writable in EVERY phase. So for a
+# story that maintains the harness itself, RED may write the mechanism and
+# GREEN may rewrite the frozen tests, and nothing complains - the consuming
+# project measured `gates.sh --fast` at 13/13 with identical counts across a
+# GREEN that added a script, a config file and 25 assertions.
+#
+# That changes what the RED row is resting on. Elsewhere the contract is an AID
+# to the model and the lock is the enforcement; here the contract IS the
+# enforcement, the only one there is. A weaker model is a different proposition
+# against a safety net than against nothing, so RED stays on the stronger model
+# when every path the contract names is one the lock will not freeze.
+story_with T-4 feature PLANNED 2 <<'EOF'
+CONTRACT:`scripts/plan.sh` gains a `write` subcommand; `.claude/tests/plan.test.sh` pins it.
+EOF
+out="$(plan models T-4)"
+assert_contains "a story the lock cannot police keeps RED on the stronger model" \
+  "RED	test-developer	opus" "$out"
+assert_contains "and says the lock is what is missing" "lock" "$out"
+
+# THE CONTROL, and the reason this is not just "mentions a script". One source
+# path is enough for the lock to bite, and without this assertion the rule
+# above would push every story that touches a helper onto the stronger model.
+story_with T-5 feature PLANNED 2 <<'EOF'
+CONTRACT:`src/core/world.ts` exports `buildWorld`; `scripts/task.sh` gains a `seed` target.
+EOF
+out="$(plan models T-5)"
+assert_contains "but one source path is enough for the lock to bite" \
+  "RED	test-developer	fable" "$out"
+
 # Bootstrap writes source, tests and config in one indivisible derivation under
 # SCAFFOLD, with no failing test to anchor it.
 story_with T-3 bootstrap PLANNED 2 <<'EOF'
