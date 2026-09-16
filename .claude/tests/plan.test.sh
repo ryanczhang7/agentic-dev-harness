@@ -132,6 +132,31 @@ out="$(plan models T-5)"
 assert_contains "but one source path is enough for the lock to bite" \
   "RED	test-developer	fable" "$out"
 
+# A CONTRACT TOO BIG TO READ IS STILL A CONTRACT. `has_content` here was lifted
+# from check-boundaries.sh when this script was written, and the defect came with
+# it: `strip_comments | grep -q` has an awk that buffers to END feeding a grep
+# that exits at the first match, so the writer dies of SIGPIPE and `pipefail`
+# turns 141 into "no content". Measured: 50,000 bytes exit 0, 200,000 exit 141.
+#
+# The consequence here is quieter than a refused PR and worse for it. A thorough
+# contract - the kind the RED row exists to reward - reads as ABSENT, the
+# no-contract exception fires, and the plan silently moves RED to the stronger
+# model. Nothing fails; the story just runs on a model nobody chose, for a reason
+# nobody can see.
+#
+# The body is STREAMED into the file rather than held in a shell variable and
+# passed through `awk -v`: a megabyte on a command line stalls indefinitely here,
+# which is a fact about this fixture rather than about the defect.
+{
+  printf -- '---\nid: T-6\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: PLANNED\nbranch: story/T-6-fixture\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Contract\n\n'
+  yes '`src/core/world.ts` exports buildWorld(seed: number): World.' | head -c 1572864
+  printf -- '\n\n## Deferred verifications\n\n## Model guidance\n\n## Gate results\n\n## Notes\n'
+} > "$FIX/docs/backlog/stories/T-6.md"
+out="$(plan models T-6)"
+assert_contains "a 1.5 MiB contract still counts as a contract" \
+  "RED	test-developer	fable" "$out"
+
 # Bootstrap writes source, tests and config in one indivisible derivation under
 # SCAFFOLD, with no failing test to anchor it.
 story_with T-3 bootstrap PLANNED 2 <<'EOF'
