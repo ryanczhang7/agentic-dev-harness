@@ -199,6 +199,65 @@ assert_contains "while still naming what it would keep" "tauri-react-webgl.md" "
 assert_contains "and the version it would move to" "2026-09-17" "$out"
 
 # ---------------------------------------------------------------------------
+describe "the procedure belongs to the release being installed"
+
+# A refresh is normally driven by the project's OWN copy of this script, and
+# that copy is one release behind BY CONSTRUCTION: a change to *what* gets
+# copied only takes effect on the refresh AFTER the one that delivers it.
+#
+# Not hypothetical. `models.conf` joined the single-file list in release 23, so
+# a project on 22 running its own script received `scripts/plan.sh` without the
+# policy file plan.sh reads - a script delivered without the thing it depends
+# on, and nothing said a word. Every future addition to that list has the same
+# one-release delay, and "remember to run upstream's copy" is not a mechanism.
+new_project
+# A project copy that differs from upstream's, which is what being a release
+# behind looks like from here.
+{ printf '#!/usr/bin/env bash\n# An older release of this script.\n'
+  tail -n +2 "$REPO_ROOT/scripts/refresh-harness.sh"; } > "$PROJ/scripts/refresh-harness.sh"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "the harness it already has" >/dev/null 2>&1 )
+out="$( cd "$PROJ" && bash scripts/refresh-harness.sh "$UP" 2>&1 )"; rc=$?
+assert_eq "an older project copy hands over to upstream's" 0 "$rc"
+assert_contains "and says that it did" "upstream ships a different" "$out"
+# It has to actually finish the work, not merely announce the handover - and
+# exactly once, because a handover that re-entered the script would double it.
+assert_eq "and does the refresh once" 1 \
+  "$(printf '%s\n' "$out" | grep -c 'REPLACED  .claude/settings.json')"
+assert_eq "having replaced the scripts" "echo new" "$(cat "$PROJ/scripts/brand-new.sh" 2>/dev/null)"
+
+# THE CONTROL, and the thing that stops this becoming an infinite hand-over:
+# when the two copies agree there is nothing to hand over to, and upstream's own
+# script - which is what runs after a hand-over - must take this branch.
+new_project
+cp "$REPO_ROOT/scripts/refresh-harness.sh" "$PROJ/scripts/refresh-harness.sh"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm same >/dev/null 2>&1 )
+out="$( cd "$PROJ" && bash scripts/refresh-harness.sh "$UP" 2>&1 )"; rc=$?
+assert_eq "an identical copy just runs" 0 "$rc"
+case "$out" in
+  *"upstream ships a different"*) _bad "and hands over to nobody" "it handed over anyway: $out" ;;
+  *) _ok "and hands over to nobody" ;;
+esac
+
+# The hand-over happens BEFORE the dirty-tree and mid-cycle refusals, so the
+# process that refuses is the one handed TO rather than the one invoked. Same
+# answer, different process - and worth its own case, because "it refuses" and
+# "it still refuses after handing over" are different claims and every existing
+# refusal test runs on a project whose script matches upstream's, so none of
+# them reaches this path.
+new_project
+{ printf '#!/usr/bin/env bash\n# An older release of this script.\n'
+  tail -n +2 "$REPO_ROOT/scripts/refresh-harness.sh"; } > "$PROJ/scripts/refresh-harness.sh"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "an older harness" >/dev/null 2>&1 )
+printf 'STORY_ID=W-1\nPHASE=GATES\n' > "$PROJ/.claude/state/current-story.env"
+out="$( cd "$PROJ" && bash scripts/refresh-harness.sh "$UP" 2>&1 )"; rc=$?
+assert_eq "a mid-cycle tree is refused THROUGH the hand-over" 2 "$rc"
+assert_contains "and the refusal still names the phase" "GATES" "$out"
+rm -f "$PROJ/.claude/state/current-story.env"
+
+# ---------------------------------------------------------------------------
 describe "it survives replacing the file it is being read from"
 
 # Every case above runs $REPO_ROOT's copy of the script against a project that

@@ -82,6 +82,41 @@ die() { printf 'refresh-harness: %s\n' "$1" >&2; exit 2; }
 [ -d "$UP/.claude/hooks" ] && [ -d "$UP/scripts" ] \
   || die "'$UP' does not look like a harness checkout (no .claude/hooks, no scripts)"
 
+# THE PROCEDURE BELONGS TO THE RELEASE BEING INSTALLED, not to the one you are
+# leaving. A refresh is normally driven by the project's own copy of this
+# script, and that copy is one release behind BY CONSTRUCTION: a change to
+# *what* gets copied only takes effect on the refresh AFTER the one that
+# delivers it.
+#
+# Not hypothetical. `.claude/harness/models.conf` joined the single-file list in
+# release 23, so a project on 22 running its own script received
+# `scripts/plan.sh` without the policy file plan.sh reads - a script delivered
+# without the thing it depends on, silently. Every future addition to that list
+# has the same one-release delay, and "remember to run upstream's copy" is not a
+# mechanism; it is a thing to forget.
+#
+# So hand over. Upstream's copy knows what upstream ships.
+#
+# IT TERMINATES ON THE COMPARISON ALONE, and there is deliberately no second
+# guard. The script handed to reads `$0` as upstream's file - or as a self-copy
+# of it - so `cmp` finds them identical and it takes the other branch. An
+# environment flag was here first, and removing it left all 49 assertions green:
+# a line nothing can fail is a line whose behaviour nobody has checked, and
+# belt-and-braces that cannot be falsified is just braces nobody has looked at.
+# What holds this up is the control in refresh.test.sh - identical copies hand
+# over to nobody - which is the assertion that goes red if this comparison
+# breaks.
+#
+# REFRESH_SELF_COPY is cleared so the new process makes its own, which matters
+# only in the degenerate case where UP and PROJ are the same tree.
+UP_SELF="$UP/scripts/refresh-harness.sh"
+if [ -f "$UP_SELF" ] && ! cmp -s "$UP_SELF" "$0"; then
+  printf 'refresh-harness: upstream ships a different refresh-harness.sh; running that one.\n'
+  printf '  A change to WHAT this copies would otherwise take effect one release late.\n\n'
+  [ -n "${REFRESH_SELF_COPY:-}" ] && rm -f "$REFRESH_SELF_COPY"
+  REFRESH_SELF_COPY= exec bash "$UP_SELF" "$@"
+fi
+
 # Refusing rather than warning, on both counts below. A warning at the top of a
 # wall of output is a warning nobody reads, and both of these end with a tree
 # somebody has to reconstruct by hand.
