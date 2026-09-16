@@ -61,6 +61,7 @@ make_fixture() {
            "$d/tests" "$d/tests/guards" "$d/docs/backlog/stories"
   cp "$REPO_ROOT/.claude/harness/paths.conf"  "$d/.claude/harness/paths.conf"
   cp "$REPO_ROOT/.claude/harness/phases.conf" "$d/.claude/harness/phases.conf"
+  cp "$REPO_ROOT/.claude/harness/models.conf" "$d/.claude/harness/models.conf" 2>/dev/null
   # The real stamp, for the same reason the confs are the real ones: a fixture
   # carrying a made-up version would let doctor.sh print anything and pass.
   cp "$REPO_ROOT/.claude/harness/VERSION"     "$d/.claude/harness/VERSION" 2>/dev/null

@@ -180,7 +180,8 @@ fi
 for d in $replaced_dirs; do say "  REPLACED  .claude/$d/"; done
 
 # --- single files upstream owns ---------------------------------------------
-for f in .claude/harness/phases.conf .claude/harness/rules.md .claude/harness/VERSION \
+for f in .claude/harness/phases.conf .claude/harness/models.conf \
+         .claude/harness/rules.md .claude/harness/VERSION \
          .claude/settings.json .claude/state/README.md; do
   [ -f "$UP/$f" ] || continue
   act "mkdir -p \"$PROJ/$(dirname "$f")\" && cp \"$UP/$f\" \"$PROJ/$f\""
