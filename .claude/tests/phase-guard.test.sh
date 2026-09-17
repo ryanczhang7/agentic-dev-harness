@@ -82,6 +82,34 @@ assert_blocked "$FIX" "sed -i 's/a/b/' src/main.ts"     src/main.ts 'sed -i with
 # A quoted target keeps its spaces instead of being split into fragments.
 assert_blocked "$FIX" 'echo x > "src/my file.ts"'       'src/my file.ts' 'quoted target containing a space'
 
+# THE SAME PROPERTY THROUGH EVERY OTHER EXTRACTOR, and it is load-bearing for a
+# finding rather than decoration.
+#
+# The field report's last open item says `path_is_implausible` accepts a
+# candidate containing spaces, so a mis-parse is denied as a phase violation
+# naming a file that does not exist - and warns that the obvious fix, "a space
+# means the parse leaked", would break the assertion above.
+#
+# Measured, and neither half survives. The predicate is called while the
+# candidate is STILL MASKED, and masking replaces the spaces inside a quoted or
+# escaped span - so a quoted path arrives as one token with no real space in it,
+# and every extractor takes a single `awk` field, which cannot contain one
+# either. Ten shapes were tried and none produced a candidate carrying a real
+# space. The rule would not break these; it would have no input at all.
+#
+# That conclusion rests entirely on masking holding through EVERY extractor, and
+# only the redirect one was pinned. These are the others. If masking ever stops
+# holding, a quoted path splits into fields and these go red - which is the
+# alarm the finding needs and did not have.
+assert_blocked "$FIX" 'rm -rf "src/a b"'                'src/a b'        'rm, a quoted path with a space'
+assert_blocked "$FIX" 'touch "src/c d.ts"'              'src/c d.ts'     'touch, the same'
+assert_blocked "$FIX" 'tee "src/x y.ts"'                'src/x y.ts'     'tee, the same'
+assert_blocked "$FIX" 'cp docs/notes.md "src/e f.ts"'   'src/e f.ts'     'cp, on its destination'
+assert_blocked "$FIX" 'mv docs/notes.md "src/g h.ts"'   'src/g h.ts'     'mv, the same'
+# A BACKSLASH-ESCAPED space is the other spelling, and the masker knows it too.
+assert_blocked "$FIX" 'touch src/my\ file.ts'           'src/my file.ts' 'an escaped space, not a quoted one'
+assert_blocked "$FIX" 'cp docs/notes.md src/i\ j.ts'    'src/i j.ts'     'and through cp'
+
 assert_blocked "$FIX" 'echo x > src/main.ts' src/main.ts 'redirect into source (Bash)'
 r="$(guard "$FIX" Write file_path src/main.ts)"
 assert_contains "Write tool is blocked in RED" "category: source" "$r"
