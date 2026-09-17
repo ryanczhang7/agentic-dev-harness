@@ -88,6 +88,21 @@ command from `.claude/harness/project.conf`. When it returns, verify: read the t
 wrote and run the tests yourself. Confirm they fail, and fail for the right
 reason. If they pass, or fail on an unrelated error, send it back.
 
+**Unless the runner did not start at all** — no test in the repository ran and
+`gates.sh` failed outright. That is a real state, it is sometimes the correct
+RED, and "confirm they fail for the right reason" cannot be discharged in it: a
+story adding a global test mechanism has to wire the runner's own config, which
+is frozen during GREEN, so the config names modules GREEN has not written yet.
+`tdd-cycle`, "When RED breaks the RUNNER, not the tests", has the dilemma and why
+this branch is the right one.
+
+Verify it differently rather than waving it through. Confirm that the **only**
+reason the runner cannot start is the named absence — not a syntax error, not a
+second missing import — and that the failure names **exactly** the modules the
+contract obliges GREEN to write. Then say so in the commit and paste the error
+into the handoff. An agent arriving at that tree otherwise cannot tell a
+deliberate dark suite from a broken repository, and will debug the wrong thing.
+
 Then run `bash scripts/gates.sh --fast` and read it before leaving RED. This is
 not a pass/fail check — the test gates are *supposed* to be red here. It asks a
 different question: are these tests **admissible** to the gates that will judge
