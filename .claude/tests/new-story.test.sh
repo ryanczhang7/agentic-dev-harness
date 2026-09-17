@@ -81,4 +81,33 @@ for h in "## Acceptance criteria" "## Contract" "## Deferred verifications" \
   if grep -qF -- "$h" "$STORY"; then _ok "has $h"; else _bad "has $h" "not in the generated story"; fi
 done
 
+# ---------------------------------------------------------------------------
+describe "the prompts a story cannot be written well without"
+
+# A section heading being present is not the same as the template ASKING for the
+# thing that goes in it, and the asks below are the ones a story goes quietly
+# wrong without. They are prose, so nothing executes them - but the template
+# ships to every project made from this harness, and a paragraph deleted here is
+# a prompt every future story loses with no alarm anywhere. That is the shape
+# `tdd-cycle` calls "code no machine you have can execute: grep for the shape".
+#
+# THE NEGATIVE CONTROL is the one this exists for. H6 in the field report, and
+# the most generalisable thing the consuming project learned: an acceptance
+# criterion specified a measurement STRUCTURALLY INCAPABLE of detecting the
+# defect it existed to catch. Variance is a one-point statistic and "smearing" is
+# a two-point property, so the metric separated a correct field from the exact
+# defect it named by 9% against a 25% threshold - no discriminating power at all.
+# It was testable, reviewed and approved. A criterion that is precise, measurable
+# and blind is more dangerous than a vague one, because it survives review and
+# produces a green tick.
+assert_contains "an AC naming a statistic is asked for a negative control" \
+  "NEGATIVE" "$(cat "$STORY")"
+assert_contains "and told what one is" "deliberately broken input" "$(cat "$STORY")"
+
+# H7: a story whose artifact is covered only by an OPTIONAL gate passes every
+# required gate while proving nothing. The template asks for the gate that would
+# fail, before RED, so that promoting one is a decision rather than a discovery.
+assert_contains "and the story names the gate that would fail if it broke" \
+  "REQUIRED gate that would fail" "$(cat "$STORY")"
+
 summary "new-story"
