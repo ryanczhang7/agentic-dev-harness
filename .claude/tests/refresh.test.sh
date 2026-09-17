@@ -42,6 +42,16 @@ printf 'upstream paths\n'      > "$UP/.claude/harness/paths.conf"
 printf 'upstream claude md\n'  > "$UP/CLAUDE.md"
 printf 'echo new\n'            > "$UP/scripts/brand-new.sh"
 
+# The upstream fixture is a REPOSITORY, not a directory of files, because the
+# question "has upstream ever had this content?" is answered out of its object
+# store. Two commits, so an older version of a file genuinely exists there.
+( cd "$UP" && git init -q 2>/dev/null \
+    && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "upstream, one release ago" >/dev/null 2>&1 )
+printf 'upstream agent, a release later\n' > "$UP/.claude/agents/lead-po.md"
+( cd "$UP" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "upstream moves on" >/dev/null 2>&1 )
+
 new_project() {
   rm -rf "$PROJ"; mkdir -p "$PROJ/.claude/harness" "$PROJ/.claude/skills/stack-profiles/reference" \
                            "$PROJ/.claude/agents" "$PROJ/.claude/state" "$PROJ/scripts/vitest" "$PROJ/docs/wiki" \
@@ -123,7 +133,7 @@ new_project
 out="$(refresh "$UP")"; rc=$?
 assert_eq "it succeeds on a clean tree between stories" 0 "$rc"
 
-assert_eq "an upstream-owned file is replaced" "upstream agent" "$(cat "$PROJ/.claude/agents/lead-po.md")"
+assert_eq "an upstream-owned file is replaced" "upstream agent, a release later" "$(cat "$PROJ/.claude/agents/lead-po.md")"
 assert_eq "so is a shipped profile"            "upstream profile" "$(cat "$PROJ/.claude/skills/stack-profiles/reference/python-uv.md")"
 assert_eq "settings.json is copied"            "upstream settings" "$(cat "$PROJ/.claude/settings.json")"
 assert_eq "and the state README"               "upstream state doc" "$(cat "$PROJ/.claude/state/README.md")"
@@ -197,6 +207,73 @@ assert_eq "--dry-run works on a dirty tree" 0 "$rc"
 ( cd "$PROJ" && git checkout -q -- . 2>/dev/null )
 assert_contains "while still naming what it would keep" "tauri-react-webgl.md" "$out"
 assert_contains "and the version it would move to" "2026-09-17" "$out"
+
+# ---------------------------------------------------------------------------
+describe "it names the files of yours it is about to overwrite"
+
+# H26, from the field. A project vendors the harness, fixes a harness defect
+# locally WITH TESTS, and the next refresh removes the fix and the assertions
+# that pin it in one operation - because both live inside the replaced set. The
+# selftest is green afterwards, since the tests that would have failed went with
+# the code. Nothing reports anything.
+#
+# The report asks for one `cmp` per replaced file. That does not survive contact
+# with a real refresh: going 13 -> 28 here, nearly every harness file differs
+# because UPSTREAM moved on, and a list of dozens means nothing. The useful
+# question is not "does this differ" but "did YOU change it", and those need a
+# third reference point.
+#
+# Upstream is a git checkout, so there is one: hash the downstream copy and ask
+# whether that blob has ever existed in upstream's object store. Present means
+# the project is simply BEHIND - the ordinary case, and silent. Absent means the
+# content was never upstream's, so somebody here wrote it.
+new_project
+# Behind: the project holds the previous release's version of an upstream file.
+printf 'upstream agent\n'    > "$PROJ/.claude/agents/lead-po.md"
+# Changed: content upstream has never shipped, in a file upstream owns.
+printf 'upstream hook\n# a local fix this project made\n' > "$PROJ/.claude/hooks/phase-guard.sh"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "a local harness fix" >/dev/null 2>&1 )
+
+out="$(refresh --dry-run "$UP")"
+locals="$(printf '%s\n' "$out" | grep 'LOCAL' || true)"
+assert_contains "a file you changed is named before it is replaced" "phase-guard.sh" "$locals"
+# THE OTHER HALF, and the one that makes it a signal rather than a wall of text.
+# A warning that always prints is not a warning.
+case "$locals" in
+  *lead-po.md*) _bad "while merely being behind is silent" "being behind was reported: $locals" ;;
+  *) _ok "while merely being behind is silent" ;;
+esac
+
+# Said in the DRY RUN, because the whole value is seeing it before the files go.
+case "$out" in
+  *"Dry run: nothing was written"*) _ok "and said before anything is written" ;;
+  *) _bad "and said before anything is written" "not a dry run: $out" ;;
+esac
+
+# Nothing local at all: completely quiet. Without this a check that prints the
+# same line for every replaced file passes the assertions above.
+new_project
+for f in .claude/agents/lead-po.md .claude/commands/advance-story.md \
+         .claude/hooks/phase-guard.sh .claude/tests/lib.test.sh \
+         .claude/skills/stack-profiles/reference/python-uv.md \
+         .claude/settings.json .claude/state/README.md \
+         .claude/harness/phases.conf .claude/harness/rules.md; do
+  mkdir -p "$PROJ/$(dirname "$f")"; cp "$UP/$f" "$PROJ/$f"
+done
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "exactly what upstream ships" >/dev/null 2>&1 )
+out="$(refresh --dry-run "$UP")"
+assert_eq "a project holding upstream's own files is told nothing" "" \
+  "$(printf '%s\n' "$out" | grep 'LOCAL' || true)"
+
+# An upstream that is not a repository cannot answer the question, and a check
+# that cannot run must not read as a clean result.
+out="$(refresh --dry-run "$WORK/half-b-full")" 2>/dev/null
+mkdir -p "$WORK/half-b-full/.claude/hooks" "$WORK/half-b-full/scripts"
+printf 'x\n' > "$WORK/half-b-full/.claude/hooks/phase-guard.sh"
+out="$(refresh --dry-run "$WORK/half-b-full")"
+assert_contains "an upstream with no history says it could not check" "could not check" "$out"
 
 # ---------------------------------------------------------------------------
 describe "the procedure belongs to the release being installed"
