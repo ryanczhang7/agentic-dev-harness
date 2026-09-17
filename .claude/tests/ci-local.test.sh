@@ -216,7 +216,7 @@ YML
 ( cd "$SFIX" && git add -A >/dev/null 2>&1 \
     && git -c user.email=t@t -c user.name=t commit -qm "a workflow" >/dev/null 2>&1 )
 sout="$( cd "$SFIX" && bash scripts/ci-local.sh 2>&1 )"
-shead="$(printf '%s\n' "$sout" | grep '^ci-local:' | head -1)"
+shead="$(printf '%s\n' "$sout" | grep '^[[]ci-local[]]' | head -1)"
 ssha="$( cd "$SFIX" && git rev-parse --short=7 HEAD )"
 
 # Matched on the SUBJECT's own wording, not merely on `^ci-local:` carrying the
@@ -228,7 +228,7 @@ assert_contains "the first ci-local: line names the commit being judged" \
 # Before the steps, not after them: a subject printed at the end is a subject
 # you meet once the decision is already made.
 first_step="$(printf '%s\n' "$sout" | grep -n 'stub: green' | head -1 | cut -d: -f1)"
-subject_at="$(printf '%s\n' "$sout" | grep -n '^ci-local:' | head -1 | cut -d: -f1)"
+subject_at="$(printf '%s\n' "$sout" | grep -n '^[[]ci-local[]]' | head -1 | cut -d: -f1)"
 if [ -n "$first_step" ] && [ -n "$subject_at" ] && [ "$subject_at" -lt "$first_step" ]; then
   _ok "and says it before running anything"
 else
@@ -238,14 +238,45 @@ fi
 # Two lines, not one: the subject and the verdict, both reachable by the grep a
 # reader actually types.
 assert_eq "so one grep returns both the subject and the verdict" 2 \
-  "$(printf '%s\n' "$sout" | grep -c '^ci-local:')"
+  "$(printf '%s\n' "$sout" | grep -c '^[[]ci-local[]]')"
 
 # The dirty-tree note carries the prefix too, for the same reason: it is about
 # what is being judged, and it was previously invisible to that grep.
 printf 'uncommitted\n' >> "$SFIX/docs/notes.md"
 sout="$( cd "$SFIX" && bash scripts/ci-local.sh 2>&1 )"
 assert_contains "and a dirty tree says so under the same prefix" \
-  "ci-local: uncommitted changes" "$sout"
+  "[ci-local] uncommitted changes" "$sout"
+
+# THE COLLISION THAT MADE THE SUBJECT LINE NECESSARY IN THE FIRST PLACE.
+#
+# The script's report and a test suite's summary had the same shape. That is not
+# a coincidence to be worked around: `selftest.sh` IS one of the steps, it runs
+# this script's own suite, and that suite's summary line reads
+# `ci-local: 26 passed, 0 failed`. So a reader grepping the script's prefix got
+# the SUITE's verdict mixed in with the SCRIPT's - and a waiting loop written
+# against `^ci-local:` matched the suite's line and reported a run finished that
+# had barely started. The information was right; the name was shared.
+#
+# The script's own voice is `[ci-local]` now, which no `summary <name>` can
+# produce. The step below prints the old shape deliberately.
+cat > "$SFIX/.github/workflows/gates.yml" <<'YML'
+name: gates
+on: [pull_request]
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: A step whose output looks like the report
+        run: printf 'ci-local: 26 passed, 0 failed\n'
+YML
+( cd "$SFIX" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "a lookalike step" >/dev/null 2>&1 )
+cout="$( cd "$SFIX" && bash scripts/ci-local.sh 2>&1 )"
+assert_eq "a step that prints the old shape is not mistaken for the script" 2 \
+  "$(printf '%s\n' "$cout" | grep -c '^[[]ci-local[]]')"
+# And the step's output still reaches the terminal unaltered - the fix is to the
+# script's own voice, not to what it shows you.
+assert_contains "while its output is still shown in full" "ci-local: 26 passed, 0 failed" "$cout"
 rm -rf "$SFIX"
 
 # ---------------------------------------------------------------------------
