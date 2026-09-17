@@ -52,6 +52,33 @@ jobs:
       - name: Harness self-test
         run: bash scripts/selftest.sh
 
+      # The same suites again, with every tool that can colour forced to do it.
+      # A guard that captures another process's output is asserting on a
+      # HUMAN-FACING PRESENTATION, which the tool is entitled to change on TTY
+      # detection, CI, NO_COLOR, FORCE_COLOR, locale or terminal width. The
+      # consuming project lost two required gates to exactly that: escapes
+      # landed BETWEEN the two words of `Test Files  1 passed`, so the guard's
+      # regex could not match. Nine consecutive local passes, piped and
+      # therefore uncoloured; two of two failures on CI, where colour is forced.
+      #
+      # That failure is deterministic PER ENVIRONMENT, which is what makes it
+      # worse than a flake: repeating the run locally is not weak evidence, it
+      # is structurally incapable of finding the bug, because running locally is
+      # what holds the variable fixed.
+      #
+      # It costs one extra selftest - about thirty seconds on this runner - and
+      # it is here rather than in a convention because the project it bit had
+      # the knowledge already, in two other guards in the same directory, and it
+      # did not transfer to the third. A convention that lives only as a habit
+      # in two files is not a convention.
+      # The environment is IN THE COMMAND, not in a `env:` block. ci-local.sh
+      # reproduces a workflow's `run:` lines and does not read `env:`, so a step
+      # whose meaning lives in that block is one ci-local runs DIFFERENTLY while
+      # reporting it ran the same sequence - which is the class of defect this
+      # step exists to catch, arriving in the step that catches it.
+      - name: Harness self-test, with colour forced
+        run: FORCE_COLOR=1 CLICOLOR_FORCE=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always bash scripts/selftest.sh
+
       - name: Show configured gates
         run: bash scripts/gates.sh --list
 
