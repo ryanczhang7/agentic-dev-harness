@@ -173,9 +173,9 @@ clean_log() {
 # Parenthesised, so that an evidence regex using top-level alternation
 # (`a|b`) does not bind the trailing `.*` to its last branch alone.
 work_count() {
-  clean_log "$1" \
-    | grep -oE -m1 -- "($2).*" 2>/dev/null | head -1 \
-    | grep -oE '[0-9]+' 2>/dev/null | head -1
+  clean_log "$1" | awk 'BEGIN { re = ARGV[1]; ARGV[1] = "" }
+    !seen && match($0, re) { seen = 1; m = substr($0, RSTART, RLENGTH); if (match(m, /[0-9]+/)) out = substr(m, RSTART, RLENGTH) }
+    END { if (out != "") print out; exit (out == "") ? 1 : 0 }' "($2).*"
 }
 
 # --- recording ----------------------------------------------------------------
@@ -425,11 +425,11 @@ while IFS= read -r line; do
     blockpat="$BLOCKED_DEFAULT"
     extra=$(table_lookup "$BLOCKEDWHEN" "$id") || extra=""
     [ -n "$extra" ] && blockpat="$blockpat|$extra"
-    if clean_log "$log" | grep -Eq -- "$blockpat"; then
+    if clean_log "$log" | awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "$blockpat"; then
       outcome=blocked
       why="could not launch: $(clean_log "$log" | grep -Eom1 -- "$blockpat" | head -1)"
     fi
-  elif [ "$exp" != "<none>" ] && [ "$exp" != "-" ] && ! clean_log "$log" | grep -Eq -- "$exp"; then
+  elif [ "$exp" != "<none>" ] && [ "$exp" != "-" ] && ! clean_log "$log" | awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "$exp"; then
     outcome=noevidence
     why="ran but produced no evidence of work: expected /$exp/"
   elif [ "$exp" != "<none>" ] && [ "$exp" != "-" ]; then

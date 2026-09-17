@@ -79,6 +79,22 @@ jobs:
       - name: Harness self-test, with colour forced
         run: FORCE_COLOR=1 CLICOLOR_FORCE=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always bash scripts/selftest.sh
 
+      # The SIGPIPE guard. Five instances of one defect shipped in this
+      # repository before it existed, and a hand sweep that fixed four of them
+      # left NINE more standing, across five files - including the
+      # blocked-pattern check in gates.sh, which stops blocking when the pattern
+      # lands early in a large log. A sweep looks for the shape it has already
+      # seen; a guard looks for the class.
+      #
+      # IT BELONGS IN CI RATHER THAN THE SELF-TEST because the defect is a race
+      # on the pipe buffer: the same file passes on a Windows checkout and fails
+      # on ubuntu-latest, so the run that matters is the one on the runner. Two
+      # of the original five were found exactly that way and never locally.
+      # Needs nothing but bash and git, so it sits in this job for the same
+      # reason the self-test does.
+      - name: Refuse pipefail SIGPIPE matchers
+        run: bash scripts/check-sigpipe.sh
+
       - name: Show configured gates
         run: bash scripts/gates.sh --list
 

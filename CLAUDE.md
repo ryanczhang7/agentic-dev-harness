@@ -97,6 +97,7 @@ bash scripts/gates.sh            # all gates
 bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and GREEN
 bash scripts/gates.sh --gate unit
 bash scripts/check-boundaries.sh # the other half of CI: the commit, not the code
+bash scripts/check-sigpipe.sh   # refuse a pipefail SIGPIPE matcher, tree-wide
 bash scripts/ci-local.sh         # every step CI runs, in order, on this machine
 bash scripts/plan.sh ID          advance-story or complete-story, and why
 bash scripts/plan.sh write ID    put the per-phase model plan in the story

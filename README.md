@@ -233,6 +233,7 @@ bash scripts/gates.sh --fast       # all but the ones marked `slow` (RED, GREEN)
 bash scripts/gates.sh --gate unit  # one
 bash scripts/gates.sh --audit      # check the manifest, run nothing
 bash scripts/check-boundaries.sh   # the other half of CI: the commit, not the code
+bash scripts/check-sigpipe.sh       # refuse a pipefail SIGPIPE matcher, tree-wide
 bash scripts/task.sh dev           # run the app
 bash scripts/mutate.sh F 'EXPR' -- CMD   # a diagnostic mutation, restored and verified
 ```

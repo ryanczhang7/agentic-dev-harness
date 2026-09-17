@@ -82,8 +82,15 @@ done
 # The four added to whatever paths.conf declares are the ones classify returns
 # without a rule: `ignored` from git, `source` as the fallback, `outside` for a
 # path that is not in this repository, and `vendor` in case no rule names it.
+#
+# ONE awk that DRAINS, not `categories | grep -qx`. `grep -qx` leaves at the
+# first match, so under `set -o pipefail` the writer behind it dies of SIGPIPE
+# and 141 becomes the pipeline's status - which this `if` reads as "unknown
+# category" for a category that is right there on the first line. The regex is
+# carried in ARGV rather than `-v`, because awk expands escape sequences in a
+# `-v` assignment and a category is compared literally here.
 if [ -n "$WANT" ]; then
-  if ! categories | grep -qx -- "$WANT"; then
+  if ! categories | awk 'BEGIN { w = ARGV[1]; ARGV[1] = "" } $0 == w { h = 1 } END { exit !h }' "$WANT"; then
     printf 'classify: unknown category "%s"\n\n' "$WANT" >&2; usage
   fi
 fi
