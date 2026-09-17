@@ -153,6 +153,76 @@ say ""
 
 kept_any=0
 
+# --- which of YOUR files this is about to overwrite --------------------------
+#
+# H26, from the field. A project vendors the harness, fixes a harness defect
+# locally WITH TESTS, and the next refresh removes the fix and the assertions
+# that pin it in one operation - because both live inside the replaced set. The
+# selftest is green afterwards, since the tests that would have failed went with
+# the code. Nothing reports anything, and that silence is what makes it
+# dangerous rather than merely destructive.
+#
+# The report asked for one `cmp` per replaced file. That does not survive a real
+# refresh: across fifteen releases nearly every harness file differs because
+# UPSTREAM moved on, and a list of dozens says nothing. The useful question is
+# not "does this differ" but "did YOU change it" - and those two need a third
+# reference point to tell apart.
+#
+# Upstream is a git checkout, so there is one. Hash the downstream copy and ask
+# whether that blob has ever existed in upstream's object store:
+#
+#   present -> this is some release of upstream's. You are BEHIND. Silent.
+#   absent  -> upstream has never shipped this content. Somebody here wrote it.
+#
+# A local edit that happens to collide with an unrelated upstream blob would be
+# missed; that is a hash collision against real content and not worth guarding.
+#
+# THE QUIET HALF IS THE POINT. A warning that prints for every replaced file is
+# not a warning, and a check that only tests the firing half is satisfied by
+# `echo`. Both halves are asserted in refresh.test.sh.
+local_changes=""
+if git -C "$UP" rev-parse --git-dir >/dev/null 2>&1; then
+  for d in agents commands skills hooks tests; do
+    [ -d "$PROJ/.claude/$d" ] && [ -d "$UP/.claude/$d" ] || continue
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      [ -e "$UP/.claude/$d/$rel" ] || continue      # yours alone: that is KEPT, above
+      h="$(git -C "$PROJ" hash-object ".claude/$d/$rel" 2>/dev/null)" || continue
+      [ -n "$h" ] || continue
+      git -C "$UP" cat-file -e "$h" 2>/dev/null && continue
+      local_changes="$local_changes .claude/$d/$rel"
+    done <<< "$(cd "$PROJ/.claude/$d" && find . -type f 2>/dev/null | sed 's|^\./||')"
+  done
+  for f in .claude/harness/phases.conf .claude/harness/models.conf \
+           .claude/harness/rules.md .claude/settings.json .claude/state/README.md; do
+    [ -f "$PROJ/$f" ] && [ -f "$UP/$f" ] || continue
+    h="$(git -C "$PROJ" hash-object "$f" 2>/dev/null)" || continue
+    [ -n "$h" ] && git -C "$UP" cat-file -e "$h" 2>/dev/null && continue
+    local_changes="$local_changes $f"
+  done
+else
+  # A check that cannot run must not read as a clean result.
+  local_unknown=1
+fi
+
+# Said BEFORE the KEPT/REPLACED report, and printed in a dry run, because the
+# entire value is seeing it while the files are still there.
+if [ -n "$local_changes" ]; then
+  say "  LOCAL - upstream has never shipped your copy of these, so somebody here"
+  say "          wrote them. A refresh REPLACES them, and any test that pinned"
+  say "          the change goes with it:"
+  for f in $local_changes; do say "    LOCAL     $f"; done
+  say ""
+  say "          If one is a harness fix, send it upstream before refreshing, or"
+  say "          the next refresh takes the fix and its alarm together."
+  say ""
+elif [ -n "${local_unknown:-}" ]; then
+  say "  note: '$UP' is not a git checkout, so this could not check which of your"
+  say "        harness files you have changed. Anything you fixed locally in a"
+  say "        replaced file will be overwritten without being named."
+  say ""
+fi
+
 # --- directories upstream owns, except for what it does not ship -------------
 for d in agents commands skills hooks tests; do
   src="$UP/.claude/$d"; dst="$PROJ/.claude/$d"
