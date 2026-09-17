@@ -137,6 +137,47 @@ Bridge it in two steps, both cheap:
   measured the shipped module. Benign, explained in the story, and exactly the
   kind of divergence that is cheap now and expensive later.
 
+## A guard that shells out is asserting on a presentation
+
+When a test captures another process's output and matches on it, it looks like an
+assertion about behaviour. It is an assertion about **formatting** — and the tool
+is entitled to change that on TTY detection, `CI`, `NO_COLOR`, `FORCE_COLOR`,
+locale, terminal width or its own next version.
+
+The case that bit: a guard matched `/Test Files\s+1 passed/`, and with colour on
+the escapes land *between* the two words.
+
+```
+ESC[2m Test Files ESC[22m ESC[1mESC[32m1 passed ESC[39m
+
+local, piped       : 9 consecutive passes
+CI, colour forced  : 2 of 2 required gates failed
+```
+
+**This failure is deterministic per environment, and that is worse than a
+flake.** A flake you can reproduce by running again. Here, running locally is
+not merely weak evidence — it is *structurally incapable* of finding the bug,
+because running locally is what holds the variable fixed.
+
+- **Normalise at the single point of capture**, before any assertion sees the
+  text. Strip ANSI at minimum; prefer a machine-readable mode — `--json`,
+  `--reporter=json` — wherever the tool has one, because that is a surface the
+  tool has promised not to reformat.
+- **Normalise rather than suppress.** Passing `--colors=off` to the child makes
+  the test pass *without ever exercising the coloured path*, leaving the defence
+  untested in the one environment that broke it. Suppression hides the variable;
+  normalisation handles it and keeps the child running exactly as the real gate
+  runs it.
+- **Run the suites once with colour forced.** `.github/workflows/gates.yml` does
+  this as its own step, and that placement is the point: the project this bit
+  already knew the rule — two other guards in the same directory passed
+  `--colors=off` for exactly this reason — and the knowledge did not reach the
+  third. **A convention that lives only as a habit in two files is not a
+  convention.**
+
+Colour is only the instance that bit. Line wrapping at a different terminal
+width, locale-dependent number formatting and CRLF all do the same thing.
+
 ## When RED breaks the RUNNER, not the tests
 
 The section above is about one file failing to load. This is about the runner
