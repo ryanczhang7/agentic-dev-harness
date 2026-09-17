@@ -137,6 +137,58 @@ Bridge it in two steps, both cheap:
   measured the shipped module. Benign, explained in the story, and exactly the
   kind of divergence that is cheap now and expensive later.
 
+## When RED breaks the RUNNER, not the tests
+
+The section above is about one file failing to load. This is about the runner
+never starting, and the difference is the whole point: not "some tests fail" but
+**no test in the repository runs at all**, and `gates.sh` fails outright.
+
+```
+Error: Failed to load url .../scripts/vitest/property-seed.global.ts. Does the file exist?
+Serialized Error: { code: 'ERR_LOAD_URL' }
+```
+
+695 tests dark, on a commit that is a legitimate, rule-following RED.
+
+**It comes from a genuine conflict, not a mistake.** `paths.conf` classifies
+`vitest.config.ts` as **test**, deliberately and correctly: it carries the
+per-directory coverage thresholds, and freezing it during GREEN is exactly what
+stops a threshold being lowered to make a gate pass. But it is also the file that
+*wires* anything global — `globalSetup`, `setupFiles`, reporters, projects. So a
+story that adds a global test mechanism meets a lock-shaped dilemma with no clean
+branch:
+
+| Option | Consequence |
+|---|---|
+| Wire it in RED, implement in GREEN | the config names modules that do not exist. **The runner cannot start until GREEN lands** |
+| Implement it in RED too | GREEN is empty, and the "failing test" was never observed failing against a real absence |
+| Wire it in GREEN | impossible — the file is frozen |
+
+**The first is the right answer, and the commit must say so.** Every rule about
+RED — watch it fail, fail for the right reason, run the gates before reporting
+the story — is written as though the suite still executes. None of them mean
+anything when the runner exits before collecting a single file. An agent picking
+up that tree cannot otherwise tell a deliberate dark suite from a broken
+repository, and will start debugging the wrong thing.
+
+**Verify a dark RED differently, because the usual check cannot be run.**
+"Confirm the tests fail for the right reason" is undischargeable when no test
+ran. The substitute is narrow and checkable:
+
+- the **only** reason the runner cannot start is the named absence — not a syntax
+  error, not a second missing import that arrived with it;
+- the failure names **exactly** the modules GREEN is contracted to write, and the
+  contract names them too. A dark suite whose error names a module no clause
+  mentions is not a planned RED, it is a broken one.
+
+Record both in the handoff, with the error pasted. That is what GREEN has to
+clear, and it is the only evidence that the darkness was deliberate.
+
+**Better still, dissolve it.** The reason the config is frozen is its
+*thresholds*. Its *wiring* is not a threshold. Keep the thresholds in a small
+frozen file the config imports, leave the wiring `config`-classified and writable
+in GREEN, and the dilemma stops existing rather than being managed.
+
 ## A generator is part of the specification
 
 Everything above is about assertions. A property test has a second half - the
