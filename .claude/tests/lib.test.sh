@@ -96,7 +96,17 @@ mask() { printf '%s' "$1" | mask_shell_quotes; }
 roundtrip() { printf '%s' "$1" | mask_shell_quotes | unmask_shell_quotes; }
 
 # What the masker is for: no operator survives inside a quoted span.
-has_operator() { printf '%s' "$1" | grep -qE '[|&;<>]'; }
+#
+# ONE awk, not `printf | grep -qE`. WORLD-086's guard reports that shape, and it
+# reported this line: `grep -qE` leaves at its first match, the writer behind it
+# can die of SIGPIPE, and `_lib.sh` puts this file under pipefail, so 141 would
+# become the answer to "does this hold an operator". It is the very defect the
+# masker below exists to make visible, sitting in the test that pins the masker.
+#
+# It escaped the guard's first port for a reason worth keeping: the body was
+# split on `;` to find its last command, and the QUOTED `;` in the character
+# class took the split with it. The guard now reads through mask_shell_quotes.
+has_operator() { awk '/[|&;<>]/ { h = 1 } END { exit !h }' <<<"$1"; }
 
 for cmd in \
   "sed -i 's|a|b|' f.txt" \
@@ -135,7 +145,13 @@ describe "mask_shell_quotes: heredocs and escapes"
 
 hd="$(mask "$(printf 'cat > notes.md <<%sEOF%s\nrun: cat > src/main.ts\nEOF\n' "'" "'")")"
 assert_contains "the real redirect survives" "> notes.md" "$hd"
-if printf '%s' "$hd" | grep -q '> src/main.ts'; then
+# awk over a here-string, not `printf | grep -q`. `grep -q` leaves at its first
+# match, the printf behind it dies of SIGPIPE, and pipefail promotes 141 to the
+# status this `if` reads - so a body's surviving redirect reads as "masked".
+# The needle carries no regex metacharacter, so index() is the same test.
+# WORLD-086 R-1.
+if awk 'BEGIN { n = ARGV[1]; ARGV[1] = "" } index($0, n) { h = 1 } END { exit !h }' \
+     '> src/main.ts' <<<"$hd"; then
   _bad "a heredoc body is masked" "the body's redirect survived: $hd"
 else
   _ok "a heredoc body is masked"

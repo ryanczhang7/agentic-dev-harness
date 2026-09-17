@@ -172,7 +172,14 @@ assert_contains "a bootstrap story keeps RED on the stronger model" \
 unplanned=""
 for ph in $(awk -F'|' '!/^#|^[[:space:]]*$/ { gsub(/ /,"",$1); print $1 }' "$FIX/.claude/harness/phases.conf"); do
   case "$ph" in IDLE|DONE) continue ;; esac
-  printf '%s\n' "$out" | grep -q "^$ph	" || unplanned="$unplanned $ph"
+  # awk over a here-string, not `printf | grep -q`. `grep -q` leaves at its
+  # first match, the printf behind it dies of SIGPIPE, and pipefail promotes 141
+  # to the status this `||` reads - so a phase that HAS a row is recorded as
+  # unplanned. -F'\t' with NF > 1 is exactly the old `^PHASE<tab>` anchor: $1 is
+  # everything before the first tab, and NF > 1 is what says a tab was there.
+  # WORLD-086 R-1.
+  awk -F'\t' 'BEGIN { n = ARGV[1]; ARGV[1] = "" } $1 == n && NF > 1 { h = 1 } END { exit !h }' \
+    "$ph" <<<"$out" || unplanned="$unplanned $ph"
 done
 assert_eq "every dispatching phase has a model" "" "$unplanned"
 

@@ -209,14 +209,35 @@ jobs:
       - run: bash scripts/gates.sh
 YML
 run_doctor
-assert_contains "a complete pair reports ok" "ok       ci" "$out"
+# check-sigpipe.sh joined the want-list in release 36, so this pair is no longer
+# complete - and that is the assertion, not an inconvenience. .github/workflows
+# is project-owned and a refresh cannot add the step, so doctor naming it is the
+# ONLY way a consuming project learns the guard is not running there.
+assert_contains "a pair missing the SIGPIPE guard is named" \
+  "no workflow runs scripts/check-sigpipe.sh" "$out"
+assert_eq "and exits non-zero without it" 1 "$rc"
+
+cat > "$FIX/.github/workflows/gates.yml" <<'YML'
+name: gates
+on: [pull_request]
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/selftest.sh
+      - run: bash scripts/gates.sh
+      - run: bash scripts/check-sigpipe.sh
+YML
+run_doctor
+assert_contains "a complete set reports ok" "ok       ci" "$out"
 case "$out" in
   *"never run"*) _bad "and says nothing is missing" "still complaining: $out" ;;
   *) _ok "and says nothing is missing" ;;
 esac
-# The control for the three exit assertions above: without it, "always exit 1"
+# The control for the exit assertions above: without it, "always exit 1"
 # passes every one of them.
-assert_eq "and a complete pair exits 0" 0 "$rc"
+assert_eq "and a complete set exits 0" 0 "$rc"
 
 # No workflows at all is not a failure - a project may not use CI, and doctor
 # must not invent a requirement. It says so and moves on.

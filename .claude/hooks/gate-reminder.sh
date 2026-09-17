@@ -51,7 +51,12 @@ warn() {
   exit 0
 }
 
-stamp_value() { grep -E "^$1=" "$GATE_STAMP" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]'; }
+# ONE awk that reads the file itself, not `grep | head -1 | cut | tr`. head -1
+# leaves at the first line, the grep behind it dies of SIGPIPE, and pipefail
+# makes the whole pipeline - and so this function - exit 141 for a key that was
+# found. Every caller today takes the value and discards the status, so the
+# defect is latent rather than live; the shape is the thing being removed.
+stamp_value() { awk 'BEGIN { k = "^" ARGV[1] "="; ARGV[1] = "" } !h && $0 ~ k { h = 1; sub(/^[^=]*=/, ""); gsub(/[[:space:]]/, ""); print } END { exit !h }' "$1" "$GATE_STAMP" 2>/dev/null; }
 
 # --- the one thing it blocks -------------------------------------------------
 

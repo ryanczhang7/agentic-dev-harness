@@ -41,7 +41,13 @@ missing=""
 while IFS= read -r cmd; do
   [ -z "$cmd" ] && continue
   case "$cmd" in *'${{'*) continue ;; esac
-  printf '%s\n' "$dry" | grep -qF -- "$cmd" || missing="$missing
+  # awk over a here-string, not `printf | grep -qF`. `grep -qF` leaves at its
+  # first match, the printf behind it dies of SIGPIPE, and pipefail promotes 141
+  # to the status this `||` reads - so a command that IS in the script is
+  # reported missing. index() is the same literal-substring test grep -F does.
+  # WORLD-086 R-1.
+  awk 'BEGIN { n = ARGV[1]; ARGV[1] = "" } index($0, n) { h = 1 } END { exit !h }' \
+    "$cmd" <<<"$dry" || missing="$missing
   $cmd"
 # Both spellings. This derivation reads THIS repository's workflows, and every
 # one of them happens to use the two-line `name:` / `run:` form - so a grep for

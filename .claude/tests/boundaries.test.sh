@@ -1089,7 +1089,19 @@ describe "a section is not empty because it was too big to read"
 # 1.5 MiB rather than the ~200 KB that reproduces here, because the buffer size
 # is what varies between machines and this test must fail on the defect wherever
 # it runs.
-big_section() { yes 'the handoff says what the next agent needs to know' | head -c 1572864; }
+#
+# ONE awk, not `yes ... | head -c`. `head -c` leaves at its byte limit, the
+# `yes` behind it dies of SIGPIPE, and `set -uo pipefail` promotes 141 to the
+# status of the pipeline that IS this function's body - so big_section itself
+# returns false, in a suite written to catch exactly that shape. Same bytes
+# (31,457 whole lines plus the first 14 of the next), one process, no pipe.
+# WORLD-086 R-1.
+big_section() {
+  awk 'BEGIN { l = "the handoff says what the next agent needs to know\n"
+               n = 1572864
+               while (n >= length(l)) { printf "%s", l; n -= length(l) }
+               if (n > 0) printf "%s", substr(l, 1, n) }' < /dev/null
+}
 
 git -C "$FIX" checkout -q main 2>/dev/null
 git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
