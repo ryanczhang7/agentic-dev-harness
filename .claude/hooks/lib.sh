@@ -335,6 +335,26 @@ to_rel() {
 # Both are chosen to have no plausible false negative: `src/app/[id]/page.tsx`
 # is a real path in more than one framework, and passes, because it has letters
 # in it.
+# A SPACE RULE HERE WOULD BE DEAD CODE, and the field report proposes one - so
+# the measurement is written down rather than left to be redone. The report's
+# last open item asks for "a candidate containing spaces is a leaked parse", and
+# warns that it would break the live assertion that
+# `echo x > "src/my file.ts"` blocks on that path.
+#
+# Neither half holds. This runs while the candidate is STILL MASKED, and masking
+# replaces the spaces inside a quoted or escaped span, so a quoted path arrives
+# as ONE token with no real space in it. Every extractor takes a single `awk`
+# field, which cannot contain one either. Ten shapes were tried - quoted and
+# escaped, through the redirect, rm, touch, tee, cp and mv extractors - and none
+# produced a candidate carrying a real space. The rule would not break the
+# assertion; it would never fire.
+#
+# What is left of that item is a limit rather than a defect: `sed -i option`
+# yields the candidate `option`, and `option` is a perfectly plausible relative
+# path. Telling it from a real new file needs existence, and this guard
+# deliberately does not check that - a file being created does not exist yet.
+# phase-guard.test.sh pins the masking through every extractor, which is the
+# property that whole conclusion rests on.
 path_is_implausible() {
   local t="${1:-}"
   [ -z "$t" ] && return 0
