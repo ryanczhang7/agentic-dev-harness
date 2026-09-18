@@ -241,6 +241,46 @@ unmask_shell_quotes() {
 # It lives here rather than in either guard because there are now two of them -
 # check-sigpipe.sh and check-grep-count.sh - and rules.md is explicit about what
 # happens to a rule that gets a private copy per caller.
+#
+# TWO TRAPS FOR CONSUMERS, both found by a consuming project reading masked text
+# as if it were source. They are recorded here rather than in one guard because
+# centralising this helper made its edge cases everybody's - which was the cost
+# of the move, and is worth stating where the move is.
+#
+# 1. A BARE `#` IN THE OUTPUT IS NOT NECESSARILY A COMMENT. An escaped `\#` is
+#    data, so the backslash is consumed and a bare `#` is emitted - with LIVE
+#    CODE after it. A real comment is masked to the end of the line. Compare:
+#
+#      k() { echo a \# b | grep -m1 c; }   ->  k() { echo a # b | grep -m1 c; }
+#      k() { echo a  # b | grep -m1 c; }   ->  k() { echo a #\006b\006\001\006grep...
+#
+#    TELL THEM APART BY THE TAIL, NOT BY THE `#`. A rule that strips from the
+#    first `#` unconditionally deletes real code in the first case. fantasy-
+#    world-builder's WORLD-090 hit this building a brace-recognition rule and
+#    resolved it by reading the comment boundary off this output and falling
+#    back to the raw line - in that order, because a comment ending in a brace
+#    (`# see {braces}`) defeats raw-first.
+#
+# 2. `"$( ... )"` IS BLANKED WHOLESALE; A BARE `$( ... )` IS NOT.
+#
+#      x="$(grep -c p f || printf 0)"  ->  x="$(grep\006-c\006p\006f\006\001\001...
+#      y=$(grep -c p f || printf 0)    ->  unchanged
+#
+#    Deliberate: for the phase lock the text inside a quoted substitution is
+#    data to the command outside it, and a redirect hidden in there should fail
+#    open. For a guard reading SOURCE it is code that runs, and the difference
+#    is invisible unless you look for it - check-grep-count.sh missed the
+#    commonest spelling of its own defect this way and unwraps those quotes
+#    before masking. The worked example is contract block C-11 of that project's
+#    refresh story.
+#
+#    THE DISCRIMINATOR IS THE QUOTING, NOT THE SUBSTITUTION - the sentence the
+#    next consumer wants. A rule tested only against the bare spelling passes
+#    its own suite and ships broken, because the shape it fails on is the one
+#    nobody wrote a fixture for. check-grep-count.sh did precisely that: its
+#    probe corpus was `y=$(...)` throughout, every assertion was green, and the
+#    guard could not see `x="$(...)"` - which is how the real tree spells it.
+#
 masked_lines() {
   # A FILE ARGUMENT OR STDIN. check-grep-count.sh pre-processes the text
   # before masking, so it needs the stream form.
