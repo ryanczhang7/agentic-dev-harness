@@ -97,7 +97,7 @@ if [ -d "$WFDIR" ] && ls "$WFDIR"/*.yml >/dev/null 2>&1; then
   printf 'Continuous integration\n'
   wf_all="$(cat "$WFDIR"/*.yml 2>/dev/null)"
   ci_missing=0
-  for want in selftest.sh gates.sh check-boundaries.sh check-sigpipe.sh; do
+  for want in selftest.sh gates.sh check-boundaries.sh check-sigpipe.sh check-grep-count.sh; do
     case "$wf_all" in
       *"scripts/$want"*) ;;
       *)
