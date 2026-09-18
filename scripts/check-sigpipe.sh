@@ -242,33 +242,11 @@ END {
 AWKEOF
 )"
 
-# unfold   Put back the newlines mask_shell_quotes folded away.
-#
-# The masker is NOT line-preserving, and a guard that reports line numbers
-# cannot use it as if it were. It joins a backslash-continued line, encoding the
-# newline as \010 - the masker's own operator set, which `unmask_shell_quotes`
-# maps back to a newline. Measured on this tree: lib.test.sh is 405 lines and
-# masks to 348 carrying 57 \010s; check-boundaries.sh, 570 to 526 with 44. In
-# both, masked + \010 count == the original exactly, so nothing is lost - but
-# every line number after the first continuation is wrong by the running total,
-# and the one live finding here was first reported 44 lines above itself.
-#
-# Putting the BACKSLASH back as well as the newline also restores the
-# continuation marker the rule folds on, so a pipeline written across two lines
-# is still read as one logical command.
-unfold() {
-  awk 'BEGIN { BS = sprintf("%c", 92); H = sprintf("%c", 8) }
-       { n = split($0, p, H); out = p[1]
-         for (i = 2; i <= n; i++) out = out BS "\n" p[i]
-         print out }'
-}
-
 analyze() { # <abs path>   The report for one file, on stdout.
   # THROUGH THE MASKER, NOT A PRIVATE QUOTE PARSER. CLAUDE.md states the rule
   # for the phase lock and it is the same rule here: quoted arguments and
-  # heredoc bodies are DATA, not syntax. mask_shell_quotes maps every operator
-  # inside a quoted, escaped or heredoc span to a control character, so what
-  # reaches the rule holds only operators the shell would act on.
+  # heredoc bodies are DATA, not syntax. `masked_lines` (lib.sh) applies it and
+  # keeps the line numbers honest; read its comment before changing this.
   #
   # Ported without it, the rule was wrong in BOTH directions, and both were live
   # in this tree:
@@ -277,16 +255,17 @@ analyze() { # <abs path>   The report for one file, on stdout.
   #     it says a tree is clean.
   #   * FALSE NEGATIVE - the one-line function body is split on `;` to find its
   #     last command, and a QUOTED `;` earlier in the body took the split with
-  #     it. `.claude/tests/lib.test.sh` has exactly that shape - a real instance
+  #     it. `.claude/tests/lib.test.sh` had exactly that shape - a real instance
   #     of the defect this guard exists for - and it scored clean.
   #
-  # rules.md: a test that needs this answer asks for it, it does not reimplement
-  # it. The masker is pinned by .claude/tests/lib.test.sh; a private copy here
-  # would not be.
+  # THE MARKER IS READ FROM THE RAW FILE. The masker treats a comment body as
+  # data and masks the spaces inside it, so `# sigpipe-ok: reason` arrives as
+  # `#\006sigpipe-ok:\006reason` and a pattern written with [ \t] stops matching.
+  # A marker is a human annotation about the source as written; the mask is
+  # about what the shell would execute. Different questions, different inputs.
   local marks
-  marks="$(awk '/#[ 	]*sigpipe-ok:[ 	]*[^ 	]/ { printf "%s,", NR }' "$1" 2>/dev/null)"
-  mask_shell_quotes < "$1" 2>/dev/null | unfold \
-    | awk -v MARKS=",$marks" "$AWK_RULE" 2>/dev/null
+  marks="$(awk '/#[ \t]*sigpipe-ok:[ \t]*[^ \t]/ { printf "%s,", NR }' "$1" 2>/dev/null)"
+  masked_lines "$1" | awk -v MARKS=",$marks" "$AWK_RULE" 2>/dev/null
 }
 
 # has_line <report> <exact line>
@@ -296,11 +275,13 @@ has_line() {
 }
 
 # --- 1. enumerate, through classify.sh -----------------------------------------
+# harness_shell_files (lib.sh) - shared with check-grep-count.sh so the two
+# guards cannot disagree about what the population is.
 FILES=()
 while IFS= read -r p; do
   [ -n "$p" ] || continue
-  case "$p" in *.sh) FILES+=("$p") ;; esac
-done <<< "$(bash "$ROOT/scripts/classify.sh" --list harness "$@" 2>/dev/null)"
+  FILES+=("$p")
+done <<< "$(harness_shell_files "$@")"
 
 SCANNED=${#FILES[@]}
 

@@ -510,6 +510,18 @@ assert_eq "C-3: the guard scans exactly the harness shell files classify.sh list
   "1" "$(count_prefix "$REAL_OUT" \
         "check-sigpipe: scanned $EXPECTED_FILES shell file(s), ")"
 
+# AND ZERO FINDINGS, which this suite did not assert until release 37. It
+# checked the file count and the pipefail count but never the finding count, so
+# a new instance in this tree would pass `bash scripts/selftest.sh` and be
+# caught only by the CI step - and that step is the one a consuming project has
+# to add by hand, because .github/workflows is project-owned. The guard failing
+# a PR was the whole point; a guard whose suite cannot fail is half of one.
+assert_eq "C-3: and the real tree has no findings at all" \
+  "0" "$(awk 'index($0, "check-sigpipe: scanned ") == 1 {
+                i = index($0, "pipefail, "); if (i == 0) next
+                print substr($0, i + 10) + 0; exit }' <<<"$REAL_OUT")"
+assert_eq "C-3: so the guard exits 0 against it" "0" "$GUARD_RC"
+
 # The pipefail count is asserted as a FLOOR rather than an equality, because
 # resolving it is the guard's own rule (it has to follow `source`) and an
 # independent instrument here would just be a second copy of that rule. The

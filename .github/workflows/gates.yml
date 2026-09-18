@@ -95,6 +95,15 @@ jobs:
       - name: Refuse pipefail SIGPIPE matchers
         run: bash scripts/check-sigpipe.sh
 
+      # The sibling guard: `grep -c` prints 0 AND exits 1 on no-match, so a
+      # fallback that PRINTS appends a second value and the caller gets "0\n0",
+      # which equals neither the count nor zero. `|| true` is correct and is not
+      # flagged. Same family as the step above - both produce a matcher that
+      # reports the opposite of the truth while every process in it exits
+      # cleanly - and here for the same reason: bash and git only.
+      - name: Refuse a printing grep -c fallback
+        run: bash scripts/check-grep-count.sh
+
       - name: Show configured gates
         run: bash scripts/gates.sh --list
 

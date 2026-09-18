@@ -209,11 +209,12 @@ jobs:
       - run: bash scripts/gates.sh
 YML
 run_doctor
-# check-sigpipe.sh joined the want-list in release 36, so this pair is no longer
-# complete - and that is the assertion, not an inconvenience. .github/workflows
-# is project-owned and a refresh cannot add the step, so doctor naming it is the
-# ONLY way a consuming project learns the guard is not running there.
-assert_contains "a pair missing the SIGPIPE guard is named" \
+# check-sigpipe.sh joined the want-list in release 36 and check-grep-count.sh in
+# 37, so this pair is no longer complete - and that is the assertion, not an
+# inconvenience. .github/workflows is project-owned and a refresh cannot add
+# the step, so doctor naming it is the ONLY way a consuming project learns a
+# guard is not running there.
+assert_contains "a set missing a guard is named" \
   "no workflow runs scripts/check-sigpipe.sh" "$out"
 assert_eq "and exits non-zero without it" 1 "$rc"
 
@@ -228,6 +229,7 @@ jobs:
       - run: bash scripts/selftest.sh
       - run: bash scripts/gates.sh
       - run: bash scripts/check-sigpipe.sh
+      - run: bash scripts/check-grep-count.sh
 YML
 run_doctor
 assert_contains "a complete set reports ok" "ok       ci" "$out"
