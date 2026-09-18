@@ -220,6 +220,35 @@ inspect.
   instrument reading it** - and the instrument is the side with no discipline
   pointed at it. A one-line `grep` standing between you and "is it green?" is
   load-bearing whether or not it looks it.
+- **A rule is probed against the tree it judges, not only against fixtures you
+  wrote.** The needle rule above asks what an assertion MATCHED. This asks what
+  it was POINTED AT, and it is the harder one to notice, because the suite is
+  green either way and the coverage number does not move.
+  A guard's probe corpus is written by whoever wrote the rule, from the same
+  reading of the problem, usually from the worked example in its own header. So
+  it encodes the same blind spot twice and agrees with itself: every assertion
+  passes while the rule cannot see the spelling the real tree actually uses.
+  Three in one round, in this repository, all in guards whose suites were green:
+  - `check-grep-count.sh` was probed with `y=$(grep -c …)` throughout, because
+    that is the shape its header explains. It could not see
+    `x="$(grep -c …)"` - which is how every real instance in the tree is
+    written - and the suite had nothing to say about it.
+  - the same guard could not see `cat f | grep -c x || printf 0`, judging `cat`
+    rather than the grep. A consuming project had wired it into CI where all
+    three uses are pipelines: the run was green and meant nothing.
+  - `check-sigpipe.sh` read a here-string as a heredoc opener and went blind
+    from that line to the end of the file - past line 108 of `plan.sh`, and in
+    18 of this tree's 38 harness shell files. Its census line kept reporting
+    the honest file count while the coverage behind it was partial.
+  None of the three was reachable from the fixtures. All three were found the
+  same way: **mutate a REAL line of the tree with `scripts/mutate.sh` and watch
+  whether the guard fires.** The first of them broke the phase lock, and the
+  probe found it in a guard that had nothing to do with the lock.
+  So a story that adds or changes a rule over the tree carries a probe against a
+  real line of that tree, named in `## Gate probes`, alongside its fixtures. The
+  fixtures say the rule is right about what you imagined; only this says it is
+  right about what is there. A fixture corpus that has never met the real tree
+  is a statement about your own understanding, and it is always green.
 - Do not weaken an assertion, add a `skip`, widen a tolerance, or delete a case
   to reach green. Any of these means going back to RED. The same applies to a
   gate: do not delete an `evidence` line, drop `--workspace`, or add
