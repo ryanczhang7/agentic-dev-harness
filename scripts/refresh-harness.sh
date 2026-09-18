@@ -149,6 +149,42 @@ current_version="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$PROJ/.claude/harne
 say "refresh-harness${DRY:+}$([ "$DRY" = 1 ] && printf ' (dry run)')"
 say "  from: $UP  (${upstream_version:-unstamped})"
 say "  into: $PROJ  (${current_version:-unstamped - predates versioning})"
+
+# --- is the source a RELEASE, or somebody's branch? --------------------------
+#
+# A CONSUMING PROJECT REFRESHED TO A FEATURE BRANCH AND STAMPED ITS VERSION.
+# This repository's clone was left checked out on `harness/masked-lines-traps`,
+# whose VERSION read 38 before any release 38 existed. The project read that,
+# concluded 38 had shipped, refreshed, and stamped a version no upstream release
+# carries - which is exactly the confusion the VERSION file exists to end, and
+# would have made its lib.sh report LOCAL on every future refresh.
+#
+# It had examined the ref carefully - diffed it, confirmed comment-only, re-ran
+# its checks against it - and never asked its STATUS. A ref can be fully
+# examined and still not be a release, so this asks the question for the reader
+# rather than leaving it to occur to them.
+#
+# Silent on the default branch, because a warning that always prints is not one.
+# Skipped entirely when no default branch can be identified: unable to tell is
+# not the same as "not a release", and this must not cry wolf at a project whose
+# upstream is laid out differently.
+src_branch=""; src_default=""
+if git -C "$UP" rev-parse --git-dir >/dev/null 2>&1; then
+  src_branch="$(git -C "$UP" symbolic-ref --short HEAD 2>/dev/null || true)"
+  for cand in "$(git -C "$UP" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')" main master; do
+    [ -n "$cand" ] || continue
+    git -C "$UP" rev-parse --verify --quiet "$cand" >/dev/null 2>&1 || continue
+    src_default="$cand"; break
+  done
+  if [ -n "$src_branch" ] && [ -n "$src_default" ] && [ "$src_branch" != "$src_default" ] \
+     && ! git -C "$UP" merge-base --is-ancestor HEAD "$src_default" 2>/dev/null; then
+    say "  NOTE  the source is on '$src_branch', which is not merged into '$src_default'."
+    say "        That is not a release: the version above names a tree no release"
+    say "        carries, and stamping it here makes your copy claim a version"
+    say "        that does not exist. Refresh from '$src_default' unless you mean"
+    say "        to vendor unreleased work."
+  fi
+fi
 say ""
 
 kept_any=0
@@ -180,8 +216,29 @@ kept_any=0
 # THE QUIET HALF IS THE POINT. A warning that prints for every replaced file is
 # not a warning, and a check that only tests the firing half is satisfied by
 # `echo`. Both halves are asserted in refresh.test.sh.
-local_changes=""
+# A SOURCE WITH NO PAST CANNOT ANSWER THIS. The question is whether a blob has
+# EVER been upstream's, so it is asked of the object store and needs history,
+# not merely the current tree. Against a source built by `git archive` plus
+# `git init` - one commit - every file of ours that upstream shipped in an
+# EARLIER release matches nothing and is reported as a local edit. Measured by
+# a consuming project: five files named LOCAL where the truth was one, which
+# teaches the alarm to cry wolf at precisely the moment it is right about the
+# sixth.
+#
+# The branch below already refuses to read "not a git checkout" as clean. A
+# shallow or single-commit checkout passes `rev-parse --git-dir` and sails past
+# it, which is worse, because it produces a confident answer instead of an
+# admission.
+up_has_history=0
 if git -C "$UP" rev-parse --git-dir >/dev/null 2>&1; then
+  if [ "$(git -C "$UP" rev-parse --is-shallow-repository 2>/dev/null)" != "true" ] \
+     && [ "$(git -C "$UP" rev-list --count -n 2 HEAD 2>/dev/null || echo 0)" -ge 2 ]; then
+    up_has_history=1
+  fi
+fi
+
+local_changes=""
+if [ "$up_has_history" = 1 ]; then
   for d in agents commands skills hooks tests; do
     [ -d "$PROJ/.claude/$d" ] && [ -d "$UP/.claude/$d" ] || continue
     while IFS= read -r rel; do
@@ -192,6 +249,26 @@ if git -C "$UP" rev-parse --git-dir >/dev/null 2>&1; then
       git -C "$UP" cat-file -e "$h" 2>/dev/null && continue
       local_changes="$local_changes .claude/$d/$rel"
     done <<< "$(cd "$PROJ/.claude/$d" && find . -type f 2>/dev/null | sed 's|^\./||')"
+  done
+  # scripts/*.sh, WHERE THE PRODUCTION CODE IS. Omitted until release 39, and
+  # the omission was the dangerous half of H26 rather than a gap at its edge:
+  # `scripts/` is blanket REPLACED, so a project that fixed a harness DEFECT
+  # there had the fix overwritten with nothing said, while the alarm named the
+  # test file sitting beside it. A consuming project hit exactly that with its
+  # local fix to check-sigpipe.sh - the guard reported, the code did not.
+  #
+  # Subdirectories are deliberately not walked: `scripts/*.sh` is what the copy
+  # loop replaces, and a project's own `scripts/vitest/setup.ts` is untouched by
+  # it, so naming it here would be a warning about something that is not going
+  # to happen.
+  for p in "$PROJ"/scripts/*.sh; do
+    [ -f "$p" ] || continue
+    b="$(basename "$p")"
+    [ -f "$UP/scripts/$b" ] || continue            # yours alone: KEPT, not replaced
+    h="$(git -C "$PROJ" hash-object "scripts/$b" 2>/dev/null)" || continue
+    [ -n "$h" ] || continue
+    git -C "$UP" cat-file -e "$h" 2>/dev/null && continue
+    local_changes="$local_changes scripts/$b"
   done
   for f in .claude/harness/phases.conf .claude/harness/models.conf \
            .claude/harness/rules.md .claude/settings.json .claude/state/README.md; do
