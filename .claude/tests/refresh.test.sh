@@ -275,6 +275,112 @@ printf 'x\n' > "$WORK/half-b-full/.claude/hooks/phase-guard.sh"
 out="$(refresh --dry-run "$WORK/half-b-full")"
 assert_contains "an upstream with no history says it could not check" "could not check" "$out"
 
+
+# ---------------------------------------------------------------------------
+describe "LOCAL covers scripts/, where the production code lives"
+
+# The blind spot, reported by fantasy-world-builder mid-refresh. The LOCAL loop
+# walked .claude/{agents,commands,skills,hooks,tests} and five named
+# .claude/harness files. `scripts/*.sh` was blanket REPLACED with no check at
+# all - so a project that fixed a harness DEFECT in scripts/ had the fix
+# overwritten without ever being named, while the alarm cheerfully named the
+# test file beside it.
+#
+# That is the H26 case with the halves swapped: the test was reported and the
+# CODE was not. WORLD-090's production fix to check-sigpipe.sh was in exactly
+# that position when they noticed.
+new_project
+printf 'upstream sigpipe\n# a local fix to the GUARD, not to its test\n' \
+  > "$PROJ/scripts/check-sigpipe.sh"
+printf 'upstream sigpipe\n' > "$UP/scripts/check-sigpipe.sh"
+( cd "$UP" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "upstream ships the guard" >/dev/null 2>&1 )
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "a local fix in scripts" >/dev/null 2>&1 )
+
+out="$(refresh --dry-run "$UP")"
+assert_contains "a local fix under scripts/ is named before it is replaced" \
+  "scripts/check-sigpipe.sh" "$(printf '%s\n' "$out" | grep 'LOCAL' || true)"
+
+# The quiet half, same rule as above: a scripts/ file that merely matches
+# upstream must stay silent, or the check is a wall of text rather than a
+# warning.
+printf 'upstream sigpipe\n' > "$PROJ/scripts/check-sigpipe.sh"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "match upstream" >/dev/null 2>&1 )
+out="$(refresh --dry-run "$UP")"
+case "$(printf '%s\n' "$out" | grep 'LOCAL' || true)" in
+  *check-sigpipe*) _bad "while a scripts/ file matching upstream is silent" \
+                        "reported anyway: $out" ;;
+  *) _ok "while a scripts/ file matching upstream is silent" ;;
+esac
+
+# ---------------------------------------------------------------------------
+describe "LOCAL refuses to answer from a source with no usable history"
+
+# The check asks whether upstream's OBJECT STORE holds a blob matching ours. It
+# therefore needs upstream's HISTORY, not merely its current tree. Against a
+# source built by `git archive` + `git init` - one commit, no past - every file
+# of ours that upstream shipped in an EARLIER release matches nothing, and the
+# report becomes confident nonsense.
+#
+# Measured upstream: five files reported LOCAL where the truth was one.
+#
+# The existing `else` branch already refuses to read "not a git checkout at all"
+# as a clean result. A one-commit checkout passes `rev-parse --git-dir` and so
+# sails past it, which is the worse failure of the two: it answers.
+SHALLOW="$WORK/shallow-upstream"
+rm -rf "$SHALLOW"; mkdir -p "$SHALLOW"
+( cd "$UP" && git archive HEAD ) | ( cd "$SHALLOW" && tar -x )
+( cd "$SHALLOW" && git init -q . && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "one commit, no past" >/dev/null 2>&1 )
+
+new_project
+out="$(refresh --dry-run "$SHALLOW")"
+assert_contains "a source with a single commit says it could not check" \
+  "could not check" "$out"
+
+# And the control: the ordinary two-commit fixture still answers, so the guard
+# above cannot be satisfied by refusing to check everywhere.
+out="$(refresh --dry-run "$UP")"
+case "$out" in
+  *"could not check"*) _bad "while a source with real history still answers" \
+                            "refused to check against a normal upstream: $out" ;;
+  *) _ok "while a source with real history still answers" ;;
+esac
+
+# ---------------------------------------------------------------------------
+describe "the source ref is named when it is not a release"
+
+# The error this prevents, and it happened: this repository's clone was left
+# checked out on a FEATURE BRANCH whose VERSION said 38. A consuming project
+# read that, concluded release 38 had shipped, refreshed to it, and stamped a
+# version no upstream release carries - which is precisely the confusion the
+# VERSION file exists to end.
+#
+# It had examined the ref thoroughly - diffed it, confirmed comment-only, re-ran
+# its apply checks - and never asked its STATUS. A ref can be fully examined and
+# still not be a release, so the refresh says so rather than leaving it to the
+# reader to think of the question.
+( cd "$UP" && git checkout -q -b some-feature 2>/dev/null
+  printf '99\n' > "$UP/.claude/harness/VERSION"
+  git add -A >/dev/null 2>&1
+  git -c user.email=t@t -c user.name=t commit -qm "unreleased work" >/dev/null 2>&1 )
+
+new_project
+out="$(refresh --dry-run "$UP")"
+assert_contains "an unmerged source branch is named as unreleased" "not a release" "$out"
+assert_contains "and the branch is named, so it can be checked" "some-feature" "$out"
+
+# The control that stops this becoming a permanent banner: back on the default
+# branch it says nothing of the kind.
+( cd "$UP" && git checkout -q - 2>/dev/null )
+out="$(refresh --dry-run "$UP")"
+case "$out" in
+  *"not a release"*) _bad "while a source on its default branch is silent" \
+                          "warned anyway: $out" ;;
+  *) _ok "while a source on its default branch is silent" ;;
+esac
 # ---------------------------------------------------------------------------
 describe "the procedure belongs to the release being installed"
 
