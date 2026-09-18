@@ -160,6 +160,62 @@ run_guard "$FIX" scripts/probes/n_prose.sh
 assert_flagged "a quoted substitution inside single quotes is prose, not code" \
   "scripts/probes/n_prose.sh" ""
 
+
+# ---------------------------------------------------------------------------
+describe "a counting grep on the RIGHT of a pipe"
+
+# THE BLIND SPOT, reported by fantasy-world-builder against release 37 with this
+# corpus. The rule took the text back to the nearest `(`, `{`, `;` or `&` to
+# find the command being judged - and NOT back to a `|`. So in
+# `cat f | grep -c x || printf 0` the command it judged was `cat`, which is not
+# a counting grep, and the line was silent.
+#
+# THE PROBE CORPUS IS THEIRS, and it is better than the one I wrote: each line
+# differs from line 3 by exactly one thing, so a fix cannot be credited to the
+# wrong variable. Line 5 uses `echo` rather than `printf`, so it is not the
+# fallback word; line 9 carries a redirect, so it is not the redirect; line 7 is
+# the function-body form.
+#
+# LINE 6 IS THE ONE WORTH READING TWICE. `|| true` is correctly silent - but
+# before the fix it sat INSIDE the blind spot, so its silence was not evidence
+# of the rule working. After the fix it is silent because the rule looked and
+# approved, which is a different fact with the same appearance. That is why it
+# is asserted alongside the others rather than trusted on its own.
+#
+# WHY IT MATTERS RATHER THAN BEING AN EDGE CASE: they wired this guard into CI,
+# and all three `grep -c` uses in their tree are pipelines. A green run was
+# evidence of nothing.
+cat > "$FIX/scripts/probes/p_pipe.sh" <<'SH'
+#!/usr/bin/env bash
+set -uo pipefail
+a=$(grep -c foo bar || printf 0)
+b=$(cat bar | grep -c foo || printf 0)
+c=$(cat bar | grep -cE foo || echo 0)
+d=$(cat bar | grep -c foo || true)
+e() { cat bar | grep -c foo || printf 0; }
+f=$(grep -c foo bar 2>/dev/null || printf 0)
+g=$(cat bar | grep -c foo 2>/dev/null || printf 0)
+SH
+run_guard "$FIX" scripts/probes/p_pipe.sh
+
+assert_flagged "a counting grep is judged wherever it sits in the pipeline" \
+  "scripts/probes/p_pipe.sh" "3 4 5 7 8 9"
+
+assert_eq "the census counts them all" \
+  "1" "$(count_prefix "$GUARD_OUT" \
+        'check-grep-count: scanned 1 shell file(s), 6 finding(s)')"
+
+# A quoted `|` is still data, so the producer on the left must be real syntax
+# before the rule looks past it.
+cat > "$FIX/scripts/probes/n_pipeprose.sh" <<'SH'
+#!/usr/bin/env bash
+set -uo pipefail
+echo 'never write: cat f | grep -c x || printf 0'
+h=$(cat f | grep -c x || true)
+SH
+run_guard "$FIX" scripts/probes/n_pipeprose.sh
+assert_flagged "a pipeline inside quotes is prose, and || true beside it is silent" \
+  "scripts/probes/n_pipeprose.sh" ""
 # ---------------------------------------------------------------------------
 describe "AC-6: the escape hatch, and the reason it must carry"
 
