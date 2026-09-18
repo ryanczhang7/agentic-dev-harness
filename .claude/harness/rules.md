@@ -245,10 +245,21 @@ inspect.
   whether the guard fires.** The first of them broke the phase lock, and the
   probe found it in a guard that had nothing to do with the lock.
   So a story that adds or changes a rule over the tree carries a probe against a
-  real line of that tree, named in `## Gate probes`, alongside its fixtures. The
-  fixtures say the rule is right about what you imagined; only this says it is
-  right about what is there. A fixture corpus that has never met the real tree
-  is a statement about your own understanding, and it is always green.
+  real line of that tree, alongside its fixtures - recorded in `## Gate probes`,
+  or beside the deferred verification that owns it when the probe is a control
+  some later phase has to run. `check-boundaries.sh` validates both sections and
+  demands pasted output from either, so the choice is about which one owns the
+  result, not about how much evidence is required. Say which, rather than
+  letting the probe want to live in two places at once.
+  The fixtures say the rule is right about what you imagined; only this says it
+  is right about what is there. A fixture corpus that has never met the real
+  tree is a statement about your own understanding, and it is always green.
+  **This is law rather than a comment beside the mechanism for a measured
+  reason.** The warning about it was written into `lib.sh` in release 38, next
+  to the helper it was about - and its author then committed the same defect in
+  release 40, in the guard that note describes. Writing a caveat where the
+  mechanism lives does not make the next person check the right property, and
+  the next person includes whoever wrote the caveat.
 - Do not weaken an assertion, add a `skip`, widen a tolerance, or delete a case
   to reach green. Any of these means going back to RED. The same applies to a
   gate: do not delete an `evidence` line, drop `--workspace`, or add
