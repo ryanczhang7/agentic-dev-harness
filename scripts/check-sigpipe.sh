@@ -42,18 +42,31 @@
 # for the phase lock. Without it this guard reports its own test suite, whose
 # probe corpus is a stack of quoted heredocs.
 #
-# KNOWN GAP, recorded rather than left to be rediscovered. A one-line function
-# body is recognised by the line ENDING in `}`, so a trailing comment defeats it:
+# A COMMENT AFTER A BRACE DOES NOT HIDE THE FUNCTION. Structural recognition of
+# a function's braces - the one-line form `f() { ...; }`, the opener `f() {`, the
+# closer `}` - reads the CODE PART of the masked logical line, everything before
+# the `#` that begins a comment, and the one-line body is extracted from that
+# same text. Reading the whole line instead meant a trailing comment defeated all
+# three, and `f() { cmd | grep -q x; }   # anything at all` scored clean. That
+# was found by an assertion written against the shape, which "passed" because
+# nothing there was ever going to be reported - see code_part() for where a
+# comment begins, which is the masker's decision and not a private one.
 #
-#     f() { cmd | grep -q x; }   # anything at all
+# AND THE RAW LINE IS THE FALLBACK, which is why the three tests are disjunctions
+# rather than a plain strip. mask_shell_quotes drops the backslash of an escaped
+# `\#` outside quotes and emits a bare `#`, so in its output
 #
-# is not reported. The marker is unnecessary there because nothing was going to
-# be reported anyway, which is the dangerous part - an assertion written against
-# that shape passes while pinning nothing. Found exactly that way, by a C-11
-# assertion in .claude/tests/sigpipe.test.sh that had to be rewritten onto an
-# `if`. No instance of the shape exists in this tree; closing it means deciding
-# where an unquoted `#` begins a comment, which is its own rule and its own
-# tests, so it is a gap with a name rather than a silent one.
+#     k() { echo a \# b | grep -m1 c; }        reaches the rule as
+#     k() { echo a # b | grep -m1 c; }
+#
+# and the code part alone reads the body as `k() { echo a`. That shape IS
+# reported, and stripping unconditionally would trade it away for the one above -
+# a fix for one blind spot that opens another. Trying the code part first and the
+# whole line second reports both, and makes this a strict widening: every line
+# the comment-blind rule reported is still reported, from the identical body
+# text. The order cannot be reversed - a comment that ENDS in a brace,
+# `n() { cmd | head -1; }   # see {braces}`, makes the whole line look like a
+# one-line function whose body is the comment.
 #
 # ESCAPE HATCH. `# sigpipe-ok: <reason>` on the offending line, with a non-empty
 # reason. `# sigpipe-ok:` and `# sigpipe-ok` do not suppress - a hatch that does
@@ -89,6 +102,25 @@ NL='
 AWK_RULE="$(cat <<'AWKEOF'
 function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
 function bname(p,   n, a) { n = split(p, a, "/"); return a[n] }
+
+# code_part(s)  Everything before the `#` that begins a comment, or s when the
+# line carries no comment. WHERE A COMMENT BEGINS IS THE MASKER'S DECISION, not
+# a private quote parser: mask_shell_quotes has already mapped every separator
+# inside a quoted, escaped or heredoc span to a control character, so in its
+# output a `#` begins a comment exactly when it is at column 1 or is preceded by
+# one of space, tab, `;`, `&`, `|`, `(` - the same test the masker itself makes.
+# Measured on this tree: `echo "a # b"` masks to `echo "a\006#\006b"` and `$#`
+# and `${#v}` are untouched, so none of the three is read as a comment here.
+function code_part(s,   i, c, p) {
+  for (i = 1; i <= length(s); i++) {
+    c = substr(s, i, 1)
+    if (c != "#") continue
+    if (i == 1) return ""
+    p = substr(s, i - 1, 1)
+    if (index(" \t;&|(", p) > 0) return substr(s, 1, i - 1)
+  }
+  return s
+}
 
 # early_reader(s)  Does the text immediately after a `|` start a reader that can
 # leave before its input is drained? `head` always can. `grep` can when it is
@@ -183,9 +215,23 @@ END {
       if (tok != "") print "SRC " tok
     }
 
-    is_open    = (start == last) && (t ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*\(\)[ \t]*\{[ \t]*$/)
-    is_oneline = (start == last) && (t ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*\(\)[ \t]*\{.*\}[ \t]*$/)
-    is_close   = (line ~ /^\}[ \t]*$/)
+    # STRUCTURAL BRACE RECOGNITION READS THE CODE PART FIRST AND THE RAW LINE AS
+    # THE FALLBACK, in that order, and both halves are load-bearing (see the
+    # header). `onesrc` is the text the one-line body is then extracted from, so
+    # the fallback branch splits exactly what the comment-blind rule splits.
+    ct = trim(code_part(t))
+
+    is_open    = (start == last) &&
+                 ((ct ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*\(\)[ \t]*\{[ \t]*$/) ||
+                  (t  ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*\(\)[ \t]*\{[ \t]*$/))
+
+    is_oneline = 0; onesrc = ""
+    if (start == last) {
+      if      (ct ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*\(\)[ \t]*\{.*\}[ \t]*$/) { is_oneline = 1; onesrc = code_part(grp) }
+      else if (t  ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*\(\)[ \t]*\{.*\}[ \t]*$/) { is_oneline = 1; onesrc = grp }
+    }
+
+    is_close   = (code_part(line) ~ /^\}[ \t]*$/) || (line ~ /^\}[ \t]*$/)
 
     D = 0; hitline = 0
     for (k = start; k <= last; k++) {
@@ -215,7 +261,7 @@ END {
       else if (is_oneline) {
         # Bucket 2, one-line brace form: only the LAST command of the body
         # becomes the function's status.
-        body = substr(grp, index(grp, "{") + 1)
+        body = substr(onesrc, index(onesrc, "{") + 1)
         sub(/\}[ \t]*$/, "", body)
         n = split(body, seg, ";")
         tail = ""

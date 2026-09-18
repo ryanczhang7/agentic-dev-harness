@@ -53,6 +53,13 @@
 #         RULE. Each is checked for freshness first, so a drifted line number
 #         fails loudly instead of making the exclusion assertion vacuous.
 #   C-7   the guard cannot pass by matching nothing: every count is exact.
+#   WORLD-090  a comment after a function's brace - `f() { ...; }   # x`,
+#         `f() {   # x` and `}   # x` - no longer hides the body from the rule.
+#         Where a comment begins is the masker's answer, not a private one: a
+#         `#` inside quotes, after `$` or after `{` is not one. The marker pair
+#         (a reason / no reason) is asserted on the newly visible one-line
+#         form, in one file with an exact census, so AC-6 cannot go vacuous
+#         there again - which is how this gap was found in the first place.
 #
 #   AC-4 and AC-5 are NOT here. Both are in the story's ## Deferred
 #   verifications with owner GATES: AC-4 needs the guard to exist before the five
@@ -679,12 +686,17 @@ assert_eq "C-11: and the guard scanned the file it was reporting on" \
 # found in the folded stream carries the wrong number. Either way every marked
 # line in every consuming project silently starts reporting again.
 #
-# THE MARKER SITS ON AN `if`, NOT A ONE-LINE FUNCTION BODY, and that is not
-# cosmetic. `f() { cmd | grep -q x; }   # sigpipe-ok: ...` is NOT reported with
-# or without the marker: the is_oneline test requires the line to END in `}`,
-# and a trailing comment defeats it. Written that way this assertion passed
-# while pinning nothing - the needle matched for a reason it does not name.
-# That gap is real and is recorded in check-sigpipe.sh's header.
+# THE MARKER SITS ON AN `if`, and that is a choice rather than a leftover. What
+# this probe pins is the FOLD: a marker's line number, computed from the raw
+# file, has to survive the three continuations above it, and bucket 1 is the
+# shape with nothing else in the way - a failure here can only be the fold.
+# The marker on a one-line FUNCTION, `f() { cmd | grep -q x; }   # sigpipe-ok:
+# ...`, is pinned in the WORLD-090 block below instead, as a PAIR with the same
+# function carrying a reasonless marker. Until WORLD-090 that shape was invisible
+# to the rule with or without a marker - the one-line test required the line to
+# END in `}` - so this assertion, first written on it, passed while pinning
+# nothing. That is how the gap was found, and why the pair is the only honest
+# way to assert a marker on a shape the rule has only just learned to see.
 cat > "$Q11/scripts/probes/q_marked.sh" <<'SH'
 #!/usr/bin/env bash
 set -uo pipefail
@@ -699,6 +711,168 @@ run_guard "$Q11" scripts/probes/q_marked.sh
 # of the raw file reports 6 as well.
 assert_flagged "C-11: a marker after a continuation still suppresses its own line, and the unmarked line below it is still reported" \
   "scripts/probes/q_marked.sh" "7"
+
+# =============================================================================
+# WORLD-090 - A COMMENT AFTER A BRACE DOES NOT HIDE THE FUNCTION.
+#
+# The rule recognised a one-line function by the line ENDING in `}`, an opener
+# by the line ending in `{`, and a closer by the line BEING `}`. A comment after
+# the brace defeated all three:
+#
+#     g() { cat "$1" | grep -q x; }   # anything at all   -> not reported
+#     f() {   # anything at all                           -> body never entered
+#
+# The first is a genuine bucket-2 defect scored clean, and it was found by a
+# vacuous assertion: a marker probe written on that shape "passed" because
+# nothing was ever going to be reported there (see q_marked.sh above). The rule
+# now reads the CODE part of the masked line - everything before the `#` that
+# begins a comment - in the three structural brace tests and in the one-line
+# body extraction.
+#
+# WHERE A COMMENT BEGINS IS THE MASKER'S DECISION, not a private quote parser.
+# mask_shell_quotes has already turned every separator inside a quoted span into
+# a control character, so in its output a `#` is a comment exactly when it is
+# at column 1 or preceded by one of space, tab, `;`, `&`, `|`, `(`. The `#` in
+# `echo "a # b"` is preceded by \006 and is code; `$#` and `${#v}` are preceded
+# by `$` and `{` and are code. q_hash.sh pins those, with and without a real
+# comment behind them.
+#
+# THE STRIPPED READING IS PREFERRED AND THE RAW LINE IS THE FALLBACK, in that
+# order, and q_hash.sh carries one line for each half of that sentence:
+#   * `k() { echo a \# b | grep -m1 c; }` - an ESCAPED hash outside quotes. The
+#     masker drops the backslash and emits a bare `#`, so in its output this is
+#     indistinguishable from a comment, and a rule that strips unconditionally
+#     reads the body as `k() { echo a` and reports nothing. The guard as
+#     shipped REPORTS this line. It is asserted reported here as a
+#     no-regression control - the fallback to the raw line exists because of
+#     it, and this assertion is what keeps the fallback there.
+#   * `n() { cat "$1" | head -1; }   # see {braces}` - a comment that ENDS in
+#     a brace, so the raw line ends in `}` too. A rule that tried the raw line
+#     first would take the whole comment as the body, split it on a masked `;`
+#     and report nothing. Asserted reported, which only the stripped-first
+#     order delivers.
+#
+# q_trailing.sh is the story's C-8 table line for line, so the expected column
+# here is the measured column there. Every run is scoped to ONE file and asserts
+# the exact census, so no "not reported" below can be met by the file going
+# unscanned - a guard broken outright prints `0 finding(s)` and exits 0.
+# =============================================================================
+describe "WORLD-090: a one-line function whose line ends in a comment is still a one-line function"
+
+# Lines 3-9 are C-8's lines 3-9. FLAG: 3, 4 (commentless controls, reported
+# before and after), 5 (the miss this story closes), 8 (a marker with no reason
+# on the same shape - the pair that makes line 7 mean something).
+# NOT: 6 (cut drains, comment or no comment), 7 (marker with a reason), 9 (the
+# shape as TEXT in a comment - the masker holding, not new code).
+cat > "$Q11/scripts/probes/q_trailing.sh" <<'SH'
+#!/usr/bin/env bash
+set -uo pipefail
+f_quoted_semi() { cat "$1" | grep -qE '[a;b]'; }
+f_plain()       { cat "$1" | grep -qE '[ab]'; }
+g()             { cat "$1" | grep -q x; }   # trailing cmt
+h()             { cat "$1" | cut -f1; }     # trailing cmt
+marked()        { cat "$1" | grep -q x; }   # sigpipe-ok: reviewed, the writer emits one record
+nomark()        { cat "$1" | grep -q x; }   # sigpipe-ok:
+# a comment that names cat x | grep -q y as text
+SH
+run_guard "$Q11" scripts/probes/q_trailing.sh
+
+assert_flagged "WORLD-090 AC-1: a one-line function whose line ends in a comment is reported beside the commentless forms; its draining twin, the marker with a reason, and the shape as comment text are not" \
+  "scripts/probes/q_trailing.sh" "3 4 5 8"
+
+# AC-1's "same message and line number": the whole finding line, anchored.
+assert_eq "WORLD-090 AC-1: and the finding carries the same message as the commentless form, on the function's own line" \
+  "1" "$(count_prefix "$GUARD_OUT" \
+        'scripts/probes/q_trailing.sh:5: pipeline into an early-exit reader under pipefail; the writer can be killed by SIGPIPE and 141 becomes the status this line is judged by')"
+
+# AC-2's pair. Line 7 unreported proves nothing on its own - it was unreported
+# before this story too, for the wrong reason. Line 8 REPORTED is what shows the
+# marker on line 7 is doing the suppressing.
+assert_eq "WORLD-090 AC-2: a marker with NO reason on the newly visible one-line form is reported - the pair that makes the marked line beside it mean something" \
+  "1" "$(count_prefix "$GUARD_OUT" 'scripts/probes/q_trailing.sh:8:')"
+
+assert_eq "WORLD-090 C-8: the census is exact - one file scanned, four findings, so neither absence above is an unscanned file" \
+  "1" "$(count_prefix "$GUARD_OUT" \
+        'check-sigpipe: scanned 1 shell file(s), 1 with pipefail, 4 finding(s)')"
+
+describe "WORLD-090: where a comment begins is the masker's answer - a hash in quotes, after \$ or after { is code"
+
+# FLAG: 4 (a quoted `#`, no comment - reported before and after, the control
+# that a comment stripper reading raw `#` cannot pass), 5, 6, 7, 8 (the same
+# with a genuine comment behind each), 9 (the escaped hash - reported by the
+# guard as shipped, lost by an unconditional strip: the fallback's control),
+# 11 (a comment ending in a brace: the stripped-first order's control).
+# NOT: 3 (cut drains, no comment - AC-1's "with and without" control, paired
+# with q_trailing.sh:6), 10 (the escaped hash's draining twin).
+cat > "$Q11/scripts/probes/q_hash.sh" <<'SH'
+#!/usr/bin/env bash
+set -uo pipefail
+h_plain()       { cat "$1" | cut -f1; }
+quoted_hash()   { echo "a # b" | grep -q c; }
+quoted_hash_c() { echo "a # b" | grep -q c; }   # trailing cmt
+argc()          { echo $# | grep -q 1; }        # trailing cmt
+lenv()          { echo ${#v} | grep -q 1; }     # trailing cmt
+sq_hash()       { echo 'a # b' | grep -q c; }   # trailing cmt
+k()             { echo a \# b | grep -m1 c; }
+m()             { echo a \# b | cut -f1; }
+n()             { cat "$1" | head -1; }   # see {braces}
+SH
+run_guard "$Q11" scripts/probes/q_hash.sh
+
+assert_flagged "WORLD-090 C-3: a hash inside double quotes, inside single quotes, after \$ or after { does not begin a comment, with and without a real comment behind it; the draining one-liner beside them is not reported" \
+  "scripts/probes/q_hash.sh" "4 5 6 7 8 9 11"
+
+# The no-regression control on its own, so that a strip with no fallback - the
+# first prototype, and the obvious implementation - fails by name.
+assert_eq "WORLD-090 C-4: an escaped hash outside quotes, which the masker cannot tell from a comment, is still reported - the raw-line fallback holds" \
+  "1" "$(count_prefix "$GUARD_OUT" 'scripts/probes/q_hash.sh:9:')"
+
+# The order on its own: a comment ending in a brace makes the raw line end in
+# `}`; only stripped-before-raw reports the function under it.
+assert_eq "WORLD-090 C-4: a comment that ends in a brace does not become the function's body - the stripped reading is tried before the raw one" \
+  "1" "$(count_prefix "$GUARD_OUT" 'scripts/probes/q_hash.sh:11:')"
+
+assert_eq "WORLD-090 C-3: the census is exact - one file scanned, seven findings" \
+  "1" "$(count_prefix "$GUARD_OUT" \
+        'check-sigpipe: scanned 1 shell file(s), 1 with pipefail, 7 finding(s)')"
+
+describe "WORLD-090: a multi-line function whose opening or closing brace carries a comment is still entered and left"
+
+# C-2 items 2 and 3. FLAG: 6 (opener carries a comment), 11 (closer carries a
+# comment - without which the body is never closed, and the NEXT function's
+# opener discards this one's last command), 20 (plain, the in-file positive).
+# NOT: 16 (both braces commented, grep -c drains).
+cat > "$Q11/scripts/probes/q_opener.sh" <<'SH'
+#!/usr/bin/env bash
+set -uo pipefail
+
+opener_cmt() {   # the opening brace carries a comment
+  local body="$1"
+  printf '%s\n' "$body" | grep -qE 'fence'
+}
+
+closer_cmt() {
+  local body="$1"
+  printf '%s\n' "$body" | grep -qE 'fence'
+}   # the closing brace carries a comment
+
+drains_cmt() {   # the opening brace carries a comment
+  local body="$1"
+  printf '%s\n' "$body" | grep -cE 'fence'
+}   # and so does the closing one
+
+plain_ml() {
+  printf '%s\n' "$1" | grep -qE 'fence'
+}
+SH
+run_guard "$Q11" scripts/probes/q_opener.sh
+
+assert_flagged "WORLD-090 C-2: a comment after an opening brace or a closing brace does not hide a multi-line function's last-command pipeline, and its draining twin is not reported" \
+  "scripts/probes/q_opener.sh" "6 11 20"
+
+assert_eq "WORLD-090 C-2: the census is exact - one file scanned, three findings" \
+  "1" "$(count_prefix "$GUARD_OUT" \
+        'check-sigpipe: scanned 1 shell file(s), 1 with pipefail, 3 finding(s)')"
 
 rm -rf "$Q11"
 

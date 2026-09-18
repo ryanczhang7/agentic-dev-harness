@@ -168,7 +168,15 @@ function scan_line(s,   i, c, L, head) {
       # nearest opener or separator, so `x=$(grep -c p f || printf 0)` is
       # judged on `grep -c p f` rather than on `x=$(grep ...`.
       head = substr(s, 1, i - 1)
-      sub(/^.*[({;&]/, "", head)
+      # BACK TO THE NEAREST SEPARATOR, AND `|` IS ONE OF THEM. Without the `|`
+      # in this class the command judged in `cat f | grep -c x || printf 0` was
+      # `cat` - not a counting grep - so every pipeline form was silent. A
+      # consuming project wired this guard into CI where all three `grep -c`
+      # uses are pipelines, and a green run was evidence of nothing.
+      #
+      # A quoted `|` has already been masked to \001 by masked_lines, so only a
+      # real producer is stepped over.
+      sub(/^.*[({;&|]/, "", head)
       sub(/^.*\$\(/, "", head)
       if (is_count(head) && fallback_prints(substr(s, i + 2))) return i
       i++
