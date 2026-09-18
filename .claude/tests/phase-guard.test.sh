@@ -75,6 +75,36 @@ assert_blocked "$FIX" 'mv docs/notes.md src/main.ts'    src/main.ts 'mv onto sou
 assert_blocked "$FIX" 'rm src/main.ts'                  src/main.ts 'rm source'
 assert_blocked "$FIX" 'touch src/new.ts'                src/new.ts  'touch new source'
 
+# ---------------------------------------------------------------------------
+describe "RED: a here-string does not open a heredoc"
+
+# `<<<` is a HERE-STRING. It opens nothing, and the word after it is its data,
+# not a delimiter. mask_shell_quotes read the SECOND `<` of `<<<` as the start
+# of a heredoc - from there, `<< "$paths"` matches the opener pattern - and took
+# `$paths` for a delimiter. Every following line was then masked as heredoc
+# body, waiting for a line equal to `$paths` that never arrives.
+#
+# On a one-line command nothing was lost, because the false delimiter only takes
+# effect from the NEXT line. On a multi-line command it opened the lock: the
+# redirect below arrived as `\004` and the guard saw no write target at all.
+#
+# Found while building scripts/check-grep-count.sh, which reads source through
+# the same masker and was silently scanning a fraction of every file that uses
+# a here-string - `scripts/plan.sh` from line 108 on, and nineteen suites.
+assert_blocked "$FIX" 'grep x <<< "$data"
+echo hi > src/main.ts' src/main.ts 'a redirect on the line after a here-string'
+
+# The same shape with the here-string on the same line, which always worked -
+# so a fix that only handles the multi-line case cannot pass both.
+assert_blocked "$FIX" 'grep x <<< "$data" > src/main.ts' src/main.ts \
+  'a redirect after a here-string on one line'
+
+# And the control that keeps the fix honest: a REAL heredoc still opens one, so
+# its body is still data. `>` in the body is prose, not a redirect.
+assert_allowed "$FIX" 'cat > docs/notes.md <<'"'"'EOF'"'"'
+echo hi > src/main.ts
+EOF' 'a real heredoc body is still data, not syntax'
+
 # The one the misparse was hiding: the target is the file, not the sed script.
 assert_blocked "$FIX" "sed -i 's|a|b|' src/main.ts"     src/main.ts 'sed -i with | delimiter, writing source'
 assert_blocked "$FIX" "sed -i 's/a/b/' src/main.ts"     src/main.ts 'sed -i with / delimiter, writing source'

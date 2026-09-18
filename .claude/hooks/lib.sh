@@ -178,6 +178,22 @@ mask_shell_quotes() {
           }
           if (c == Q)    { out = out c; state = "single"; j++; continue }
           if (c == "\"") { out = out c; state = "double"; j++; continue }
+          # `<<<` is a HERE-STRING. It opens nothing: the word after it is its
+          # DATA, not a delimiter. This case must come first, because the
+          # scanner would otherwise walk on to the SECOND `<`, where the
+          # remaining text reads `<< WORD` - a perfect match for the heredoc
+          # opener below - and take the word belonging to the here-string as a delimiter.
+          # Every following line was then masked as heredoc body, waiting for a
+          # line equal to it that never arrives.
+          #
+          # One-line commands were unharmed, since the false delimiter only
+          # takes effect from the NEXT line, which is why this survived so long.
+          # A MULTI-LINE command opened the lock: `grep x <<< "$d"` on one line
+          # and `echo hi > src/main.ts` on the next left the guard with no write
+          # target at all. phase-guard.test.sh pins both, plus a real heredoc.
+          if (c == "<" && substr(s, j + 1, 1) == "<" && substr(s, j + 2, 1) == "<") {
+            out = out "<<<"; j += 3; continue
+          }
           if (c == "<" && substr(s, j + 1, 1) == "<") {
             rest = substr(s, j)
             if (match(rest, HD)) {
@@ -203,6 +219,52 @@ mask_shell_quotes() {
 
 unmask_shell_quotes() {
   tr '\001\002\003\004\005\006\007\010' '|&;>< \t\n'
+}
+
+# masked_lines <file>   The file's text with every operator inside a quoted,
+# escaped or heredoc span mapped to a control character - AND the newlines the
+# masker folds away put back, so line N of the output is line N of the file.
+#
+# THE SECOND HALF IS NOT OPTIONAL AND IS NOT OBVIOUS. mask_shell_quotes joins a
+# backslash-continued line, encoding the newline as \010 (its own operator set;
+# unmask_shell_quotes maps \010 back to a newline). Measured on this tree:
+# lib.test.sh is 405 lines and masks to 348 carrying 57 of them;
+# check-boundaries.sh, 570 to 526 with 44. masked + \010 == the original exactly,
+# so nothing is lost - but every line number after the first continuation is
+# wrong by the running total. A guard that REPORTS line numbers and masks
+# without this sends its reader to an innocent line, which is worse than saying
+# nothing. check-sigpipe.sh did exactly that for one commit.
+#
+# The BACKSLASH goes back too, not just the newline, so a caller folding logical
+# lines still sees the continuation marker.
+#
+# It lives here rather than in either guard because there are now two of them -
+# check-sigpipe.sh and check-grep-count.sh - and rules.md is explicit about what
+# happens to a rule that gets a private copy per caller.
+masked_lines() {
+  # A FILE ARGUMENT OR STDIN. check-grep-count.sh pre-processes the text
+  # before masking, so it needs the stream form.
+  if [ "$#" -gt 0 ]; then mask_shell_quotes < "$1" 2>/dev/null
+  else mask_shell_quotes 2>/dev/null
+  fi \
+    | awk '
+    BEGIN { BS = sprintf("%c", 92); H = sprintf("%c", 8) }
+    { n = split($0, p, H); out = p[1]
+      for (i = 2; i <= n; i++) out = out BS "\n" p[i]
+      print out }'
+}
+
+# harness_shell_files [pathspec...]   Every harness *.sh that classify.sh lists,
+# one per line, optionally narrowed to a pathspec.
+#
+# THROUGH classify.sh, not a private tree walk - rules.md, "a test that needs
+# this answer asks for it". classify enumerates through git, so a file written
+# five minutes ago and never committed is still returned and build output is
+# not. Note `.claude/tests/**` classifies as HARNESS, not test: a guard written
+# against the `test` category scans zero files and passes forever.
+harness_shell_files() {
+  bash "$CLAUDE_PROJECT_DIR/scripts/classify.sh" --list harness "$@" 2>/dev/null \
+    | awk '/\.sh$/ { print }'
 }
 
 # --- Variables in a command string ------------------------------------------

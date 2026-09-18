@@ -160,6 +160,38 @@ fi
 assert_eq "an escaped operator is masked" "0" \
   "$(mask 'echo a \> b' | grep -cE '>')"
 
+
+describe "mask_shell_quotes: a here-string opens nothing"
+
+# `<<<` is a HERE-STRING. The word after it is its DATA, and no heredoc body
+# follows. The scanner used to walk past the first `<` and reach the SECOND,
+# where the remaining text reads `<< WORD` - a perfect match for the heredoc
+# opener - and take that word for a delimiter. Every following line was then
+# masked as heredoc body, waiting for a line equal to it that never arrives.
+#
+# ONE-LINE COMMANDS WERE UNHARMED, which is why it survived: the false delimiter
+# only takes effect from the NEXT line. So the assertion that matters is the
+# multi-line one, and a fix tested only on one line would look correct.
+hs="$(mask "$(printf 'grep x <<< "$data"\necho hi > src/main.ts\n')")"
+assert_contains "a redirect on the line AFTER a here-string is still syntax" \
+  "> src/main.ts" "$hs"
+
+# The control that keeps it honest: a REAL heredoc still opens one, so the
+# redirect in its body is still data. A fix that simply stopped opening
+# heredocs would pass the assertion above and fail this.
+rhd="$(mask "$(printf 'cat > notes.md <<%sEOF%s\necho hi > src/main.ts\nEOF\n' "'" "'")")"
+if awk 'BEGIN { n = ARGV[1]; ARGV[1] = "" } index($0, n) { h = 1 } END { exit !h }' \
+     '> src/main.ts' <<<"$rhd"; then
+  _bad "a real heredoc body is still masked" "the body's redirect survived: $rhd"
+else
+  _ok "a real heredoc body is still masked"
+fi
+
+# And the here-string's own data is still data - the `>` here is a character in
+# a string, not a redirect.
+hsd="$(mask 'grep x <<< "a > b"')"
+assert_eq "the here-string word itself is still masked" "0" \
+  "$(printf '%s' "$hsd" | grep -cE '> b')"
 describe "mask_shell_quotes: a backslash inside double quotes is usually a backslash"
 
 # Bash escapes only five things inside double quotes: $ ` " \ and newline.
