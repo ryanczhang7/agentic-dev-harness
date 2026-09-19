@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-08
 **Scope:** `scripts/gates.sh`, `project.conf`, every stack profile
-**Origin:** `fantasy-world-builder` WORLD-001, the first real project on this
+**Origin:** a consuming project, WORLD-001, the first real project on this
 harness. Reported as a proposal; this file records what was found and what was
 decided, and supersedes that proposal.
 

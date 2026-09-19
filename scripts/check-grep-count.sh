@@ -21,7 +21,7 @@
 #     match    -> [2]      == 0 : FALSE
 #
 # A comparison against it cannot succeed in either direction. In
-# fantasy-world-builder this shape reached GREEN inside WORLD-084's own suite and
+# a consuming project this shape reached GREEN inside WORLD-084's own suite and
 # cost a return to RED: the two control assertions built on it could not pass,
 # and it was invisible during RED because the document did not exist yet, so the
 # counting path never ran.
@@ -55,7 +55,7 @@
 # left this open deliberately, so: separate, for two reasons that are not about
 # taste.
 #
-#   * That script is named for its mechanism, and fantasy-world-builder has just
+#   * That script is named for its mechanism, and a consuming project has just
 #     wired `scripts/check-sigpipe.sh` into its boundaries job and into doctor's
 #     want-list. Growing it a rule about `grep -c` makes the name a lie; renaming
 #     it churns a consuming project's CI for no gain.

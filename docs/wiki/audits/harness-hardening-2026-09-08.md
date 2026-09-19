@@ -4,7 +4,7 @@
 **Scope:** `scripts/{gates,check-boundaries,phase,new-story}.sh`,
 `.claude/hooks/lib.sh`, `rules.md`, `phases.conf`, the agent and command
 definitions, CI.
-**Origin:** `fantasy-world-builder` WORLD-001, the first real project on this
+**Origin:** a consuming project, WORLD-001, the first real project on this
 harness - a 15-criteria, ~90-file bootstrap story. Companion to
 `gate-liveness-2026-09-08.md`. Reported as a proposal; this file records what
 was found, what was decided, and where the decisions depart from the proposal.
