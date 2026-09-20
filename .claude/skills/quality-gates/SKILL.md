@@ -404,7 +404,7 @@ A gate's result used to be a boolean derived from an exit code, and there is a
 third state that is neither pass nor fail: **the environment would not let the
 gate start.** A required gate failed eight consecutive runs on one machine with
 
-    error: failed to run custom build command for `fantasy-world-builder v0.1.0`
+    error: failed to run custom build command for `the-project v0.1.0`
     Caused by: could not execute process `...build-script-build` (never executed)
     Caused by: An Application Control policy has blocked this file. (os error 4551)
 

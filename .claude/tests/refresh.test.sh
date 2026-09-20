@@ -279,7 +279,7 @@ assert_contains "an upstream with no history says it could not check" "could not
 # ---------------------------------------------------------------------------
 describe "LOCAL covers scripts/, where the production code lives"
 
-# The blind spot, reported by fantasy-world-builder mid-refresh. The LOCAL loop
+# The blind spot, reported by a consuming project mid-refresh. The LOCAL loop
 # walked .claude/{agents,commands,skills,hooks,tests} and five named
 # .claude/harness files. `scripts/*.sh` was blanket REPLACED with no check at
 # all - so a project that fixed a harness DEFECT in scripts/ had the fix

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for scripts/check-grep-count.sh - WORLD-088, filed by
-# fantasy-world-builder and built here so it arrives downstream vendored.
+# a consuming project and built here so it arrives downstream vendored.
 #
 # THE DEFECT. `grep -c` prints `0` AND exits 1 when nothing matches, so a `||`
 # fallback that PRINTS fires on exactly the case it was written for and appends
@@ -164,7 +164,7 @@ assert_flagged "a quoted substitution inside single quotes is prose, not code" \
 # ---------------------------------------------------------------------------
 describe "a counting grep on the RIGHT of a pipe"
 
-# THE BLIND SPOT, reported by fantasy-world-builder against release 37 with this
+# THE BLIND SPOT, reported by a consuming project against release 37 with this
 # corpus. The rule took the text back to the nearest `(`, `{`, `;` or `&` to
 # find the command being judged - and NOT back to a `|`. So in
 # `cat f | grep -c x || printf 0` the command it judged was `cat`, which is not

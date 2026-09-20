@@ -379,7 +379,7 @@ describe "BLOCKED: the environment would not let the gate run"
 # H16. A required gate failed eight consecutive runs on one machine with this,
 # and nothing about it was a test failure:
 #
-#   error: failed to run custom build command for `fantasy-world-builder v0.1.0`
+#   error: failed to run custom build command for `the-project v0.1.0`
 #   Caused by: could not execute process `...build-script-build` (never executed)
 #   Caused by: An Application Control policy has blocked this file. (os error 4551)
 #
