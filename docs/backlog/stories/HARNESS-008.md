@@ -277,3 +277,21 @@ instead of being told which are safe.
 the story was written rather than assumed from how worktrees are supposed to
 behave. If RED finds it wrong, that is the story failing early and cheaply,
 which is the point of taking it.
+
+**PO decision 1, taken at PLANNED→RED: no `project.conf` gate covers this
+story's artifact, and that is structural rather than a gap.**
+
+`bash scripts/gates.sh --list` at release 45 reports every gate
+`<unconfigured>`, because this repository is the harness template and
+`BOOTSTRAPPED=no`. `gates.sh` judges a PROJECT; this repository has none.
+
+The artifact is still verified, and by a required path: `.claude/tests/` is run
+by `scripts/selftest.sh`, which CI invokes as its own workflow step
+(`gates.yml:72`), and `selftest.sh` globs `.claude/tests/*.test.sh` - so
+`worktree.test.sh` is picked up with no wiring. A broken suite fails CI.
+
+So `required_gates` stays empty, and the admissibility question the advance
+procedure asks of `gates.sh --fast` is answered by `bash scripts/selftest.sh`
+here instead. Recorded because it applies to every story in this repository,
+not just this one, and because "no gate covers it" would otherwise read as a
+reason the story is not ready.
