@@ -293,4 +293,85 @@ plan write T-40 >/dev/null
 assert_eq "writing it again replaces rather than appends" 1 \
   "$(grep -c '^| RED ' "$FIX/docs/backlog/stories/T-40.md")"
 
+
+# ---------------------------------------------------------------------------
+describe "conflicts: which startable stories would fight over the same file"
+
+# WHAT THIS IS FOR. Running two stories at once needs two things to be true:
+# neither is blocked, and they do not write the same files. `depends_on` already
+# answers the first - `plan.sh next` returns `blocked` and the board shows it.
+# Nothing answered the second, so two ready stories could both be started and
+# the collision found at merge.
+#
+# The declared paths already exist: `## Contract` names the modules a story
+# touches, and contract_unenforced has been reading them since release 23 to
+# decide the RED model. This intersects them instead of re-deriving them.
+
+rm -rf "$FIX/docs/backlog/stories"; mkdir -p "$FIX/docs/backlog/stories"
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:`src/core/world.ts` exports buildWorld(seed: number): World.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+CONTRACT:`src/ui/panel.tsx` exports Panel().
+EOF
+out="$(plan conflicts)"
+assert_contains "two stories touching different files are reported clear" \
+  "A + B" "$out"
+case "$out" in
+  *CONFLICT*) _bad "and not as a conflict" "reported a conflict: $out" ;;
+  *) _ok "and not as a conflict" ;;
+esac
+
+# The case it exists for.
+rm -rf "$FIX/docs/backlog/stories"; mkdir -p "$FIX/docs/backlog/stories"
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:`src/core/world.ts` exports buildWorld(seed: number): World.
+EOF
+story_with B feature RED 1 <<'EOF'
+CONTRACT:`src/core/world.ts` gains clampLatitude(deg: number): number.
+EOF
+out="$(plan conflicts)"
+assert_contains "two stories declaring the same path are named as a conflict" \
+  "CONFLICT" "$out"
+assert_contains "and the shared path is named, so it can be checked" \
+  "src/core/world.ts" "$out"
+assert_eq "and it exits non-zero when there is one" "1" "$( ( cd "$FIX" && bash scripts/plan.sh conflicts >/dev/null 2>&1 ); printf '%s' "$?" )"
+
+# A STORY THAT DECLARES NOTHING CANNOT BE JUDGED, and must not read as clear.
+# This is the real-tree case: all five stories in this repository's own backlog
+# are PLANNED with an empty Contract, because the contract is written before
+# RED. A guard that called that "no conflicts" would be answering a question it
+# had no information about - the same failure as refresh-harness.sh reporting
+# LOCAL from a source with no history.
+rm -rf "$FIX/docs/backlog/stories"; mkdir -p "$FIX/docs/backlog/stories"
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:`src/core/world.ts` exports buildWorld(seed: number): World.
+EOF
+story_with B feature PLANNED 1 </dev/null
+out="$(plan conflicts)"
+assert_contains "a story declaring no paths is reported as unjudgeable" \
+  "UNKNOWN" "$out"
+# ANCHORED ON THE ROW'S STATUS COLUMN, not on the absence of the word "clear"
+# anywhere in the output. Written the floating way first, it matched the footer
+# sentence "UNKNOWN is not clear:" - the line that exists to say the opposite -
+# and reported the code broken. rules.md: prefer a needle whose negation is not
+# also a match.
+assert_eq "and never as clear" "UNKNOWN" \
+  "$(awk '$2 == "A" && $3 == "+" && $4 == "B" { print $1; exit }' <<<"$out")"
+
+# Blocked and DONE stories are not candidates: one cannot start, the other is
+# finished. Without this the report is noise proportional to backlog size.
+rm -rf "$FIX/docs/backlog/stories"; mkdir -p "$FIX/docs/backlog/stories"
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:`src/core/world.ts` exports buildWorld(seed: number): World.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+DEPENDS:A
+CONTRACT:`src/core/world.ts` also changes buildWorld.
+EOF
+out="$(plan conflicts)"
+case "$out" in
+  *CONFLICT*) _bad "a blocked story is not a conflict candidate" "reported anyway: $out" ;;
+  *) _ok "a blocked story is not a conflict candidate" ;;
+esac
 summary "plan"

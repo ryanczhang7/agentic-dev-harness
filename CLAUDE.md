@@ -102,6 +102,7 @@ bash scripts/check-grep-count.sh # refuse a printing `grep -c` fallback
 bash scripts/ci-local.sh         # every step CI runs, in order, on this machine
 bash scripts/plan.sh ID          advance-story or complete-story, and why
 bash scripts/plan.sh write ID    put the per-phase model plan in the story
+bash scripts/plan.sh conflicts   which startable stories share a declared file
 bash scripts/classify.sh --list source src   # what the lock thinks a path is
 bash scripts/refresh-harness.sh ../agentic-dev-harness  # pull a newer harness in
 bash scripts/task.sh dev         # run the app
