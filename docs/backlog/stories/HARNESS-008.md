@@ -147,38 +147,26 @@ backlog that exists.
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-008` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `opus` | planning is the judgement phase: decomposition, the oracle partition, and what goes in the contract |
+| RED | `test-developer` | `fable` | the measured case. With a partitioned contract to work from, the brief carries the judgement and the weaker model writes sharper negative controls than the stronger one did without it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `opus` | reading review feedback against the contract is judgement, and a wrong call here ships |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation, with no failing test in front of any of it |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 - **HARNESS-009**, the orchestrator dispatching into these worktrees. This story
