@@ -35,6 +35,7 @@ story_file() {
   printf '%s' "$f"
 }
 
+
 # section <file> <heading-prefix>   Body of "## <prefix>..." up to the next "## ".
 section() {
   awk -v h="## $2" 'index($0, h) == 1 { on=1; next } on && /^## / { exit } on { print }' "$1"
@@ -93,10 +94,30 @@ field() { printf '%s' "$1" | awk -F'|' -v n="$2" '{ gsub(/^[[:space:]]+|[[:space
 #
 # One source path is enough for the lock to bite, so this needs ALL of them:
 # otherwise every story that touches a helper script would trip it.
+# contract_paths <file>   The paths a story's `## Contract` declares, one per
+# line, sorted and unique. Empty when it declares none.
+#
+# FACTORED OUT RATHER THAN COPIED. contract_unenforced has read these since
+# release 23 to decide the RED model, and cmd_conflicts now reads the same list
+# to decide whether two stories would fight. rules.md: a test that needs this
+# answer asks for it. Two extractors would eventually disagree about what a
+# story touches, and the one that mattered would be whichever ran last.
+#
+# strip_comments FIRST, and it is load-bearing. The story TEMPLATE explains
+# test-only dependencies using `go.mod`, `requirements.txt` and `*.csproj` as
+# examples, inside an HTML comment. Read without stripping, every story in a
+# fresh backlog declares those three paths and every pair collides. Measured on
+# this repository's own five stories: all five "declared" go.mod and
+# requirements.txt, and all five actually declare nothing.
+contract_paths() { # <file>
+  section "$1" "Contract" | strip_comments \
+    | grep -oE '\.claude/[A-Za-z0-9_./-]+|[A-Za-z0-9_][A-Za-z0-9_./-]*\.[A-Za-z0-9]+' \
+    | sort -u
+}
+
 contract_unenforced() { # <file>
   local paths p found=0 enforced=0
-  paths="$(section "$1" "Contract" | strip_comments \
-    | grep -oE '\.claude/[A-Za-z0-9_./-]+|[A-Za-z0-9_][A-Za-z0-9_./-]*\.[A-Za-z0-9]+' | sort -u)"
+  paths="$(contract_paths "$1")"
   [ -n "$paths" ] || return 1
   while IFS= read -r p; do
     [ -n "$p" ] || continue
@@ -273,10 +294,87 @@ cmd_write() {
   printf 'wrote the model plan into %s\n' "docs/backlog/stories/$id.md"
 }
 
+
+# cmd_conflicts   Which startable stories would fight over the same file.
+#
+# RUNNING TWO STORIES AT ONCE NEEDS TWO THINGS TO BE TRUE: neither is blocked,
+# and they do not write the same files. `depends_on` has always answered the
+# first - `cmd_next` returns `blocked` and the board shows it. Nothing answered
+# the second, so two ready stories could both be started and the collision found
+# at merge, after both had gone green separately.
+#
+# THREE DISPOSITIONS, and the third is the point:
+#   CONFLICT  both declare a path, and they share one. Named, with the path.
+#   clear     both declare paths, and none is shared.
+#   UNKNOWN   at least one declares nothing, so there is no basis to judge.
+#
+# UNKNOWN IS NOT CLEAR. A `## Contract` is written before RED, so every story in
+# a backlog that has not started yet declares nothing - all five in this
+# repository, today. Calling that "no conflicts" would be answering a question
+# with no information, which is the failure refresh-harness.sh has a branch for
+# and check-sigpipe.sh has a census line for.
+#
+# IT EXITS NON-ZERO ONLY ON CONFLICT. Unknown is the ordinary state of a fresh
+# backlog, and a command that fails every time is one nobody runs.
+cmd_conflicts() {
+  local files=() ids=() f id ph nxt
+  for f in "$STORIES"/*.md; do
+    [ -e "$f" ] || continue
+    id="$(frontmatter_value "$f" id)"
+    [ -n "$id" ] || continue
+    ph="$(frontmatter_value "$f" phase)"
+    [ "$ph" = DONE ] && continue
+    nxt="$(cmd_next "$id" 2>/dev/null | cut -f1)"
+    [ "$nxt" = blocked ] && continue
+    ids+=("$id"); files+=("$f")
+  done
+
+  local n=${#ids[@]}
+  if [ "$n" -lt 2 ]; then
+    printf 'fewer than two startable stories; nothing to compare\n'
+    return 0
+  fi
+
+  local i j pa pb shared conflicts=0 unknowns=0
+  printf '%-9s %-25s %s\n' STATUS PAIR DETAIL
+  printf '%-9s %-25s %s\n' --------- ------------------------- ------------------------
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    j=$((i + 1))
+    while [ "$j" -lt "$n" ]; do
+      pa="$(contract_paths "${files[$i]}")"
+      pb="$(contract_paths "${files[$j]}")"
+      if [ -z "$pa" ] || [ -z "$pb" ]; then
+        printf '%-9s %-25s %s\n' UNKNOWN "${ids[$i]} + ${ids[$j]}" \
+          "no Contract paths declared yet - cannot judge"
+        unknowns=$((unknowns + 1))
+      else
+        # One awk over a here-string: no pipe into an early-exit reader, and
+        # nothing here reads the status of one. WORLD-086's house rule.
+        shared="$(awk -v other="$pb" '
+          BEGIN { n = split(other, o, "\n"); for (k = 1; k <= n; k++) if (o[k] != "") a[o[k]] = 1 }
+          ($0 in a) { print }' <<<"$pa" | tr '\n' ' ')"
+        if [ -n "${shared// /}" ]; then
+          printf '%-9s %-25s %s\n' CONFLICT "${ids[$i]} + ${ids[$j]}" "$shared"
+          conflicts=$((conflicts + 1))
+        else
+          printf '%-9s %-25s %s\n' clear "${ids[$i]} + ${ids[$j]}" "no shared path"
+        fi
+      fi
+      j=$((j + 1))
+    done
+    i=$((i + 1))
+  done
+
+  printf '\n%d conflict(s), %d pair(s) that could not be judged.\n' "$conflicts" "$unknowns"
+  [ "$unknowns" -gt 0 ] && printf 'UNKNOWN is not clear: a Contract is written before RED, so a story that has\nnot started declares nothing. Judge those pairs by hand or write the contract.\n'
+  [ "$conflicts" -eq 0 ]
+}
 case "${1:-}" in
   models) [ -n "${2:-}" ] || die "usage: plan.sh models <story-id>"; cmd_models "$2" ;;
   write)  [ -n "${2:-}" ] || die "usage: plan.sh write <story-id>";  cmd_write "$2" ;;
   next)   [ -n "${2:-}" ] || die "usage: plan.sh next <story-id>";   cmd_next "$2" ;;
+  conflicts) cmd_conflicts ;;
   -h|--help|"") sed -n '3,6p' "$0" | sed 's/^# \{0,1\}//' ;;
   *)      cmd_both "$1" ;;
 esac
