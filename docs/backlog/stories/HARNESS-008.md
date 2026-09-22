@@ -1093,9 +1093,9 @@ in-flight run's own restore is in the log at `20260922T185258Z`, `restored
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-09-22T20:48:29Z
-    commit: 7215b22 (working tree had uncommitted changes)
-    tree:   c414aa7cded3f9f401def9ba8f607dd44c7c2db8
+    run:    2026-09-22T22:33:10Z
+    commit: 00e17c5
+    tree:   1f0730a6c0cde981e7277504b4daadf9cf5eaa15
     result: pass (0 ran, 8 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1770,3 +1770,77 @@ discards `missing`. The fixture configures a gate and so never reaches that
 path. Both suites green, fixture and tree disagreeing - the exact shape release
 41 exists for. It does not fail AC-4, which says nothing about exit status, and
 it is PO-H's pre-existing defect confirmed by running rather than by reading.
+
+### REVIEW, 2026-09-22 - the first CI run failed, and it found a harness defect
+
+**PO-M. `check-boundaries.sh` passed locally and the identical commit failed on
+CI. The local instrument was wrong, not CI.**
+
+PR #76's `boundaries` job, against commit `00e17c5`:
+
+    ok    recorded gate result: pass (0 ran, 8 unconfigured, 0 known)
+    FAIL  story HARNESS-008: gates were recorded against tree
+          'c414aa7cded3f9f401def9ba8f607dd44c7c2db8' but commit 00e17c5 is
+          '1f0730a6c0cde981e7277504b4daadf9cf5eaa15'. Source, test or config
+          changed after the last full gate run; run 'bash scripts/gates.sh'
+          again and commit the result.
+
+Nothing had changed after the gate run. The message's diagnosis is wrong for
+this case, and the real cause is in the instrument:
+
+**`gate_tree_hash()` hashes UNTRACKED files.** It seeds an index from HEAD and
+then runs `git add -A .`, so anything sitting in the working tree is folded into
+the hash whether or not it is committed. `gate_tree_hash_of <sha>` on CI reads a
+commit, which by construction has none. So the two disagree by exactly the
+untracked, GATED files present when `gates.sh` ran.
+
+This checkout had three untracked entries, left from an unrelated field report:
+
+    agentic-dev-harness-brief.md              docs    - not gated
+    harness-feedback-world-080.md             docs    - not gated
+    handoff-world-080/README.md               docs    - not gated
+    handoff-world-080/part-phase-guard.sh.patch          source  - GATED
+    handoff-world-080/part-_lib.sh.patch                 source  - GATED
+    handoff-world-080/world-080-phase-guard-sed-inplace.patch  source - GATED
+    handoff-world-080/part-phase-guard.test.sh.patch     test    - GATED
+
+Four gated files, none of them in any commit. `.patch` matches no rule in
+`paths.conf`, so it falls through to the `source` default - correctly, for a
+file about to be authored, and unhelpfully for a patch file parked in the root.
+
+**Proof, rather than inference.** The three entries were moved aside, `gates.sh`
+re-run against the now-clean tree, and the recorded hash came back as
+
+    tree:   1f0730a6c0cde981e7277504b4daadf9cf5eaa15
+
+which is byte-for-byte the value CI computed from `00e17c5`. The files were then
+restored. One variable changed and the hashes converged on CI's answer.
+
+**Why this matters beyond this story.** The local run is the check a developer
+uses to know a PR will pass before opening it - `ci-local.sh` exists for exactly
+that - and here it said yes while CI said no, on the same commit, with no code
+difference. The failure is silent and directional: untracked gated files can
+only make the local hash MORE permissive, never less, so the local check passes
+and CI fails. Anyone with a scratch `.py`, `.ts` or `.patch` in their tree hits
+it, and the error message sends them looking for a source change that does not
+exist.
+
+**Not fixed here.** It is `gate_tree_hash()` in `.claude/hooks/lib.sh`, used by
+`gates.sh` and `check-boundaries.sh`, and changing what it hashes changes every
+recorded gate result's meaning. No criterion of this story touches it. It wants
+its own story, with a decision about which of these it should be: ignore
+untracked files entirely (matching CI), or refuse to record a gate run while
+untracked gated files are present (louder, and arguably more honest, since a
+developer with uncommitted source in the tree has not gated what they are about
+to merge either).
+
+**What was done about it here, and what was deliberately not.** The three
+entries are the user's, so they were not deleted and not added to `.gitignore` -
+that would be a permanent repository decision about transient handoff artifacts.
+They were parked, the gates re-run to record a hash describing the commit rather
+than the working tree, and then restored to their original paths and contents.
+
+A consequence worth stating plainly: with those files back, a LOCAL
+`check-boundaries.sh` now reports the mismatch in the other direction, because
+the working tree again contains four gated files the commit does not. CI is the
+authority here, and CI is the machine whose answer the record now matches.
