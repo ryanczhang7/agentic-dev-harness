@@ -148,7 +148,57 @@ REVIEW also confirms the shipped section does not repeat the error
 reads. It reads `## Contract` paths. A section that gets this wrong
 satisfies the criterion's words and misdirects every reader of it.
 
-**Result:** <!-- filled at REVIEW -->
+**Result (REVIEW, 2026-09-22): PASSED, with one thing considered and left out.**
+
+Read against the shipped `CLAUDE.md` section `## Two stories at once`, placed
+after `## Phase lock`.
+
+**The three things AC-6 requires are present.**
+
+  * *How to create one per story* — the `git worktree add ../adh-WORLD-015 -b
+    story/WORLD-015-slug` line, with `doctor.sh` named beside it as the thing
+    that says which worktree you are in. The `WORLD-0NN` id is not this
+    repository's numbering; it is the convention `CLAUDE.md` already uses in the
+    `## Phase lock` block immediately above (`bash scripts/plan.sh WORLD-014`),
+    so it is consistent rather than stray. Checked, not assumed.
+  * *Consult `plan.sh conflicts` before choosing the second story* — its own
+    fenced block, under a heading that says when to run it.
+  * *The answer is only as good as the declarations it reads* — stated, and
+    stated in the NEGATIVE as well: "It reads the paths in each story's
+    `## Contract` section — not the `touches:` frontmatter, which it does not
+    read at all." This is the point `## Amendments` A-1 corrected, and the
+    negative form is deliberate so that a future skim cannot reintroduce it.
+
+**The question this entry exists to ask is answered.** "What to do when
+`plan.sh conflicts` says UNKNOWN, which is most of the time" gets its own
+paragraph, which says why UNKNOWN is the ordinary state of a fresh backlog
+rather than a fault, gives two concrete moves (write the contracts, or judge by
+hand treating a shared script as a conflict until both are read), and closes
+with "Never read `UNKNOWN` as permission" plus the reason the command exits 0
+on it. A reader who hits UNKNOWN is not left guessing.
+
+**Both factual claims in the section were executed before being written**, and
+the evidence is in `## Notes` under PO-J: the `git worktree add` invocation with
+the option after the path (valid, but not the order `git worktree --help` shows
+first) exited 0 on this checkout and was then removed and pruned; and
+`plan.sh conflicts` with 20 UNKNOWNs and 0 conflicts exits 0, confirming the
+"exits non-zero only on a real `CONFLICT`" sentence. A command in `CLAUDE.md` is
+read as instruction by every future agent.
+
+**Considered and deliberately left out: the PO-H exit-status caveat.** The
+section says `doctor.sh` reports whether the releases match. On an
+unbootstrapped project it reports that and still exits 0, which the GATES
+real-tree probe measured. It is not mentioned here because it is a property of
+`doctor.sh`'s early-exit path rather than of the worktree workflow, it applies
+equally to the CI block that has had the same hole for longer, and PO-H owns it
+as its own story. Putting it in `CLAUDE.md` would document a defect in the file
+that is supposed to stay short, instead of fixing it.
+
+**One limitation worth stating rather than hiding.** Nothing asserts this
+section's content — `refresh.test.sh` uses its own fixtures and `lib.test.sh`
+only checks that `CLAUDE.md` classifies as `harness`. This reading is the only
+verification AC-6 has, which is exactly why it was declared as a deferred
+verification at PLANNED rather than left to a test that does not exist.
 
 **AC-2 against a REAL pair of stories. Owner: GATES.**
 
