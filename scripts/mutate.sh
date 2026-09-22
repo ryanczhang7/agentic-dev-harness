@@ -141,8 +141,31 @@ cp "$NEW" "$FILE" || { cp "$BAK" "$FILE"; die "cannot write $REL"; }
 # From here on the file is mutated, so every exit path restores. The trap covers
 # the abnormal ones - an interrupt, a signal - where nothing below runs.
 RESTORED=0
+# on_exit   Put the file back if the normal path has not already.
+#
+# PIPE IS IN THE TRAP LIST, and that one word is the whole fix. This script
+# prints a restore confirmation, then a line per changed line, then appends to
+# the log - and it is routinely read through `| head`, because the command
+# under it is chatty. `head` leaves after its count, the next printf takes
+# SIGPIPE, and with PIPE untrapped bash kills the script THERE: after the
+# restore, before `rm -f $NEW $BAK`, before the log append.
+#
+# What that leaves is the worst possible artefact. The file is fine, but a
+# `.bak` survives with no log line beside it - and `rules.md` tells the reader,
+# in as many words, that a `.bak` under `mutations/` means a restore FAILED and
+# this script exited 90 saying so. The signal reserved for "something went
+# wrong" was being produced routinely by something that went right, with the
+# log that would have contradicted it missing for the same reason. Three of
+# them sat in this repository when it was found, all benign, all from `| head`.
+#
+# NOTHING ELSE WAS NEEDED, and that was established by probe rather than
+# assumed. A first attempt also cleaned up inside this function, for the INT
+# and TERM paths. Removing that line again leaves the suite green: once the
+# signal is trapped instead of fatal, execution RESUMES and the script reaches
+# its own `rm -f $NEW $BAK` on the normal path. The extra line was dead code
+# that looked prudent.
 on_exit() { [ "$RESTORED" = 1 ] && return 0; cp "$BAK" "$FILE" 2>/dev/null || true; }
-trap on_exit EXIT INT TERM
+trap on_exit EXIT INT TERM PIPE
 
 printf '\n=== mutate: running %s ===\n' "${CMD[*]}"
 ( cd "$ROOT" && "${CMD[@]}" )

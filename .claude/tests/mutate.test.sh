@@ -171,4 +171,88 @@ for ph in RED GREEN GATES REVIEW; do
 done
 set_phase "$FIX" ""
 
+
+# ---------------------------------------------------------------------------
+describe "a reader that leaves early does not strand the backup"
+
+# FOUND IN USE, not by review. `bash scripts/mutate.sh ... | head -12` is how
+# this script is actually invoked when the command under it is chatty - it is
+# how the orchestrator invoked it a dozen times during releases 37-45. `head`
+# closes the pipe after its count, the script takes SIGPIPE while printing the
+# restore confirmation, and dies AFTER restoring but BEFORE `rm -f $NEW $BAK`
+# and before the log append.
+#
+# The file is fine. What is left behind is a `.bak` and no log line - and
+# `rules.md` tells the reader, in as many words, that a `.bak` left under
+# `mutations/` means a restore FAILED and the script exited 90 saying so. So
+# the one artefact that is supposed to mean "something went wrong" is produced
+# routinely by something that went right, and the log that would contradict it
+# is missing for the same reason.
+#
+# Three stale backups sat in this repository's own mutations directory when
+# this was found, all benign, all from piping into `head`.
+#
+# The trap covered EXIT INT TERM and not PIPE, which is why none of the
+# cleanup ran. This is the SIGPIPE class of check-sigpipe.sh, in the tool the
+# non-negotiables name as the sanctioned way to probe.
+reset_src
+rm -f "$FIX"/.claude/state/mutations/*.bak "$FIX"/.claude/state/mutations/*.new 2>/dev/null
+before_baks="$(ls "$FIX"/.claude/state/mutations/*.bak 2>/dev/null | wc -l | tr -d ' ')"
+log_before="$(awk 'END { print NR + 0 }' "$FIX/.claude/state/mutations/log" 2>/dev/null || printf 0)"
+
+# The pipeline is the point: a reader that stops after two lines while mutate
+# is still printing. `seq` is chatty enough to guarantee that and STOPS ON ITS
+# OWN - the first draft used `yes | head`, a writer that only ends when
+# something kills it, which hung this suite for hours during a probe. A test
+# for a SIGPIPE defect is the last place to put an unbounded writer.
+# BOUNDED WITH `timeout`, because the thing this pins can HANG rather than
+# misbehave: without the cleanup in on_exit, each SIGPIPE re-enters the trap,
+# finds the backup still there, and the cycle never ends. Measured - the probe
+# for that line times out rather than failing. A suite that hangs is a worse
+# signal than one that fails, so the bound turns it into a failure.
+# THE WHOLE PIPELINE IS BOUNDED, not just mutate.sh. A first attempt put
+# `timeout` on the script alone and left the subshell and `head` unbounded -
+# it passed standalone and hung the FULL selftest, which is the difference
+# between a bound on the part you suspect and a bound on the thing you run.
+timeout 60 bash -c "cd \"$FIX\" && bash scripts/mutate.sh src/main.ts 's/90/-90/' -- sh -c 'seq 1 200' 2>&1 | head -2" >/dev/null 2>&1 || true
+
+after_baks="$(ls "$FIX"/.claude/state/mutations/*.bak 2>/dev/null | wc -l | tr -d ' ')"
+log_after="$(awk 'END { print NR + 0 }' "$FIX/.claude/state/mutations/log" 2>/dev/null || printf 0)"
+
+assert_eq "no backup is stranded when the reader leaves early" \
+  "$before_baks" "$after_baks"
+
+# The other half, and the one that makes the first meaningful: the file really
+# was restored. A cleanup that ran because the restore never happened would
+# satisfy the assertion above and be much worse.
+assert_eq "and the source is back to what it was" \
+  "$ORIGINAL" "$(cat "$SRC")"
+
+# And the run is still recorded. Losing the log entry is how a stranded backup
+# becomes unexplainable: no line saying the command ran, no line saying it
+# failed.
+# And the run is still recorded. Losing the log entry is how a stranded backup
+# becomes unexplainable: no line saying the command ran, no line saying it
+# failed. Counted as a DELTA, because the log accumulates across this suite and
+# an absolute count would pass or fail on what ran before it.
+assert_eq "and the run still reaches the log" "1" \
+  "$((log_after - log_before))"
+
+# The control that stops this being satisfied by never writing a backup at all:
+# an ordinary run, no pipe, still cleans up and still restores.
+reset_src
+out="$(mutate src/main.ts 's/90/-90/' -- true)"
+assert_eq "an ordinary run leaves no backup either" \
+  "0" "$(ls "$FIX"/.claude/state/mutations/*.bak 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "and restores the source" "$ORIGINAL" "$(cat "$SRC")"
+
+# THE CONTROL THAT MATTERS MOST is not written here: it is the existing
+# "COULD NOT RESTORE" case above, which deletes the backup mid-command so the
+# restore genuinely cannot happen. Fixing this false alarm must not silence
+# that real one, and that test asserting exit 90 is what says so. Clobbering
+# the file does NOT make a restore fail - mutate.sh copies the backup over it
+# regardless - which is a thing this suite already knew and the first draft of
+# this block did not.
+reset_src
+
 summary "mutate"
