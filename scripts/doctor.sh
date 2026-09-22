@@ -36,9 +36,60 @@ printf '  ok       %-12s %s\n' "bash ver" "${BASH_VERSION%%(*}"
 # unanswered twice, at the cost of re-verifying findings that were already fixed.
 # An absent stamp is not a blank field: it is a copy from before stamping, which
 # is older than every stamped version.
-hv="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$ROOT/.claude/harness/VERSION" 2>/dev/null | head -1)"
-hv="$(trim "${hv:-}")"
+release_of() { # <tree> - its harness stamp: first non-comment, non-blank line
+  local v
+  v="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$1/.claude/harness/VERSION" 2>/dev/null | head -1)"
+  trim "${v:-}"
+}
+hv="$(release_of "$ROOT")"
 printf '  ok       %-12s %s\n' "harness ver" "${hv:-unstamped (predates versioning; older than any release)}"
+
+# Which worktree this is, and whether its harness agrees with the main
+# checkout's.
+#
+# A git worktree has its own working directory, and `.claude/state/*` is
+# gitignored, so every worktree already carries its own phase lock, its own gate
+# stamp and its own copy of the harness. That is what makes two stories in
+# flight possible. It is also how two trees end up on DIFFERENT harness
+# releases: refresh-harness.sh refreshes the tree it is run in and leaves its
+# neighbours alone - correctly - and until this row existed nothing reported the
+# result. A worktree quietly one release behind runs different hooks and
+# different gates from the tree beside it.
+#
+# Detection: `--git-dir` and `--git-common-dir` are equal in the main checkout
+# and differ in a linked worktree, where the common dir is the main checkout's
+# `.git` and the git dir is a subdirectory of it. Measured on git
+# 2.55.0.windows.5: both print the bare string `.git` in the main checkout and
+# absolute paths in a linked worktree, so a plain string compare answers both
+# real cases and `--path-format=absolute` (which needs git >= 2.31) is not
+# needed. The `cd "$ROOT"` matters: a relative `.git` resolves against the
+# caller's directory otherwise, and doctor is run from anywhere.
+#
+# Printed here, above the early `project.conf has no commands` exit, so that an
+# unbootstrapped tree gets the row too. Not a git repository at all - a
+# harness unpacked into a plain directory - prints nothing and counts nothing.
+wt_gitdir="$(cd "$ROOT" && git rev-parse --git-dir 2>/dev/null)"
+wt_common="$(cd "$ROOT" && git rev-parse --git-common-dir 2>/dev/null)"
+if [ -n "$wt_gitdir" ] && [ -n "$wt_common" ]; then
+  if [ "$wt_gitdir" = "$wt_common" ]; then
+    printf '  ok       %-12s main checkout, harness %s\n' \
+      "worktree" "${hv:-unstamped}"
+  else
+    main_tree="$(cd "$ROOT" && cd "$wt_common/.." 2>/dev/null && pwd)"
+    main_hv="$(release_of "${main_tree:-$ROOT}")"
+    if [ "$hv" = "$main_hv" ]; then
+      printf '  ok       %-12s linked worktree of %s, harness %s\n' \
+        "worktree" "${main_tree:-$wt_common}" "${hv:-unstamped}"
+    else
+      printf '  MISSING  %-12s linked worktree, harness %s - main checkout is %s\n' \
+        "worktree" "${hv:-unstamped}" "${main_hv:-unstamped}"
+      printf '  %-10s   the main checkout is %s\n' "" "${main_tree:-$wt_common}"
+      printf '  %-10s   refresh-harness.sh updates the tree it is run in; the\n' ""
+      printf '  %-10s   others keep their own release until refreshed too\n' ""
+      missing=$((missing+1))
+    fi
+  fi
+fi
 
 printf '\nHarness integrity\n'
 for f in phase-guard.sh inject-state.sh gate-reminder.sh statusline.sh lib.sh; do

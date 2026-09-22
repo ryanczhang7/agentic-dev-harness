@@ -74,6 +74,55 @@ bash scripts/plan.sh WORLD-014             # why that command, and the model pla
 bash scripts/phase.sh set WORLD-014 GREEN  # the only supported way to change phase
 ```
 
+## Two stories at once
+
+**One worktree, one story, one lock.** The lock is already per-worktree:
+`.claude/state/*` is gitignored and a git worktree has its own working
+directory, so each gets its own `current-story.env`, its own gate stamp and its
+own copy of the harness. Nothing is shared and nothing coordinates them.
+
+```bash
+git worktree add ../adh-WORLD-015 -b story/WORLD-015-slug   # a tree per story
+bash scripts/doctor.sh          # says which worktree you are in, and whether
+                                # its harness release matches the main checkout
+```
+
+**Before you pick the second story, ask which pairs are safe:**
+
+```bash
+bash scripts/plan.sh conflicts
+```
+
+It compares the file paths two stories declare and reports `CONFLICT`, `clear`
+or `UNKNOWN`. **It reads the paths in each story's `## Contract` section** — not
+the `touches:` frontmatter, which it does not read at all.
+
+**`UNKNOWN` is not `clear`, and it is the answer you will usually get.** A
+`## Contract` is written at the end of PLANNED, so every story that has not
+started yet declares nothing and every pair involving one is unjudgeable. That
+is the ordinary state of a fresh backlog, not a fault. When you see it:
+
+- write the `## Contract` for both stories first — it is work the story needs
+  anyway, and it is the only thing that makes the answer mechanical; or
+- judge the pair by hand, and treat two stories that touch the same script as a
+  conflict until you have read both.
+
+Never read `UNKNOWN` as permission. The command exits non-zero only on a real
+`CONFLICT`, precisely so that the ordinary unjudgeable case does not train you
+to ignore it.
+
+**A conflict the tool cannot see.** `plan.sh conflicts` judges declarations,
+not diffs, so a story that strays outside its own `## Contract` strays into the
+other worktree's story with nothing reporting it. Nothing checks a declaration
+against the diff it produced yet.
+
+**Refreshing.** `bash scripts/refresh-harness.sh` updates the tree it is run
+in and leaves the others alone — correct, but it means two worktrees can sit on
+different harness releases, running different hooks and different gates. That is
+what `doctor.sh`'s `worktree` row reports. Refresh each tree you intend to keep,
+and remember a refresh inside a worktree lands as an uncommitted diff on that
+worktree's story branch.
+
 ## Where things live
 
 | Path | Contents |

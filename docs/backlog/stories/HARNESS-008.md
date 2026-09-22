@@ -4,8 +4,8 @@ title: One phase lock per worktree, so two stories can be in flight at once
 slug: one-phase-lock-per-worktree-so-two-stori
 epic: 
 type: chore
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-008-one-phase-lock-per-worktree-so-two-stori
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/doctor.sh, .claude/tests/worktree.test.sh, .claude/tests/doctor.test.sh, CLAUDE.md]  # files this story expects to write
@@ -76,8 +76,10 @@ planning gets.
   after the run.
 - **AC-6** - `CLAUDE.md` documents the worktree workflow: how to create one per
   story, that `plan.sh conflicts` should be consulted before choosing the
-  second story, and that the answer is only as good as the `touches:`
-  declarations it reads. *Verified by review* - see `## Deferred verifications`.
+  second story, and that the answer is only as good as the `## Contract`
+  declarations it reads - NOT the `touches:` frontmatter, which
+  `plan.sh conflicts` does not read. *Verified by review* - see
+  `## Deferred verifications`. Amended after the freeze: see `## Amendments` A-1.
 ## Contract
 
 **No new state file, and no change to `current-story.env`'s format.** The lock
@@ -138,8 +140,13 @@ output; nothing parses it except `doctor.test.sh`, which this story updates.
 A `CLAUDE.md` section is not assertable without pinning its phrasing, which
 goes stale the first time somebody rewrites it better. REVIEW reads it and
 records here that it answers the question a person will actually have: what to
-do when `plan.sh conflicts` says UNKNOWN, which - until every story carries
-`touches:` - is most of the time.
+do when `plan.sh conflicts` says UNKNOWN, which - until every story has a
+written `## Contract` - is most of the time.
+
+REVIEW also confirms the shipped section does not repeat the error
+`## Amendments` A-1 corrected: naming `touches:` as what the command
+reads. It reads `## Contract` paths. A section that gets this wrong
+satisfies the criterion's words and misdirects every reader of it.
 
 **Result:** <!-- filled at REVIEW -->
 
@@ -151,7 +158,57 @@ GREEN in the other, attempts a source write in each, and pastes both outcomes.
 Fixture stories would demonstrate the mechanism; this demonstrates it on the
 backlog that exists.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-22): PASSED, on HARNESS-006 and HARNESS-001.**
+
+Two real linked worktrees of this repository, each on the branch its story's
+frontmatter names, with two stories from this backlog set to opposing phases by
+`phase.sh` in each worktree:
+
+    === THREE TREES, THREE TRUTHS (same moment) ===
+    main:     HARNESS-008 / GATES
+    wt A:     HARNESS-006 / RED
+    wt B:     HARNESS-001 / GREEN
+
+The SAME write — `src/main.ts`, which `classify.sh` reports as `source` —
+offered to the real `phase-guard.sh` in each tree, at the same moment:
+
+    --- CLAUDE_PROJECT_DIR=/tmp/adh-ac2-red ---
+    {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny",
+     "permissionDecisionReason":"BLOCKED by the harness phase lock.
+
+      story:    HARNESS-006
+      phase:    RED
+      path:     src/main.ts
+      category: source
+
+    Story is in RED. Production code is frozen: ...
+
+    --- CLAUDE_PROJECT_DIR=/tmp/adh-ac2-green ---
+    (no output: allowed)
+
+**The discriminating detail is the story id in the refusal.** It says
+`HARNESS-006` — worktree A's own story — not `HARNESS-008`, which is what the
+main checkout's lock holds. A hook reading a shared location would have named
+HARNESS-008. This is the assertion that makes the pair mean something, and it
+is why the probe uses a real backlog with three different stories live rather
+than two fixtures.
+
+**One half is more discriminating than the other here, and saying so is the
+point.** Main is in GATES, which permits source writes, so a hook wrongly
+reading main's state would also have ALLOWED in worktree B — the allow-half
+would pass vacuously. The refuse-half cannot pass vacuously: it requires the
+guard to have found RED somewhere only worktree A holds, and to name A's story.
+RED's own handoff recorded this asymmetry ("Three trees, not two, in AC-2") and
+solved it in the fixture by putting the main checkout in RED; on the real tree
+the orchestrator could not, because main carries this story in GATES and moving
+it would be faking the experiment. The story id carries the weight instead.
+
+**Cleanup.** Both worktrees removed with `git worktree remove --force`,
+`git worktree prune` run, and both temporary branches deleted. Verified
+afterwards that the backlog is untouched — `HARNESS-001: phase: PLANNED`,
+`HARNESS-006: phase: PLANNED` in the main checkout — and that main's own lock
+still reads `HARNESS-008 / GATES`. `phase.sh set` rewrites story frontmatter,
+so those edits were real; they existed only on the two deleted branches.
 
 ## Amendments
 
@@ -164,6 +221,58 @@ backlog that exists.
      wrong, record the ORCHESTRATOR'S OWN reproduction of it - different
      inputs, not the subagent's code. That claim is also what an agent says
      when it wants to stop failing. -->
+
+### A-1. AC-6: `touches:` -> `## Contract`. Approved by the user, 2026-09-22.
+
+**What it said:**
+
+> ...that `plan.sh conflicts` should be consulted before choosing the second
+> story, and that the answer is only as good as the `touches:` declarations it
+> reads.
+
+**What it says now:**
+
+> ...that `plan.sh conflicts` should be consulted before choosing the second
+> story, and that the answer is only as good as the `## Contract` declarations
+> it reads - NOT the `touches:` frontmatter, which `plan.sh conflicts` does not
+> read.
+
+**Why.** `plan.sh conflicts` does not read `touches:`. It calls
+`contract_paths`, which extracts paths from a story's `## Contract` section.
+Left as written, AC-6 obliges GREEN to put a sentence into `CLAUDE.md` that is
+false about the tool in this tree - the documentation instance of an assertion
+whose needle cannot fail. `touches:` is frontmatter and is HARNESS-006's
+subject, still PLANNED.
+
+**Found by the orchestrator at the start of this dispatch, not by a subagent,**
+so there is no subagent claim to reproduce - but the finding is a claim too, and
+it was verified two independent ways before the criterion was touched:
+
+1. Read `scripts/plan.sh`. `cmd_conflicts` calls `contract_paths "${files[$i]}"`
+   for each side of a pair; `contract_paths` is `section "$1" "Contract" |
+   strip_comments | grep -oE ...`. The string `touches` does not appear in
+   `scripts/plan.sh` at all.
+2. Ran it against the real backlog, where every story carries a `touches:` line
+   and none but this one carries a `## Contract`:
+
+        $ bash scripts/plan.sh conflicts
+        STATUS    PAIR                      DETAIL
+        UNKNOWN   HARNESS-001 + HARNESS-002 no Contract paths declared yet - cannot judge
+        ...
+        0 conflict(s), 20 pair(s) that could not be judged.
+
+   If `touches:` were read, those pairs would have been judged: all of them
+   declare paths there. The command says `Contract` in its own detail line.
+
+**Scope of the change.** Wording of AC-6 only. No test asserts AC-6 - it is a
+`## Deferred verifications` entry owned by REVIEW - so no test changes, and
+this is not a return to RED. The REVIEW entry was extended to confirm the
+shipped `CLAUDE.md` section does not repeat the original error.
+
+**The alternative that was declined.** Documenting both, with a forward
+reference to the `touches:` check HARNESS-006 will add. Declined by the user:
+it stales if 006 changes shape or never lands, and a forward reference in
+`CLAUDE.md` is read as a description of the present.
 
 ## Model guidance
 
@@ -184,9 +293,65 @@ name, below the table.
 
 **Resolved:**
 
-<!-- One line per dispatch, as it happened: phase, agent, the model that
-     actually ran, and — if a phase was planned for one model and ran on
-     another — what that changed. A choice with no verdict is folklore. -->
+- **PLANNED** — `lead-po`, **Opus 5** (`claude-opus-5`), the session's own model.
+  Matches the plan.
+- **RED** — `test-developer`. Dispatched in an earlier session; that session did
+  not record the resolved model, and the orchestrator arriving at this branch
+  cannot recover it from the tree. **Recorded as UNKNOWN rather than as the
+  plan's `fable`**, because writing down the plan in place of the fact is the
+  exact confusion `rules.md` created this field to end. The verdict below is
+  therefore about the OUTPUT, not about the model.
+- **GREEN** — `feature-developer`, **Opus 5**. Matches the plan. No override was
+  passed by the orchestrator; the agent definition's `model: opus` is what
+  resolved, and the agent confirmed it in its own report.
+- **RED (return from GREEN, R-1)** — `test-developer`, **Fable 5.1** (`fable`),
+  dispatched with an explicit model override so that the plan's row for RED was
+  actually exercised and recorded, which the first RED's was not. **Mixed
+  result, and the split is informative.** The code change was exactly right:
+  two lines of the `DISCARDED` census, correct line numbers verified against
+  the tree, nothing else in the file and no production file touched — a clean
+  minimal diff against a tight brief, which is the profile the plan predicts.
+  What it did not do was finish: it started Probe A, its dispatch ended while
+  that run was still in flight, and it returned without pasting any output,
+  leaving `scripts/doctor.sh` mutated and `## Regressions` ending at "Output
+  pasted below." with nothing below it. The orchestrator waited for the restore
+  and ran all three probes itself.
+
+  **Read carefully, this is not evidence about the model's judgement.** The
+  brief was mechanical and it executed the mechanical part correctly. The
+  failure was in seeing a long-running background command through to its end —
+  and the harness's own evidence rule is what caught it, not a reviewer:
+  `check-boundaries.sh` refuses a `## Regressions` that describes a failure
+  without showing one, so the gap could not have reached a PR silently.
+
+  **The operational lesson, which is the transferable one:** a dispatch that
+  starts a mutation must not end before that mutation's restore. A mutated
+  production file left behind by a finished agent is indistinguishable from a
+  failed restore until someone checks whether the PID is alive, and the
+  orchestrator nearly restored it by hand — which would have raced
+  `mutate.sh`'s own restore. Brief future RED returns to run probes in the
+  foreground, or to report the in-flight PID so the orchestrator can wait on it
+  deliberately.
+
+**Verdict on RED's success condition — met, with the model unattributable.**
+The plan's claim for RED is that a partitioned contract lets the weaker model
+write sharper negative controls. The controls this RED produced are sharp:
+every AC-4 assertion is anchored (`^  ok       worktree +…`) with a
+`([^0-9]|$)` tail so `45` cannot match `450`, each positive assertion is paired
+with a 0-count control, and the exit-status assertions are separate from the
+text assertions — which the orchestrator's mutation M2 proved is not decorative
+(dropping only the `missing` increment reddens the two exit assertions and
+leaves every text assertion green). RED also declined a Contract clause whose
+premise it found false rather than inventing a test for it. That is the
+behaviour the plan predicts. What cannot be claimed is that the weaker model
+produced it, because nobody wrote down which model ran.
+
+**The process finding, worth more than the verdict.** A dispatch's model is
+recoverable only at the moment of dispatch. This story lost RED's permanently
+because the session ended before it was written down, and the phase lock's
+state file is machine-local and had been cleared. Record it in the same action
+that dispatches, not at the end of the phase.
+
 ## Out of scope
 
 - **HARNESS-009**, the orchestrator dispatching into these worktrees. This story
@@ -734,31 +899,163 @@ LF, so `cmp` differs. Harmless, Windows-only, and not a worktree property.
 
 ## Regressions
 
-<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
-     otherwise. A test that is wrong is never edited into passing, and the
-     return is not a footnote - it is the story failing to be one clean cycle,
-     and the next person needs to know why. One block per return:
-       * which test, what it asserted, and what was wrong with it
-       * how the defect was found
-       * what it asserts now
-       * what earns it, since "watched it fail" cannot apply once the
-         implementation exists - the corrected assertion passes on its first
-         run and every run after, whether or not it asserts anything: either a
-         PROBE (mutate the specific behaviour the test pins, paste the red,
-         confirm the revert) or, where the defect was cost rather than
-         correctness, a BEFORE/AFTER measurement taken under the gate command -
-         not the plain test command, which is the faster one.
-         PASTE THE OUTPUT. check-boundaries.sh refuses a PR whose Regressions
-         or Gate probes section describes a failure without showing one
-       * whether GREEN was a no-op, and the command output proving the source
-         was untouched and still passes -->
+### R-1. Return from GREEN, 2026-09-22. `.claude/tests/sigpipe.test.sh`, the C-5 freshness census.
+
+**Which test, and what it asserted.** `sigpipe.test.sh`'s `DISCARDED` list is
+twelve `file:line:needle` triples naming real lines of this tree whose `$(...)`
+exit status is discarded — the shape `check-sigpipe.sh` must NOT flag. Two
+assertions stand on it: a FRESHNESS one (each line still holds its needle) and
+an EXCLUSION one (the guard reports none of them). Freshness exists so the
+exclusion assertion cannot go vacuous by pointing at lines that have moved.
+
+Two of the twelve named `scripts/doctor.sh`:
+
+    scripts/doctor.sh:39:hv="$(grep
+    scripts/doctor.sh:62:BOOTSTRAPPED="$(grep
+
+**What is wrong with it.** Nothing, in the sense that matters: the assertion is
+correct and it caught what it was built to catch. GREEN added the `worktree`
+row to `scripts/doctor.sh` and extracted `release_of()`, which moved both
+lines. The census now points at a function header and a comment:
+
+    FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+         scripts/doctor.sh:39 no longer holds [hv="$(grep] - it holds: release_of() { # <tree> - its harness stamp: first non-comment, non-blank line
+         scripts/doctor.sh:62 no longer holds [BOOTSTRAPPED="$(grep] - it holds: # 2.55.0.windows.5: both print the bare string `.git` in the main checkout and
+    sigpipe: 81 passed, 1 failed
+
+This is a STALE FIXTURE, which is precisely the state the freshness assertion
+was written to report rather than sail past. The guard itself is unaffected:
+`check-sigpipe.sh` reports `scanned 39 shell file(s), 37 with pipefail, 0
+finding(s)` against the tree, and C-5's exclusion assertion still passes.
+
+**How it was found.** `bash scripts/selftest.sh` at the end of GREEN: 1 of 18
+suites failed, and it was `sigpipe`, not `worktree` (which is 73/0). Reproduced
+by the orchestrator at the start of this return.
+
+**Why this is a return to RED rather than a fix in place.** `sigpipe.test.sh`
+is a test file, frozen in GREEN and frozen in GATES. `rules.md`: "a gate
+failure whose only legal fix is a write the current phase forbids is a return
+to RED, not a reason to route around the lock." The alternative — reshuffling
+`doctor.sh` so lines 39 and 62 stay byte-identical — was offered by the
+feature-developer and REFUSED by the orchestrator; the reasoning is PO-G in
+`## Notes`. In short it would force the two VERSION stamps that are compared to
+each other to be read by two separate inline copies, which is the defect
+`release_of()` exists to prevent.
+
+**What it should assert instead.** The same two properties, pointed at where
+those lines now live:
+
+    scripts/doctor.sh:39:hv="$(grep            ->  scripts/doctor.sh:41:v="$(grep
+    scripts/doctor.sh:62:BOOTSTRAPPED="$(grep  ->  scripts/doctor.sh:113:BOOTSTRAPPED="$(grep
+
+Line 41 is the same `grep … VERSION … | head -1` read that was on line 39,
+moved bodily into `release_of()`. Line 113 is the same `BOOTSTRAPPED=` read,
+displaced by the 53 lines the worktree row added above it.
+
+**The census is a SAMPLE, not an enumeration, so nothing is added.** Checked
+before deciding the remit: `scripts/doctor.sh:149`,
+`wf_all="$(cat "$WFDIR"/*.yml 2>/dev/null)"`, is a status-discarded
+substitution that predates this story and has never been in the twelve. The
+list is a curated set of real instances used to prove the exclusion rule, not a
+claim that the tree holds exactly twelve. So the new substitutions GREEN
+introduced (`doctor.sh:44`, `:71`, `:72`, `:78`, `:79`) do not need entries,
+and "twelve" stays twelve.
+
+**What earns the corrected assertion.** "Watch it fail" cannot apply: the code
+whose absence would make it fail is not absent — `doctor.sh` already holds both
+lines, so the corrected census passes on its first execution and every one
+after, whether or not it asserts anything. Earned by PROBE instead, per
+`rules.md`: mutate the specific production behaviour each entry pins — the
+presence of that needle on that line number — and watch that one assertion go
+red. Output pasted below.
+
+**The change, in full.** Two lines of `.claude/tests/sigpipe.test.sh`'s
+`DISCARDED` list. Nothing else in the file, and no production file:
+
+    -scripts/doctor.sh:39:hv="$(grep
+    -scripts/doctor.sh:62:BOOTSTRAPPED="$(grep
+    +scripts/doctor.sh:41:v="$(grep
+    +scripts/doctor.sh:113:BOOTSTRAPPED="$(grep
+
+**The probes.** Three, run by the orchestrator through `scripts/mutate.sh`,
+which is permitted in RED because it restores the file and verifies the restore
+with `cmp`. Each mutation is behaviour-preserving — a space inserted after
+`$(`, or a comment line — so that what goes red is the census entry and not
+`doctor.sh` breaking.
+
+**Probe A — break the needle on line 41.** The corrected entry must be pinned
+to that line's CONTENT, not merely present in the list.
+
+    === mutate: scripts/doctor.sh (1 line(s) changed by 41s/v="\$(grep/v="$( grep/) ===
+    === mutate: running bash scripts/selftest.sh sigpipe ===
+        FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+               scripts/doctor.sh:41 no longer holds [v="$(grep] - it holds:   v="$( grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$1/.claude/harness/VERSION" 2>/dev/null | head -1)"
+    sigpipe: 81 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_doctor.sh.20260922T190110Z.53493.bak) ===
+
+One assertion red, naming line 41 alone. C-5's exclusion assertion ("and the
+guard reports none of them") stayed green, so the two are independent.
+
+**Probe B — break the needle on line 113.** The same, for the other entry.
+
+    === mutate: scripts/doctor.sh (1 line(s) changed by 113s/BOOTSTRAPPED="\$(grep/BOOTSTRAPPED="$( grep/) ===
+    === mutate: running bash scripts/selftest.sh sigpipe ===
+        FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+               scripts/doctor.sh:113 no longer holds [BOOTSTRAPPED="$(grep] - it holds: BOOTSTRAPPED="$( grep -E '^BOOTSTRAPPED=' "$CONF" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]')"
+    sigpipe: 81 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_doctor.sh.20260922T190911Z.80931.bak) ===
+
+**Probe C — REAL DRIFT, which is the failure this entry actually suffered.**
+A and B prove each entry reads its own line's content. Neither reproduces what
+went wrong: the lines MOVED. One inserted line above 41 shifts everything below
+it, and both entries must go stale together — the original failure, induced
+deliberately.
+
+    === mutate: scripts/doctor.sh (222 line(s) changed by 40i\ ...) ===
+    === mutate: running bash scripts/selftest.sh sigpipe ===
+        FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+               scripts/doctor.sh:41 no longer holds [v="$(grep] - it holds:   local v
+               scripts/doctor.sh:113 no longer holds [BOOTSTRAPPED="$(grep] - it holds: printf '\nProject toolchain (from project.conf)\n'
+    sigpipe: 81 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_doctor.sh.20260922T191704Z.114325.bak) ===
+
+This is the one that matters. A census whose entries each pass a content check
+could still be blind to drift if it resolved lines by searching rather than by
+number; C shows it does not, and that the corrected entries are as sensitive to
+movement as the ones they replace. `222 line(s) changed` is `diff`'s count of a
+one-line insertion shifting the remainder, not 222 edits.
+
+After all three, `.claude/state/mutations/` holds `log` and no `.bak` — every
+restore succeeded and was verified.
+
+**Note on who ran what.** The test-developer made the two-line change and
+started Probe A; its dispatch ended while that run was still in flight, leaving
+`scripts/doctor.sh` mutated and no output recorded. The orchestrator waited for
+that run to complete and restore rather than interrupting it — a second
+mutation against a file already under one is how a mutated production file gets
+committed — then ran all three probes itself and pasted the output above. The
+in-flight run's own restore is in the log at `20260922T185258Z`, `restored
+(verified)`.
+
+
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-22T20:48:29Z
+    commit: 7215b22 (working tree had uncommitted changes)
+    tree:   c414aa7cded3f9f401def9ba8f607dd44c7c2db8
+    result: pass (0 ran, 8 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    UNCONFIGURED mutation
 
 ## Gate probes
 
@@ -769,6 +1066,331 @@ LF, so `cmp` differs. Harmless, Windows-only, and not a worktree property.
        * what was broken, and where
        * the gate output proving it failed
        * confirmation the probe was reverted -->
+
+**This story adds no gate.** `required_gates` is empty and every `project.conf`
+gate is `<unconfigured>` (PO decision 1). What this section carries instead is
+the obligation RED deferred to GREEN: the five AC-4 negative controls in
+`## Handoff` -> "Negative controls: expected values", each of which read 0
+**vacuously** in RED because the row it guards did not exist. rules.md requires
+them measured against the shipped module, and this is where the measurement
+lives.
+
+All four probes ran as `bash scripts/mutate.sh scripts/doctor.sh '<EXPR>' --
+bash scripts/selftest.sh worktree`, one at a time, against the shipped
+`scripts/doctor.sh`. Every restore was verified byte-for-byte by `mutate.sh`
+and is pasted with its probe; `ls .claude/state/mutations/` after the chain
+shows `log` only - no `.bak`, no `.new`. The green baseline either side of the
+chain is `worktree: 73 passed, 0 failed`.
+
+### Control 1 and 2 - detection is not inverted
+
+Controls: `and not as the main checkout` (a linked worktree must print no
+`^  ok       worktree +main checkout` row) and `and not as a linked worktree`
+(the main checkout must print no line containing `linked worktree` anywhere).
+Probe: swap the `--git-dir`/`--git-common-dir` comparison, which is what "the
+detection is backwards" looks like in code.
+
+```
+=== mutate: scripts/doctor.sh (1 line(s) changed by s|^  if \[ "\$wt_gitdir" = "\$wt_common" \]; then$|  if [ "$wt_gitdir" != "$wt_common" ]; then|) ===
+  74 -   if [ "$wt_gitdir" = "$wt_common" ]; then
+  74 +   if [ "$wt_gitdir" != "$wt_common" ]; then
+  AC-4: doctor names the worktree it is in, and whether its release matches
+    FAIL a linked worktree is named as one, with its release
+         expected: 1
+         actual:   0
+    FAIL and not as the main checkout
+         expected: 0
+         actual:   1
+    FAIL the main checkout is named as one, with its release
+         expected: 1
+         actual:   0
+    FAIL and not as a linked worktree
+         expected: 0
+         actual:   1
+    FAIL a linked worktree behind the main checkout is MISSING, naming both releases
+         expected: 1
+         actual:   0
+    FAIL and is not also reported ok
+         expected: 0
+         actual:   1
+    FAIL and doctor exits 1 on the mismatch
+         expected: 1
+         actual:   0
+    FAIL the main checkout reads its own stamp, not the linked worktree's
+         expected: 1
+         actual:   0
+  AC-5: refresh-harness.sh inside a linked worktree works on that worktree alone
+    FAIL doctor in the refreshed worktree reports the mismatch the refresh produced
+    FAIL and exits 1
+    FAIL doctor in the main checkout still reports its own release as ok
+worktree: 62 passed, 11 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_doctor.sh.20260922T162843Z.3901164.bak) ===
+  74:   if [ "$wt_gitdir" = "$wt_common" ]; then
+```
+
+Both named controls went red, each with `actual: 1`. **One result beyond what
+the handoff predicted:** `and is not also reported ok` also went red. With the
+comparison inverted, the mismatch case (worktree `a` stamped 44) takes the
+main-checkout branch and prints `ok ... main checkout, harness 44`, so an `ok`
+row appears where only a `MISSING` one should. It is a genuine red for that
+control, not a miscount - but Control 4's own probe below is the one aimed at
+it, and it is sharper.
+
+### Control 3 - the mismatch row is conditional
+
+Control: `no mismatch is reported while the releases match` (0) and, beside it,
+`and doctor exits 0` for a linked worktree on the same release. Probe: make the
+release comparison unsatisfiable, so the `MISSING` branch is taken
+unconditionally.
+
+```
+=== mutate: scripts/doctor.sh (1 line(s) changed by s|^    if \[ "\$hv" = "\$main_hv" \]; then$|    if [ "$hv" = "no such release" ]; then|) ===
+  80 -     if [ "$hv" = "$main_hv" ]; then
+  80 +     if [ "$hv" = "no such release" ]; then
+  AC-4: doctor names the worktree it is in, and whether its release matches
+    FAIL a linked worktree is named as one, with its release
+         expected: 1
+         actual:   0
+    FAIL no mismatch is reported while the releases match
+         expected: 0
+         actual:   1
+    FAIL and doctor exits 0
+         expected: 0
+         actual:   1
+worktree: 70 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_doctor.sh.20260922T163057Z.3906969.bak) ===
+  80:     if [ "$hv" = "$main_hv" ]; then
+```
+
+**Divergence from the handoff, and it is structural rather than a defect.** The
+handoff's controls table predicted that this probe would redden "this control
+and **both** `exits 0`". It reddens one of them. The main checkout's `and exits
+0` is unreachable from this mutation: the main checkout never evaluates the
+release comparison at all - it takes the `wt_gitdir = wt_common` branch, which
+has no `MISSING` variant, because there is no second tree to be behind. Nothing
+is wrong with the assertion; the prediction was made before the code existed
+and assumed one shared condition where there are two branches. The main
+checkout's `and exits 0` is earned by Control 5's probe below, which does reach
+it.
+
+### Control 4 - `ok` and `MISSING` are mutually exclusive
+
+Control: `and is not also reported ok` (on a mismatch, zero
+`^  ok       worktree` rows). Probe: print the `ok` row as well as the
+`MISSING` one, by turning the mismatch block's first continuation line into an
+`ok` row.
+
+```
+=== mutate: scripts/doctor.sh (1 line(s) changed by s|^      printf .*the main checkout is .*$|      echo "  ok       worktree     linked worktree of ${main_tree:-$wt_common}, harness ${hv:-unstamped}"|) ===
+  86 -       printf '  %-10s   the main checkout is %s\n' "" "${main_tree:-$wt_common}"
+  86 +       echo "  ok       worktree     linked worktree of ${main_tree:-$wt_common}, harness ${hv:-unstamped}"
+  AC-4: doctor names the worktree it is in, and whether its release matches
+    FAIL and is not also reported ok
+         expected: 0
+         actual:   1
+worktree: 72 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_doctor.sh.20260922T163254Z.3913518.bak) ===
+  86:       printf '  %-10s   the main checkout is %s\n' "" "${main_tree:-$wt_common}"
+```
+
+Exactly one assertion red, and it is the control. Nothing else in the suite
+moved: the `MISSING` row still printed, doctor still exited 1, and the extra
+`ok` row is the only difference. That is the sharpest form this evidence can
+take.
+
+### Control 5 - an `ok` row does not count into `missing`
+
+Control: both `and doctor exits 0` assertions (linked worktree on the same
+release; the main checkout). Probe: count each `ok` row into `missing`, which
+is the historical defect `doctor.test.sh`'s own header records, pointed the
+other way - a row that says `ok` while the exit status says otherwise.
+
+```
+=== mutate: scripts/doctor.sh (2 line(s) changed by s|^\( *\)"worktree" \(.*\)"\${hv:-unstamped}"$|\1"worktree" \2"${hv:-unstamped}"; missing=$((missing+1))|) ===
+  76 -       "worktree" "${hv:-unstamped}"
+  76 +       "worktree" "${hv:-unstamped}"; missing=$((missing+1))
+  82 -         "worktree" "${main_tree:-$wt_common}" "${hv:-unstamped}"
+  82 +         "worktree" "${main_tree:-$wt_common}" "${hv:-unstamped}"; missing=$((missing+1))
+  AC-4: doctor names the worktree it is in, and whether its release matches
+    FAIL and doctor exits 0
+         expected: 0
+         actual:   1
+    FAIL and exits 0
+         expected: 0
+         actual:   1
+worktree: 71 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_doctor.sh.20260922T163537Z.3920902.bak) ===
+  76:       "worktree" "${hv:-unstamped}"
+  82:         "worktree" "${main_tree:-$wt_common}" "${hv:-unstamped}"
+```
+
+Both, including the one Control 3's probe could not reach. The mutation
+deliberately leaves the `MISSING` branch's own `missing=$((missing+1))` alone,
+so the two reds are the `ok` rows and nothing else.
+
+### Observed while probing, NOT fixed here, and not a gate
+
+`doctor.sh` has an early `exit 0` on the `project.conf has no commands` path,
+and it exits 0 there **whatever `missing` has reached**. The worktree row is
+printed above that exit, as the handoff requires, so an unbootstrapped tree
+does get the row - but in an unbootstrapped tree a release mismatch prints
+`MISSING  worktree ...` and doctor still exits 0. Measured on this repository
+(`BOOTSTRAPPED=no`), in a throwaway `git worktree add -d` with its VERSION
+rewritten to `44 (2026-09-01)`:
+
+```
+  MISSING  worktree     linked worktree, harness 44 (2026-09-01) - main checkout is 45 (2026-09-20)
+rc=0
+```
+
+It is **pre-existing**, not introduced here: the CI block above that exit
+increments `missing` the same way, so a project with a broken workflow and no
+stack yet has always been told so and then given a 0. No test in this story
+reaches it - the AC-4 fixture has a gate in its `project.conf`, so it runs to
+the end, where `missing > 0` exits 1, and that is the assertion that passes.
+Left alone deliberately: no failing test demands it, and changing an exit
+status nothing asserts is production code the law does not allow GREEN to
+write. It wants its own story.
+
+### BLOCKER handed back to the orchestrator: a frozen suite's line census drifted
+
+**GREEN cannot clear this, and it is not a gate probe.** Recorded here because
+it is the only section GREEN owns and the next agent needs it.
+
+`bash scripts/selftest.sh worktree` is `73 passed, 0 failed`. The full
+`bash scripts/selftest.sh` is `1 of 18 harness suite(s) FAILED`, and the
+failing suite is **`sigpipe`**, not `worktree`:
+
+```
+  C-5: the twelve status-discarded lines in this tree are excluded by the rule, not by markers
+    FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+         expected: 12 lines, none stale
+         actual:   12 lines,
+           scripts/doctor.sh:39 no longer holds [hv="$(grep] - it holds: release_of() { # <tree> - its harness stamp: first non-comment, non-blank line
+           scripts/doctor.sh:62 no longer holds [BOOTSTRAPPED="$(grep] - it holds: # 2.55.0.windows.5: both print the bare string `.git` in the main checkout and
+
+sigpipe: 81 passed, 1 failed
+```
+
+`.claude/tests/sigpipe.test.sh:565-566` hard-codes two lines of
+`scripts/doctor.sh` in its `DISCARDED` census, and adding the worktree row
+moved both. The guard itself is unaffected -
+`bash scripts/check-sigpipe.sh` still reports `scanned 39 shell file(s), 37
+with pipefail, 0 finding(s)` against the shipped `doctor.sh`, and the second
+C-5 assertion (`and the guard reports none of them`) still passes. What failed
+is the suite's own freshness check, which exists to fail loudly rather than let
+the exclusion assertion go vacuous. It is doing its job.
+
+The census is stale by exactly two lines:
+
+    scripts/doctor.sh:39:hv="$(grep            ->  scripts/doctor.sh:41:v="$(grep
+    scripts/doctor.sh:62:BOOTSTRAPPED="$(grep  ->  scripts/doctor.sh:113:BOOTSTRAPPED="$(grep
+
+That file is a test file, frozen in GREEN and in GATES. rules.md's "a gate
+failure whose only legal fix is a write the current phase forbids is a return
+to RED" is this case exactly: one two-line fixture correction, in RED, recorded
+in `## Regressions`, earned by the mutation the freshness check already
+performed on itself (the pasted failure above IS the red, produced by the real
+tree moving under it).
+
+**The layout-preserving alternative was considered and declined.** Both line
+numbers could have been held still: keep lines 39-41 exactly as they were and
+put the whole worktree block after line 62. That needs no test change at all.
+It was rejected because it costs a correctness property. `main_hv` and `hv` are
+compared to each other, so the comparison is only sound if both stamps are read
+the same way - which is why they go through one `release_of`. Preserving line
+39 means reading the running tree's stamp with one inline pipeline and the main
+checkout's with another, and a later edit to one and not the other makes the
+comparison lie silently. It also puts the row under the `Project toolchain`
+heading, where it does not belong, and it leaves the next person to touch
+`doctor.sh` hitting the same wall with nothing on record explaining why the
+file's layout is frozen by a census in another suite. Contorting production
+layout to keep a fixture fresh is the tail wagging the dog; re-recording the
+census is what the freshness check asks for.
+
+### Real-tree probe at GATES - AC-4 against a REAL linked worktree of THIS repository
+
+**Why this exists, and that it was not pre-declared.** Release 41: a rule is
+probed against the tree it judges, not only against fixtures written by whoever
+wrote the rule. Every control above runs inside `worktree.test.sh`'s fixture,
+and every measurement in `## Contract` C-1..C-4 was taken either on this
+checkout or on a `make_project_fixture`. The AC-4 comparison itself - a
+worktree's release against the main checkout's - had never run against a real
+linked worktree of this repository. This story declared no
+`## Deferred verifications` entry owning that, so the probe is recorded HERE
+rather than there, which is the choice rules.md asks to be stated rather than
+left to live in two places.
+
+A real linked worktree (`git worktree add -d`), all three branches exercised
+against the shipped `scripts/doctor.sh`:
+
+    === A. real linked worktree, releases MATCHING ===
+      ok       worktree     linked worktree of /c/Users/ryanc/Projects/agentic-dev-harness, harness 45 (2026-09-20)
+      doctor exit: 0
+
+    === B. main checkout ===
+      ok       worktree     main checkout, harness 45 (2026-09-20)
+      doctor exit: 0
+
+    === C. mismatch, via mutate.sh on the WORKTREE's own VERSION ===
+    === mutate: .claude/harness/VERSION (1 line(s) changed by s/^45 /44 /) ===
+    === mutate: running bash scripts/doctor.sh ===
+      MISSING  worktree     linked worktree, harness 44 (2026-09-20) - main checkout is 45 (2026-09-20)
+                   the main checkout is /c/Users/ryanc/Projects/agentic-dev-harness
+                   refresh-harness.sh updates the tree it is run in; the
+    === mutate: command exited 0; restored (verified byte-for-byte against /tmp/adh-ac4-probe/.claude/state/mutations/.claude_harness_VERSION.20260922T203952Z.385787.bak) ===
+      34: 45 (2026-09-20)
+
+All three rows are correct on the real tree. The main checkout's path is
+rendered in the shell's spelling (`/c/Users/...`) rather than git's
+(`C:/Users/...`) - the normalisation C-2 warned about, working.
+
+**THE EXIT STATUS IS 0, NOT 1, AND NO FIXTURE COULD HAVE SHOWN THIS.** The
+cause is not the worktree row. `scripts/doctor.sh:170-176`:
+
+    if [ "$found_any" = 0 ] && ! grep -qE '^[[:space:]]*discovery[[:space:]]*\|' "$CONF"; then
+      printf '  (nothing configured yet)\n'
+      ...
+      exit 0
+    fi
+
+That `exit 0` discards `missing` entirely. This repository is `BOOTSTRAPPED=no`
+with no gate commands, so every run takes that path, and the mutated run's tail
+confirms it got there:
+
+      (nothing configured yet)
+    project.conf has no commands, so there is no toolchain to check.
+
+`worktree.test.sh`'s AC-4 fixture writes a CONFIGURED GATE into its
+`project.conf`, so doctor runs past line 176 and exits 1 - which is what the
+suite asserts, and what mutation M2 in `## Notes` confirmed discriminates. The
+fixture is right about the mechanism and blind to this tree's configuration.
+That is precisely the release 41 shape: fixture and tree disagree, both suites
+green, and only the real-tree run says so.
+
+**This does not fail AC-4.** AC-4 requires doctor to name "which worktree it is
+in and whether that worktree's harness is the same release as the main
+checkout's". It does, on the real tree, in all three cases. Exit status is not
+part of the criterion.
+
+**Pre-existing, and deliberately NOT fixed here** - see PO-H in `## Notes`. The
+early exit predates this story and the CI block immediately above it has the
+same hole, so an unbootstrapped project whose CI never runs the harness checks
+is also reported and also exits 0. Changing it changes `doctor.sh`'s exit
+contract for every unbootstrapped project, which is its own story. GREEN found
+this by reading; this probe confirms it by running.
+
+**One trap for whoever repeats this.** `git worktree add` checks out a COMMIT,
+so a fresh worktree carries the COMMITTED `doctor.sh`. The first run of this
+probe printed no `worktree` row at all, because GREEN's change was still
+uncommitted - which looks exactly like the feature being absent. The shipped
+file was copied into the worktree before the runs above: real worktree
+mechanics, real file under test. Run after the commit, no copy is needed.
+
+**Cleanup.** `mutate.sh` restored the VERSION and verified it byte-for-byte;
+the worktree was removed with `git worktree remove --force` and
+`git worktree prune` run. `git worktree list` afterwards shows the main
+checkout alone.
 
 ## Scaffold inventory
 
@@ -816,3 +1438,285 @@ procedure asks of `gates.sh --fast` is answered by `bash scripts/selftest.sh`
 here instead. Recorded because it applies to every story in this repository,
 not just this one, and because "no gate covers it" would otherwise read as a
 reason the story is not ready.
+
+### PO decisions taken at the RED -> GREEN boundary (2026-09-22)
+
+**PO-A. RED's escalation on `refresh-harness.sh` is ANSWERED: no note. Do not
+add one.** RED asked, under "AC-5: what it turned out to be", whether
+refresh should print a note when it runs inside a linked worktree, and
+correctly declined to invent it. The answer is no, for this story:
+
+  * AC-5 is satisfied by the "works correctly on that worktree alone" branch,
+    and that branch requires nothing be printed. A note is a sentence no
+    acceptance criterion asks for.
+  * The state a note would announce - two trees on different releases - IS
+    reported, by AC-4's `doctor.sh` row. That is the mechanism the story asked
+    for, and a second channel for the same fact is not better reporting.
+  * Adding it means a return to RED for one assertion, against no criterion.
+
+So `scripts/refresh-harness.sh` is UNCHANGED by this story, and `touches:` is
+correct in not listing it. GREEN must not edit it. If GREEN believes a note is
+needed, that is an escalation, not an edit.
+
+**Reproduced independently before answering.** RED's claim is that refresh run
+in a linked worktree works on that worktree alone. The orchestrator measured
+this on different inputs, in a different fixture pair, before reading RED's
+report - upstream stamped `999 (probe)` rather than RED's `99 (2099-01-01)`,
+and the assertion taken on the MAIN checkout's stamp rather than on a hook
+marker:
+
+    === BEFORE ===
+    FIX VERSION: 46 (2026-09-22)      (main checkout)
+    WTA VERSION: 46 (2026-09-22)      (linked worktree)
+    === run refresh INSIDE worktree A ===
+    refresh-harness
+      from: /tmp/tmp.tzelE9hrFA  (999 (probe))
+      into: /tmp/tmp.7pADnAaKlT-wtA  (46 (2026-09-22))
+      REPLACED  .claude/harness/VERSION
+      ...
+    === AFTER ===
+    FIX VERSION: 46 (2026-09-22)
+    WTA VERSION: 999 (probe)
+
+The worktree moved; the main checkout did not. Same conclusion, different
+inputs and a different oracle. RED's finding stands.
+
+**Candidate follow-up, deliberately NOT taken here.** Refreshing inside a
+worktree leaves a large uncommitted diff to tracked files (`scripts/*.sh`,
+`.claude/hooks/**`) on that worktree's story branch, where it will ride into
+that story's PR unless somebody notices. That is a real hazard and it is
+outside every criterion this story carries. It belongs in its own story, filed
+through `/plan-story`, not absorbed here.
+
+**PO-B. RED's own escalation discipline is the reason this went well.** It hit
+a Contract clause that said "one refusal or one note, whichever the RED
+investigation shows is correct", found the premise of both branches false -
+there is nothing to refuse and no criterion demanding a note - and stopped
+rather than writing a test for a sentence nobody had asked for. Recorded
+because the failure mode it avoided is the one this harness is built against:
+an agent resolving an open question in a contract by guessing, and the guess
+becoming the specification.
+
+**PO-C. The RED state was re-verified by the orchestrator, not accepted on
+report.** `bash scripts/selftest.sh worktree` run fresh at the start of this
+dispatch: `worktree: 65 passed, 8 failed`, the same eight, all of them the
+absent `doctor.sh` row. `check-sigpipe.sh` and `check-grep-count.sh` each
+scanned 39 shell files with 0 findings.
+
+**PO-D. The branch is one release behind `main`.** This branch carries
+`.claude/harness/VERSION` = 45; `main` is at 46 (release 46 and the `mutate.sh`
+PIPE-trap fix landed after this branch was cut). The suite reads the fixture's
+own stamp at run time rather than a literal, so nothing in it breaks on the
+bump. Noted because the GATES gate record and the PR merge will both see 46.
+
+### PO decisions and verification at the end of GREEN (2026-09-22)
+
+**PO-E. The suite discriminates — verified by the orchestrator's own mutations,
+not by re-running GREEN's.** `rules.md` requires the handoff's mutation table to
+be checked against the committed implementation with mutations the orchestrator
+picks. Two, each predicted to catch a specific pair, run through
+`scripts/mutate.sh` on the shipped `scripts/doctor.sh`:
+
+**M1 — swap the two release numbers in the MISSING row.** Tests that the
+assertion's needle is order-sensitive rather than merely containing both
+numbers.
+
+    === mutate: scripts/doctor.sh (1 line(s) changed by s/"worktree" "${hv:-unstamped}" "${main_hv:-unstamped}"/"worktree" "${main_hv:-unstamped}" "${hv:-unstamped}"/) ===
+        FAIL a linked worktree behind the main checkout is MISSING, naming both releases
+        FAIL doctor in the refreshed worktree reports the mismatch the refresh produced
+    worktree: 71 passed, 2 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_doctor.sh.20260922T174533Z.4133411.bak) ===
+
+Exactly the two assertions that read both numbers in order. Nothing else moved:
+the row still prints, still says `MISSING`, still names two releases — and the
+suite still refuses it.
+
+**M2 — drop ONLY the worktree block's `missing` increment** (line 89, leaving
+every other increment in the file intact). Tests the property
+`doctor.test.sh`'s header says was once lost: a block that prints its complaint
+while doctor exits 0.
+
+    === mutate: scripts/doctor.sh (1 line(s) changed by 89s/missing=\$((missing+1))/:/) ===
+        FAIL and doctor exits 1 on the mismatch
+        FAIL and exits 1
+    worktree: 71 passed, 2 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_doctor.sh.20260922T174724Z.4140904.bak) ===
+
+The two exit-status assertions go red and **every text assertion stays green**,
+which is the point: the exit-status assertions are independent of the text ones,
+so the historical defect cannot recur unnoticed here.
+
+After both, `.claude/state/mutations/` holds `log` and no `.bak` — every restore
+succeeded — and `bash scripts/selftest.sh worktree` is back to `73 passed, 0
+failed`.
+
+**PO-F. GREEN's two divergences from RED's predicted mutation counts are
+accepted as corrections to the prediction, not as defects.** RED predicted
+control 3's probe would redden both `exits 0` assertions; it reddens one,
+because the shipped code has two branches where the prediction assumed one
+shared condition — the main checkout takes the `wt_gitdir = wt_common` path,
+which has no MISSING variant at all. Control 5's probe reaches the other one,
+and did. This is a prediction written in RED against code that did not exist
+yet, corrected by the phase that could finally run it. That is the mechanism
+working.
+
+**PO-G. RETURN TO RED. The blocker is real and the reshuffle is refused.**
+`.claude/tests/sigpipe.test.sh` fails — not `worktree`:
+
+    FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+         scripts/doctor.sh:39 no longer holds [hv="$(grep] - it holds: release_of() { ...
+         scripts/doctor.sh:62 no longer holds [BOOTSTRAPPED="$(grep] - it holds: # 2.55.0.windows.5: ...
+    sigpipe: 81 passed, 1 failed
+
+Reproduced by the orchestrator. The guard itself is unaffected —
+`check-sigpipe.sh` reports 0 findings over 39 files — and what failed is that
+suite's own freshness census, which hard-codes twelve `file:line:prefix`
+triples and exists precisely to fail when one drifts. It is doing its job.
+
+The fix is two line numbers in a file GREEN and GATES both freeze. That is
+`rules.md`'s "a gate failure whose only legal fix is a write the current phase
+forbids is a return to RED", verbatim, and the everyday instance it describes.
+
+**The alternative was offered by the feature-developer and is refused.** It
+would keep `doctor.sh` lines 39 and 62 byte-identical by moving the whole
+worktree block below line 62, needing no test change. Refused because it
+inverts the relationship: it contorts production code to preserve a test's
+hard-coded line numbers. Concretely it would force the two VERSION stamps that
+are COMPARED TO EACH OTHER to be read by two separate inline copies of the same
+`grep | head -1 | trim`, which is the defect `release_of()` exists to prevent —
+a later edit to one copy makes the comparison lie silently. It would also put
+the row under the `Project toolchain` heading, where it is not a project
+toolchain fact, and leave the next person to move a line in `doctor.sh` hitting
+the same wall with nothing on record.
+
+The feature-developer raised it and declined to take it unilaterally, which is
+the correct escalation. The answer is: take the return to RED.
+
+**What RED's remit is, and is not.** Exactly two lines of
+`.claude/tests/sigpipe.test.sh`'s `DISCARDED` census:
+
+    scripts/doctor.sh:39:hv="$(grep           ->  scripts/doctor.sh:41:v="$(grep
+    scripts/doctor.sh:62:BOOTSTRAPPED="$(grep ->  scripts/doctor.sh:113:BOOTSTRAPPED="$(grep
+
+Nothing else. `scripts/doctor.sh` is frozen again by the lock on the way back,
+which is correct and is not a signal to change phase. "Watch it fail" cannot
+apply — the implementation already exists — so the corrected assertion is
+earned by a PROBE, per `rules.md`: mutate the specific behaviour the census
+pins and paste the red into `## Regressions`.
+
+**PO-H. Filed for its own story, not fixed here.** GREEN found that
+`doctor.sh`'s early `exit 0` on the `project.conf has no commands` path
+discards `missing` entirely, so in THIS repository (`BOOTSTRAPPED=no`) a linked
+worktree with a release mismatch prints the `MISSING  worktree` row and still
+exits 0. The CI block above that exit has always had the same hole, so this is
+pre-existing rather than introduced. No criterion of this story covers it —
+AC-4's fixture has a configured gate, runs to the end, and exits 1, which is
+what the assertion pins and what the mutation M2 above confirms discriminates.
+Fixing it here would be scope this story has not earned.
+
+### GREEN, second pass (after the R-1 return), 2026-09-22
+
+**PO-I. GREEN was a genuine no-op for source, and no feature-developer was
+dispatched.** The R-1 return corrected a test fixture, not an implementation:
+`scripts/doctor.sh` was already correct and the corrected census passes against
+it. `rules.md` and the `/advance-story` brief both say GREEN *may* be a no-op
+here and that an agent given no work will find some, so none was dispatched.
+Verified rather than assumed — `git diff --stat scripts/doctor.sh` is unchanged
+from the first GREEN (53 insertions, 2 deletions), and the suites and fast
+gates were re-run at this phase rather than carried over from the previous one.
+
+**PO-J. AC-6's `CLAUDE.md` section was written here, by the orchestrator.**
+It is the one criterion with no test behind it — a `## Deferred verifications`
+entry owned by REVIEW — so nothing would have failed had it been forgotten,
+which is exactly why it is recorded as a decision rather than left implicit.
+
+Written by the Lead PO rather than the feature-developer for two reasons:
+`rules.md` gives docs to the PO, and the section's whole content turns on
+Amendment A-1, which the PO holds. A fresh feature-developer would have written
+the sentence AC-6 originally asked for — the false one.
+
+Placed after `## Phase lock`, which is where the one-checkout-one-lock
+assumption is stated, and kept short because `CLAUDE.md` is in context on every
+turn and says so about itself. It carries the three things AC-6 requires:
+
+  * how to make a worktree per story, with `doctor.sh` named as the thing that
+    says which worktree you are in and whether its release matches;
+  * `bash scripts/plan.sh conflicts` before choosing the second story;
+  * that it reads each story's `## Contract` paths and **not** the `touches:`
+    frontmatter, stated explicitly in the negative so the error A-1 corrected
+    cannot be reintroduced by someone skimming.
+
+It also answers the question the REVIEW entry asks for — what to do when the
+answer is `UNKNOWN`, which is most of the time — with two concrete options and
+the reason `UNKNOWN` must not be read as permission.
+
+**The documented command was run before being documented.** `git worktree add
+../adh-WORLD-015 -b story/WORLD-015-slug` is the form in the section; the
+option-after-path order is valid but is not the order `git worktree --help`
+shows first, so it was executed verbatim on this checkout rather than trusted:
+
+    Preparing worktree (new branch 'story/TEST-001-slug')
+    HEAD is now at 7215b22 HARNESS-008: RED — worktree.test.sh, ...
+    EXIT=0
+    worktree created OK
+
+Then removed, its branch deleted and `git worktree prune` run, leaving the main
+checkout as the only worktree. A command in `CLAUDE.md` is read as instruction
+by every future agent, so an untested one is a defect with a long fuse.
+
+**Nothing in the tree asserts `CLAUDE.md`'s content**, checked before writing:
+`refresh.test.sh` uses its own fixtures, and `lib.test.sh` only asserts that
+`CLAUDE.md` classifies as `harness`. So this section is covered by AC-6's REVIEW
+reading and by nothing else, which is what the deferred verification exists for.
+
+### GATES, 2026-09-22
+
+**Model resolved: `lead-po`, Opus 5.** No subagent was dispatched in GATES.
+The phase's work was the two deferred verifications and the gate run, both of
+which are orchestrator work by the `/complete-story` procedure, and neither
+produced a source change for a feature-developer to make.
+
+**PO-K. `## Gate results` records a run in which ZERO gates executed, and that
+is not evidence about this story.** The recorded block reads
+`result: pass (0 ran, 8 unconfigured, 0 known)`. Every gate in `project.conf`
+is unconfigured because this repository is the harness template, not a project
+with a stack - PO-2, taken at PLANNED, said so and said what stands in its
+place. The artifact is judged by `bash scripts/selftest.sh`, which
+`.github/workflows/gates.yml` runs as a step of the `gates` job, so a red suite
+fails a required check on the PR.
+
+The full self-test was therefore run at GATES, before REVIEW, as the real
+verification the gate record cannot supply. `gates.sh` was still run, and its
+record still matters for a different reason: `check-boundaries.sh` compares the
+recorded tree hash against the tree being merged, so the record is what proves
+no gated file changed after the last full run.
+
+**Which files that hash covers, checked rather than assumed**, because the
+ordering of the remaining steps depends on it. `gated_stdin` in
+`.claude/hooks/lib.sh` counts `source`, `test`, `config` and `harness`, minus
+harness `*.md`, minus `.claude/state/`. For this story:
+
+    gated:      scripts/doctor.sh, .claude/tests/sigpipe.test.sh,
+                .claude/tests/worktree.test.sh
+    NOT gated:  docs/backlog/stories/HARNESS-008.md  (docs)
+                CLAUDE.md                            (harness, but .md)
+
+So writing these notes, pasting the verification results, and `phase.sh set
+REVIEW` rewriting the frontmatter all leave the record valid. Had `CLAUDE.md`
+been gated, AC-6's section would have had to land before the gate run.
+
+**PO-L. The AC-4 real-tree probe had no declared owner, and is recorded in
+`## Gate probes` rather than invented as a deferred verification.** This story
+declares two `## Deferred verifications` - AC-6 (REVIEW) and AC-2 (GATES). It
+does not declare one for AC-4. Release 41 still requires a probe against the
+real tree for a rule that judges the tree, so the probe was run and filed under
+`## Gate probes`, with a sentence saying why it lives there. rules.md asks for
+that choice to be stated rather than left to want two homes.
+
+It is also the probe that produced this story's most useful finding: on the
+real tree `doctor.sh` prints the `MISSING worktree` row and still exits 0,
+because this repository is unbootstrapped and takes an early `exit 0` that
+discards `missing`. The fixture configures a gate and so never reaches that
+path. Both suites green, fixture and tree disagreeing - the exact shape release
+41 exists for. It does not fail AC-4, which says nothing about exit status, and
+it is PO-H's pre-existing defect confirmed by running rather than by reading.
