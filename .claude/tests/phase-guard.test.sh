@@ -780,4 +780,417 @@ assert_blocked "$FIX" 'echo x > src/main.ts' src/main.ts \
   'AC-11: a redirect into frozen source is untouched by this fix'
 
 
+# ===========================================================================
+# HARNESS-010. The reconciliation of the two write-target parsers.
+#
+# lib.test.sh asks write_candidates() directly, which is where the ROLE of
+# EVERY operand is visible. This half drives the whole hook, which is where the
+# things a criterion is actually about live: the verdict, the path named in the
+# denial, the role line in the message, and the decline log.
+#
+# Three helpers, taken from manga-translator's suite because its corpus is half
+# of this story's specification and a helper rewritten is a corpus not ported.
+# The <fixture> argument comes FIRST, exactly as in assert_allowed and
+# assert_blocked: downstream's first version took the command first, so all
+# thirteen calls ran the fixture DIRECTORY as the command and failed with "not
+# blocked at all", which reads exactly like an honest RED.
+
+# assert_role <fixture> <command> <role line> [label]
+#   Blocked, carrying that role, with the role AFTER path: - because
+#   assert_blocked anchors on `path:     <p>` followed by a space or end of
+#   string, and a role line inserted before it would silently stop 99
+#   assertions from matching what they think they match.
+assert_role() {
+  local r before
+  r="$(guard_bash "$1" "$2")"
+  if [ -z "$r" ]; then
+    _bad "role: ${4:-$2}" "not blocked at all, so there is no denial to read a role line from"
+    return
+  fi
+  case "$r" in
+    *"$3"*) ;;
+    *) _bad "role: ${4:-$2}" "the denial carries no '$3' line: $r"; return ;;
+  esac
+  before="${r%%operand:*}"
+  case "$before" in
+    *"path:     "*) _ok "role: ${4:-$2}" ;;
+    *) _bad "role: ${4:-$2}" "the operand: line comes BEFORE path:, which assert_blocked depends on: $r" ;;
+  esac
+}
+
+# assert_no_role <fixture> <command> [label]
+#   Blocked, carrying NO role line. AC-5's own control: a redirect, an rm, a
+#   touch, a tee and a sed -i have no ambiguous operand, and inventing a role
+#   for them is churn. Without this, "put an operand: line on every denial"
+#   satisfies AC-5.
+assert_no_role() {
+  local r
+  r="$(guard_bash "$1" "$2")"
+  if [ -z "$r" ]; then
+    _bad "no role: ${3:-$2}" "not blocked at all"
+    return
+  fi
+  case "$r" in
+    *'operand:'*) _bad "no role: ${3:-$2}" "carries a role line it should not: $r" ;;
+    *) _ok "no role: ${3:-$2}" ;;
+  esac
+}
+
+# assert_blocked_on_either <fixture> <command> <path A> <path B> [label]
+#   For a command where BOTH candidates are frozen and either is a correct
+#   answer. Which one is reported depends on the order candidates reach
+#   check_path, and no criterion or contract clause pins that order. Asserting
+#   one of the two would freeze an implementation detail.
+assert_blocked_on_either() {
+  local r
+  r="$(guard_bash "$1" "$2")"
+  if [ -z "$r" ]; then
+    _bad "blocks: ${5:-$2}" "not blocked at all"
+    return
+  fi
+  case "$r" in
+    *"path:     $3 "*|*"path:     $3"|*"path:     $4 "*|*"path:     $4")
+      _ok "blocks: ${5:-$2}" ;;
+    *) _bad "blocks: ${5:-$2}" "blocked, but on neither '$3' nor '$4': $r" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-1: C-1's twenty-two commands under the union rule"
+set_phase "$FIX" RED
+
+# C-1 is a SETTLED measurement: twenty-two commands driven through the real
+# hook against upstream release 48 and against manga-translator's parser, with
+# the instrument shown to BLOCK a frozen-source write and ALLOW a docs write on
+# both before a single row was believed. RED re-ran it on CI before depending
+# on it and reproduced all twenty-two rows exactly, four DIFFER rows included.
+#
+# C-2's union rule: the reconciled parser BLOCKS every command either parser
+# blocks today. So each row below is the MAXIMUM of the two measured verdicts -
+# except the three marked BOTH WRONG, which C-3 and PO-5 hold at ALLOW.
+
+# Agreed BLOCK, both parsers. The union rule must not LOSE any of these.
+assert_blocked "$FIX" "sed -i 's/a/b/' src/main.ts"        src/main.ts 'C-1 r1: sed -i'
+assert_blocked "$FIX" "sed -i.bak 's/a/b/' src/main.ts"    src/main.ts 'C-1 r2: sed -i.bak'
+assert_blocked "$FIX" "sed -ni 's/a/b/' src/main.ts"       src/main.ts 'C-1 r3: sed -ni'
+assert_blocked "$FIX" "sed -Ei 's/a/b/' src/main.ts"       src/main.ts 'C-1 r4: sed -Ei'
+assert_blocked "$FIX" "sed --in-place 's/a/b/' src/main.ts" src/main.ts 'C-1 r5: sed --in-place'
+assert_blocked "$FIX" 'mv docs/notes.md src/main.ts'       src/main.ts 'C-1 r9: mv onto source'
+assert_blocked "$FIX" 'cp docs/notes.md src/main.ts'       src/main.ts 'C-1 r14: cp onto source'
+assert_blocked "$FIX" 'rm src/main.ts'                     src/main.ts 'C-1 r16: rm source'
+assert_blocked "$FIX" 'rm -f src/a.ts src/b.ts'            src/a.ts    'C-1 r17: rm -f two sources'
+assert_blocked "$FIX" 'touch src/main.ts'                  src/main.ts 'C-1 r18: touch source'
+assert_blocked "$FIX" 'tee src/main.ts < docs/notes.md'    src/main.ts 'C-1 r19: tee into source'
+assert_blocked "$FIX" 'tee -a src/main.ts < docs/notes.md' src/main.ts 'C-1 r20: tee -a into source'
+
+# Agreed ALLOW, both parsers, and they must stay allowed.
+assert_allowed "$FIX" 'sed -n 1,5p tests/guards/layer-imports.test.ts' \
+  'C-1 r7: an -i bearing filename under sed -n'
+assert_allowed "$FIX" 'sed -n 1,5p src/main.ts' 'C-1 r8: sed -n reading source'
+
+# THE FOUR DIFFER ROWS. Each is a hole in one parser, with a direction.
+#
+# r6: upstream is right. GNU getopt_long honours any unambiguous abbreviation
+# and --in-place is the only long option of GNU sed 4.9 beginning `--i`, so
+# `sed --i` genuinely writes in place. Downstream permits it.
+assert_blocked "$FIX" "sed --i 's/a/b/' src/main.ts" src/main.ts \
+  'C-1 r6 DIFFER: sed --i, which downstream permits'
+# r10: downstream is right. mv REMOVES its source, so moving a frozen file away
+# is a write to the frozen path, and upstream permits it.
+assert_blocked "$FIX" 'mv src/main.ts docs/notes.md' src/main.ts \
+  'C-1 r10 DIFFER: mv a frozen source away, which upstream permits'
+# r11 and r12: downstream is right. -t and --target-directory INVERT which
+# operand is the destination; upstream reads position only, so it permits a move
+# INTO a frozen directory.
+assert_blocked "$FIX" 'mv -t src docs/notes.md' src \
+  'C-1 r11 DIFFER: mv -t into frozen source, which upstream permits'
+assert_blocked "$FIX" 'mv --target-directory=src docs/notes.md' src \
+  'C-1 r12 DIFFER: mv --target-directory= into frozen source'
+
+# r13. Both parsers BLOCK this today, and C-2 notes upstream does so for the
+# WRONG reason - on the positional, not on understanding -t. It is asserted
+# with assert_blocked_on_either, and that is not slack: bare `docs` classifies
+# as SOURCE in this repository, because only `docs/` with its trailing slash
+# matches the docs rule. Which of the two paths the denial names therefore turns
+# on a directory-shaped-path gap in classify that `## Out of scope` puts outside
+# this story. Pinning either spelling here would freeze that gap into a test.
+# The sharp form of the same command, with the slash, is two lines below.
+assert_blocked_on_either "$FIX" 'mv -t docs src/main.ts' docs src/main.ts \
+  'C-1 r13: mv -t docs, blocked on one of its two operands'
+assert_blocked "$FIX" 'mv -t docs/ src/main.ts' src/main.ts \
+  'C-1 r13 sharpened: with the slash, docs/ is writable and the SOURCE is refused'
+
+# THE THREE BOTH WRONG ROWS. All three are real writes into frozen source that
+# both parsers permit today, and C-3 and PO-5 make them findings rather than
+# criteria: widening the rule set inside a reconciliation makes it impossible to
+# attribute a behaviour change to either cause. These assertions pin the holes
+# OPEN. A run that quietly closes one has changed the rule set as well as
+# reconciling it, which is the one thing this story must not do without saying
+# so - and it will say so here, by going red.
+assert_allowed "$FIX" 'cp -t src docs/notes.md' \
+  'C-1 r15 BOTH WRONG, held open: cp -t is not given mv -t treatment'
+assert_allowed "$FIX" 'truncate -s 0 src/main.ts' \
+  'C-1 r21 BOTH WRONG, held open: truncate is not a write-capable name'
+assert_allowed "$FIX" 'install -m 644 docs/notes.md src/main.ts' \
+  'C-1 r22 BOTH WRONG, held open: install is not a write-capable name'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-3: mv removes its source, so the source operand is judged"
+set_phase "$FIX" RED
+
+# Upstream's extractor ends in `awk '{print $NF}'`, so it judged the operand mv
+# CREATES and said nothing about the ones it DESTROYS: a frozen file could leave
+# its path in any phase. Every shape below was red in the cross-run.
+assert_blocked "$FIX" 'mv src/main.ts docs/notes.md' src/main.ts \
+  'a frozen source moved to a permitted path'
+assert_blocked "$FIX" 'mv "src/main.ts" docs/notes.md' src/main.ts \
+  'a quoted frozen source'
+assert_blocked "$FIX" 'mv src/main.ts docs/notes.md > /dev/null' src/main.ts \
+  'a trailing redirect to /dev/null does not hide the source'
+assert_blocked "$FIX" 'mv src/main.ts docs/notes.md > docs/log.txt' src/main.ts \
+  'a trailing redirect to a permitted path does not hide it either'
+assert_blocked "$FIX" 'git status && mv src/main.ts docs/notes.md' src/main.ts \
+  'the last command of an && list'
+assert_blocked "$FIX" 'mv -f src/main.ts docs/notes.md' src/main.ts \
+  'an option before a frozen source'
+assert_blocked "$FIX" 'mv docs/a.md src/main.ts docs/b.md' src/main.ts \
+  'three operands: the frozen file in the MIDDLE is removed by the move'
+assert_blocked "$FIX" 'cd docs && mv ../src/main.ts notes2.md' src/main.ts \
+  'a cwd-relative frozen source, resolved through the cd prefix'
+assert_blocked "$FIX" 'F=src/main.ts; mv "$F" docs/notes.md' src/main.ts \
+  'a frozen source held in a variable the command itself assigns'
+assert_blocked "$FIX" 'git mv src/main.ts docs/notes.md' src/main.ts \
+  'git mv is judged by the mv rule, not by a new command name'
+
+set_phase "$FIX" GREEN
+assert_blocked "$FIX" 'mv tests/main.test.ts docs/notes.md' tests/main.test.ts \
+  'a frozen TEST leaving its path during GREEN'
+assert_blocked "$FIX" 'git mv tests/main.test.ts docs/notes.md' tests/main.test.ts \
+  'git mv a frozen test out of its path during GREEN'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-3: -t and --target-directory invert the destination"
+set_phase "$FIX" RED
+
+# All six spellings, because three of them glue or attach the argument. A parser
+# that drops a `-` token whole leaves `mv -tsrc/ docs/notes.md` an entirely
+# unjudged write INTO frozen source - the argument has to be READ, not skipped.
+assert_blocked "$FIX" 'mv -t src/ docs/notes.md'                  src/ '-t DIR separate'
+assert_blocked "$FIX" 'mv -tsrc/ docs/notes.md'                   src/ '-tDIR glued'
+assert_blocked "$FIX" 'mv --target-directory src/ docs/notes.md'  src/ '--target-directory DIR separate'
+assert_blocked "$FIX" 'mv --target-directory=src/ docs/notes.md'  src/ '--target-directory=DIR attached'
+assert_blocked "$FIX" 'mv -ft src/ docs/notes.md'                 src/ '-ft DIR bundled'
+assert_blocked "$FIX" 'mv -ftsrc/ docs/notes.md'                  src/ '-ftDIR bundled and glued'
+
+# And the inverse direction: with -t, the POSITIONAL is a source however late it
+# appears, so a frozen positional is refused even though the destination is
+# writable.
+assert_blocked "$FIX" 'mv -t docs/ src/main.ts'    src/main.ts '-t: the positional is still a source'
+assert_blocked "$FIX" 'mv -tdocs/ src/main.ts'     src/main.ts '-tDIR glued: the positional is still a source'
+assert_blocked "$FIX" 'mv --target-directory=docs/ src/main.ts' src/main.ts \
+  '--target-directory=: the positional is still a source'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-2: every operand of an in-place edit, not the last word"
+set_phase "$FIX" RED
+
+assert_blocked "$FIX" "sed -i 's/a/b/' src/main.ts docs/notes.md" src/main.ts \
+  'a frozen operand followed by a permitted one'
+assert_blocked "$FIX" "sed -i -e 's/a/b/' src/main.ts docs/notes.md" src/main.ts \
+  'the -e form, frozen operand first'
+assert_blocked "$FIX" "sed -i 's/a/b/' src/main.ts > /dev/null" src/main.ts \
+  'a trailing redirect to /dev/null does not hide the operand'
+assert_blocked "$FIX" "sed -i 's/a/b/' src/main.ts 2>/dev/null" src/main.ts \
+  'a stderr redirect is a file descriptor, not an operand'
+assert_blocked "$FIX" "sed -i 's/a/b/' src/main.ts > docs/log.txt" src/main.ts \
+  'a redirect to a permitted path does not hide it either'
+
+# A metacharacter in the expression is data. `(` used to terminate the
+# extractor's character class INSIDE the script, so the candidate was a fragment
+# of the sed program - `s` - which is a block on a nonsense path, and with `!`
+# in front of it the command was allowed outright.
+assert_blocked "$FIX" "sed -i 's/\\(a\\)/b/' src/main.ts"         src/main.ts 'a capture group'
+assert_blocked "$FIX" "sed -i '/x/!s/\\(a\\)/b/' src/main.ts"     src/main.ts 'a negated address AND a capture group'
+assert_blocked "$FIX" "sed -i '/x/!s/\\(a\\)|b;c<d>e&f/g/' src/main.ts" src/main.ts 'every one of them at once'
+assert_allowed "$FIX" "sed -i 's/\\(a\\)/b/' docs/notes.md" \
+  'the same defect from the false-positive side: a capture group writing docs'
+
+# The field report verbatim: `(` in `min(` truncated the match inside the
+# script and the fragment carried an alphanumeric and no paren, so
+# path_is_implausible believed it and the guard blocked on it.
+H010_B="sed -i 's|        if a.ndim == 4 and min(a.shape[1], a.shape[3]) <= 8 ...|...|'"
+assert_allowed "$FIX" "$H010_B /tmp/claude/scratch/sib.py" \
+  'the field report verbatim, against a path outside the repository'
+assert_blocked "$FIX" "$H010_B src/main.ts" src/main.ts \
+  'the same expression against a frozen source file'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-4: a write that parsed to no target leaves a trace"
+set_phase "$FIX" RED
+
+# AC-4. A command that NAMES a write-capable tool and yields no target the guard
+# can judge is ALLOWED, as it must be, and says so. Until that line existed the
+# two outcomes - "the extractors found nothing to judge" and "they found
+# candidates and every one was permitted" - were indistinguishable from outside,
+# which is how a bypass stays invisible: the log is empty either way.
+H010_LOG="$FIX/.claude/state/phase-guard-declined.log"
+h010_log_of() { rm -f "$H010_LOG"; guard_bash "$FIX" "$1" >/dev/null; cat "$H010_LOG" 2>/dev/null; }
+h010_lines() { printf '%s' "$1" | awk 'NF { n++ } END { print n + 0 }'; }
+
+assert_allowed "$FIX" "find src -name '*.ts' | xargs rm" \
+  'operands arriving from a pipe are unknowable'
+h010_l="$(h010_log_of "find src -name '*.ts' | xargs rm")"
+assert_contains "a write command with no visible operand is traced" 'no-candidate' "$h010_l"
+assert_contains "the trace names the story"                         'T-1'          "$h010_l"
+assert_contains "the trace names the phase"                         'RED'          "$h010_l"
+assert_contains "the trace quotes the command, so the log is actionable" 'xargs rm' "$h010_l"
+assert_eq "the trace is one line, not a transcript" 1 "$(h010_lines "$h010_l")"
+
+assert_allowed "$FIX" 'xargs touch < list' 'an input redirect is still a read'
+assert_contains "an input-redirect operand list is traced too" 'no-candidate' \
+  "$(h010_log_of 'xargs touch < list')"
+
+# AC-4's CONTROL: a command from which targets ARE derived writes nothing to
+# that log. Without these the log becomes a line per command and AC-4 has bought
+# nothing at all.
+assert_eq "a candidate that was found and PERMITTED is not a zero-candidate trace" "" \
+  "$(h010_log_of 'echo x > docs/notes.md')"
+assert_eq "a candidate that was found and DENIED is not one either" "" \
+  "$(h010_log_of 'echo x > src/main.ts')"
+assert_eq "a read-only cat logs nothing"      "" "$(h010_log_of 'cat src/main.ts')"
+assert_eq "a read-only grep logs nothing"     "" "$(h010_log_of 'grep -rn export src/')"
+assert_eq "a read-only git diff logs nothing" "" "$(h010_log_of 'git diff -- src/main.ts')"
+assert_eq "a bare redirect to /dev/null is not a write-capable command" "" \
+  "$(h010_log_of 'git diff > /dev/null')"
+
+# And the trace is distinguishable from the OTHER thing this log carries. An
+# unresolvable candidate is a parse the guard could not BELIEVE, not one it
+# could not FIND, and one event gets one line.
+h010_l="$(h010_log_of "sed -i 's/a/b/' \"\$EXPORTED_ELSEWHERE\"")"
+assert_contains "an unresolvable candidate still logs as an implausible target" \
+  'implausible target' "$h010_l"
+assert_not_contains "and is not ALSO reported as a zero-candidate command" \
+  'no-candidate' "$h010_l"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-5: the denial names the operand's role"
+set_phase "$FIX" RED
+
+# AC-5 is the criterion with no settled oracle, and `## Deferred verifications`
+# records why: the PLANNED probe measured BLOCK/ALLOW only and never parsed a
+# message body, so no measurement of what a denial SAYS existed before this
+# suite. It also names the trap - "a role assertion that fails only when the
+# verdict ALSO flips is not testing the role, it is testing the verdict a second
+# time".
+#
+# So the metric is this PAIR, and it is built to be independent of the verdict:
+# the two commands differ only in operand order, BOTH are denied, BOTH are
+# denied ON THE SAME PATH, and the only thing that distinguishes them is the
+# role. A parser that reported one fixed role for every mv operand would satisfy
+# one line and fail the other while leaving every verdict in this file green.
+assert_role "$FIX" 'mv src/main.ts docs/notes.md' \
+  'operand:  source of mv (removed by the move)' \
+  'src/main.ts moved AWAY is a source, removed by the move'
+assert_role "$FIX" 'mv docs/notes.md src/main.ts' \
+  'operand:  destination of mv' \
+  'the SAME path moved ONTO is a destination - same verdict, same path, other role'
+
+# The same independence through the option, where position is no guide at all:
+# `-t` makes the late operand a source and the early one a destination.
+assert_role "$FIX" 'mv -t docs/ src/main.ts' \
+  'operand:  source of mv (removed by the move)' \
+  '-t: the positional is a source however late it appears'
+assert_role "$FIX" 'mv -t src/ docs/notes.md' \
+  'operand:  destination of mv' \
+  '-t: DIR is the destination however early it appears'
+
+# cp has its own destination role, and a three-operand mv still names its last.
+assert_role "$FIX" 'cp docs/notes.md src/main.ts' \
+  'operand:  destination of cp' 'a cp destination says so'
+assert_role "$FIX" 'mv docs/a.md docs/b.md src/main.ts' \
+  'operand:  destination of mv' 'the FINAL operand of a three-argument mv'
+assert_role "$FIX" 'mv docs/a.md src/main.ts docs/b.md' \
+  'operand:  source of mv (removed by the move)' \
+  'a non-final operand among several is a source'
+
+# The role line comes AFTER path:, and path: keeps its exact spelling and
+# indent, because every assert_blocked in this file anchors on it.
+assert_contains "the role line follows path: immediately, and path: is unchanged" \
+  'path:     src/main.ts   operand:  source of mv (removed by the move)' \
+  "$(guard_bash "$FIX" 'mv src/main.ts docs/notes.md')"
+
+# AC-5's OWN CONTROL: a denial for a path with no meaningful role does not
+# invent one. Without these, "put an operand: line on every denial" satisfies
+# every assertion above.
+assert_no_role "$FIX" 'echo x > src/main.ts'          'a redirect target has no ambiguous role'
+assert_no_role "$FIX" 'rm src/main.ts'                'an rm operand has no ambiguous role'
+assert_no_role "$FIX" 'touch src/main.ts'             'a touch operand has no ambiguous role'
+assert_no_role "$FIX" "sed -i 's/a/b/' src/main.ts"   'a sed -i operand has no ambiguous role'
+assert_no_role "$FIX" 'echo x | tee src/main.ts'      'a tee operand has no ambiguous role'
+
+set_phase "$FIX" GREEN
+assert_role "$FIX" 'mv tests/main.test.ts docs/notes.md' \
+  'operand:  source of mv (removed by the move)' \
+  'the GREEN/test direction is legible as a source denial too'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-6 and C-4: the hook asks lib.sh rather than re-deriving"
+set_phase "$FIX" RED
+
+# C-4 and AC-6. The parser is a named function of lib.sh that the hook ASKS -
+# the rule rules.md already states for classify.sh - and C-5 checked the callers
+# against the tree: `grep -rn CANDIDATES .claude/ scripts/` returns two lines,
+# both in phase-guard.sh, and nothing else reads them. RED re-checked that and
+# it still holds.
+#
+# This is the mechanical half of a criterion marked "verified by review"; review
+# still owns "every caller asks it", which is a design question a grep cannot
+# settle.
+assert_contains "lib.sh defines write_candidates" 'write_candidates()' \
+  "$(cat "$REPO_ROOT/.claude/hooks/lib.sh")"
+assert_contains "phase-guard.sh calls it" 'write_candidates ' \
+  "$(cat "$REPO_ROOT/.claude/hooks/phase-guard.sh")"
+
+# And the other half: the inline pipeline it replaces is gone. The needle is the
+# `grep -oE` extractor chain, not the word CANDIDATES - that variable survives
+# the refactor as the name of the parser's ANSWER, so asserting its absence
+# would be an assertion that cannot hold, and asserting its presence would be
+# satisfied by the code this story exists to remove.
+assert_not_contains "the hook no longer carries its own extractor pipeline" \
+  "grep -oE '\\bsed\\b" "$(cat "$REPO_ROOT/.claude/hooks/phase-guard.sh")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 C-6: what the reconciled parser must NOT start refusing"
+set_phase "$FIX" RED
+
+# A lock with false positives teaches the agent that blocks are noise, which is
+# the instinct law 5 exists to suppress. Both halves of the reconciliation add
+# refusals, so this is where the cost of getting it wrong shows up.
+#
+# The first five are the xA half of the cross-run: manga-translator's parser
+# emits every non-option token, so it refused the TIMESTAMP of a touch -t and
+# the REFERENCE FILE of a touch -r - a wrong denial naming a real file the
+# command never writes, which is the most convincing kind.
+assert_allowed "$FIX" 'touch -t 202601010000 docs/a.md' 'touch -t: a timestamp is not a path'
+assert_allowed "$FIX" 'touch -d 2026-01-01 docs/a.md'   'touch -d: a date is not a path'
+assert_allowed "$FIX" 'touch -r src/main.ts docs/a.md'  'touch -r: the reference is only read'
+assert_allowed "$FIX" 'touch --reference src/main.ts docs/a.md' 'touch --reference, the long form'
+assert_allowed "$FIX" 'touch --date 2026-01-01 docs/a.md'       'touch --date, the long form'
+
+# cp READS its sources and leaves them where they are. The mv rule must not
+# spread to it, or every `cp src/x docs/` a review does becomes a refusal.
+assert_allowed "$FIX" 'cp src/main.ts docs/copy.md' 'cp leaves its source where it was'
+assert_allowed "$FIX" 'cp docs/a.md docs/b.md'      'cp between permitted paths'
+
+# Ordinary moves inside a permitted category, in every -t spelling.
+assert_allowed "$FIX" 'mv docs/a.md docs/b.md'                 'mv between permitted paths'
+assert_allowed "$FIX" 'mv -f docs/a.md docs/b.md'              'an option before permitted operands'
+assert_allowed "$FIX" 'mv -t docs/ docs/a.md'                  'mv -t into a permitted directory'
+assert_allowed "$FIX" 'mv --target-directory=docs/ docs/a.md'  'the attached form, permitted'
+
+# And two frozen operands: either path is a correct answer and no clause pins
+# which, but SOMETHING must be refused.
+assert_blocked_on_either "$FIX" 'mv src/a.ts src/b.ts' src/a.ts src/b.ts \
+  'both operands frozen: one of them is named'
+
 summary "phase-guard"
