@@ -4,8 +4,8 @@ title: A bare directory name classifies as its category, not as source
 slug: a-bare-directory-name-classifies-as-its
 epic: 
 type: chore
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-011-a-bare-directory-name-classifies-as-its
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/paths.conf, .claude/tests/classify.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/floors.conf]  # files this story expects to write
@@ -220,7 +220,41 @@ REVIEW reads the file and records whether someone adding a new category would
 be led to add both forms. Falsifiable: if the answer is "only if they happen to
 read the vendor block", the fix is incomplete however green the suite is.
 
-**Result:** <!-- filled at REVIEW -->
+**Result (REVIEW, 2026-09-23): PASSED, with one limit recorded.**
+
+The question this entry asks is whether `paths.conf` now reads as ONE rule or as
+eight coincidences - whether someone adding a category would be led to add both
+forms, or only if they happened to read the vendor block.
+
+**The rule is stated once, before any rule, under `BOTH FORMS, ALWAYS`.** It
+gives the mechanism (`x/**` matches under x and never x itself), both concrete
+failures (`rm -rf tests` writable in the phases that freeze tests; `rm -rf docs`
+refused in RED), the anchoring requirement (`**/tests` beside `**/tests/**`;
+`docs` beside `docs/**`, root-anchored and staying so), the placement rule and
+why (first match wins), and the file-of-that-name consequence as accepted rather
+than overlooked. It ends with the sentence this entry was written to look for:
+*"A new category needs both forms."*
+
+**Each of the four blocks carries a pointer** - `# The directories themselves -
+see BOTH FORMS at the top of this file.` - sited exactly where an editor adding
+rules is working. GREEN rewrote vendor's own two-line explanation into the same
+pointer so the reason lives in one place rather than two, and flagged that as a
+line outside its brief. Correct call: leaving vendor's copy would have left two
+statements of one rule, free to drift.
+
+So a future editor meets the rule in the header before reaching any block, and
+meets a pointer again inside whichever block they are editing. That is the
+judgement AC-4 asked for, and it is adequate.
+
+**The limit, stated rather than left for someone to discover.** Nothing
+MECHANICALLY refuses a `/**` rule with no bare partner. A guard could: assert
+that every rule whose glob ends `/**` has a sibling with the same category and
+the same anchoring minus the suffix - it is a few lines over a file the harness
+already parses, and `classify.test.sh` is where it would live. Not filed here,
+because this story has already produced one neighbour and the header plus four
+pointers is proportionate to a defect that took five categories and several
+releases to be noticed once. Filing it is a reasonable next move for anyone who
+disagrees.
 
 **That the fallback still fails closed. Owner: GATES.**
 
@@ -235,7 +269,48 @@ is the sharpest) and confirms that assertions go red rather than the suite
 quietly continuing to pass, then restores. That is the control proving the new
 rules are load-bearing and narrow, rather than merely present.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-23): PASSED. The control fires on over-reach.**
+
+A NEW bare rule - one this story added, against the SHIPPED `paths.conf` - was
+made to steal a path it has no business claiming, through `scripts/mutate.sh`:
+
+    === mutate: .claude/harness/paths.conf (1 line(s) changed by 124s#^test | \*\*/tests$#test | src#) ===
+      124 - test | **/tests
+      124 + test | src
+
+    bash scripts/classify.sh src tests
+      test    src        <- stolen
+      source  tests      <- the rule no longer reaches what it was for
+
+    bash scripts/selftest.sh classify
+        FAIL bare tests is test
+        FAIL a nested bare tests directory is still test
+        FAIL the control: bare src is still source
+    classify: 39 passed, 3 failed
+    === restored (verified byte-for-byte against .../paths.conf.20260923T222207Z.289430.bak) ===
+
+**The third FAIL is the one this entry exists for.** The two positives going red
+only says the rule is load-bearing; `the control: bare src is still source` going
+red says the fallback is guarded - a rule that swallows a path it should not
+reach is caught, rather than the suite continuing quietly green. That is C-4's
+failure mode, and the silent one: a path wrongly classified as `test` is writable
+in RED, where source is frozen.
+
+**THE FIRST TWO ATTEMPTS AT THIS PROBE WERE BROKEN, AND ALMOST PASSED AS
+EVIDENCE.** Both used `test \| \*\*/tests` as the sed pattern. In BRE, `\|` is
+GNU **alternation**, not a literal pipe, so the expression matched something else
+entirely and rewrote line 124 to `test | src| **/tests` - a rule with a
+nonsense glob. That still reddened two assertions, because the rule stopped
+reaching `tests`, and it would have read as a successful probe. It was caught
+only by printing what the line actually became: `mutate.sh` echoes the
+before/after, and the after was not what had been asked for.
+
+Recorded because it is the same shape as HARNESS-010's PO-4 - a broken
+instrument producing plausible output - and because the lesson is narrower and
+more reusable than "check your instrument": **in a `sed` BRE, a literal `|`
+is written `|`, and `\|` means alternation.** The harness's own rules are
+`|`-separated, so every future mutation of `paths.conf`, `project.conf` or
+`floors.conf` meets this.
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -712,10 +787,21 @@ as PO-3 says.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-23T22:35:07Z
+    commit: 348aa19 (working tree had uncommitted changes)
+    tree:   213a8225fed3745225e887a7ad4789b47df7021d
+    result: pass (0 ran, 8 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    UNCONFIGURED mutation
 
 ## Gate probes
 
