@@ -29,6 +29,18 @@ _bad() {
   printf '%s\n' "$2" | sed -e 's/^/         /'
 }
 
+# summary <suite name>
+#
+# THE FORMAT STRING BELOW IS LOAD BEARING OUTSIDE THIS FILE. scripts/selftest.sh
+# reads the `N` of `<name>: N passed, M failed` back out of each suite's stdout
+# and compares it against that suite's floor in .claude/tests/floors.conf - so
+# this is the count a suite declares it did, and not merely something printed
+# for a human. It is matched anchored and by name,
+# `^<name>: ([0-9]+) passed, ([0-9]+) failed$`, and the LAST match wins.
+#
+# Change the wording and every floor stops being read. `.claude/tests/
+# selftest.test.sh` pins the string at the other end so that cannot happen
+# quietly; if you are here to reword it, change that suite in the same commit.
 summary() { # <suite name>
   printf '\n%s: %d passed, %d failed\n' "$1" "$_pass" "$_fail"
   [ "$_fail" -eq 0 ] || return 1
@@ -45,6 +57,18 @@ assert_contains() { # <what> <needle> <haystack>
     *"$2"*) _ok "$1" ;;
     *) _bad "$1" "expected to contain: $2
 actual:               $3" ;;
+  esac
+}
+
+# assert_not_contains <what> <needle> <haystack>   The negative control's
+# assertion. "It reports X" is satisfied by a run that reports X AND the wrong
+# thing beside it, so a criterion phrased as "something other than PASS" needs
+# this rather than a second assert_contains.
+assert_not_contains() { # <what> <needle> <haystack>
+  case "$3" in
+    *"$2"*) _bad "$1" "expected NOT to contain: $2
+actual:                   $3" ;;
+    *) _ok "$1" ;;
   esac
 }
 
