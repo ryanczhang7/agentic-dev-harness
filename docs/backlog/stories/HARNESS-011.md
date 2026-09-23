@@ -440,6 +440,29 @@ elided at `...`; each is the full lock message):
 
     phase-guard-HARNESS-011-slice: 5 passed, 7 failed
 
+**And the same thing on CI**, which is the run that judges it. `gates` workflow
+run 35921367719 on this branch, Linux, the whole `bash scripts/selftest.sh`:
+
+    classify: 32 passed, 10 failed
+    FAIL classify  did 32 units of work, below the floor of 42 in .claude/tests/floors.conf
+    ...
+        FAIL blocks: the bare tests directory in GREEN
+        FAIL and refused because it is test, not incidentally
+        FAIL allows: the bare docs directory in RED
+        FAIL allows: the bare scripts directory in RED
+        FAIL allows: the bare .claude directory in RED
+        FAIL allows: the bare .github directory in RED
+        FAIL allows: the bare tests directory in RED
+    phase-guard: 293 passed, 7 failed
+    FAIL phase-guard  did 293 units of work, below the floor of 300 in .claude/tests/floors.conf
+    ...
+    3 of 19 harness suite(s) FAILED.
+
+Identical failure set to the local run, on a different OS, and it confirms the
+floor arithmetic: 293 + 7 = 300. The third failing suite was `selftest`, and it
+was RIGHT to fail - see "A floor is recorded TWICE" below. It is green after
+the second commit.
+
 **Why it is the RIGHT failure.** Every message names `category: source` on a
 bare directory name - the defect exactly as C-1 describes it, not an import
 error, not a fixture fault, not a timeout. Nothing is missing: `classify.sh`
@@ -451,7 +474,16 @@ absent from `paths.conf` and for no other reason.
     .claude/tests/classify.test.sh       +15 assertions, one new describe block
     .claude/tests/phase-guard.test.sh    +12 assertions, two new describe blocks
     .claude/tests/floors.conf            classify 27 -> 42, phase-guard 288 -> 300
+    .claude/tests/selftest.test.sh       the SAME two numbers, second copy
     docs/backlog/stories/HARNESS-011.md  ## Test plan, ## Handoff
+
+**A floor is recorded TWICE, and the second place is a test.**
+`.claude/tests/selftest.test.sh` carries a hand-copied table of every floor and
+asserts `floors.conf` matches it - which is what stops a floor being quietly
+lowered to make a run pass. Raising a floor in one file and not the other fails
+the `selftest` suite with `and each records the executed count measured on this
+tree`. Found on CI, at the cost of a round trip; a pointer comment now sits at
+the top of `floors.conf` so the next person does not pay it again.
 
 `.claude/harness/paths.conf` was NOT touched. It is this story's production
 artifact and GREEN owns it.
@@ -615,12 +647,9 @@ as PO-3 says.
 * **`bash scripts/check-sigpipe.sh` -> 0 findings over 40 shell files;
   `bash scripts/check-grep-count.sh` -> 0 findings over 40.** Both run after the
   test edits.
-* **The phase-guard floor of 300 is arithmetic, not a reading.** 288 - the
-  declared floor HARNESS-010 measured - plus the 12 new assertions, whose
-  5-passed / 7-failed split was measured in a slice. The full suite was not run
-  locally, by instruction. If the `gates` job reports a pre-existing count above
-  288, correct the floor in GREEN and say so: a floor that is too low fails
-  nothing, but it documents nothing either.
+* **The phase-guard floor of 300 was arithmetic and is now a reading.** The
+  `gates` job on this branch reports `phase-guard: 293 passed, 7 failed` - 300
+  executed, exactly the 288 + 12 predicted. No correction needed in GREEN.
 * **`packages/app/tests` and `src/docs` do not exist in the fixture**, on
   purpose. The classifier answers about paths that may not exist yet, which is
   the same property C-3 records for a file named `test`.
