@@ -1193,4 +1193,63 @@ assert_allowed "$FIX" 'mv --target-directory=docs/ docs/a.md'  'the attached for
 assert_blocked_on_either "$FIX" 'mv src/a.ts src/b.ts' src/a.ts src/b.ts \
   'both operands frozen: one of them is named'
 
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-011 AC-2: GREEN freezes the tests DIRECTORY, not only the files"
+set_phase "$FIX" GREEN
+
+# In GREEN, deleting one frozen test was refused and deleting all of them was
+# permitted. The cause is not in this hook: `paths.conf` wrote its rules as
+# `**/tests/**`, which matches paths UNDER tests and never `tests` itself, so
+# the bare directory fell through to the `source` fallback - and source is
+# writable in GREEN. Law 2 says tests are frozen during GREEN; the lock
+# enforced that per file and not for the directory that holds them.
+#
+# THE CONTROLS ARE THE POINT of this block. Both of them were ALREADY refused
+# at release 49 and must stay refused, because the criterion is about the
+# DIRECTORY closing a hole the FILE never had. Without them, "the lock refuses
+# something under tests/" proves nothing new.
+assert_blocked "$FIX" 'rm -rf tests/main.test.ts' tests/main.test.ts \
+  'the control: one test file was always refused'
+assert_blocked "$FIX" 'rm -rf tests/' tests/ \
+  'the control: a trailing-slash directory, closed by HARNESS-010'
+
+# THE HOLE.
+assert_blocked "$FIX" 'rm -rf tests' tests 'the bare tests directory in GREEN'
+
+# ...and refused AS A TEST. A denial alone would be satisfied by a rule that
+# swallowed the path into any frozen category; what the story claims is that
+# the classifier now gives the bare name its own category.
+r="$(guard_bash "$FIX" 'rm -rf tests')"
+assert_contains "and refused because it is test, not incidentally" "category: test" "$r"
+
+# THE COUNTER-CONTROL, in the other direction: source is WRITABLE in GREEN and
+# must stay so. A fix that reached too far - one over-broad bare rule - would
+# freeze src here, and the failure would be silent in the classifier.
+assert_allowed "$FIX" 'rm -rf src' 'the control: bare src is still writable in GREEN'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-011 AC-3: RED may write the bare directories RED owns"
+set_phase "$FIX" RED
+
+# The same defect pointing the other way. `source` is frozen in RED, so every
+# bare directory name that should have been harness, docs or test was REFUSED
+# in the phase that may write all three. Measured at release 49: `rm -rf docs`,
+# `rm -rf .claude`, `rm -rf scripts`, `rm -rf .github` and `rm -rf tests` were
+# all BLOCKED in RED, each one reported as `category: source`.
+assert_allowed "$FIX" 'rm -rf docs'    'the bare docs directory in RED'
+assert_allowed "$FIX" 'rm -rf scripts' 'the bare scripts directory in RED'
+assert_allowed "$FIX" 'rm -rf .claude' 'the bare .claude directory in RED'
+assert_allowed "$FIX" 'rm -rf .github' 'the bare .github directory in RED'
+assert_allowed "$FIX" 'rm -rf tests'   'the bare tests directory in RED'
+
+# THE CONTROLS. `src` is a real source directory and there is no rule that
+# should make it anything else; `wibble` matches no rule at all, and the
+# documented fallback to `source` is what makes the lock FAIL CLOSED on a path
+# nobody has classified. Eight new rules, three of them `**/`-prefixed, are
+# eight chances to swallow a path they were never meant to reach - and a path
+# wrongly classified as test or harness is WRITABLE here, where source is
+# frozen. These two assertions are what notices.
+assert_blocked "$FIX" 'rm -rf src'    src    'the control: bare src is still frozen in RED'
+assert_blocked "$FIX" 'rm -rf wibble' wibble 'the control: an unclassified bare name still falls through to source'
 summary "phase-guard"

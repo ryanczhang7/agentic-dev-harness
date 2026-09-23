@@ -437,7 +437,7 @@ while read -r n v; do
 done <<'COUNTS'
 boundaries 73
 ci-local 28
-classify 27
+classify 42
 doctor 29
 gate-reminder 32
 gates 92
@@ -446,7 +446,7 @@ lib 197
 mutate 44
 new-story 25
 phase 33
-phase-guard 288
+phase-guard 300
 plan 42
 profiles 37
 refresh 63

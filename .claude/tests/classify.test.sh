@@ -166,4 +166,68 @@ out="$(cls --nonsense src/main.ts 2>&1)"; rc=$?
 assert_eq "an unknown option is a usage error" 2 "$rc"
 assert_contains "and says so" "usage" "$(printf '%s' "$out" | tr 'A-Z' 'a-z')"
 
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-011: a bare directory name classifies as its own category"
+
+# A rule written `docs | docs/**` matches paths UNDER docs and never `docs`
+# itself, so every bare directory name fell through to the documented `source`
+# fallback. Measured at release 49, before the fix:
+#
+#   docs  tests  test  spec  __tests__  .claude  scripts  .github  -> source
+#
+# Wrong in both directions, in different phases. `source` is writable in GREEN
+# and GATES, so a bare `tests` was writable in exactly the phases that freeze
+# tests - `rm -rf tests` was PERMITTED in GREEN. And `source` is frozen in RED
+# and REVIEW, so `rm -rf docs` and `rm -rf .claude` were REFUSED in RED, where
+# both categories are writable.
+#
+# Vendor already carries both forms, under a comment in paths.conf saying
+# exactly why. This is that treatment for the three categories that lacked it.
+# The end-to-end half - the same paths through the real hook - is in
+# phase-guard.test.sh; asserted here too because this is where the answer is
+# DECIDED, and a classifier assertion says which rule was wrong.
+
+assert_eq "bare docs is docs"       "docs	docs"       "$(cls docs)"
+assert_eq "bare scripts is harness" "harness	scripts"    "$(cls scripts)"
+assert_eq "bare .claude is harness" "harness	.claude"    "$(cls .claude)"
+assert_eq "bare .github is harness" "harness	.github"    "$(cls .github)"
+assert_eq "bare tests is test"      "test	tests"      "$(cls tests)"
+assert_eq "bare test is test"       "test	test"       "$(cls test)"
+assert_eq "bare spec is test"       "test	spec"       "$(cls spec)"
+assert_eq "bare __tests__ is test"  "test	__tests__"  "$(cls __tests__)"
+
+# Each bare form keeps its OWN rule's anchoring, because it sits inside its own
+# category's block rather than in one collected block at the end. The test
+# rules are `**/`-prefixed and reach a nested directory; the docs rule is
+# root-anchored and does not.
+assert_eq "a nested bare tests directory is still test" "test	packages/app/tests" \
+  "$(cls packages/app/tests)"
+assert_eq "but a nested 'docs' is not docs, as its rule is root-anchored" \
+  "source	src/docs" "$(cls src/docs)"
+
+# The precedent, asserted so that removing it is a failure rather than a
+# silent regression. Vendor has had both forms since somebody first hit this.
+assert_eq "vendor already had bare forms, and keeps them" "vendor	node_modules" \
+  "$(cls node_modules)"
+assert_eq "and so does target" "vendor	target" "$(cls target)"
+
+# THE CONTROLS, and they matter as much as the positives: a fix that made
+# every bare name match something would satisfy all eight assertions above and
+# destroy the fallback that makes the phase lock fail closed. `src` is a real
+# source directory; `wibble` matches no rule at all, and paths.conf's own
+# header says that is the right answer for a file about to be authored.
+assert_eq "the control: bare src is still source"    "source	src"    "$(cls src)"
+assert_eq "the control: an invented name is still source" "source	wibble" "$(cls wibble)"
+
+# THE ACCEPTED TRADE, asserted so it is a recorded decision rather than a
+# surprise found later. `test | **/test` matches a FILE named `test` as well as
+# a directory, because the classifier sees a string and not an inode - it is
+# asked about paths that do not exist yet. Vendor has carried exactly this
+# property since its bare forms were added (`**/node_modules` matches a file of
+# that name). C-3 of HARNESS-011 says do not try to fix it here.
+printf 'not a directory\n' > "$FIX/test"
+assert_eq "a FILE named test classifies as test: the accepted trade" "test	test" \
+  "$(cls test)"
+rm -f "$FIX/test"
 summary "classify"
