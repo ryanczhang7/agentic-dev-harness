@@ -4,8 +4,8 @@ title: A bare directory name classifies as its category, not as source
 slug: a-bare-directory-name-classifies-as-its
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-011-a-bare-directory-name-classifies-as-its
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/paths.conf, .claude/tests/classify.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/floors.conf]  # files this story expects to write
