@@ -442,11 +442,11 @@ doctor 29
 gate-reminder 32
 gates 92
 grep-count 20
-lib 139
+lib 197
 mutate 44
 new-story 25
 phase 33
-phase-guard 188
+phase-guard 288
 plan 42
 profiles 37
 refresh 63
@@ -457,10 +457,13 @@ COUNTS
 assert_eq "and each records the executed count measured on this tree" "" "$wrong"
 
 # Named individually, because these two are the reason AC-7 is a criterion
-# rather than a note: a call-site implementation records 1 and 50.
+# rather than a note: a call-site implementation records 1 and 104. HARNESS-010
+# moved lib from 139 to 197 and phase-guard from 188 to 288 - both floors are
+# recorded in RED, so both suites sit BELOW them until the reconciled parser
+# lands. See the note at the foot of floors.conf.
 assert_eq "profiles is floored at its 37 executed assertions, not its 1 call site" \
   37 "$(floor_of profiles)"
-assert_eq "lib is floored at its 139 executed assertions, not its 50 call sites" \
-  139 "$(floor_of lib)"
+assert_eq "lib is floored at its 197 executed assertions, not its 104 call sites" \
+  197 "$(floor_of lib)"
 
 summary "selftest"
