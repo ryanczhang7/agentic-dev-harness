@@ -86,7 +86,32 @@ count() {
 # run_in <dir> <command...>   Run a command from inside a worktree, capturing
 # both streams. Every script under test locates its tree from its own path, so
 # "which worktree" is decided by which copy of the script runs.
-run_in() { local d="$1"; shift; ( cd "$d" && "$@" 2>&1 ); }
+#
+# GITHUB_HEAD_REF AND PR_HEAD_SHA ARE CLEARED, and that is the whole reason this
+# is a function rather than a bare subshell. check-boundaries.sh:179 reads
+#
+#     br="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}"
+#
+# deliberately, so that on CI it can name the PR's branch from a detached merge
+# commit. Inside this suite that is poison: the fixture worktrees are on
+# story/T-A-fixture and story/T-B-fixture, but a run under Actions inherits the
+# REAL branch being built, so check-boundaries looks for that story, finds none
+# in the fixture, and SKIPS its story checks. It then exits 0 having asserted
+# nothing - so the AC-3 control, which needs worktree b to be REFUSED, was
+# satisfied by a run that never judged anything.
+#
+# Measured: this suite is 73/0 on a developer machine and 69/4 under Actions,
+# and setting GITHUB_HEAD_REF alone reproduces the CI result locally, exactly.
+# The four reds are the assertions that read check-boundaries' verdict.
+#
+# Cleared for EVERY command, not just check-boundaries: these two are the only
+# ambient variables any harness script reads (verified by grep over scripts/
+# and .claude/hooks/), and a fixture is never the CI checkout, so there is no
+# case where inheriting one is correct.
+run_in() {
+  local d="$1"; shift
+  ( cd "$d" && unset GITHUB_HEAD_REF PR_HEAD_SHA && "$@" 2>&1 )
+}
 
 # first_version <tree>   The release stamp as doctor.sh reads it: the first
 # non-comment line of .claude/harness/VERSION. CR stripped, because this

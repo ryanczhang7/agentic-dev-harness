@@ -1089,13 +1089,107 @@ in-flight run's own restore is in the log at `20260922T185258Z`, `restored
 
 
 
+### R-2. Return from REVIEW, 2026-09-22. `.claude/tests/worktree.test.sh`, the AC-3 block was environment-dependent.
+
+**How it was found: the PR's own CI, which is the only machine that could.**
+PR #76's `gates` job failed where every local run had passed. Seventeen suites
+green, then:
+
+    === worktree ===
+      AC-3: the gate record belongs to the worktree that ran the gates
+        FAIL and says the record matches a's tree      expected: 1  actual: 0
+        FAIL for story T-A                             expected: 1  actual: 0
+        FAIL check-boundaries in b refuses             expected: 1  actual: 0
+        FAIL because b has no tool-written record      expected: 1  actual: 0
+    worktree: 69 passed, 4 failed
+    1 of 18 harness suite(s) FAILED.
+
+Local, same commit: `worktree: 73 passed, 0 failed`.
+
+**What was wrong with it.** `check-boundaries.sh:179` reads
+
+    br="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null)}"
+
+deliberately, so that on CI it can name the PR's branch from a detached merge
+commit. Under Actions that variable is set for the WHOLE JOB. The suite's
+fixture worktrees are on `story/T-A-fixture` and `story/T-B-fixture`, so a
+fixture run inherited the real branch being built, looked for HARNESS-008's
+story inside a fixture that has only T-A and T-B, found none, and **skipped its
+story checks entirely** - exiting 0 having judged nothing.
+
+**The dangerous half is the control, not the positive.** Three of the four reds
+are missing `ok` lines, which is merely wrong. The fourth is
+`check-boundaries in b refuses`, which expects rc 1: the control that proves a
+gate run in worktree `a` does not satisfy worktree `b`. A skipped run exits 0,
+so on CI that control was being satisfied by a command that never judged
+anything. It is the AC-3 control asserting the story's central claim, and in the
+one environment that matters it was vacuous.
+
+**How the defect was confirmed, not inferred.** One variable changed on this
+machine:
+
+    $ GITHUB_HEAD_REF=story/HARNESS-008-one-phase-lock-per-worktree-so-two-stori \
+        bash scripts/selftest.sh worktree
+        FAIL and says the record matches a's tree
+        FAIL for story T-A
+        FAIL check-boundaries in b refuses
+        FAIL because b has no tool-written record
+    worktree: 69 passed, 4 failed
+
+Byte-for-byte CI's result, from setting that one variable.
+
+**What it asserts now.** `run_in` - the single helper every fixture command goes
+through - clears `GITHUB_HEAD_REF` and `PR_HEAD_SHA` before running anything.
+Cleared for every command rather than only for `check-boundaries.sh`: those two
+are the only ambient variables any harness script or hook reads, verified by
+grep over `scripts/` and `.claude/hooks/`, and a fixture is never the CI
+checkout, so no case exists where inheriting one is correct. The fix is in the
+suite, not in `check-boundaries.sh`, whose use of the variable is deliberate and
+documented for the real CI path.
+
+    $ bash scripts/selftest.sh worktree                    # clean env
+    worktree: 73 passed, 0 failed
+    $ GITHUB_HEAD_REF=... PR_HEAD_SHA=5d19583 bash scripts/selftest.sh worktree
+    worktree: 73 passed, 0 failed
+
+**What earns it.** "Watch it fail" cannot apply - the implementation exists and
+is correct. Green under both environments is also not enough on its own: the
+suite could now be passing because it is skipping something else. So the probe
+asks the sharper question - do those assertions have TEETH in the environment
+where they had none? The production refusal the control reads
+(`check-boundaries.sh:324`) was neutered, **under the simulated CI environment**:
+
+    ##### PROBE: neuter the refusal AC-3's control reads, UNDER SIMULATED CI #####
+    === mutate: scripts/check-boundaries.sh (1 line(s) changed by 324s/problem "story \$sid: ## Gate results was not written/ok "story $sid: ## Gate results was NOT written/) ===
+    === mutate: running bash scripts/selftest.sh worktree ===
+        FAIL check-boundaries in b refuses
+        FAIL because b has no tool-written record
+    worktree: 71 passed, 2 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_check-boundaries.sh.20260923T004454Z.16667.bak) ===
+
+Exactly the two control assertions, red only because the behaviour they pin
+broke - with `GITHUB_HEAD_REF` set, which is precisely the condition under which
+they previously could not fail at all. Restored and verified.
+
+**GREEN was a no-op.** No production file changed; `scripts/doctor.sh` is
+untouched. The gates were re-run because
+`.claude/tests/worktree.test.sh` is a gated path and the recorded tree hash had
+to describe the new commit.
+
+**The general lesson, which is bigger than this suite.** A test that drives a
+script must control that script's environment. This one inherited two variables
+from its runner and, in the runner that gates the PR, silently stopped
+asserting. It is the same shape as PO-M in `## Notes` - the local instrument and
+CI disagreeing - and the same shape as release 41's rule about fixtures: green
+everywhere the author looked, and blind in the place that counts.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-09-22T22:33:10Z
-    commit: 00e17c5
-    tree:   1f0730a6c0cde981e7277504b4daadf9cf5eaa15
+    run:    2026-09-23T00:50:05Z
+    commit: 5d19583 (working tree had uncommitted changes)
+    tree:   d1504b18e6ef6e27f736220a465dfc585ef102d2
     result: pass (0 ran, 8 unconfigured, 0 known)
 
     UNCONFIGURED format
