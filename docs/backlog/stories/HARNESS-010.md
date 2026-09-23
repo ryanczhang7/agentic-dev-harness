@@ -979,9 +979,9 @@ one anchored awk, `^<name>: ([0-9]+) passed, ([0-9]+) failed$`, for the reason
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-09-23T19:23:29Z
-    commit: 3c12719
-    tree:   191b88add44e7a0e2d4050a980109b4f416bc15d
+    run:    2026-09-23T19:26:50Z
+    commit: 451bc1e
+    tree:   a9a1a376735ad103cb2792c8e9ceed72e3a4ece7
     result: pass (0 ran, 8 unconfigured, 0 known)
 
     UNCONFIGURED format
