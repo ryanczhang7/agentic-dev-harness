@@ -5,7 +5,7 @@ slug: reconcile-the-two-write-target-parsers-i
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-010-reconcile-the-two-write-target-parsers-i
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/hooks/phase-guard.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/floors.conf]  # files this story expects to write
