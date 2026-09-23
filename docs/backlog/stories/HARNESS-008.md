@@ -1938,3 +1938,35 @@ A consequence worth stating plainly: with those files back, a LOCAL
 `check-boundaries.sh` now reports the mismatch in the other direction, because
 the working tree again contains four gated files the commit does not. CI is the
 authority here, and CI is the machine whose answer the record now matches.
+
+### REVIEW: CI green, and the timings read rather than glanced at
+
+R-2's fix, commit `04a1114`. Both required checks pass:
+
+    boundaries  pass  4s     actions/runs/35803806705
+    gates       pass  1m8s   actions/runs/35803806651
+
+    === sigpipe ===   sigpipe:  82 passed, 0 failed    (9.8 s)
+    === worktree ===  worktree: 73 passed, 0 failed    (2.7 s)
+    18 harness suite(s) passed.
+    check-sigpipe: scanned 39 shell file(s), 37 with pipefail, 0 finding(s)
+
+**Timings, because a pass within 10% of a limit is a pending failure.** Neither
+workflow sets `timeout-minutes` - the only match in `.github/workflows/` is a
+comment - so GitHub's 360-minute job default applies and `1m8s` is not close to
+anything. `selftest.sh` imposes no per-suite timeout either, which RED recorded
+as "no timeout to budget".
+
+The one number worth keeping: `worktree` runs in **2.7 s on CI against roughly
+90 s on this Windows machine**. The suite is process-spawn bound - six `doctor`
+runs, two `check-boundaries`, several `phase.sh` - and Linux spawn is cheap. The
+usual warning in CLAUDE.md runs the other way (slower on CI hardware); here the
+margin is comfortable in the safe direction, and a future story adding worktrees
+to this suite should expect the local run to be the painful one.
+
+**What this does NOT show.** CI proves the suite passes where
+`GITHUB_HEAD_REF` is set, which is the environment R-2 was about. It does not
+re-prove the probe: that the assertions have teeth there was established locally
+by mutating `check-boundaries.sh:324` under a simulated CI environment, pasted
+under R-2. A green CI run is consistent with a suite that asserts nothing, which
+is the whole reason that probe exists.
