@@ -4,8 +4,8 @@ title: Reconcile the two write-target parsers into one
 slug: reconcile-the-two-write-target-parsers-i
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-010-reconcile-the-two-write-target-parsers-i
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/hooks/phase-guard.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/floors.conf]  # files this story expects to write
@@ -491,7 +491,31 @@ RED wrote; what review adds is the judgement those cannot make, which is
 whether a future reader would be tempted to re-derive the answer locally
 instead of calling it.
 
-**Result:** <!-- filled at REVIEW -->
+**Result (REVIEW, 2026-09-23): PASSED.** Read against `main` at the merge
+commit `d65efcf`, release 49.
+
+**Defined once.** `grep -rn "^write_candidates()" .claude/ scripts/` returns
+a single line, `.claude/hooks/lib.sh:617`. There is no second definition and
+no per-caller variant.
+
+**Asked, not re-derived.** `phase-guard.sh` has exactly one call site,
+line 105, `ANSWER="$(write_candidates "$MASKED")"`. The inline
+`grep -oE 'sed…'` chain that used to carry the rules is gone from the
+tree - searched for and absent - so the hook cannot disagree with `lib.sh`
+about what a write is, because it no longer holds an opinion.
+
+**The judgement a test cannot make**, which is what this entry is for: would
+a future reader be tempted to re-derive the answer locally? The comment at
+`phase-guard.sh:100` says `rules live in lib.sh's write_candidates - one
+parser, one place`, sited exactly where someone would reach for a private
+regex. That is the same defence `rules.md` describes for `classify.sh`, where
+four private copies in one project drifted apart and spent six stories
+returning probe artifacts as production source. Adequate.
+
+One limit worth stating: nothing MECHANICALLY refuses a second parser. A
+future guard could assert that no file outside `lib.sh` matches the shapes
+`write_candidates` owns. Not filed - this story has already grown two
+neighbours, and the comment plus the single call site is proportionate today.
 
 ## Amendments
 
