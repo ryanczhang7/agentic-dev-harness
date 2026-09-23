@@ -460,8 +460,21 @@ run 35921367719 on this branch, Linux, the whole `bash scripts/selftest.sh`:
 
 Identical failure set to the local run, on a different OS, and it confirms the
 floor arithmetic: 293 + 7 = 300. The third failing suite was `selftest`, and it
-was RIGHT to fail - see "A floor is recorded TWICE" below. It is green after
-the second commit.
+was RIGHT to fail - see "A floor is recorded TWICE" below.
+
+**The shape after that was fixed**, run 35922131131, which is the state GREEN
+inherits:
+
+    classify: 32 passed, 10 failed
+    FAIL classify  did 32 units of work, below the floor of 42 in .claude/tests/floors.conf
+    phase-guard: 293 passed, 7 failed
+    FAIL phase-guard  did 293 units of work, below the floor of 300 in .claude/tests/floors.conf
+    selftest: 54 passed, 0 failed
+    2 of 19 harness suite(s) FAILED.
+
+Exactly two suites red, both of them this story's, 17 failing assertions, every
+other suite green. **That is the shape GREEN must turn into 19 of 19**, with
+classify at 42 and phase-guard at 300. Nothing else in the tree should move.
 
 **Why it is the RIGHT failure.** Every message names `category: source` on a
 bare directory name - the defect exactly as C-1 describes it, not an import
