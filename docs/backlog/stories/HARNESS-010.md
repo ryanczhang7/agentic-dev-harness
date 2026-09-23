@@ -561,8 +561,21 @@ them.
 **Do not run the full self-test on the authoring machine.** It leaks a `bash`
 process per hook spawn; `phase-guard.test.sh` alone did not finish in 600 s here,
 and `lib.test.sh` takes 2m06s. Every number in this section was measured on
-`ubuntu-latest`, run `35895157454` (`gh workflow run gates.yml --ref <branch>`),
-where all nineteen suites run in ~45 s. Nothing here is a local timing.
+`ubuntu-latest`, run `35896945945` (`gh workflow run gates.yml --ref <branch>`),
+where all nineteen suites run in ~45 s.
+
+**Which timings are local and which are CI.** The two suite RESULTS are CI's.
+One local timing exists and is reported for calibration only: a foreground run of
+the new `phase-guard.test.sh` on the authoring machine (Windows, Git Bash)
+finished in **53m08s** and returned `241 passed, 47 failed` — byte-identical to
+CI's counts. So the numbers are not a runner artefact, and the 70x gap is process
+spawn, exactly as `gates.yml` documents for `windows-latest`.
+
+`bash scripts/gates.sh --fast` was run and reports all five gates
+`UNCONFIGURED` with `BOOTSTRAPPED=no`, which is PO-1: this repository is the
+harness template, not a project with a stack, and the instrument that judges this
+story is `scripts/selftest.sh` as a step of `gates.yml`. So `--fast` says nothing
+here, in either direction, and the CI run above is the evidence.
 
 ### The failure, and why it is the right one
 
