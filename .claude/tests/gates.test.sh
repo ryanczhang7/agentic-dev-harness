@@ -487,4 +487,104 @@ assert_contains "--fast records FULL=no"      "FULL=no"  "$(cat "$FIX/.claude/st
 gates --gate unit >/dev/null
 assert_contains "--gate records FULL=no"      "FULL=no"  "$(cat "$FIX/.claude/state/last-gate-run")"
 
+# ---------------------------------------------------------------------------
+describe "the manifest must not change under the run"
+
+# PORTED from manga-translator (MT-032 AC-1/AC-2), reported there off a --fast
+# run. Upstream had no backstop for it.
+# gates.sh parses project.conf into its evidence/floor/waiver/slow tables ONCE
+# at start-up and runs the gate commands afterwards. Anything that edits the
+# file in between produces a summary whose numbers are each real and whose
+# PAIRING never existed - `PASS lint (0s, observed 5, floor 1)` printed as a
+# clean pass while the file on disk says `floor | lint | 5`. It was reported off
+# a --fast run, which is never recorded, so nothing downstream ever compares it
+# to anything: its only consumer is whoever reads the summary and decides the
+# phase is healthy.
+#
+# The race is made deterministic with no sleeps and no second process by letting
+# the fixture's own gate command do the editing. That is the same interleaving
+# with the timing taken out, and it is why this is testable at all.
+set_phase "$FIX" ""
+
+conf_edits_itself() {
+  write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Contracts: 5 kept\n'; printf 'floor    | lint | 5\n' >> .claude/harness/project.conf
+evidence | lint | Contracts: [1-9][0-9]* kept
+floor    | lint | 1
+EOF
+}
+
+conf_edits_itself
+out="$(gates)"; rc=$?
+assert_contains "a full run says the manifest changed under it" \
+  "config: .claude/harness/project.conf changed while the gates were running" "$out"
+assert_contains "and it is a FAIL, not a footnote under a pass" \
+  "FAIL         config:" "$out"
+assert_contains "and says the summary's pairings may be of no single state" \
+  "may not correspond to any single state" "$out"
+assert_eq "and the run exits non-zero" "1" "$rc"
+case "$out" in
+  *"All required gates passed"*) _bad "and does not call it a pass" "it passed anyway: $out" ;;
+  *) _ok "and does not call it a pass" ;;
+esac
+
+# It was OBSERVED on a --fast run downstream. A check that only ran in full mode would fix
+# nothing that was actually reported.
+conf_edits_itself
+out="$(gates --fast)"; rc=$?
+assert_contains "--fast catches it too" \
+  "config: .claude/harness/project.conf changed while the gates were running" "$out"
+assert_eq "and --fast exits non-zero as well" "1" "$rc"
+
+# Asserted where it can actually regress: these two lines live in
+# the same summary/record block the new failure path lands in, so a check that
+# exits early takes them with it.
+assert_contains "the subset caveat survives the new failure path" \
+  "This is a subset, not a verdict. The full run before REVIEW is what judges the story." "$out"
+assert_contains "and so does the not-recorded line" \
+  "(not recorded in the story: a partial run is not evidence of anything)" "$out"
+
+# A run that was already failing must still report it. The manifest changing is
+# a fact about the whole summary, not an alternative to the gates' own verdict.
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Contracts: 5 kept\n'; printf 'floor    | lint | 5\n' >> .claude/harness/project.conf
+gate     | unit | required | . | printf 'Tests  2 failed, 45 passed (47)\n'; exit 1
+evidence | lint | Contracts: [1-9][0-9]* kept
+evidence | unit | Tests +[1-9][0-9]* passed
+floor    | lint | 1
+EOF
+out="$(gates)"; rc=$?
+assert_contains "an already-failing run still reports the manifest change" \
+  "config: .claude/harness/project.conf changed while the gates were running" "$out"
+assert_contains "and still reports the gate that failed" "FAIL         unit" "$out"
+assert_eq "and still exits 1" "1" "$rc"
+
+describe "and it does not fire on a run that changed nothing"
+
+# The false-positive control, and the one that matters: a check that fired
+# on every run would satisfy every assertion above and be worth nothing. Nothing
+# here touches project.conf after gates.sh has read it, and both modes must stay
+# green - including on CI, where these are the only runs that ever happen.
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Contracts: 5 kept\n'
+evidence | lint | Contracts: [1-9][0-9]* kept
+floor    | lint | 1
+EOF
+out="$(gates)"; rc=$?
+assert_contains "an ordinary full run passes" "All required gates passed" "$out"
+assert_eq "and exits 0"                       "0" "$rc"
+case "$out" in
+  *"project.conf changed"*) _bad "an ordinary full run is not accused" "it fired anyway: $out" ;;
+  *) _ok "an ordinary full run is not accused" ;;
+esac
+
+out="$(gates --fast)"; rc=$?
+assert_contains "an ordinary --fast run passes" "All required gates passed" "$out"
+assert_eq "and --fast exits 0"                  "0" "$rc"
+case "$out" in
+  *"project.conf changed"*) _bad "an ordinary --fast run is not accused" "it fired anyway: $out" ;;
+  *) _ok "an ordinary --fast run is not accused" ;;
+esac
+
+
 summary "gates"

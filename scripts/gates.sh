@@ -44,6 +44,21 @@ CONF="$ROOT/.claude/harness/project.conf"
 LOGDIR="$ROOT/.claude/state/gate-logs"
 STAMP="$ROOT/.claude/state/last-gate-run"
 
+# THE MANIFEST MUST NOT CHANGE UNDER THE RUN.
+# PORTED from manga-translator (MT-032), reported there off a --fast run.
+#
+# This script parses project.conf into its evidence/floor/waiver/slow tables
+# ONCE at start-up and runs the gate commands afterwards. Anything that edits
+# the file in between produces a summary whose numbers are each real and whose
+# PAIRING never existed - `PASS lint (0s, observed 5, floor 1)` printed as a
+# clean pass while the file on disk says `floor | lint | 5`.
+#
+# It is cheap to detect: fingerprint the file at parse time and again before the
+# summary. `cksum` rather than a hash tool, for the same reason the rest of this
+# harness stays in coreutils.
+conf_fingerprint() { cksum 2>/dev/null < "$CONF" || printf 'unreadable'; }
+CONF_AT_PARSE="$(conf_fingerprint)"
+
 export CLAUDE_PROJECT_DIR="$ROOT"
 . "$ROOT/.claude/hooks/lib.sh"
 
@@ -612,7 +627,31 @@ if [ -n "$COVERS" ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
   fi
 fi
 
+# Folded into `results` rather than reported as a separate early exit, which is
+# deliberate: that lands it INSIDE the summary block, so the exit status, the
+# RESULT=fail stamp, the "N required gate(s) failed" line and --fast's own
+# caveats all follow without a separate exit that would take them with it. Runs
+# in every mode that runs a gate command, --fast included, because --fast is the
+# mode this was reported on. --list and --audit run no gate command and have
+# already exited above.
+CONF_CHANGED=0
+if [ "$(conf_fingerprint)" != "$CONF_AT_PARSE" ]; then
+  CONF_CHANGED=1
+  results="$results\nFAIL         config: .claude/harness/project.conf changed while the gates were running"
+  fails=$((fails+1))
+fi
+
 printf '\n--- gate summary ---%b\n' "$results"
+if [ "$CONF_CHANGED" = 1 ]; then
+  printf '\nThe evidence, floor, waiver and slow tables above were read from\n'
+  printf '.claude/harness/project.conf before the gates ran, and the file on disk is no\n'
+  printf 'longer the file that was read. Each number above is real on its own, but the\n'
+  printf 'pairings in this summary may not correspond to any single state of that file -\n'
+  printf 'a floor read at start-up can be printed beside an observation counted after it\n'
+  printf 'changed, which is a pass that never existed. This is not a verdict on the code.\n'
+  printf 'Find what is writing the manifest - another session, a subagent, a script - and\n'
+  printf 'run the gates again on a tree nothing else is editing.\n'
+fi
 [ -n "$changes_note" ] && printf '\nchanges: %s\n' "$changes_note"
 if [ "$chwarn" -gt 0 ]; then
   printf '\n%d changed source path(s) match no covers line. Either the manifest is missing\n' "$chwarn"
