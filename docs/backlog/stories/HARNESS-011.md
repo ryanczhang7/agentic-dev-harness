@@ -267,6 +267,28 @@ name, below the table.
 
 **Resolved:**
 
+- **PLANNED** — `lead-po`, **Opus 5**, the session's own model. Matches the plan.
+- **RED** — `test-developer`, **Opus 5**. The plan says `fable`. The
+  orchestrator passed NO model override, so `.claude/agents/test-developer.md`'s
+  `model: opus` won, and the plan's row was never exercised.
+
+**THE PLAN IS NOT SELF-EXECUTING, and this is the third story to show it.**
+`models.conf` renders a row saying RED runs on `fable`; every agent definition
+in `.claude/agents/` says `opus`; and the definition wins unless the dispatch
+passes an explicit override. So the measured claim behind that row - that a
+weaker model with a partitioned brief writes sharper negative controls - has
+been tested exactly once in this backlog (HARNESS-008's R-1, where the
+override WAS passed), and not at all in HARNESS-010 or here.
+
+That is precisely the confusion `rules.md` created this field to end: "an
+agent definition's `model:` field, or the session's setting, or an override:
+the orchestrator cannot see which won unless it records it." It is recorded
+now, and the honest reading is that the plan's RED row is an untested
+recommendation rather than a measured default.
+
+The test-developer flagged the discrepancy itself and correctly declined to
+write this line, which belongs to the Lead PO.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
