@@ -4,8 +4,8 @@ title: Reconcile the two write-target parsers into one
 slug: reconcile-the-two-write-target-parsers-i
 epic: 
 type: chore
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-010-reconcile-the-two-write-target-parsers-i
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/hooks/phase-guard.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/floors.conf]  # files this story expects to write
@@ -393,7 +393,33 @@ red and that the BLOCK/ALLOW verdict does NOT change. That pairing is the point:
 a role assertion that fails only when the verdict also flips is not testing the
 role, it is testing the verdict a second time.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-23): PASSED.**
+
+The pair differs only in operand order, so the verdict cannot distinguish it.
+Baseline through the real hook, story in RED:
+
+    mv src/main.ts docs/n.md       BLOCK  path: src/main.ts  operand: source of mv (removed by the move)
+    mv docs/n.md src/main.ts       BLOCK  path: src/main.ts  operand: destination of mv
+
+Same verdict, same path, opposite role - which is the metric RED designed.
+
+**The mutation**, through `scripts/mutate.sh` so the restore is verified:
+
+    === mutate: .claude/hooks/lib.sh (1 line(s) changed by 498s/destination of mv/WRONG ROLE STRING/) ===
+      mv src/main.ts docs/n.md     BLOCK  path: src/main.ts  operand: source of mv (removed by the move)
+      mv docs/n.md src/main.ts     BLOCK  path: src/main.ts  operand: WRONG ROLE STRING
+    === mutate: command exited 0; restored (verified byte-for-byte against .../lib.sh.20260923T191318Z.602988.bak) ===
+
+**The verdict did not move and the path did not move; only the role did.** That
+is the whole point of this entry: a role assertion that fails only when the
+verdict also flips is testing the verdict twice.
+
+The other half - that an AC-5 assertion actually goes red - was measured
+separately under the same mutation against `lib.test.sh`: **6 assertions red**,
+every one of them role-reading, including `AC-3 control: the same token is a
+SOURCE when it comes first`. Restored and verified; `lib` back to
+`197 passed, 0 failed`.
+
 
 **That the union rule did not LOSE a case. Owner: GATES.**
 
@@ -408,7 +434,46 @@ still be ALLOW - they are out of scope per C-3, and a run that quietly fixes
 them has changed the rule set as well as reconciling it, which is the one thing
 this story must not do without saying so.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-23): PASSED. Nothing was lost, nothing was widened.**
+
+C-1's twenty-two commands re-run against the SHIPPED parser, same fixture
+shape, story in RED:
+
+    C-1 COMMAND                                          C-1 UP  NOW     VERDICT
+    sed -i 's/a/b/' src/main.ts                          BLOCK   BLOCK   as C-1
+    sed -i.bak 's/a/b/' src/main.ts                      BLOCK   BLOCK   as C-1
+    sed -ni 's/a/b/' src/main.ts                         BLOCK   BLOCK   as C-1
+    sed -Ei 's/a/b/' src/main.ts                         BLOCK   BLOCK   as C-1
+    sed --in-place 's/a/b/' src/main.ts                  BLOCK   BLOCK   as C-1
+    sed --i 's/a/b/' src/main.ts                         ALLOW   BLOCK   ** CHANGED **
+    sed -n 1,5p tests/guards/layer-imports.test.ts       ALLOW   ALLOW   as C-1
+    sed -n 1,5p src/main.ts                              ALLOW   ALLOW   as C-1
+    mv docs/n.md src/main.ts                             BLOCK   BLOCK   as C-1
+    mv src/main.ts docs/n.md                             ALLOW   BLOCK   ** CHANGED **
+    mv -t src docs/n.md                                  ALLOW   BLOCK   ** CHANGED **
+    mv --target-directory=src docs/n.md                  ALLOW   BLOCK   ** CHANGED **
+    mv -t docs src/main.ts                               BLOCK   BLOCK   as C-1
+    cp docs/n.md src/main.ts                             BLOCK   BLOCK   as C-1
+    cp -t src docs/n.md                                  ALLOW   ALLOW   as C-1
+    rm src/main.ts                                       BLOCK   BLOCK   as C-1
+    rm -f src/a src/b                                    BLOCK   BLOCK   as C-1
+    touch src/main.ts                                    BLOCK   BLOCK   as C-1
+    tee src/main.ts < docs/n.md                          BLOCK   BLOCK   as C-1
+    tee -a src/main.ts < docs/n.md                       BLOCK   BLOCK   as C-1
+    truncate -s 0 src/main.ts                            ALLOW   ALLOW   as C-1
+    install -m 644 docs/n.md src/main.ts                 ALLOW   ALLOW   as C-1
+
+Three things, and the third is the one that could have gone wrong quietly:
+
+  * **Every row that BLOCKED under upstream still BLOCKS.** Thirteen of them.
+    The union rule did not narrow.
+  * **All four DIFFER rows now BLOCK.** `sed --i` was the hole downstream had;
+    the three `mv` rows were the holes upstream had. Both directions closed.
+  * **The three BOTH WRONG rows are still ALLOW.** `cp -t`, `truncate -s 0` and
+    `install -m 644` remain permitted, exactly as C-3 and PO-5 require. A run
+    that "improved" them would have changed the rule set inside a
+    reconciliation, and no later reader could tell which change caused which
+    behaviour. They are HARNESS-011's neighbours, not this story's.
 **AC-6, one parser in one place. Owner: REVIEW.**
 
 ADDED AT THE END OF RED, and it is the orchestrator's omission rather than
@@ -665,8 +730,25 @@ This is fact, not suggestion: a test already calls it.
   before calling, exactly as `phase-guard.sh` does.
 * **Output, on stdout**: a verdict line, then zero or more candidate lines.
   * verdict: `W` or `-`, **always present, always first** (C-4, amended at RED).
-    `W` iff the command names `sed`, `tee`, `cp`, `mv`, `rm` or `touch` at a real
-    token boundary. A redirect operator alone does not set it.
+    `W` iff the command is WRITE-CAPABLE AS INVOKED. For `tee`, `cp`, `mv`,
+    `rm` and `touch` that is the name at a real token boundary. For `sed` it
+    is the name AND an in-place option: a read-only `sed` is `-`, not `W`.
+    A redirect operator alone does not set it.
+
+    CORRECTED BY THE ORCHESTRATOR AT GREEN. This block previously read `W`
+    iff the command NAMES one of the six, which contradicts two assertions
+    RED had already frozen - `lib.test.sh:523-524` pin `sed -n '1,5p'
+    src/main.ts` and `sed 's/a/b/' src/main.ts` at `-`, under a comment
+    saying the verdict means "never write-capable rather than
+    write-capable-with-nothing-found". The feature-developer implemented
+    the TESTS and flagged the prose, which is the right order.
+
+    Reproduced by the orchestrator before accepting it: both commands name
+    `sed`, so the old wording makes them `W`, and the frozen assertions say
+    `-`. The two cannot both hold. This is a defect in the prose of an
+    amendment RED made to this block, NOT a change to a criterion - AC-4
+    speaks of a command "the parser classifies as a write", and a read-only
+    `sed` simply is not one. No `## Amendments` entry is owed.
   * candidate: `TARGET` or `TARGET<TAB>ROLE`. **Target first** — `phase-guard.sh`
     filters with `grep -vE '^\s*$|^-|\*|^/dev/'` and every one of those anchors
     assumes the line starts with the path.
@@ -897,9 +979,9 @@ one anchored awk, `^<name>: ([0-9]+) passed, ([0-9]+) failed$`, for the reason
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-09-23T19:00:24Z
-    commit: 0557daf (working tree had uncommitted changes)
-    tree:   f41b2daf7da62568e7bae5ddceea88a0c90bf353
+    run:    2026-09-23T19:23:29Z
+    commit: 3c12719
+    tree:   191b88add44e7a0e2d4050a980109b4f416bc15d
     result: pass (0 ran, 8 unconfigured, 0 known)
 
     UNCONFIGURED format
