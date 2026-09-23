@@ -316,6 +316,130 @@ case "$(printf '%s\n' "$out" | grep 'LOCAL' || true)" in
 esac
 
 # ---------------------------------------------------------------------------
+describe "LOCAL asks whether upstream ever SHIPPED the blob, not whether its store holds it"
+
+# HARNESS-012. The check hashes the downstream file and asked upstream's object
+# store `git cat-file -e <blob>`. That answers "does this object EXIST", not
+# "is it REACHABLE from a ref" - and the two differ for every blob that entered
+# the store off a branch that was later deleted: an experiment, a dropped
+# stash, an abandoned rebase, a fetched PR ref. The blob survives the branch
+# until a gc that may not run for weeks, so the alarm concludes upstream
+# shipped the content and stays silent for precisely the files it exists to
+# name. Measured on this repository at release 50: nine dangling blobs, four
+# of a consuming project's local fixes suppressed by them - and HARNESS-010's
+# own RED phase put the blobs there, on a throwaway branch it correctly
+# deleted afterwards.
+#
+# So a dangling blob is MADE here, one per walk the check performs, because
+# AC-3 says all three call sites must ask the corrected question and a fixture
+# at one walk cannot tell a fix at one walk from a fix at three:
+#
+#   walk 1   .claude/{agents,commands,skills,hooks,tests}   -> .claude/hooks/phase-guard.sh
+#   walk 2   scripts/*.sh                                   -> scripts/gates.sh
+#   walk 3   the five named files                           -> .claude/harness/rules.md
+#
+# The recipe: commit the downstream content on a throwaway branch of upstream,
+# switch back, delete the branch. `cat-file -e` still says YES; `rev-list
+# --objects --all` says NO. The fixture IS the probe, and both answers are
+# asserted below before the report is read, so that a git which pruned the
+# blob on branch delete would fail HERE rather than let the AC-1 assertion pass
+# for the ordinary reason.
+#
+# THE NEEDLE. The report's explanatory paragraph contains the word LOCAL
+# (`  LOCAL - upstream has never shipped your copy`), so `grep LOCAL` matches
+# whether or not any file was listed, and the KEPT/REPLACED report names the
+# same filenames. Every assertion here reads the per-file line shape
+# `    LOCAL     <path>` - four spaces, LOCAL, five spaces, the path - and
+# matches it whole, so a file is either on its own line in the block or it is
+# not. `grep -cx` prints 0 and exits 1 on no match; the count is what is
+# compared and the status is discarded, which is the fallback-free shape the
+# grep-count guard permits.
+local_line_count() { printf '%s\n' "$2" | grep -cx "    LOCAL     $1"; }
+
+# Upstream ships a scripts/ file for walk 2 to compare against. (rules.md and
+# phase-guard.sh are already committed above, in the fixture's first release.)
+printf 'upstream gates\n' > "$UP/scripts/gates.sh"
+( cd "$UP" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "upstream ships gates.sh" >/dev/null 2>&1 )
+
+# The project: one local fix per walk, plus a file it is merely BEHIND on.
+FIX1='upstream hook
+# a local fix, once pushed to a throwaway branch upstream'
+FIX2='upstream gates
+# a local fix, once pushed to a throwaway branch upstream'
+FIX3='upstream rules
+# a local fix, once pushed to a throwaway branch upstream'
+new_project
+printf '%s\n' "$FIX1" > "$PROJ/.claude/hooks/phase-guard.sh"
+printf '%s\n' "$FIX2" > "$PROJ/scripts/gates.sh"
+printf '%s\n' "$FIX3" > "$PROJ/.claude/harness/rules.md"
+printf 'upstream agent\n'  > "$PROJ/.claude/agents/lead-po.md"    # one release behind, AC-2
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "three local harness fixes" >/dev/null 2>&1 )
+
+# Put the same three blobs into upstream's store on a branch, then delete the
+# branch. `checkout -` returns to the default branch, so HEAD's tree is exactly
+# what it was and the later "not a release" block sees the same source.
+( cd "$UP" && git checkout -q -b throwaway 2>/dev/null \
+    && printf '%s\n' "$FIX1" > .claude/hooks/phase-guard.sh \
+    && printf '%s\n' "$FIX2" > scripts/gates.sh \
+    && printf '%s\n' "$FIX3" > .claude/harness/rules.md \
+    && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "an experiment, later deleted" >/dev/null 2>&1 \
+    && git checkout -q - 2>/dev/null && git branch -qD throwaway 2>/dev/null )
+
+# The fixture must reproduce the defect's precondition, or the assertion after
+# it is testing the ordinary never-shipped path and would pass against the
+# unfixed script for the wrong reason. Hashed FROM the project, the way the
+# script hashes them, so line-ending conversion is the same on both sides.
+up_reachable_ids="$(git -C "$UP" rev-list --objects --all | awk '{print $1}')"
+for f in .claude/hooks/phase-guard.sh scripts/gates.sh .claude/harness/rules.md; do
+  h="$(git -C "$PROJ" hash-object "$f")"
+  git -C "$UP" cat-file -e "$h" 2>/dev/null; rc=$?
+  assert_eq "fixture: $f exists in upstream's store, so the old question says shipped" 0 "$rc"
+  assert_eq "fixture: and no ref of upstream reaches it, so the new question says never" 0 \
+    "$(printf '%s\n' "$up_reachable_ids" | grep -cx "$h")"
+done
+
+out="$(refresh --dry-run "$UP")"
+# AC-1 and AC-3: one assertion per walk. A fix at one call site leaves the
+# other two of these red, which is what makes them the AC-3 control.
+assert_eq "a local fix whose blob dangles in upstream is named LOCAL - walk 1, .claude/hooks" 1 \
+  "$(local_line_count .claude/hooks/phase-guard.sh "$out")"
+assert_eq "and at walk 2, scripts/*.sh, which asks the same question of its own blob" 1 \
+  "$(local_line_count scripts/gates.sh "$out")"
+assert_eq "and at walk 3, the named files, whose line has its own copy of the test" 1 \
+  "$(local_line_count .claude/harness/rules.md "$out")"
+# AC-2, in the same run: reachable from an older commit is BEHIND, and silent.
+# A fix that reads reachability off anything narrower than upstream's history
+# turns every behind-by-a-release file into an alarm nobody reads.
+assert_eq "while a file from an older release, in the same run, is still not named" 0 \
+  "$(local_line_count .claude/agents/lead-po.md "$out")"
+
+# AC-1's control: the same content, once a ref of upstream reaches it. A branch
+# that SURVIVES is a ref, whether or not it is the default one - so a fix that
+# asked HEAD's ancestry instead of every ref would name these three and fail
+# here. Green against the unfixed script too, since existence implies it; what
+# earns it is the `--all` -> `HEAD` mutation in the story's handoff.
+( cd "$UP" && git checkout -q -b survives 2>/dev/null \
+    && printf '%s\n' "$FIX1" > .claude/hooks/phase-guard.sh \
+    && printf '%s\n' "$FIX2" > scripts/gates.sh \
+    && printf '%s\n' "$FIX3" > .claude/harness/rules.md \
+    && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "shipped on a side branch" >/dev/null 2>&1 \
+    && git checkout -q - 2>/dev/null )
+up_reachable_ids="$(git -C "$UP" rev-list --objects --all | awk '{print $1}')"
+for f in .claude/hooks/phase-guard.sh scripts/gates.sh .claude/harness/rules.md; do
+  assert_eq "fixture: $f is now reachable from the surviving branch" 1 \
+    "$(printf '%s\n' "$up_reachable_ids" | grep -cx "$(git -C "$PROJ" hash-object "$f")")"
+done
+out="$(refresh --dry-run "$UP")"
+assert_eq "once a surviving ref reaches the blob, walk 1 is silent" 0 \
+  "$(local_line_count .claude/hooks/phase-guard.sh "$out")"
+assert_eq "and walk 2" 0 "$(local_line_count scripts/gates.sh "$out")"
+assert_eq "and walk 3" 0 "$(local_line_count .claude/harness/rules.md "$out")"
+
+# ---------------------------------------------------------------------------
 describe "LOCAL refuses to answer from a source with no usable history"
 
 # The check asks whether upstream's OBJECT STORE holds a blob matching ours. It
