@@ -444,4 +444,292 @@ assert_eq "nothing when mutate.sh is not involved" "" \
 assert_eq "only scripts/mutate.sh" "" \
   "$(mutate_targets "$(m "bash tools/mutate.sh src/main.ts 's/a/b/' -- true")")"
 
+# ---------------------------------------------------------------------------
+# HARNESS-010. The reconciled write-target parser, asked directly.
+#
+# phase-guard.test.sh drives the same thing end to end through the hook; this
+# section is the cheapest level that can falsify AC-2 and AC-3, because it can
+# see the ROLE of every operand, while the hook only ever reports the role of
+# the ONE candidate it happens to deny first.
+#
+# C-4: write_candidates() lives in lib.sh, takes MASKED command text, and emits
+# a verdict line - `W` when the command names a write-capable tool at a real
+# token boundary, `-` when it does not - followed by one line per candidate,
+# either `TARGET` or `TARGET<TAB>ROLE`.
+#
+# wcand() renders that as one string so an assertion can be an EQUALITY on the
+# whole answer rather than a containment in part of it. Three properties of the
+# rendering are deliberate:
+#
+#   * the verdict is kept, and an absent function renders `<no output>`. That is
+#     what stops every "yields no target" control from passing VACUOUSLY while
+#     write_candidates does not exist: `-` is not `<no output>`, so the controls
+#     go red in RED along with everything else rather than agreeing with a
+#     function that is not there.
+#   * the candidates are SORTED, so the assertions pin the SET and the roles and
+#     not an emission order no clause of C-4 fixes. LC_ALL=C, because a locale
+#     that ignores punctuation would order `/dev/null` against `src/main.ts`
+#     differently on CI than here.
+#   * one awk, no `grep -c`, no `head -1` under pipefail - check-sigpipe.sh and
+#     check-grep-count.sh judge this file too.
+wcand() {
+  local masked out verdict rest
+  masked="$(printf '%s' "$1" | mask_shell_quotes)"
+  out="$(write_candidates "$masked" 2>/dev/null)"
+  if [ -z "$out" ]; then printf '<no output>'; return 0; fi
+  verdict="${out%%$'\n'*}"
+  rest="${out#*$'\n'}"
+  [ "$rest" = "$out" ] && rest=""
+  printf '%s%s' "$verdict" \
+    "$(printf '%s\n' "$rest" \
+        | awk -F'\t' '$0 != "" { print (NF > 1 ? $1 " :: " $2 : $0) }' \
+        | LC_ALL=C sort \
+        | awk '{ printf " | %s", $0 }')" \
+    | unmask_shell_quotes
+}
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-6 and C-4: the parser is a named function of lib.sh"
+
+# AC-6 says the parser lives in ONE place and every caller asks it rather than
+# re-deriving - the rule rules.md already states for classify.sh. The criterion
+# is marked "verified by review", and review is the right owner of "every
+# caller"; this pins the half that is mechanical, so review reads a design
+# question rather than checking whether a function exists.
+assert_eq "write_candidates is a function, not an inline pipeline" "function" \
+  "$(type -t write_candidates 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-2: sed in-place is decided per word"
+
+# The nine forms AC-2 names. The first eight write in place; `-n` does not.
+#
+# `--i` is the live disagreement of C-1: upstream BLOCKS it, manga-translator
+# ALLOWS it, and upstream is right - GNU getopt_long honours any unambiguous
+# abbreviation and --in-place is the only long option of GNU sed 4.9 beginning
+# `--i`. So the long option is a PREFIX test and never a literal match.
+assert_eq "-i"                  "W | src/main.ts" "$(wcand "sed -i 's/a/b/' src/main.ts")"
+assert_eq "-i.bak"              "W | src/main.ts" "$(wcand "sed -i.bak 's/a/b/' src/main.ts")"
+assert_eq "-ni bundled"         "W | src/main.ts" "$(wcand "sed -ni 's/a/b/' src/main.ts")"
+assert_eq "-Ei bundled"         "W | src/main.ts" "$(wcand "sed -Ei 's/a/b/' src/main.ts")"
+assert_eq "-rin bundled"        "W | src/main.ts" "$(wcand "sed -rin 's/a/b/' src/main.ts")"
+assert_eq "--i abbreviated"     "W | src/main.ts" "$(wcand "sed --i 's/a/b/' src/main.ts")"
+assert_eq "--in-pl abbreviated" "W | src/main.ts" "$(wcand "sed --in-pl 's/a/b/' src/main.ts")"
+assert_eq "--in-place"          "W | src/main.ts" "$(wcand "sed --in-place 's/a/b/' src/main.ts")"
+assert_eq "--in-place=.bak"     "W | src/main.ts" "$(wcand "sed --in-place=.bak 's/a/b/' src/main.ts")"
+
+# The read-only forms yield NO target, and the verdict says the command was
+# never write-capable rather than write-capable-with-nothing-found.
+assert_eq "-n is a read"               "-" "$(wcand "sed -n '1,5p' src/main.ts")"
+assert_eq "no option at all is a read" "-" "$(wcand "sed 's/a/b/' src/main.ts")"
+
+# AC-2's CONTROL, and the reason the per-word test exists at all: the real
+# tests/guards/layer-imports.test.ts false positive. The FILENAME contains the
+# two characters `-i`, and a substring test refused a pure read on the very file
+# it was reading. A filename is not an option.
+assert_eq "AC-2 control: an -i bearing FILENAME under sed -n yields no target" "-" \
+  "$(wcand "sed -n '1,5p' tests/guards/layer-imports.test.ts")"
+assert_eq "AC-2 control: the same shape at the repository root" "-" \
+  "$(wcand "sed -n '1,5p' notes-inline.txt")"
+
+# The hole that control must not open from the other end: an -i bearing path is
+# not exempt from being WRITTEN. "Skip candidates whose name contains -i"
+# satisfies every must-permit case above and deletes this protection entirely.
+assert_eq "an -i bearing path is still the target of a real sed -i" \
+  "W | src/lib/layer-imports.ts" "$(wcand "sed -i 's/a/b/' src/lib/layer-imports.ts")"
+
+# --silent is GNU's long form of -n. It CONTAINS an i and writes nothing, which
+# is why the long option is a prefix test of `in-place` rather than a search for
+# the letter.
+assert_eq "--silent contains an i and writes nothing" "-" \
+  "$(wcand "sed --silent '1,5p' src/main.ts")"
+
+# EVERY positional is judged, not the last word of the match. `sed -i EXPR a b`
+# writes both, and an extractor ending in `awk '{print $NF}'` saw only `b` - the
+# cross-run reddened exactly this as "a frozen operand followed by a permitted
+# one".
+assert_eq "both operands of a two-file in-place edit" \
+  "W | docs/notes.md | src/main.ts" \
+  "$(wcand "sed -i 's/a/b/' src/main.ts docs/notes.md")"
+
+# With -e or -f supplying the script, the FIRST positional is a file too.
+assert_eq "-e supplies the script, so the first positional is a file" \
+  "W | src/main.ts" "$(wcand "sed -i -e 's/a/b/' src/main.ts")"
+assert_eq "-f supplies the script, so the first positional is a file" \
+  "W | src/main.ts" "$(wcand "sed -i -f script.sed src/main.ts")"
+
+# A trailing redirect is the redirect rule's business and does not displace the
+# operand. Both appear here; the hook drops /dev/null with its own filter.
+assert_eq "a trailing redirect does not hide the operand" \
+  "W | /dev/null | src/main.ts" \
+  "$(wcand "sed -i 's/a/b/' src/main.ts > /dev/null")"
+
+# A metacharacter in the expression is data. `(` used to terminate the
+# extractor's character class INSIDE the script and return a fragment of it.
+assert_eq "a capture group in the expression" "W | src/main.ts" \
+  "$(wcand "sed -i 's/\\(a\\)/b/' src/main.ts")"
+assert_eq "a negated address and a capture group" "W | src/main.ts" \
+  "$(wcand "sed -i '/x/!s/\\(a\\)/b/' src/main.ts")"
+assert_eq "a pipe delimiter" "W | src/main.ts" \
+  "$(wcand "sed -i 's|a|b|' src/main.ts")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-3: every mv operand carries the role it plays"
+
+# AC-3's CONTROL, and the whole point of the section: THE SAME TOKEN is a
+# destination in one form and a source in the other. Nothing differs between
+# these two commands except operand order, the hook denies on src/main.ts
+# either way, and only the role tells them apart - which is what makes the role
+# assertion independent of the verdict rather than a second copy of it.
+assert_eq "mv DEST last: src/main.ts is the destination" \
+  "W | docs/notes.md :: source of mv (removed by the move) | src/main.ts :: destination of mv" \
+  "$(wcand "mv docs/notes.md src/main.ts")"
+assert_eq "AC-3 control: the same token is a SOURCE when it comes first" \
+  "W | docs/notes.md :: destination of mv | src/main.ts :: source of mv (removed by the move)" \
+  "$(wcand "mv src/main.ts docs/notes.md")"
+
+# `mv a b DEST`: the final positional is created, the rest are REMOVED. That
+# asymmetry with cp is why mv emits every operand - `mv f1 f2 d/` leaves neither
+# f1 nor f2 where it was, while `cp g1 g2 e/` leaves both.
+assert_eq "mv a b DEST: two sources and a destination" \
+  "W | docs/a.md :: source of mv (removed by the move) | docs/b.md :: source of mv (removed by the move) | src/main.ts :: destination of mv" \
+  "$(wcand "mv docs/a.md docs/b.md src/main.ts")"
+
+# `mv X d/`.
+assert_eq "mv X d/: a directory destination is still the last positional" \
+  "W | docs/ :: destination of mv | src/main.ts :: source of mv (removed by the move)" \
+  "$(wcand "mv src/main.ts docs/")"
+
+# -t / --target-directory INVERTS which operand is the destination: DIR is the
+# destination and EVERY positional is a source, whatever its position. All six
+# spellings, because three of them glue or attach the argument, and a parser
+# that merely SKIPS a `-` token whole leaves `mv -tsrc/ docs/notes.md` an
+# entirely unjudged write into frozen source.
+assert_eq "-t DIR separate" \
+  "W | docs/notes.md :: source of mv (removed by the move) | src/ :: destination of mv" \
+  "$(wcand "mv -t src/ docs/notes.md")"
+assert_eq "-tDIR glued" \
+  "W | docs/notes.md :: source of mv (removed by the move) | src/ :: destination of mv" \
+  "$(wcand "mv -tsrc/ docs/notes.md")"
+assert_eq "--target-directory DIR separate" \
+  "W | docs/notes.md :: source of mv (removed by the move) | src/ :: destination of mv" \
+  "$(wcand "mv --target-directory src/ docs/notes.md")"
+assert_eq "--target-directory=DIR attached" \
+  "W | docs/notes.md :: source of mv (removed by the move) | src/ :: destination of mv" \
+  "$(wcand "mv --target-directory=src/ docs/notes.md")"
+assert_eq "-ft DIR bundled" \
+  "W | docs/notes.md :: source of mv (removed by the move) | src/ :: destination of mv" \
+  "$(wcand "mv -ft src/ docs/notes.md")"
+assert_eq "-ftDIR bundled and glued" \
+  "W | docs/notes.md :: source of mv (removed by the move) | src/ :: destination of mv" \
+  "$(wcand "mv -ftsrc/ docs/notes.md")"
+
+# The control again, through the option rather than through position: these two
+# tokens keep the same roles while SWAPPING position. A parser reading position
+# only gets this exactly backwards and still blocks, which is why the verdict
+# cannot be the thing under test.
+assert_eq "-t: the positional is a source however late it appears" \
+  "W | docs/ :: destination of mv | src/main.ts :: source of mv (removed by the move)" \
+  "$(wcand "mv -t docs/ src/main.ts")"
+
+# The option TOKEN itself must never become a candidate.
+assert_eq "an option is not an operand" \
+  "W | docs/a.md :: source of mv (removed by the move) | docs/b.md :: destination of mv" \
+  "$(wcand "mv -f docs/a.md docs/b.md")"
+assert_eq "-v is not an operand either" \
+  "W | docs/a.md :: source of mv (removed by the move) | docs/b.md :: destination of mv" \
+  "$(wcand "mv -v docs/a.md docs/b.md")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 C-3 and PO-5: cp is NOT given mv's treatment"
+
+# cp READS its sources and leaves them where they are, so only the destination
+# is a write target. Judging every operand would be a false positive, not a fix.
+assert_eq "cp judges the destination only" \
+  "W | src/main.ts :: destination of cp" \
+  "$(wcand "cp docs/notes.md src/main.ts")"
+assert_eq "cp with three operands still judges only the last" \
+  "W | src/main.ts :: destination of cp" \
+  "$(wcand "cp docs/a.md docs/b.md src/main.ts")"
+
+# `cp -t` is one of C-1's three BOTH WRONG rows: a real write into frozen source
+# that both parsers permit, because the destination is behind the option and the
+# parser names docs/notes.md instead. C-3 and PO-5 say it is a FINDING and not a
+# criterion - widening the rule set inside a reconciliation makes it impossible
+# to attribute a behaviour change to either cause. So this assertion pins the
+# hole OPEN on purpose. Closing it should break this line and require a story.
+assert_eq "C-3: cp -t stays unhandled, deliberately" \
+  "W | docs/notes.md :: destination of cp" \
+  "$(wcand "cp -t src/ docs/notes.md")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010: an option's ARGUMENT is not the file being written"
+
+# The cross-run's xA half. manga-translator's parser emits every non-option
+# token, so `touch -t 202601010000 docs/a.md` produced the TIMESTAMP as a
+# candidate and `touch -r src/main.ts docs/a.md` produced a file `-r` only
+# READS. A wrong denial naming a real path is the most convincing kind, and the
+# reconciled parser must not inherit it.
+assert_eq "touch -t: the timestamp is not a path" "W | docs/a.md" \
+  "$(wcand "touch -t 202601010000 docs/a.md")"
+assert_eq "touch -d: the date is not a path" "W | docs/a.md" \
+  "$(wcand "touch -d 2026-01-01 docs/a.md")"
+assert_eq "touch -r: the reference is only read" "W | docs/a.md" \
+  "$(wcand "touch -r src/main.ts docs/a.md")"
+assert_eq "touch --date: the long form too" "W | docs/a.md" \
+  "$(wcand "touch --date 2026-01-01 docs/a.md")"
+assert_eq "touch --reference: the long form too" "W | docs/a.md" \
+  "$(wcand "touch --reference src/main.ts docs/a.md")"
+assert_eq "touch --date=: an attached argument consumes no next word" "W | docs/a.md" \
+  "$(wcand "touch --date=2026-01-01 docs/a.md")"
+
+# And the control that keeps the skip honest: the file BEHIND the option is
+# still judged. A rule skipping one word too many satisfies every assertion
+# above and stops guarding anything.
+assert_eq "the real target behind -t is still a target" "W | src/main.ts" \
+  "$(wcand "touch -t 202601010000 src/main.ts")"
+assert_eq "the real target behind -r is still a target" "W | src/main.ts" \
+  "$(wcand "touch -r docs/notes.md src/main.ts")"
+
+# rm, touch and tee take every remaining operand.
+assert_eq "rm -f takes both operands" "W | src/a.ts | src/b.ts" \
+  "$(wcand "rm -f src/a.ts src/b.ts")"
+assert_eq "tee takes its operand" "W | src/main.ts" \
+  "$(wcand "tee src/main.ts < docs/notes.md")"
+assert_eq "tee -a takes its operand" "W | src/main.ts" \
+  "$(wcand "tee -a src/main.ts < docs/notes.md")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-010 AC-4: the verdict separates 'nothing to find' from 'found nothing'"
+
+# AC-4 rests on this line. A command that NAMES a write-capable tool and yields
+# no target is a different fact from a command that was never a write, and while
+# the two were indistinguishable from outside a bypass stayed invisible: after
+# it the log was empty, and after a permitted write the log was empty too.
+assert_eq "operands arriving from a pipe are unknowable, but rm was named" "W" \
+  "$(wcand "find src -name '*.ts' | xargs rm")"
+assert_eq "an input redirect gives no operand either" "W" \
+  "$(wcand "xargs touch < list")"
+
+# The negative controls. Without these, "always print W" satisfies both lines
+# above and AC-4's log becomes one entry per command.
+assert_eq "a read-only cat is not write-capable"      "-" "$(wcand "cat src/main.ts")"
+assert_eq "a read-only grep is not write-capable"     "-" "$(wcand "grep -rn export src/")"
+assert_eq "a read-only git diff is not write-capable" "-" "$(wcand "git diff -- src/main.ts")"
+
+# A redirect ALONE does not make a command write-capable: `cmd > /dev/null` is
+# ubiquitous and its target is dropped on purpose, so tracing it would drown the
+# log this trace exists to make readable. The candidate is still emitted - the
+# verdict and the candidate list are separate answers.
+assert_eq "a bare redirect emits a candidate but is not a write-capable command" \
+  "- | /dev/null" "$(wcand "git diff > /dev/null")"
+assert_eq "a redirect into docs is a candidate without a write-capable name" \
+  "- | docs/notes.md" "$(wcand "echo x > docs/notes.md")"
+
+# Prose in quoted data is one token and can never be a command name. Widening a
+# character class does not buy this: `\bsed\b` matches the `sed` inside the
+# unmasked token `sed-i`.
+assert_eq "the harness's own vocabulary in a commit message is not a command" "-" \
+  "$(wcand 'git commit -m "fix the sed -i extractor"')"
+
 summary "lib"

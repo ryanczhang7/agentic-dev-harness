@@ -369,6 +369,270 @@ mutate_targets() {
     | tr -d '"'"'"
 }
 
+# --- Write targets ----------------------------------------------------------
+
+# _WC_AWK   The operand half of write_candidates, as one awk program.
+#
+# It reads REDIRECT-STRIPPED masked command text, one shell line per record,
+# and prints a verdict line followed by one line per candidate. See
+# write_candidates below for the contract; this is the part that understands
+# the tools.
+#
+# THE TOKENIZER IS THE REASON THIS IS NOT FIVE greps. Every rule the inline
+# pipeline it replaces used took `awk '{print $NF}'` off a `grep -oE` match, and
+# three families of defect follow from that shape alone: the last word of a
+# match is not an operand (`sed -i EXPR frozen.ts permitted.md` judged only the
+# second file), a character class that stops at `(` returns a FRAGMENT of a sed
+# script as a path, and an option's ARGUMENT is indistinguishable from an
+# operand. So: split each line into words - masking already turned every space
+# inside a quoted span into a control character, so a quoted path is ONE word -
+# split each word at the shell operators that are still operators, which is
+# decidable here because the quote characters themselves survive masking, and
+# hand each command its own operand list.
+_WC_AWK='
+    function isname(w) {
+      return (w == "sed" || w == "tee" || w == "cp" || w == "mv" || w == "rm" || w == "touch")
+    }
+    function out(s)      { BUF = BUF s "\n" }
+    function emit(t)     { if (t != "") out(t) }
+    function emitr(t, r) { if (t != "") out(t "\t" r) }
+
+    # optarg(word, letters)   Does this single-dash cluster take an argument?
+    # Returns 1 when the argument is GLUED to it (-tsrc/, -ftsrc/), 2 when it
+    # is the next word (-t src/, -ft src/), 0 when no letter of <letters>
+    # appears. A parser that merely SKIPS a `-` word whole leaves
+    # `mv -tsrc/ docs/notes.md` an entirely unjudged write into frozen source,
+    # and one that always skips the NEXT word reports a timestamp as a path.
+    function optarg(w, set,   c, k, ch) {
+      c = substr(w, 2)
+      for (k = 1; k <= length(c); k++) {
+        ch = substr(c, k, 1)
+        if (index(set, ch) > 0) { GLUED = substr(c, k + 1); return (GLUED == "") ? 2 : 1 }
+      }
+      return 0
+    }
+    function islong(w)  { return (substr(w, 1, 2) == "--" && length(w) > 2) }
+    function isshort(w) { return (substr(w, 1, 1) == "-" && length(w) > 1) }
+    # The long option name, minus any =VALUE. LONGVAL carries the value and
+    # LONGHAS says whether there was one.
+    function longname(w,   o) {
+      o = w; LONGVAL = ""; LONGHAS = 0
+      if (index(w, "=") > 0) { LONGVAL = w; sub(/^[^=]*=/, "", LONGVAL); LONGHAS = 1; sub(/=.*$/, "", o) }
+      sub(/^--/, "", o)
+      return o
+    }
+
+    # sed. In-place is decided PER WORD, which is the sharper of the two
+    # parsers this reconciles: a single-dash word writes in place when the run
+    # of letters after its `-` includes an i (-i, -i.bak, -ni, -Ei, -rin), and
+    # the long option is a PREFIX test of in-place, never a literal match - GNU
+    # getopt_long honours any unambiguous abbreviation, so `sed --i` and
+    # `sed --in-pl` genuinely write. A substring test for -i refused a pure read
+    # of tests/guards/layer-imports.test.ts on the file it was READING and
+    # missed -ni entirely: the same bug from two ends. Then EVERY file operand
+    # is a target rather than the last word, and the FIRST positional is the
+    # script unless -e or -f supplied one.
+    function do_sed(a, b,   k, w, o, c, letters, inplace, scripted, np, p, start, r) {
+      inplace = 0; scripted = 0; np = 0; split("", SP)
+      k = a
+      while (k <= b) {
+        w = tok[k]
+        if (islong(w)) {
+          o = longname(w)
+          if (index("in-place", o) == 1) inplace = 1
+          if (index("expression", o) == 1 || index("file", o) == 1) {
+            scripted = 1
+            if (!LONGHAS) k++
+          }
+          k++; continue
+        }
+        if (isshort(w)) {
+          c = substr(w, 2)
+          if (match(c, /^[A-Za-z]+/)) letters = substr(c, 1, RLENGTH); else letters = ""
+          if (letters ~ /i/) inplace = 1
+          r = optarg(w, "ef")
+          if (r > 0) { scripted = 1; if (r == 2) k++ }
+          else if (optarg(w, "l") == 2) k++
+          k++; continue
+        }
+        np++; SP[np] = w
+        k++
+      }
+      if (!inplace) return
+      WRITE = 1
+      start = scripted ? 1 : 2
+      for (p = start; p <= np; p++) emit(SP[p])
+    }
+
+    # mv REMOVES its source, so every operand is judged and each carries the
+    # part it played - and -t/--target-directory INVERTS which one is the
+    # destination, in all six spellings, three of which glue or attach the
+    # argument.
+    function do_mv(a, b,   k, w, o, tdir, np, p, r) {
+      tdir = ""; np = 0; split("", MP)
+      k = a
+      while (k <= b) {
+        w = tok[k]
+        if (islong(w)) {
+          o = longname(w)
+          if (index("target-directory", o) == 1) {
+            if (LONGHAS) tdir = LONGVAL
+            else { k++; if (k <= b) tdir = tok[k] }
+          }
+          k++; continue
+        }
+        if (isshort(w)) {
+          r = optarg(w, "t")
+          if (r == 1) tdir = GLUED
+          else if (r == 2) { k++; if (k <= b) tdir = tok[k] }
+          k++; continue
+        }
+        np++; MP[np] = w; k++
+      }
+      if (tdir != "") {
+        emitr(tdir, "destination of mv")
+        for (p = 1; p <= np; p++) emitr(MP[p], "source of mv (removed by the move)")
+        return
+      }
+      for (p = 1; p < np; p++) emitr(MP[p], "source of mv (removed by the move)")
+      if (np > 0) emitr(MP[np], "destination of mv")
+    }
+
+    # cp READS its sources and leaves them where they are, so only the
+    # destination is a write target: judging every operand would be a false
+    # positive, not a fix. Its own -t is deliberately NOT read - it is one of
+    # C-1s three BOTH WRONG rows, this is a reconciliation, and C-3/PO-5 make a
+    # new shape a finding rather than a criterion. lib.test.sh pins the wrong
+    # answer it gives today, so closing it takes a story.
+    function do_cp(a, b,   k, w, np) {
+      np = 0; split("", CP)
+      for (k = a; k <= b; k++) {
+        w = tok[k]
+        if (isshort(w)) continue
+        np++; CP[np] = w
+      }
+      if (np > 0) emitr(CP[np], "destination of cp")
+    }
+
+    # touch. Every operand is a target, but -t/-d/-r and their long forms take
+    # an ARGUMENT: a timestamp is not a path, and the -r reference file is only
+    # READ. A wrong denial naming a real file it never writes is the most
+    # convincing kind, because the message looks right.
+    function do_touch(a, b,   k, w, o) {
+      k = a
+      while (k <= b) {
+        w = tok[k]
+        if (islong(w)) {
+          o = longname(w)
+          if (!LONGHAS && (index("date", o) == 1 || index("reference", o) == 1 || index("time", o) == 1)) k++
+          k++; continue
+        }
+        if (isshort(w)) { if (optarg(w, "tdr") == 2) k++; k++; continue }
+        emit(w); k++
+      }
+    }
+
+    # rm and tee take every remaining operand, with no role: there is nothing
+    # ambiguous about them, and inventing a role for one is the churn AC-5s own
+    # control forbids.
+    function do_plain(a, b,   k, w) {
+      for (k = a; k <= b; k++) { w = tok[k]; if (isshort(w)) continue; emit(w) }
+    }
+
+    function dispatch(name, a, b) {
+      if (name == "sed") { do_sed(a, b); return }
+      WRITE = 1
+      if (name == "tee" || name == "rm") { do_plain(a, b); return }
+      if (name == "touch") { do_touch(a, b); return }
+      if (name == "cp")    { do_cp(a, b);    return }
+      if (name == "mv")    { do_mv(a, b);    return }
+    }
+
+    # One word into tokens. A quoted span is DATA: the masker has already
+    # rewritten the operators inside it, but it leaves the quote characters
+    # themselves, so a `(` that survives into a sed script is still recognisable
+    # as data here. Everything else splits at the operator.
+    function tokenize(w,   q, cur, k, c) {
+      q = ""; cur = ""
+      for (k = 1; k <= length(w); k++) {
+        c = substr(w, k, 1)
+        if (q != "") { cur = cur c; if (c == q) q = ""; continue }
+        if (c == SQ || c == DQ) { q = c; cur = cur c; continue }
+        if (index(SEPS, c) > 0) {
+          if (cur != "") { ntok++; tok[ntok] = cur; sep[ntok] = 0; cur = "" }
+          ntok++; tok[ntok] = c; sep[ntok] = 1
+          continue
+        }
+        cur = cur c
+      }
+      if (cur != "") { ntok++; tok[ntok] = cur; sep[ntok] = 0 }
+    }
+
+    BEGIN { SQ = sprintf("%c", 39); DQ = sprintf("%c", 34); SEPS = "|&;()<"; WRITE = 0; BUF = "" }
+    {
+      # A newline IS a command separator: the masker encodes the ones folded
+      # into a continued line as \010, so every record boundary here is real.
+      ntok = 0
+      for (i = 1; i <= NF; i++) tokenize($i)
+      i = 1
+      while (i <= ntok) {
+        while (i <= ntok && sep[i]) i++
+        s = i
+        while (i <= ntok && !sep[i]) i++
+        e = i - 1
+        for (j = s; j <= e; j++) if (isname(tok[j])) { dispatch(tok[j], j + 1, e); break }
+      }
+    }
+    END { print (WRITE ? "W" : "-"); printf "%s", BUF }'
+
+# write_candidates <masked command>   Which paths this command would WRITE.
+#
+# THE phase lock's decision procedure, and the one place it lives - the rule
+# rules.md already states for classify.sh: a caller that needs this answer asks
+# for it rather than carrying a second copy of the rules. Input is
+# mask_shell_quotes output, so a quoted span has already become data. Nothing
+# here consults the filesystem: a file being created does not exist yet.
+#
+# Output, on stdout:
+#
+#     <verdict>              `W` or `-`, ALWAYS present, always the first line
+#     <target>[\t<role>]     zero or more, in no particular order
+#
+# THE VERDICT answers a question an empty candidate list cannot: `W` says the
+# command was a WRITE - an in-place sed, or tee/cp/mv/rm/touch named at a real
+# token boundary - so a caller can tell "this was never a write" from "this was
+# a write and no target could be parsed out of it". While those two were
+# indistinguishable a bypass was invisible, because the record was empty either
+# way. A redirect operator ALONE does not set it: `cmd > /dev/null` is
+# ubiquitous, and tracing it would drown the record that distinction exists to
+# make readable.
+#
+# THE ROLE is the operand's part - `destination of mv`, `source of mv (removed
+# by the move)`, `destination of cp` - so a denial can say WHICH operand it
+# refused rather than naming a path with no account of why. A tool whose operand
+# has no ambiguous part carries none.
+#
+# THE TARGET COMES FIRST on every line, before the tab, because every caller
+# filters and anchors on the path.
+write_candidates() { # <masked command>
+  local masked="$1" noredir
+  # Strip redirect clauses ONCE, so every rule after the first reads text with
+  # no `>` in it. Enumerating the shapes a redirect can be glued to is how one
+  # false positive survived nine of them: `cp a b 2>/dev/null` was refused on
+  # `2>/dev/null` and `rm a 2>/dev/null` on `2`, a different token, because that
+  # rule's character class truncated at the `>`. A quoted `>` is already a
+  # control character by now, so only real operators match.
+  noredir="$(printf '%s' "$masked" | sed -E 's/[0-9]*>>?[[:space:]]*[^|&;()[:space:]]*//g')"
+  {
+    printf '%s\n' "$noredir" | awk "$_WC_AWK"
+    # A redirect is the FIRST rule's business and no other rule's. `>|` is a
+    # redirect too.
+    printf '%s\n' "$masked" | grep -oE '>(>|\|)?[[:space:]]*[^|&;><()[:space:]]+' \
+      | sed -E 's/^>(>|\|)?[[:space:]]*//'
+  } 2>/dev/null | tr -d '"'"'"
+  return 0
+}
+
 # --- Paths ------------------------------------------------------------------
 
 # lower <text>   Lower-cased with tr, not with the bash 4 case-conversion
