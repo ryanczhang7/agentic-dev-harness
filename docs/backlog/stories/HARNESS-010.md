@@ -409,6 +409,25 @@ them has changed the rule set as well as reconciling it, which is the one thing
 this story must not do without saying so.
 
 **Result:** <!-- filled at GATES -->
+**AC-6, one parser in one place. Owner: REVIEW.**
+
+ADDED AT THE END OF RED, and it is the orchestrator's omission rather than
+a change of scope: AC-6 has always read `*Verified by review* - see
+`## Deferred verifications``, and PLANNED then wrote three entries, none of
+them AC-6's. RED found the dangling reference and correctly declined to
+amend the criterion over it. The criterion is unchanged, so no `## Amendments`
+entry is owed; what was missing is this block.
+
+REVIEW confirms that `write_candidates()` is defined once, in
+`.claude/hooks/lib.sh`, and that `phase-guard.sh` ASKS it rather than
+carrying a second copy of the rules - the same property `rules.md` states
+for `classify.sh`. The mechanical half is already pinned by four assertions
+RED wrote; what review adds is the judgement those cannot make, which is
+whether a future reader would be tempted to re-derive the answer locally
+instead of calling it.
+
+**Result:** <!-- filled at REVIEW -->
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
