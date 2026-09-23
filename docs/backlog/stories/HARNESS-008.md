@@ -4,8 +4,8 @@ title: One phase lock per worktree, so two stories can be in flight at once
 slug: one-phase-lock-per-worktree-so-two-stori
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-008-one-phase-lock-per-worktree-so-two-stori
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/doctor.sh, .claude/tests/worktree.test.sh, .claude/tests/doctor.test.sh, CLAUDE.md]  # files this story expects to write
