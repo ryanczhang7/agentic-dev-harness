@@ -4,8 +4,8 @@ title: The LOCAL alarm asks whether a blob is reachable, not whether it exists
 slug: the-local-alarm-asks-whether-a-blob-is-r
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-012-the-local-alarm-asks-whether-a-blob-is-r
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write
@@ -394,7 +394,7 @@ name, below the table.
 | RED | `test-developer` | `fable` | `claude-fable-5-1` (the subagent's own report) | explicit `model: fable` on the dispatch, so it is the override that decided, not the agent definition's `opus` | **met.** The success condition for the measured case is sharper negative controls from a partitioned brief. RED produced a per-walk AC-3 control, surviving-branch controls that only an `--all`→`HEAD` mutation can catch, and an honest prediction of 0 for the one mutation (unanchored membership) that no test can observe, instead of claiming coverage it lacked. It also found the reflog subtlety (PO-5) without being prompted |
 | GREEN | `feature-developer` | `opus` | `claude-opus-5-5` (the subagent's own report) | explicit `model: opus` on the dispatch, matching the agent definition | **met.** The success condition for GREEN is reaching green without weakening a test. Nothing under `.claude/tests/` changed after the RED commit (`git diff --quiet 01d3344 -- .claude/tests/`), the diff matches the Contract line for line, and two of RED's predicted mutations reproduced exactly (P-2, P-3) |
 | GATES | `feature-developer` | `opus` | **not dispatched** — the orchestrator session (`claude-opus-5-5`) ran it | `gates.sh` reports `0 ran, 8 unconfigured` (`BOOTSTRAPPED=no`, PO-1), so there was no gate failure for a developer to fix. The orchestrator ran `gates.sh`, bumped `VERSION` to 51 and checked the tree guards itself | not applicable: the plan's reason for `opus` in GATES ("make it stop complaining" is tempting) needs a complaint, and there was none |
-| REVIEW | `lead-po` | `opus` | the orchestrator session, `claude-opus-5-5` | no dispatch | recorded at merge |
+| REVIEW | `lead-po` | `opus` | the orchestrator session, `claude-opus-5-5` | no dispatch | **met.** PR #81 merged as `7fc7e84` on 2026-09-24 with no review changes requested, and both CI checks (`boundaries`, `gates`) passed on the first run |
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
