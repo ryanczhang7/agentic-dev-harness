@@ -205,10 +205,21 @@ kept_any=0
 # reference point to tell apart.
 #
 # Upstream is a git checkout, so there is one. Hash the downstream copy and ask
-# whether that blob is REACHABLE from any of upstream's refs:
+# whether that blob is REACHABLE from upstream's RELEASE LINE - HEAD, the
+# default branch, and that branch's origin counterpart:
 #
 #   reachable -> this is some release of upstream's. You are BEHIND. Silent.
 #   not       -> upstream has never shipped this content. Somebody here wrote it.
+#
+# The release line, not every ref. Release 51 asked `--all`, and every ref is
+# not a release: a live stash, a fetched PR ref, or a tracking ref to a branch
+# long deleted on origin - which any clone that never ran `fetch --prune` still
+# holds - each vouched for content upstream never shipped (HARNESS-013). The
+# default is the one the NOTE above resolved, `$src_default`, read rather than
+# resolved again so the two cannot disagree; when there is none the set is HEAD
+# alone, and the stash stays out. The `--` is not decoration: without it a file
+# or directory named after the branch in upstream's tree makes the name
+# ambiguous, rev-list exits 128, the set is empty, and every file reads LOCAL.
 #
 # Reachable, not merely present. Through release 50 this asked `cat-file -e` -
 # does the object EXIST - and a deleted branch, a dropped stash or a fetched PR
@@ -248,11 +259,18 @@ fi
 
 local_changes=""
 if [ "$up_has_history" = 1 ]; then
-  # Every object id reachable from a ref, one per line, padded with a newline at
-  # each end so the `case` below matches whole lines, never a prefix of an id.
+  # Every object id reachable from the release line, one per line, padded with
+  # a newline at each end so the `case` below matches whole lines, never a
+  # prefix of an id.
   NL='
 '
-  up_reachable="$(git -C "$UP" rev-list --objects --all 2>/dev/null | awk '{print $1}')"
+  up_starts=(HEAD)
+  if [ -n "$src_default" ]; then
+    up_starts+=("$src_default")
+    git -C "$UP" rev-parse --verify --quiet "refs/remotes/origin/$src_default" >/dev/null 2>&1 \
+      && up_starts+=("refs/remotes/origin/$src_default")
+  fi
+  up_reachable="$(git -C "$UP" rev-list --objects "${up_starts[@]}" -- 2>/dev/null | awk '{print $1}')"
   up_reachable_padded="$NL$up_reachable$NL"
   up_shipped() { case "$up_reachable_padded" in *"$NL$1$NL"*) return 0 ;; esac; return 1; }
   for d in agents commands skills hooks tests; do
