@@ -5,7 +5,7 @@ slug: the-gate-stamp-covers-the-commit-to-be-n
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-014-the-gate-stamp-covers-the-commit-to-be-n
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/gates.sh, .claude/tests/lib.test.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write
@@ -933,6 +933,59 @@ section 3.
          or Gate probes section describes a failure without showing one
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### R-1. GREEN → RED, 2026-09-24: two frozen assertions cannot pass against any conforming implementation
+
+Found by the feature-developer in GREEN, which stopped without editing either
+test. **Reproduced independently by the orchestrator** as the rules require:
+different inputs, none of the subagent's code.
+
+**R-1a. `lib.test.sh`, the AC-6 block (`:486` at `dcf6f35`).** Three assertions
+fail: `AC-6: and is not listed by untracked_gated`, `AC-6: and is not listed by
+untracked_gated either` and `AC-6 control: with the exclude rule removed the
+same file is listed`. Each expects `handoff/x.patch` and `tests/stray.test.ts`
+in `untracked_gated`'s output. But `:480` removes the other fixture files and
+leaves those two in place, and `:486`'s `fix_commit` is `git add -A` followed by
+a commit (`:364-365`). By the time the assertions run, both files are
+**tracked**. No function that follows C-2 (`ls-files --others`) can list them.
+*What it should assert instead:* the same three claims, with the two strays
+still untracked when they are read. For example, commit only `.gitignore` at
+`:486`.
+
+Orchestrator's reproduction, in a scratch repository with its own file names
+(`stray/y.patch`, `tests/z.test.ts`) and plain git only:
+
+    before commit-all: stray/y.patch tests/z.test.ts
+    after add -A + commit: []  tracked: .gitignore stray/y.patch tests/z.test.ts
+
+After an `add -A` commit, `--others --exclude-standard` lists nothing, so the
+expected values are unreachable.
+
+**R-1b. `gates.test.sh:308-313`, `a test file is not a changed source path`.**
+This assertion is older than this story. It writes `tests/other.test.ts` and
+leaves it **untracked**, then fails if the path appears *anywhere* in the output
+(`*"tests/other.test.ts"*`). `classify.sh tests/other.test.ts` returns
+`test`, which is gated. So AC-4, a frozen criterion, **requires** the line
+`    UNTRACKED  tests/other.test.ts`, and that line satisfies the needle. The
+assertion claims "not reported as a changed source path", but its needle floats
+free of the `changes:` report it is about. This is the needle rule in
+`rules.md` exactly. It could only pass by breaking AC-4. *What it should
+assert instead:* the path is absent from every `changes:` line (a `WARN
+changes:` or `FAIL changes:` line naming it), anchored to that report.
+
+Orchestrator's reproduction: `grep -n` puts the untracked write at `:308` and
+the floating needle at `:311`. `bash scripts/classify.sh tests/other.test.ts`
+prints `test	tests/other.test.ts`. No `git add` stands between them. AC-4 therefore
+obliges gates.sh to print the path.
+
+**Earning.** Both corrected assertions are written while the implementation
+exists, so each passes on first run. The test-developer earns each one by a
+mutation through `scripts/mutate.sh` that turns that assertion red, and pastes
+the output below.
+
+**GREEN on re-entry.** Expected to be a no-op: the source that GREEN wrote is
+committed before this return and is not edited again. The orchestrator verifies
+this by running the suites, and does not re-dispatch.
 
 ## Gate results
 
