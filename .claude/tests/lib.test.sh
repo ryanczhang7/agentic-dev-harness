@@ -351,10 +351,24 @@ describe "gate_tree_hash: covers what the gates judge, and only that"
 # file no gate reads must not move it, or every prompt edit after the last run
 # forces a re-run before the PR is acceptable - and it does have to move on a
 # change to anything a gate does read, or the record proves nothing.
+#
+# EVERY FILE BELOW IS TRACKED BEFORE h0 IS TAKEN. HARNESS-014: the hash is the
+# tree `git commit -a` would make, so an UNTRACKED file moves nothing whatever it
+# classifies as. The first form of this block wrote the prompt, the hook and the
+# docs file without committing them, which meant "a hook moves the hash" passed
+# only because untracked files were hashed (the defect), and the two negatives
+# would have passed against a hash that counted markdown - vacuous, by tracking
+# status rather than by class. Committing first is what makes each assertion
+# below discriminate by CLASS, which is the claim in its name.
 HARNESS_ROOT="$FIX"
+fix_commit() { # <message>   Everything in the fixture, tracked and committed.
+  git -C "$FIX" add -A >/dev/null 2>&1
+  git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "$1" >/dev/null 2>&1
+}
 mkdir -p "$FIX/.claude/commands" "$FIX/.claude/hooks"
 printf '# advance\n' > "$FIX/.claude/commands/advance-story.md"
 printf 'x() { :; }\n' > "$FIX/.claude/hooks/lib.sh"
+fix_commit "a prompt and a hook, tracked"
 h0="$(gate_tree_hash)"
 printf '# advance, reworded\n' > "$FIX/.claude/commands/advance-story.md"
 assert_eq "a command prompt does not move the hash" "$h0" "$(gate_tree_hash)"
@@ -366,6 +380,133 @@ if [ "$h1" = "$h0" ]; then _bad "a hook moves the hash" "unchanged: $h0"; else _
 printf 'export const x = 2\n' > "$FIX/src/main.ts"
 h2="$(gate_tree_hash)"
 if [ "$h2" = "$h1" ]; then _bad "source moves the hash" "unchanged: $h1"; else _ok "source moves the hash"; fi
+# The discriminator for the rewrite above: the same class of file, UNTRACKED,
+# moves nothing. Against the pre-HARNESS-014 hash this is red, because that hash
+# folded every untracked non-ignored file in.
+printf 'z() { :; }\n' > "$FIX/.claude/hooks/other.sh"
+assert_eq "an untracked hook does not move the hash" "$h2" "$(gate_tree_hash)"
+rm -f "$FIX/.claude/hooks/other.sh"
+
+# ---------------------------------------------------------------------------
+describe "gate_tree_hash: the tree the commit would have, not the working directory (HARNESS-014)"
+
+# The stamp is recomputed by CI from the PR head commit, which contains no
+# untracked file. Locally it was computed with `git add -A` over a HEAD-seeded
+# index, so a stray `.patch` in the checkout moved it and CI refused a record
+# that was correct for the code. The fix: seed from the REAL index and `add -u`
+# - tracked files as they stand, plus whatever is staged, minus deletions.
+fix_commit "everything tracked before the untracked cases"
+
+# AC-1, positive. Two untracked gated files, one per class the specimen had:
+# `handoff/x.patch` falls through paths.conf to `source`, exactly as
+# handoff-world-080/*.patch does; the second classifies `test`.
+mkdir -p "$FIX/handoff"
+printf 'diff --git a/x b/x\n' > "$FIX/handoff/x.patch"
+printf 'test("stray", () => {})\n' > "$FIX/tests/stray.test.ts"
+assert_eq "fixture: the stray patch classifies as source" "source" "$(classify "handoff/x.patch")"
+assert_eq "fixture: the stray test classifies as test"    "test"   "$(classify "tests/stray.test.ts")"
+assert_eq "AC-1: an untracked gated file does not move the stamp off HEAD's" \
+  "$(gate_tree_hash_of HEAD)" "$(gate_tree_hash)"
+
+# AC-1, control. The working tree still counts for files git TRACKS: an
+# unstaged edit to a tracked source file moves the hash off HEAD's. A fix that
+# simply hashed HEAD passes the positive case and fails here.
+printf 'export const x = 3\n' > "$FIX/src/main.ts"
+before_status="$(git -C "$FIX" status --porcelain)"
+before_cached="$(git -C "$FIX" diff --cached)"
+if [ "$(gate_tree_hash)" = "$(gate_tree_hash_of HEAD)" ]; then
+  _bad "AC-1 control: an unstaged edit to a TRACKED source file moves the stamp" "still equal to HEAD's: $(gate_tree_hash_of HEAD)"
+else
+  _ok "AC-1 control: an unstaged edit to a TRACKED source file moves the stamp"
+fi
+
+# C-1: the real index is never written. `git status` and the staged diff are
+# byte-identical before and after that run - taken WITH the unstaged edit and
+# the strays present, because that is the state in which a `git add -u` that
+# leaked into the real index would have something to stage.
+assert_eq "C-1: gate_tree_hash leaves git status --porcelain unchanged" \
+  "$before_status" "$(git -C "$FIX" status --porcelain)"
+assert_eq "C-1: and leaves the staged diff unchanged" \
+  "$before_cached" "$(git -C "$FIX" diff --cached)"
+git -C "$FIX" checkout -q -- src/main.ts 2>/dev/null
+rm -rf "$FIX/handoff" "$FIX/tests/stray.test.ts"
+
+# AC-3, positive: a file the story creates is covered once it is STAGED. The
+# hash taken with the file staged equals CI's hash of the commit that follows.
+printf 'export const staged = 1\n' > "$FIX/src/staged-module.ts"
+git -C "$FIX" add src/staged-module.ts >/dev/null 2>&1
+h_staged="$(gate_tree_hash)"
+fix_commit "the staged module, committed"
+assert_eq "AC-3: a staged new file is in the stamp, which equals the following commit's" \
+  "$(gate_tree_hash_of HEAD)" "$h_staged"
+
+# AC-3, control: the same file written but NOT staged is not in the stamp, so
+# the stamp does not equal the commit that later contains it. This is exactly
+# the file AC-4 exists to name; against the pre-HARNESS-014 hash it is red,
+# because `add -A` folded the unstaged file in and the two hashes agreed.
+printf 'export const unstaged = 1\n' > "$FIX/src/unstaged-module.ts"
+h_unstaged="$(gate_tree_hash)"
+fix_commit "the unstaged module, committed after the hash was taken"
+if [ "$h_unstaged" = "$(gate_tree_hash_of HEAD)" ]; then
+  _bad "AC-3 control: an UNSTAGED new file is not in the stamp, so it differs from the later commit's" \
+    "the stamp already equalled the later commit's hash: $h_unstaged"
+else
+  _ok "AC-3 control: an UNSTAGED new file is not in the stamp, so it differs from the later commit's"
+fi
+
+# ---------------------------------------------------------------------------
+describe "untracked_gated: the one definition of an untracked gated file (HARNESS-014, C-2)"
+
+# gates.sh names what this prints and refuses to record while it is non-empty.
+# It is `git ls-files --others --exclude-standard`, kept to what gated_stdin
+# keeps: so `.gitignore` AND `.git/info/exclude` both count (AC-6), docs and
+# harness markdown are never named, and nothing under .claude/state/ is.
+fix_commit "clean before the listing cases"
+out="$(untracked_gated 2>&1)"; rc=$?
+assert_eq "with no untracked gated file it prints nothing" "" "$out"
+assert_eq "and returns 0"                                  "0" "$rc"
+
+mkdir -p "$FIX/handoff" "$FIX/.claude/commands" "$FIX/.claude/state"
+printf 'diff --git a/x b/x\n' > "$FIX/handoff/x.patch"          # source
+printf 'test("stray", () => {})\n' > "$FIX/tests/stray.test.ts"  # test
+printf 'export const z = 1\n' > "$FIX/Zed.ts"                    # source; sorts FIRST under LC_ALL=C
+printf '# stray notes\n' > "$FIX/notes.md"                       # docs: never named
+printf '# a prompt\n' > "$FIX/.claude/commands/x.md"             # harness markdown: never named
+printf 'STORY_ID=T-9\n' > "$FIX/.claude/state/current-story.env" # harness state: never named
+out="$(untracked_gated 2>&1)"; rc=$?
+assert_eq "lists every untracked gated file, repo-relative, LC_ALL=C sorted, one per line" \
+  "$(printf 'Zed.ts\nhandoff/x.patch\ntests/stray.test.ts')" "$out"
+assert_eq "and returns 0 when it printed something" "0" "$rc"
+rm -f "$FIX/Zed.ts" "$FIX/notes.md" "$FIX/.claude/commands/x.md" "$FIX/.claude/state/current-story.env"
+
+# AC-6: an untracked file that WOULD classify as source, but is ignored. Both
+# ignore files, because .git/info/exclude is the remedy the refusal points a
+# user to for a stray they mean to keep, so it has to actually work.
+printf 'src/scratch-ignored.ts\n' >> "$FIX/.gitignore"
+fix_commit "ignore rule for the scratch file"   # .gitignore is gated, so HEAD carries it
+h_clean="$(gate_tree_hash_of HEAD)"
+printf 'export const scratch = 1\n' > "$FIX/src/scratch-ignored.ts"
+assert_eq "fixture: the .gitignore'd scratch file classifies as ignored" "ignored" "$(classify "src/scratch-ignored.ts")"
+assert_eq "AC-6: a .gitignore'd file does not move the stamp" "$h_clean" "$(gate_tree_hash)"
+assert_eq "AC-6: and is not listed by untracked_gated" \
+  "$(printf 'handoff/x.patch\ntests/stray.test.ts')" "$(untracked_gated 2>&1)"
+
+printf 'src/scratch-excluded.ts\n' >> "$FIX/.git/info/exclude"
+printf 'export const excluded = 1\n' > "$FIX/src/scratch-excluded.ts"
+assert_eq "AC-6: a file excluded through .git/info/exclude does not move the stamp" "$h_clean" "$(gate_tree_hash)"
+assert_eq "AC-6: and is not listed by untracked_gated either" \
+  "$(printf 'handoff/x.patch\ntests/stray.test.ts')" "$(untracked_gated 2>&1)"
+
+# AC-6, control: with the exclude rule removed the same file IS an untracked
+# gated file, and is listed. Without this, "list nothing" passes every AC-6
+# assertion above.
+grep -v 'src/scratch-excluded.ts' "$FIX/.git/info/exclude" > "$FIX/.git/info/exclude.new"
+mv "$FIX/.git/info/exclude.new" "$FIX/.git/info/exclude"
+assert_eq "AC-6 control: with the exclude rule removed the same file is listed" \
+  "$(printf 'handoff/x.patch\nsrc/scratch-excluded.ts\ntests/stray.test.ts')" "$(untracked_gated 2>&1)"
+assert_eq "AC-6 control: and it still does not move the stamp - untracked is untracked" "$h_clean" "$(gate_tree_hash)"
+
+rm -rf "$FIX/handoff" "$FIX/tests/stray.test.ts" "$FIX/src/scratch-ignored.ts" "$FIX/src/scratch-excluded.ts"
 
 # ---------------------------------------------------------------------------
 describe "path_is_implausible: a failed parse is inconclusive, not a violation"
