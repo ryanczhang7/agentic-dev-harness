@@ -853,9 +853,9 @@ pair differs by only 1.3s. Three samples a side cannot say more than that.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-09-24T01:02:11Z
-    commit: dd3f0b2 (working tree had uncommitted changes)
-    tree:   b58de787d96a91feb7fc7c509fe2f4a69ede6ec4
+    run:    2026-09-24T01:11:45Z
+    commit: 3d8ba4f
+    tree:   87172dd610d085a25c85d08bcc0dc7e51f094b99
     result: pass (0 ran, 8 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1115,3 +1115,14 @@ it. The question they raise is a different one: *which refs count as a
 release?*, with `--branches --tags` versus `--all` versus an explicit
 allow-list as the candidate answers. That needs its own story with its own
 quiet-half control, and is recommended as the follow-up.
+
+**PO-6. GATES was re-entered once, on purpose, to re-stamp the gate record.**
+The first `gates.sh` run was stamped over a tree that included untracked files
+in the checkout (`handoff-world-080/*.patch`, three of which classify as
+`source` and one as `test`). `gate_tree_hash()` hashes untracked files, CI
+reads only the commit, so that record would have passed `check-boundaries.sh`
+locally and failed it on CI. The phase lock correctly refused to move those
+files in REVIEW. So the story went back to GATES, the files were parked
+outside the repository, `gates.sh` was re-run, the files were restored, and
+the story came back to REVIEW. No code changed. `check-boundaries.sh` was then
+run in a clean `git worktree` of the commit rather than in this checkout.
