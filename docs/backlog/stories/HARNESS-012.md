@@ -5,7 +5,7 @@ slug: the-local-alarm-asks-whether-a-blob-is-r
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-012-the-local-alarm-asks-whether-a-blob-is-r
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write
@@ -392,6 +392,7 @@ name, below the table.
 |---|---|---|---|---|---|
 | PLANNED | `lead-po` (orchestrator session) | `opus` | `claude-opus-5` at session start; the session reported `claude-opus-5-5` by the end of RED | the orchestrator itself, no dispatch | the Contract's cost question was answered with measurements rather than adopting the Notes' candidate command, and RED amended nothing in the Contract |
 | RED | `test-developer` | `fable` | `claude-fable-5-1` (the subagent's own report) | explicit `model: fable` on the dispatch, so it is the override that decided, not the agent definition's `opus` | **met.** The success condition for the measured case is sharper negative controls from a partitioned brief. RED produced a per-walk AC-3 control, surviving-branch controls that only an `--all`→`HEAD` mutation can catch, and an honest prediction of 0 for the one mutation (unanchored membership) that no test can observe, instead of claiming coverage it lacked. It also found the reflog subtlety (PO-5) without being prompted |
+| GREEN | `feature-developer` | `opus` | `claude-opus-5-5` (the subagent's own report) | explicit `model: opus` on the dispatch, matching the agent definition | **met.** The success condition for GREEN is reaching green without weakening a test. Nothing under `.claude/tests/` changed after the RED commit (`git diff --quiet 01d3344 -- .claude/tests/`), the diff matches the Contract line for line, and two of RED's predicted mutations reproduced exactly (P-2, P-3) |
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -734,6 +735,97 @@ failures, the ones pasted above.
 * **Model.** This RED ran on `claude-fable-5-1`, matching the plan row
   (`fable`). No override was reported to me.
 
+### GREEN
+
+**Diff** (`scripts/refresh-harness.sh` only, +23 -7). Built as the Contract
+says, with the Contract's spelling:
+
+* inside `if [ "$up_has_history" = 1 ]; then`, before the walks: `NL`,
+  `up_reachable="$(git -C "$UP" rev-list --objects --all 2>/dev/null | awk
+  '{print $1}')"`, `up_reachable_padded="$NL$up_reachable$NL"`, and
+  `up_shipped() { case "$up_reachable_padded" in *"$NL$1$NL"*) return 0 ;;
+  esac; return 1; }`. No `--reflog`, no temp file, no pipeline into an
+  early-exiting reader;
+* the three call sites (now lines 265, 286, 293) read `up_shipped "$h" &&
+  continue` / `[ -n "$h" ] && up_shipped "$h" && continue`; nothing else on
+  those lines changed;
+* the comment above the check now describes reachability, says why existence
+  was the wrong question and why not `--reflog`;
+* `up_has_history`, `local_unknown`, the report text and the copy loop: no diff.
+
+The mutation table's expressions all match this spelling as written (M-3 and
+M-4 each hit exactly one line: 255). Not run here; that is the orchestrator's.
+
+**Suite, before the edit** (same tree as RED): `refresh: 76 passed, 3 failed`,
+the three walk assertions, `below the floor of 79`. **After:**
+
+    LOCAL asks whether upstream ever SHIPPED the blob, not whether its store holds it
+    ...
+    refresh: 79 passed, 0 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (79 assertions executed, 79 declared).
+    1 harness suite(s) passed.
+
+    real	2m8.779s
+
+**Full `bash scripts/selftest.sh`:** all 19 suites 0 failed (boundaries 73,
+ci-local 28, classify 42, doctor 29, gate-reminder 32, gates 92, grep-count 20,
+lib 197, mutate 44, new-story 25, phase-guard 300, phase 33, plan 42, profiles
+37, refresh 79, selftest 54, settings 20, sigpipe 82, worktree 73):
+
+    assertion floors: all 19 suite(s) met their declared floor (1302 assertions executed, 1302 declared).
+    19 harness suite(s) passed.
+    real	47m52.713s
+
+`check-sigpipe.sh`: 40 files, 38 with pipefail, 0 findings. `check-grep-count.sh`:
+40 files, 0 findings. `gates.sh --fast`: `All required gates passed (0 ran, 5
+unconfigured, 0 known)`, as RED recorded (BOOTSTRAPPED=no).
+
+**Negative controls, measured against the shipped script.** Each is an
+`assert_eq` on the exact count string, so a pass is a measurement of that value.
+The shipped script no longer contains `cat-file` anywhere but its comment, so
+silence can now only come from `up_shipped`: existence no longer implies them.
+
+| control | RED (defective script) | GREEN (shipped) |
+|---|---|---|
+| 10: older-release file, same run | 0 | 0 |
+| 14-16: surviving branch, per walk | 0, 0, 0 | 0, 0, 0 |
+| 1,3,5: blob exists | 0, 0, 0 | 0, 0, 0 |
+| 2,4,6: blob unreachable | 0, 0, 0 | 0, 0, 0 |
+| 11-13: reachable via `survives` | 1, 1, 1 | 1, 1, 1 |
+| 7-9: walk 1/2/3 named LOCAL | 0, 0, 0 (red) | 1, 1, 1 |
+
+No divergence. What earns 10 and 14-16 for the right reason is still M-4 and
+M-3, not this table.
+
+**Cost and M-2/M-3.** `cd ../manga-translator && time bash
+../agentic-dev-harness/scripts/refresh-harness.sh --dry-run ../agentic-dev-harness`,
+exit 0, **13 LOCAL** - exactly M-2's prediction, the nine plus the four:
+
+    LOCAL     .claude/skills/stack-profiles/SKILL.md
+    LOCAL     .claude/hooks/gate-reminder.sh
+    LOCAL     .claude/hooks/lib.sh                  <- new
+    LOCAL     .claude/hooks/phase-guard.sh          <- new
+    LOCAL     .claude/tests/floors.conf
+    LOCAL     .claude/tests/gate-reminder.test.sh
+    LOCAL     .claude/tests/gates.test.sh
+    LOCAL     .claude/tests/lib.test.sh
+    LOCAL     .claude/tests/phase-guard.test.sh     <- new
+    LOCAL     .claude/tests/selftest.test.sh
+    LOCAL     .claude/tests/_lib.sh                 <- new
+    LOCAL     scripts/gates.sh
+    LOCAL     scripts/selftest.sh
+
+Wall time, and it is noisy on this machine, so all samples are given. Fixed:
+**20.4s** (`time`), then 22s and 18s (`$SECONDS`). For a same-session baseline
+instead of M-3's 23.6s from earlier in the day, the three call sites were
+reverted to `cat-file -e` through `scripts/mutate.sh` (restore verified
+byte-for-byte each time; the one-time `rev-list` stayed in, so this slightly
+overstates the old cost): 21.7s with 9 LOCAL, then 30s and 29s. So the
+corrected refresh is not slower and is probably faster, but the saving is well
+under the ~10s that "one ~120 ms subprocess per file x 81" predicts. The first
+pair differs by only 1.3s. Three samples a side cannot say more than that.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -771,6 +863,108 @@ failures, the ones pasted above.
        * what was broken, and where
        * the gate output proving it failed
        * confirmation the probe was reverted -->
+
+This story adds no gate. What it changes is a **rule over a tree**, the LOCAL
+alarm's judgement of a downstream project. `rules.md` requires such a change to
+be probed against a real tree as well as the fixtures, so that probe is
+recorded here. The orchestrator's check of RED's mutation table is recorded
+beside it. All three probes were run by the orchestrator after GREEN, on the
+GREEN working tree (`01d3344` plus the uncommitted `refresh-harness.sh` diff).
+
+### P-1. Against a real downstream tree: the four files the old question hid are now named
+
+The fixtures in `refresh.test.sh` were written from the same reading of the
+problem as the fix. This probe is not a fixture. It is `../manga-translator`,
+a real consumer, whose four locally-reconciled harness files were silenced by
+dangling blobs in THIS repository (Contract M-2).
+
+Before (release 50, the `cat-file -e` question, Contract M-3): 9 LOCAL.
+After, 2026-09-23:
+
+    $ cd ../manga-translator && time bash ../agentic-dev-harness/scripts/refresh-harness.sh --dry-run ../agentic-dev-harness
+        LOCAL     .claude/skills/stack-profiles/SKILL.md
+        LOCAL     .claude/hooks/gate-reminder.sh
+        LOCAL     .claude/hooks/lib.sh
+        LOCAL     .claude/hooks/phase-guard.sh
+        LOCAL     .claude/tests/floors.conf
+        LOCAL     .claude/tests/gate-reminder.test.sh
+        LOCAL     .claude/tests/gates.test.sh
+        LOCAL     .claude/tests/lib.test.sh
+        LOCAL     .claude/tests/phase-guard.test.sh
+        LOCAL     .claude/tests/selftest.test.sh
+        LOCAL     .claude/tests/_lib.sh
+        LOCAL     scripts/gates.sh
+        LOCAL     scripts/selftest.sh
+    Dry run: nothing was written.
+    real	0m8.489s
+
+That is 13 LOCAL, matching M-2's prediction: the previous 9 plus
+`.claude/hooks/lib.sh`, `.claude/hooks/phase-guard.sh`,
+`.claude/tests/phase-guard.test.sh` and `.claude/tests/_lib.sh`, each of which
+M-2 measured as `exists=YES reachable=NO`. **The quiet half held on the real
+tree as well.** Every file the walks consider that matches
+some upstream release stayed silent. The list grew by exactly the four files
+the defect had hidden and by no others.
+
+### P-2. RED's mutation M-1, the single-assertion probe: predicted 1, observed 1
+
+    $ bash scripts/mutate.sh scripts/refresh-harness.sh 's/\[ -n "\$h" \] \&\& up_shipped "\$h" \&\& continue/[ -n "$h" ] \&\& git -C "$UP" cat-file -e "$h" 2>\/dev\/null \&\& continue/' -- bash scripts/selftest.sh refresh
+    === mutate: scripts/refresh-harness.sh (1 line(s) changed by ...) ===
+    === mutate: running bash scripts/selftest.sh refresh ===
+        FAIL and at walk 3, the named files, whose line has its own copy of the test
+    refresh: 78 passed, 1 failed
+    FAIL refresh  did 78 units of work, below the floor of 79 in .claude/tests/floors.conf
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/scripts_refresh-harness.sh.20260924T005336Z.204438.bak) ===
+
+This reverted one walk of three to the old question, and exactly the one
+assertion RED named went red. This is AC-3's control working: a fix at two
+call sites out of three does not pass.
+
+### P-3. RED's mutation M-3, a wrong VALUE: predicted 3, observed 3
+
+    $ bash scripts/mutate.sh scripts/refresh-harness.sh 's/rev-list --objects --all/rev-list --objects HEAD/' -- bash scripts/selftest.sh refresh
+    === mutate: scripts/refresh-harness.sh (1 line(s) changed by s/rev-list --objects --all/rev-list --objects HEAD/) ===
+    === mutate: running bash scripts/selftest.sh refresh ===
+        FAIL once a surviving ref reaches the blob, walk 1 is silent
+        FAIL and walk 2
+        FAIL and walk 3
+    refresh: 76 passed, 3 failed
+    FAIL refresh  did 76 units of work, below the floor of 79 in .claude/tests/floors.conf
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/scripts_refresh-harness.sh.20260924T005455Z.206770.bak) ===
+
+These are the three controls that passed on arrival in RED, because the blob
+existing implied them. M-3 is the mutation that shows they pass now for the
+right reason: a reachability set drawn from HEAD instead of every ref turns
+all three red. After both runs, `git diff --stat 01d3344 -- scripts/` shows
+only GREEN's own `refresh-harness.sh` change (+22 −6).
+
+M-4 (`awk` field 2, predicted 7) and M-5 (unanchored membership, predicted 0,
+which RED stated in advance that no test can observe) were not run. Two of the
+five predictions were checked, including the single-assertion one the brief
+asked for, and both matched exactly.
+
+### The cost verdict, against the Contract's prediction
+
+The Contract predicted the corrected refresh would be **faster**, because it
+removes one `git cat-file` subprocess per candidate file. **Measured: it is not
+slower; whether it is faster is lost in the noise.** Dry
+runs of `../manga-translator`, in wall-clock seconds:
+
+| question | runs |
+|---|---|
+| old `cat-file -e` (M-3, PLANNED) | 23.6 |
+| old, reverted via `mutate.sh` (GREEN) | 21.7, 30, 29 |
+| corrected (GREEN) | 20.4, 22, 18 |
+| corrected (orchestrator, P-1) | 8.5 |
+
+The Contract's arithmetic (81 files × ~120 ms) predicted about 10 s saved. The
+samples cannot show a saving that large, and the spread within one arm (8.5 s
+to 22 s for identical work) is bigger than the difference between the arms.
+Per-process spawn cost on this machine clearly varies from minute to minute.
+The honest conclusion is that the new question costs no more than the old one,
+which is all the Out-of-scope clause asked for. "Faster" is not established.
 
 ## Scaffold inventory
 

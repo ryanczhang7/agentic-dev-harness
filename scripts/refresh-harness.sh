@@ -205,10 +205,19 @@ kept_any=0
 # reference point to tell apart.
 #
 # Upstream is a git checkout, so there is one. Hash the downstream copy and ask
-# whether that blob has ever existed in upstream's object store:
+# whether that blob is REACHABLE from any of upstream's refs:
 #
-#   present -> this is some release of upstream's. You are BEHIND. Silent.
-#   absent  -> upstream has never shipped this content. Somebody here wrote it.
+#   reachable -> this is some release of upstream's. You are BEHIND. Silent.
+#   not       -> upstream has never shipped this content. Somebody here wrote it.
+#
+# Reachable, not merely present. Through release 50 this asked `cat-file -e` -
+# does the object EXIST - and a deleted branch, a dropped stash or a fetched PR
+# ref leaves its blobs in the store until `git gc`, so a local fix that once
+# passed through upstream on a throwaway branch was judged shipped and the alarm
+# stayed silent (HARNESS-012). Not `--reflog` either: a deleted branch's tip
+# lives on in HEAD's reflog, which would bring the same case back. The set is
+# built once and each lookup is a `case`, because on Git Bash a subprocess per
+# file costs more than the whole membership test.
 #
 # A local edit that happens to collide with an unrelated upstream blob would be
 # missed; that is a hash collision against real content and not worth guarding.
@@ -239,6 +248,13 @@ fi
 
 local_changes=""
 if [ "$up_has_history" = 1 ]; then
+  # Every object id reachable from a ref, one per line, padded with a newline at
+  # each end so the `case` below matches whole lines, never a prefix of an id.
+  NL='
+'
+  up_reachable="$(git -C "$UP" rev-list --objects --all 2>/dev/null | awk '{print $1}')"
+  up_reachable_padded="$NL$up_reachable$NL"
+  up_shipped() { case "$up_reachable_padded" in *"$NL$1$NL"*) return 0 ;; esac; return 1; }
   for d in agents commands skills hooks tests; do
     [ -d "$PROJ/.claude/$d" ] && [ -d "$UP/.claude/$d" ] || continue
     while IFS= read -r rel; do
@@ -246,7 +262,7 @@ if [ "$up_has_history" = 1 ]; then
       [ -e "$UP/.claude/$d/$rel" ] || continue      # yours alone: that is KEPT, above
       h="$(git -C "$PROJ" hash-object ".claude/$d/$rel" 2>/dev/null)" || continue
       [ -n "$h" ] || continue
-      git -C "$UP" cat-file -e "$h" 2>/dev/null && continue
+      up_shipped "$h" && continue
       local_changes="$local_changes .claude/$d/$rel"
     done <<< "$(cd "$PROJ/.claude/$d" && find . -type f 2>/dev/null | sed 's|^\./||')"
   done
@@ -267,14 +283,14 @@ if [ "$up_has_history" = 1 ]; then
     [ -f "$UP/scripts/$b" ] || continue            # yours alone: KEPT, not replaced
     h="$(git -C "$PROJ" hash-object "scripts/$b" 2>/dev/null)" || continue
     [ -n "$h" ] || continue
-    git -C "$UP" cat-file -e "$h" 2>/dev/null && continue
+    up_shipped "$h" && continue
     local_changes="$local_changes scripts/$b"
   done
   for f in .claude/harness/phases.conf .claude/harness/models.conf \
            .claude/harness/rules.md .claude/settings.json .claude/state/README.md; do
     [ -f "$PROJ/$f" ] && [ -f "$UP/$f" ] || continue
     h="$(git -C "$PROJ" hash-object "$f" 2>/dev/null)" || continue
-    [ -n "$h" ] && git -C "$UP" cat-file -e "$h" 2>/dev/null && continue
+    [ -n "$h" ] && up_shipped "$h" && continue
     local_changes="$local_changes $f"
   done
 else
