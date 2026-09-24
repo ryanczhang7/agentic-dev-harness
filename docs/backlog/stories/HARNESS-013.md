@@ -4,8 +4,8 @@ title: The LOCAL alarm counts only release refs as shipped
 slug: the-local-alarm-counts-only-release-refs
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-013-the-local-alarm-counts-only-release-refs
 depends_on: [HARNESS-012]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write
@@ -643,7 +643,7 @@ name, below the table.
 | RED | `test-developer` | `fable` | `claude-fable-5-1` (self-reported) | explicit `model: fable` on the dispatch | **met.** The success condition is sharp negative controls from a partitioned brief. Unprompted, it moved the merged controls to a HEAD detached at `master~1`, because the Contract's own DV-3 mutation ("drop `$src_default`") is invisible from a checkout on master. It re-checked C-4 by measurement, not by reading (`--all` → `HEAD master` on the unchanged suite: exactly the three `survives` assertions fell) |
 | GREEN | `feature-developer` | `opus` | `claude-opus-5-5` (self-reported) | explicit `model: opus` | **met.** The tests were left untouched (`git diff --quiet a8134b6 -- .claude/tests/`) and the result is `122 passed, 0 failed`. It checked the orchestrator's mechanism claim before acting on it and found that claim was right: the Contract's own C-1 spelling would have added a false alarm that release 51 does not have (PO-3) |
 | GATES | `feature-developer` | `opus` | **not dispatched**: the orchestrator session (`claude-opus-5-5`) ran it | `gates.sh` reports `0 ran, 8 unconfigured` (`BOOTSTRAPPED=no`), so there was no gate failure to fix. The orchestrator ran DV-1 to DV-3, bumped `VERSION` to 52 and ran `gates.sh` | not applicable. All six of RED's mutation predictions matched exactly, and the real-tree probe passed (DV-1 to DV-3) |
-| REVIEW | `lead-po` | `opus` | the orchestrator session, `claude-opus-5-5` | no dispatch | recorded at merge |
+| REVIEW | `lead-po` | `opus` | the orchestrator session, `claude-opus-5-5` | no dispatch | **met.** PR #82 merged as `ebbc563` on 2026-09-24. Both CI checks passed on the first run (`boundaries` 5s, `gates` 85s), and in the CI log the `refresh` suite ran `122 passed, 0 failed` in 3.2s |
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
