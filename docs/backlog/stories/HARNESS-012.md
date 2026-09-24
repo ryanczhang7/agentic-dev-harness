@@ -4,8 +4,8 @@ title: The LOCAL alarm asks whether a blob is reachable, not whether it exists
 slug: the-local-alarm-asks-whether-a-blob-is-r
 epic: 
 type: chore
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-012-the-local-alarm-asks-whether-a-blob-is-r
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write
@@ -393,6 +393,8 @@ name, below the table.
 | PLANNED | `lead-po` (orchestrator session) | `opus` | `claude-opus-5` at session start; the session reported `claude-opus-5-5` by the end of RED | the orchestrator itself, no dispatch | the Contract's cost question was answered with measurements rather than adopting the Notes' candidate command, and RED amended nothing in the Contract |
 | RED | `test-developer` | `fable` | `claude-fable-5-1` (the subagent's own report) | explicit `model: fable` on the dispatch, so it is the override that decided, not the agent definition's `opus` | **met.** The success condition for the measured case is sharper negative controls from a partitioned brief. RED produced a per-walk AC-3 control, surviving-branch controls that only an `--all`→`HEAD` mutation can catch, and an honest prediction of 0 for the one mutation (unanchored membership) that no test can observe, instead of claiming coverage it lacked. It also found the reflog subtlety (PO-5) without being prompted |
 | GREEN | `feature-developer` | `opus` | `claude-opus-5-5` (the subagent's own report) | explicit `model: opus` on the dispatch, matching the agent definition | **met.** The success condition for GREEN is reaching green without weakening a test. Nothing under `.claude/tests/` changed after the RED commit (`git diff --quiet 01d3344 -- .claude/tests/`), the diff matches the Contract line for line, and two of RED's predicted mutations reproduced exactly (P-2, P-3) |
+| GATES | `feature-developer` | `opus` | **not dispatched** — the orchestrator session (`claude-opus-5-5`) ran it | `gates.sh` reports `0 ran, 8 unconfigured` (`BOOTSTRAPPED=no`, PO-1), so there was no gate failure for a developer to fix. The orchestrator ran `gates.sh`, bumped `VERSION` to 51 and checked the tree guards itself | not applicable: the plan's reason for `opus` in GATES ("make it stop complaining" is tempting) needs a complaint, and there was none |
+| REVIEW | `lead-po` | `opus` | the orchestrator session, `claude-opus-5-5` | no dispatch | recorded at merge |
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -849,10 +851,21 @@ pair differs by only 1.3s. Three samples a side cannot say more than that.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-24T01:02:11Z
+    commit: dd3f0b2 (working tree had uncommitted changes)
+    tree:   b58de787d96a91feb7fc7c509fe2f4a69ede6ec4
+    result: pass (0 ran, 8 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    UNCONFIGURED mutation
 
 ## Gate probes
 
