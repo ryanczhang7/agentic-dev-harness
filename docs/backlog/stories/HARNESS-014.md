@@ -135,21 +135,16 @@ the commit named.
   the recorded tree. *Control:* in the same run, an untracked docs file
   (`notes.md` at the root) and a harness markdown file are not named. With no
   untracked gated files, no `UNTRACKED` line appears at all.
-- **AC-5: what a full run does with its record when AC-4 named anything. THIS
-  CRITERION IS NOT FINAL.** It depends on `## Open question` and must be
-  rewritten to the chosen option before the story leaves PLANNED. Under
-  either option, with **no** active story (CI, and `ci-local.sh`'s gates
-  step), `gates.sh` exits with the gates' own status and never refuses because
-  of an untracked file.
-  * *Option W, warn and record:* with an active story, `gates.sh` records as
-    usual, and the `tree:` it writes equals `gate_tree_hash_of` the commit made
-    next **without** the named files. *Control:* the named files are still in
-    the working tree after the run, unmoved.
-  * *Option R, refuse to record:* with an active story, `gates.sh` leaves
-    `## Gate results` byte-for-byte unchanged, prints a `(not recorded: …)`
-    line giving the reason, and exits non-zero even when every gate passed.
-    *Control:* once the named files are staged, or excluded through
-    `.git/info/exclude`, the same run records and exits 0.
+- **AC-5 - a full run with an active story refuses to record while AC-4 names
+  anything.** With an active story, when a full `gates.sh` run names one or
+  more untracked gated files (AC-4), it leaves `## Gate results`
+  byte-for-byte unchanged, prints a `(not recorded: …)` line giving the reason,
+  and exits non-zero even when every gate passed. With **no** active story (CI,
+  and `ci-local.sh`'s gates step) it exits with the gates' own status and
+  never refuses because of an untracked file. (Option R, the user's decision
+  on 2026-09-24; see `## Open question` and PO-E.) *Control:* once the named
+  files are staged, or excluded through `.git/info/exclude`, the same run
+  records and exits 0.
 - **AC-6: ignored files stay irrelevant, including the local exclude file.**
   Given an untracked file that would classify as `source` but is ignored,
   either by `.gitignore` or by `.git/info/exclude`, it neither moves
@@ -710,7 +705,7 @@ holds more than that.
 statuses. There is no metric to invent. The one settled number is AC-8's
 floors, which are read from `selftest.sh`.
 
-## Open question
+## Open question - DECIDED: Option R (the user, 2026-09-24)
 
 **When a full `gates.sh` run with an active story finds untracked gated
 files, does it record anyway (W) or refuse to record (R)?** The hash fix is
@@ -743,3 +738,16 @@ AC-5's wording.
 **PO recommendation: R** (PO-A). AC-5 must be rewritten to the chosen option
 before the story leaves PLANNED, and the decision recorded here as PO-1, with
 who made it.
+
+**PO-E. The Open question is decided: Option R.** The user answered "R" on
+2026-09-24, in the session that filed the story. With an active story, a full
+`gates.sh` run that names untracked gated files does not record a result, and
+exits non-zero. AC-5 was rewritten to that form on `main` before the story
+left PLANNED, so the base branch carries the final criterion and no
+`## Amendments` entry is needed. (HARNESS-013 rewrote its criterion on its
+story branch instead, and `check-boundaries.sh` then required amendment A-1.)
+**One consequence for this checkout:** before this story's own GATES can
+record, the user's untracked `handoff-world-080/*.patch` files must be
+excluded (for example with a line in `.git/info/exclude`) or moved. The story
+never does either itself (Out of scope). The orchestrator puts that to the
+user when GATES arrives.
