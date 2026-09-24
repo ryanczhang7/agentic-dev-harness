@@ -4,8 +4,8 @@ title: The LOCAL alarm counts only release refs as shipped
 slug: the-local-alarm-counts-only-release-refs
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-013-the-local-alarm-counts-only-release-refs
 depends_on: [HARNESS-012]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write
@@ -408,6 +408,38 @@ in the clone, then moving that branch to `refs/remotes/origin/`.
 
 **Owner: GATES**
 
+**Result (GATES, 2026-09-24, run by the orchestrator): PASS.** The scratch
+clone is a `git clone --no-hardlinks` of this repository, checked out at the
+GREEN commit `4a0e72d`. `origin/HEAD` points to `origin/main` and a local `main`
+exists, as in a real clone. (A clone of this checkout otherwise takes the story
+branch as its default.) `git cat-file -t 83add19…` printed `commit`, so gc had
+not pruned it. The downstream is manga-translator at `30bdc9a`, which has moved
+since M-2's `76ed934`. Four dry runs, each LOCAL list sorted:
+
+    green-plain: 20 LOCAL        # GREEN, no stale ref
+    green-stale: 20 LOCAL        # GREEN, + refs/remotes/origin/xcompare/HARNESS-010 -> 83add19
+    r51-stale:   19 LOCAL        # the same clone checked out at release 51 (0c7138a), + the stale ref
+    r51-plain:   20 LOCAL        # release 51, the ref deleted again
+    --- green plain vs green+stale ref (must be identical) ---
+    IDENTICAL
+    --- release 51 plain vs release 51+stale ref (control: must lose files) ---
+    4d3
+    <     LOCAL     .claude/hooks/phase-guard.sh
+
+All four files the condition names are in GREEN's list, both with and without
+the stale ref (`.claude/hooks/lib.sh`, `.claude/hooks/phase-guard.sh`,
+`.claude/tests/phase-guard.test.sh`, `.claude/tests/_lib.sh`). Nothing else in
+the list moved. The release-51 control shows the probe works on the real tree:
+the same stale ref silences a file there.
+
+**It silences one file, not the four M-3 measured, and that difference is
+explained rather than ignored.** At `30bdc9a`, only `phase-guard.sh`'s content
+is reachable from `83add19`. The other three hash to blobs not in that commit's
+history (checked with `rev-list --objects 83add19`). `_lib.sh` changed in MT-040
+(`d668336`), which landed between the two measurements, and `lib.sh` and
+`phase-guard.test.sh` were not rechecked against `76ed934`. The condition is
+stated relative to the runs, not as a count, and it holds.
+
 ### DV-2. The wrong-VALUE mutation: put `--all` back
 
 *Condition.* With the fixed ref set mutated back to `--all` through
@@ -420,6 +452,34 @@ AC-2's control red.
 *Why not RED.* There is no fixed ref set to mutate until GREEN.
 
 **Owner: GATES**
+
+**Result (GATES, 2026-09-24, run by the orchestrator): PASS, both halves exactly as RED predicted.** Run through `scripts/mutate.sh` against GREEN `4a0e72d`, one mutation at a time. Each restore was verified byte for byte.
+
+(a) X-A, `--all` put back, predicted 9, with no quiet-half failure:
+
+    === mutate: scripts/refresh-harness.sh (1 line(s) changed by s/rev-list --objects "\${up_starts\[@\]}"/rev-list --objects --all/) ===
+    === mutate: running bash scripts/selftest.sh refresh ===
+        FAIL an unmerged local branch is not a release: its content is LOCAL - walk 1, .claude/hooks
+        FAIL and at walk 2, scripts/*.sh
+        FAIL and at walk 3, the named files
+        FAIL a live stash is not a release: content reachable only from refs/stash is LOCAL
+        FAIL a stale remote-tracking branch is not a release: content reachable only from origin/xcompare/exp is LOCAL
+        FAIL a fetched PR ref is not a release: content reachable only from refs/pull/7/head is LOCAL
+        FAIL while the stash, in the same run, is still LOCAL
+        FAIL while the stash, in the same run, is still LOCAL
+        FAIL while content reachable only from refs/stash, in the same fixture, is LOCAL
+    refresh: 113 passed, 9 failed
+    FAIL refresh  did 113 units of work, below the floor of 122 in .claude/tests/floors.conf
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20260924T144547Z.75429.bak) ===
+
+(b) X-B, `refs/remotes/origin/$src_default` dropped, predicted 1 (AC-2 control):
+
+    === mutate: scripts/refresh-harness.sh (1 line(s) changed by s/up_starts+=("refs\/remotes\/origin\/\$src_default")/:/) ===
+    === mutate: running bash scripts/selftest.sh refresh ===
+        FAIL a local default branch behind its origin: content reachable only from origin/master is not listed
+    refresh: 121 passed, 1 failed
+    FAIL refresh  did 121 units of work, below the floor of 122 in .claude/tests/floors.conf
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20260924T145607Z.94414.bak) ===
 
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
@@ -466,6 +526,63 @@ prediction, and pastes the output here.
 
 **Owner: GATES**
 
+**Result (GATES, 2026-09-24, run by the orchestrator): PASS. Every prediction matched exactly, in count and in which assertions failed.** X-B is recorded under DV-2. RED's X-F (paths instead of ids) was also run: it is the mutation that earns assertion 38.
+
+X-C, predicted 4:
+
+    === mutate: scripts/refresh-harness.sh (1 line(s) changed by s/up_starts+=("\$src_default")/:/) ===
+    === mutate: running bash scripts/selftest.sh refresh ===
+        FAIL once the branch is merged into the default branch, walk 1 is silent
+        FAIL and walk 2
+        FAIL and walk 3
+        FAIL once the PR is merged into the default branch, the same content is not listed
+    refresh: 118 passed, 4 failed
+    FAIL refresh  did 118 units of work, below the floor of 122 in .claude/tests/floors.conf
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20260924T150437Z.109216.bak) ===
+
+X-D, predicted 4:
+
+    === mutate: scripts/refresh-harness.sh (1 line(s) changed by s/rev-list --objects "\${up_starts\[@\]}"/rev-list --objects --no-walk "${up_starts[@]}"/) ===
+    === mutate: running bash scripts/selftest.sh refresh ===
+        FAIL while merely being behind is silent
+        FAIL while a file from an older release, in the same run, is still not named
+        FAIL while a file from an OLDER release of the default branch, in the same run, is still not named
+        FAIL with no nameable default branch, content from the checked-out branch is not listed
+    refresh: 118 passed, 4 failed
+    FAIL refresh  did 118 units of work, below the floor of 122 in .claude/tests/floors.conf
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20260924T151156Z.127218.bak) ===
+
+X-E, predicted 1:
+
+    === mutate: scripts/refresh-harness.sh (1 line(s) changed by s/up_starts=(HEAD)/up_starts=()/) ===
+    === mutate: running bash scripts/selftest.sh refresh ===
+        FAIL with no nameable default branch, content from the checked-out branch is not listed
+    refresh: 121 passed, 1 failed
+    FAIL refresh  did 121 units of work, below the floor of 122 in .claude/tests/floors.conf
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20260924T152051Z.146741.bak) ===
+
+X-F, predicted 12:
+
+    === mutate: scripts/refresh-harness.sh (1 line(s) changed by s/awk '{print \$1}'/awk '{print \$2}'/) ===
+    === mutate: running bash scripts/selftest.sh refresh ===
+        FAIL while merely being behind is silent
+        FAIL a project holding upstream's own files is told nothing
+        FAIL while a scripts/ file matching upstream is silent
+        FAIL while a file from an older release, in the same run, is still not named
+        FAIL once the branch is merged into the default branch, walk 1 is silent
+        FAIL and walk 2
+        FAIL and walk 3
+        FAIL while a file committed on the default branch, in the same run, is not
+        FAIL while a file from an OLDER release of the default branch, in the same run, is still not named
+        FAIL once the PR is merged into the default branch, the same content is not listed
+        FAIL a local default branch behind its origin: content reachable only from origin/master is not listed
+        FAIL with no nameable default branch, content from the checked-out branch is not listed
+    refresh: 110 passed, 12 failed
+    FAIL refresh  did 110 units of work, below the floor of 122 in .claude/tests/floors.conf
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20260924T152830Z.162129.bak) ===
+
+After all six: `git diff --stat 4a0e72d -- scripts/` printed nothing, and 0 `.bak` files are left under `.claude/state/mutations/`.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -503,6 +620,8 @@ name, below the table.
 | PLANNED (contract) | `lead-po`, the orchestrator session | `opus` | `claude-opus-5-5` | no dispatch | RED amended three Contract blocks (C-1 spelling, C-4, C-5) and no acceptance criterion. See the RED row |
 | RED | `test-developer` | `fable` | `claude-fable-5-1` (self-reported) | explicit `model: fable` on the dispatch | **met.** The success condition is sharp negative controls from a partitioned brief. Unprompted, it moved the merged controls to a HEAD detached at `master~1`, because the Contract's own DV-3 mutation ("drop `$src_default`") is invisible from a checkout on master. It re-checked C-4 by measurement, not by reading (`--all` → `HEAD master` on the unchanged suite: exactly the three `survives` assertions fell) |
 | GREEN | `feature-developer` | `opus` | `claude-opus-5-5` (self-reported) | explicit `model: opus` | **met.** The tests were left untouched (`git diff --quiet a8134b6 -- .claude/tests/`) and the result is `122 passed, 0 failed`. It checked the orchestrator's mechanism claim before acting on it and found that claim was right: the Contract's own C-1 spelling would have added a false alarm that release 51 does not have (PO-3) |
+| GATES | `feature-developer` | `opus` | **not dispatched**: the orchestrator session (`claude-opus-5-5`) ran it | `gates.sh` reports `0 ran, 8 unconfigured` (`BOOTSTRAPPED=no`), so there was no gate failure to fix. The orchestrator ran DV-1 to DV-3, bumped `VERSION` to 52 and ran `gates.sh` | not applicable. All six of RED's mutation predictions matched exactly, and the real-tree probe passed (DV-1 to DV-3) |
+| REVIEW | `lead-po` | `opus` | the orchestrator session, `claude-opus-5-5` | no dispatch | recorded at merge |
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -1088,10 +1207,21 @@ this is wanted as a pinned case, it is a RED change for a later story.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-24T15:43:36Z
+    commit: 4a0e72d (working tree had uncommitted changes)
+    tree:   62c0c30969085155993ac26dedab4fcf0d859a1a
+    result: pass (0 ran, 8 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    UNCONFIGURED mutation
 
 ## Gate probes
 
