@@ -4,8 +4,8 @@ title: The LOCAL alarm counts only release refs as shipped
 slug: the-local-alarm-counts-only-release-refs
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-013-the-local-alarm-counts-only-release-refs
 depends_on: [HARNESS-012]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write
@@ -92,16 +92,13 @@ also appears in the report's explanatory paragraph.
   assertions in `refresh.test.sh` stay green: `while merely being behind is
   silent`, `a project holding upstream's own files is told nothing`, and
   `while a scripts/ file matching upstream is silent`.
-- **AC-5: a local branch that is not the default. THIS CRITERION IS NOT FINAL.**
-  Its outcome depends on `## Open question`, and it must be rewritten to one of
-  the two forms below before the story leaves PLANNED. Given a downstream file
-  whose content is reachable in upstream only from a local branch
-  `refs/heads/<b>` that is not the default branch and is not merged into it:
-  * *Option A:* it is NOT listed. Local branches count as shipped.
-    *Control:* the same content reachable only from `refs/stash` IS listed.
-  * *Option B:* it IS listed. Only the default line counts as shipped.
-    *Control:* the same content after `<b>` is merged into the default branch is
-    NOT listed.
+- **AC-5 - an unmerged local branch is not a release.** Given a downstream
+  file whose content is reachable in upstream only from a local branch
+  `refs/heads/<b>` that is not the default branch and is not merged into it,
+  the refresh lists it LOCAL. Only the default branch, its `origin`
+  counterpart and HEAD count as shipped (user decision, 2026-09-24 - see
+  `## Open question` and PO-1). *Control:* the same content, after `<b>` is
+  merged into the default branch, is NOT listed.
 - **AC-6: an upstream whose default branch cannot be identified does not cry
   wolf.** Given an upstream with no `refs/remotes/origin/HEAD`, no `main` and no
   `master`, a downstream file whose content is reachable from upstream's
@@ -154,24 +151,231 @@ also appears in the report's explanatory paragraph.
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
-**Left for PLANNED**, following HARNESS-012's convention. It depends on the
-answer to `## Open question`. The evidence it will draw on (the candidate ref
-sets, their measured cost, and the HARNESS-012 assertions that Option B
-rewrites) is in `## Notes`, so PLANNED can use those numbers rather than
-measuring again. Two things PLANNED must pin, whichever option is chosen:
+**Pinned at PLANNED on 2026-09-24, after the user chose Option B (PO-1).
+RED may amend any block below in place, giving its reason next to it, and GREEN
+builds what the amended block says.** The acceptance criteria are frozen from
+here; this section is not.
 
-* **How the default branch is resolved.** Reuse the resolution the script
-  already uses for its "not a release" NOTE (`src_default`, lines 171-178 at
-  release 51): `origin/HEAD`'s target, then `main`, then `master`. The script
-  should have one definition of "the release line", not two.
-* **The callers of changed behaviour.** No exported signature changes. The one
-  behaviour change with existing callers is the `up_reachable` set. List every
-  assertion in `refresh.test.sh` that depends on a non-default ref counting as
-  shipped (Notes, M-7), so that RED has the complete list.
-* **Oracle partition, provisional.** AC-1 to AC-7 are *mechanical*. Each is a
-  fixture upstream with refs arranged by hand, plus a whole-line count of
-  `    LOCAL     <path>`. AC-8 is *settled*: read the number off the executed
-  count. No criterion is oracle-free.
+Everything the story changes is in `scripts/refresh-harness.sh`, in **one
+line**: the one that computes `up_reachable` (line 255 at release 51). The
+three walks, `up_shipped`, the `up_has_history` guard, the report text and the
+copy loop do not change.
+
+### C-1. The release set
+
+`up_reachable` is computed from exactly these starting points and no others:
+
+| ref | included when | why |
+|---|---|---|
+| `HEAD` | always | The content being installed comes from HEAD's working tree. Dropping it makes a second refresh from the same checkout report the first refresh's files as LOCAL. It is also the whole set when no default branch can be found (AC-6). |
+| `$src_default` | when it is non-empty | The release line. See C-2 for how it is resolved. |
+| `refs/remotes/origin/$src_default` | when `$src_default` is non-empty **and** `git -C "$UP" rev-parse --verify --quiet refs/remotes/origin/$src_default` succeeds | Covers a local default branch that is behind its origin (AC-2's control). M-5's last column measured 4 false alarms without it. |
+
+Nothing else: no `--all`, `--branches`, `--remotes` or `--tags`, and no
+`--reflog`. A stash, a PR ref, a stale tracking branch, or a local branch not
+merged into the default therefore reaches nothing on its own (AC-1, AC-2,
+AC-3, AC-5). Tags are left out because this repository does not use them
+(M-4), and adding a starting point nobody uses only widens what can suppress
+the alarm. If upstream starts tagging releases, that is a new story.
+
+The call stays one `rev-list --objects <starts…> | awk '{print $1}'` with the
+same `2>/dev/null`. Build the list of starting points as a bash array, or as a
+word list with no globbing. **`$src_default` comes out of `symbolic-ref`, so
+never let the shell split or glob it:** a branch name can contain characters
+that do both.
+
+**RED amendment, 2026-09-24 - a suggested spelling, not a requirement.** DV-2
+and DV-3 are `sed` expressions, and a `sed` expression needs a line to match.
+RED's mutation table (Handoff) is written against this shape; GREEN may spell
+it differently, and GATES then adjusts the expressions, never the predictions:
+
+    up_starts=(HEAD)
+    if [ -n "$src_default" ]; then
+      up_starts+=("$src_default")
+      git -C "$UP" rev-parse --verify --quiet "refs/remotes/origin/$src_default" >/dev/null 2>&1 \
+        && up_starts+=("refs/remotes/origin/$src_default")
+    fi
+    up_reachable="$(git -C "$UP" rev-list --objects "${up_starts[@]}" 2>/dev/null | awk '{print $1}')"
+
+An array, so `$src_default` is never split or globbed. `"${up_starts[@]}"` on
+an empty array is fine under `set -u` in bash 4.4+ (Git Bash and ubuntu both
+ship 5.x), which only matters for DV-3's "drop HEAD" mutation. GREEN's choice
+whether to spell the default as `refs/heads/$src_default` or append `--` to
+the `rev-list`; the suite cannot see either.
+
+### C-2. The default branch has one definition: reuse `$src_default`
+
+The "not a release" NOTE block (lines 163-188 at release 51) already resolves
+the default branch: `origin/HEAD`'s target with the `origin/` prefix removed,
+then `main`, then `master`, keeping the first candidate that resolves with
+`rev-parse --verify`. **The LOCAL check reads the same variable. It does not
+resolve the default a second time.** Two definitions of "the release line"
+would drift apart, and the NOTE and the alarm would then disagree about the
+same checkout. The NOTE block runs whenever `$UP` is a git directory, and the
+LOCAL check runs only when `up_has_history=1`, which implies that. So
+`$src_default` is always set, possibly to the empty string, before it is read.
+
+When `$src_default` is empty, the set is `HEAD` alone (AC-6). The stash is
+still excluded, because it is not in the list.
+
+### C-3. What does not change
+
+* `up_shipped`, its whole-line `case` test, and the three call sites.
+  HARNESS-012's AC-3 control ("a fix at one site leaves two red") still
+  applies, although this story does not touch the sites.
+* The `up_has_history` guard, byte for byte (AC-7). The diff there is expected
+  to be empty.
+* Every line of the report, including the per-file shape `    LOCAL     <path>`.
+* The copy loop. This story changes what the report SAYS, never what the
+  refresh DOES.
+* `src_default`'s resolution. It is read, not rewritten. If RED or GREEN finds
+  it wrong, that is a separate defect: report it rather than fixing it here.
+
+### C-4. Callers of changed behaviour: the existing assertions that pin Option A
+
+No function or exported signature changes. The one behaviour change that has
+existing callers is the membership of `up_reachable`. `grep` over the tree at
+`0c7138a` finds its only consumers in `.claude/tests/refresh.test.sh`, in the
+block `describe "LOCAL asks whether upstream ever SHIPPED the blob…"`, lines
+~318-441:
+
+| line (≈) | what | status under Option B |
+|---|---|---|
+| 420-423 | comment "whether or not it is the default one" | **wrong**: rewrite it |
+| 424-430 | fixture: commit the three contents to a local branch `survives`, never merged | still valid as a fixture. It is now AC-5's positive case |
+| 431-434 | three `fixture: <f> is now reachable from the surviving branch` assertions, reading `rev-list --all` directly | still true, but no longer the script's question. Rewrite them to name what they check |
+| 436-440 | three assertions: `once a surviving ref reaches the blob, walk N is silent` | **contradict Option B.** Under B that content is LOCAL |
+
+**What RED does with them.** The shape is RED's to choose. The suggestion,
+because it reuses the fixture and loses no coverage: keep the `survives`
+fixture, and flip the three 436-440 assertions to assert that the file IS
+listed. That makes them AC-5's positive case at all three walks, and they
+fail today, so the RED run itself watches them fail. Then merge `survives` into
+the default branch and assert all three silent. That is AC-5's control, and it
+keeps HARNESS-012's AC-1 control ("after its blob becomes reachable from a
+commit, not listed"). **The merged-control assertions pass on arrival**, so
+each must name the mutation that earns it (DV-3).
+
+No other assertion in the suite was found to depend on a non-default ref
+counting as shipped (M-7). RED's handoff **states that it re-checked this
+against the tree**, by running the suite against the unchanged script and
+reading which assertions change result, and does not repeat this table.
+
+**The fixture's default branch.** Line 48 creates the upstream fixture with a
+plain `git init -q`. Its default branch is therefore whatever
+`init.defaultBranch` says, which is `master` on this machine and on ubuntu CI.
+Under Option B that name decides whether content counts as shipped. A
+developer whose git sets `init.defaultBranch=trunk` would send the whole suite
+down AC-6's no-default path and make it pass or fail for reasons unrelated to
+this story. **RED pins it: `git init -q -b master`**, or sets
+`init.defaultBranch` in the suite's git environment, whichever the suite's
+style prefers. Any other fixture this story creates does the same.
+
+**RED amendment, 2026-09-24 - done, and the table above re-checked.** Line 48
+now reads `git init -q -b master` (git here is 2.55.0.windows.5; `-b` needs
+2.28+, and ubuntu-latest ships 2.4x). The AC-6 upstream is `git init -q -b
+trunk`. The re-check was not a reading: the *unchanged* suite was run against
+the release-51 script with `--all` mutated to `HEAD master` through
+`scripts/mutate.sh` (restore verified byte-for-byte), and exactly the three
+`once a surviving ref reaches the blob, walk N is silent` assertions changed
+result - `76 passed, 3 failed`, nothing else moved. The "source ref is named"
+block, the only other place the fixture leaves the default branch, asserts on
+the NOTE and never on a LOCAL line, so the table is complete. One shape change
+the table did not anticipate: **the merged controls (AC-3's and AC-5's) read
+their report with HEAD detached at `master~1`**, so that `$src_default` is the
+only member of the set that vouches for the blob and DV-3's "drop
+`$src_default`" mutation is visible. From a checkout on master it is not.
+
+### C-5. Fixture recipes for the refs a unit test cannot `git push` to
+
+The fixtures have no remote, so every ref is made with `git update-ref`. That
+is the same thing the real case is: a ref the clone holds.
+
+* **Stale tracking branch (AC-2, positive):** commit the content on a
+  throwaway branch, then `git update-ref refs/remotes/origin/xcompare/exp
+  <that commit>`, `git checkout -q master`, `git branch -qD <throwaway>`.
+* **Default behind origin (AC-2, control):** commit the content on `master`,
+  `git update-ref refs/remotes/origin/master HEAD`, then `git reset -q --hard
+  HEAD~1` on `master`. The content is now reachable only from
+  `origin/master`. The fixture is not a clone, so `origin/HEAD` does not exist
+  and `$src_default` resolves through the `master` candidate. That is the same
+  path the real case takes when `origin/HEAD` is missing, which is common.
+* **PR ref (AC-3):** as the stale branch, but `refs/pull/7/head`. For the
+  control, merge that commit into `master` (`git merge -q --no-edit <commit>`)
+  and assert silence.
+* **Live stash (AC-1):** write the content into the tracked file on `master`,
+  run `git stash -q`, and leave the stash in place. `refs/stash` now reaches
+  the blob. Check that with `git rev-list --objects refs/stash`, not
+  `cat-file -e`.
+* **No identifiable default (AC-6):** `git init -q -b trunk` in a fresh
+  upstream, with no `main`, no `master` and no `origin/HEAD`. Commit twice, so
+  that `up_has_history=1` still holds; otherwise the guard answers first and
+  the test measures AC-7 instead.
+
+**Every positive fixture proves its own precondition before it reads the
+report**, as HARNESS-012's did. The blob is reachable from the injected ref,
+and it is NOT reachable from the release set, computed by hand with
+`rev-list --objects HEAD master [origin/master]`. Otherwise a red can come from
+a fixture that did not arrange what it claims.
+
+**RED amendment, 2026-09-24 - what the recipes needed when tried.** All five
+did what they claim; every `fixture:` assertion in the RED run is green.
+Details that were not in the recipe:
+
+* **Stash.** `git stash` did not need an identity here (probed with
+  `HOME=/nonexistent` and no config: exit 0), but the fixture passes `-c
+  user.email=t@t -c user.name=t` anyway, as every commit in the suite does, so
+  it cannot depend on the runner's config. Checked with `rev-list --objects
+  refs/stash`, as the recipe says.
+* **Stale branch and PR ref** share one helper, `side_commit <ref> <file>
+  <content>`: branch `_side` from master, commit, `update-ref <ref> HEAD`,
+  `checkout master`, delete `_side`. Master and the working tree are as found.
+* **Merged controls** (AC-3, AC-5): after `merge --no-ff --no-edit` the report
+  is read with HEAD detached at `master~1` (C-4 amendment says why), proved by
+  `symbolic-ref -q HEAD` being empty and the blob reachable from `master`
+  and not from `HEAD`. Then `checkout master`.
+* **Default behind origin**: as written; afterwards `merge --ff-only
+  refs/remotes/origin/master` brings master back level so the blocks below see
+  the tip they expect. The refs made here - `refs/stash`,
+  `refs/remotes/origin/xcompare/exp`, `refs/pull/7/head`,
+  `refs/remotes/origin/master` - are **left in place**, so every later block
+  now runs against a checkout that holds all four. None of them asserts on a
+  LOCAL line, and the whole run is green below the new block.
+* **No identifiable default**: the same fixture also carries a stash, for AC-6's
+  control, made the same way. `rev-list --count HEAD` is asserted to be 2 so a
+  fixture that lost a commit fails as AC-6 and not as AC-7.
+* **The release set by hand** is one helper, `release_ids <repo> <default>`,
+  which builds `HEAD <default> [refs/remotes/origin/<default>]` exactly as C-1
+  says and never reads the script - so no mutation of the script's set can move
+  a fixture assertion.
+
+### C-6. Oracle partition
+
+* **AC-1 to AC-7: mechanical.** Each is a fixture upstream with refs arranged
+  by hand, plus a whole-line count of `    LOCAL     <path>` in a `--dry-run`
+  report, compared with `assert_eq` against exactly 0 or exactly 1. There is no
+  metric to invent. **The needle:** the word `LOCAL` also appears in the
+  report's explanatory paragraph, so match the per-file line whole
+  (`grep -cx`), as HARNESS-012's `local_line_count` helper already does.
+  **Reuse that helper; do not write a second one.**
+* **AC-8: settled.** Read the number off `bash scripts/selftest.sh refresh`.
+  The floor is the executed count, and it is recorded twice: in `floors.conf`
+  and in `selftest.test.sh`'s `COUNTS` table (`refresh 79` today).
+
+### C-7. Baselines to read out, not re-derive
+
+* **Suite before the story:** `refresh: 79 passed, 0 failed` at `0c7138a`
+  (release 51, measured in HARNESS-012's closing run).
+* **Real tree:** manga-translator is at 17 LOCAL at `76ed934`, and 13 with the
+  stale ref injected (M-2, M-3). DV-1 compares two runs against each other and
+  never uses a fixed number.
+* **Cost:** unchanged in kind. It is still one `rev-list` and one `awk` per
+  refresh, and HARNESS-012 measured that as 0.08s here. A narrower set walks
+  **fewer** objects than `--all`, never more.
+
+### Test-only dependencies
+
+None.
 
 ## Deferred verifications
 
@@ -242,6 +446,26 @@ AC-2's control red.
      suite that catches an omission can be blind to a corruption, and a codec
      that is uniformly wrong round-trips through itself perfectly. -->
 
+### DV-3. Every assertion that passes on arrival is earned by a mutation
+
+*Condition.* RED's handoff lists every new or rewritten assertion that is green
+against the release-51 script. The expected set: AC-2's control (the content is
+reachable only from `origin/<default>`, and release 51 reaches it through
+`--all`), AC-3's and AC-5's merged controls, AC-4's older release, and AC-6's
+positive case. Beside each, the handoff names a mutation of the shipped ref
+set that **must** turn that assertion, and only a predicted few others, red.
+Starting candidates, which RED sharpens:
+* drop `refs/remotes/origin/$src_default` from the set: AC-2's control goes red (this is DV-2's second half);
+* drop `$src_default` and keep `HEAD`: AC-3's and AC-5's merged controls go red **only if** the fixture's HEAD is not on the default branch at report time. Otherwise the mutation is invisible. RED says which, and if invisible, arranges HEAD so that it is not;
+* add `--no-walk` to the `rev-list`, so only tip trees count: AC-4's older release goes red;
+* drop `HEAD` when `$src_default` is empty: AC-6's positive case goes red.
+GATES runs each through `scripts/mutate.sh`, compares the count with RED's
+prediction, and pastes the output here.
+
+*Why not RED.* The ref set these mutate is written in GREEN.
+
+**Owner: GATES**
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -275,13 +499,9 @@ name, below the table.
 
 | Phase | Agent | Planned | Resolved | How dispatched | Verdict |
 |---|---|---|---|---|---|
-| PLANNED (filing only) | `lead-po` | `opus` | `claude-opus-5-5` (self-reported) | dispatched by the orchestrator to file the story. No model override was reported to this agent | pending. Filing is not all of PLANNED: the Open question, the rewrite of AC-5 and the `## Contract` are still to do |
-
-The RED row's `fable` assumes a partitioned `## Contract`. At filing, the
-Contract holds only a placeholder, although `plan.sh write` rendered the
-`fable` row anyway. If RED is dispatched before the Contract is written, the
-premise of that row does not hold. Re-run `plan.sh write` after the Contract
-exists.
+| PLANNED (filing) | `lead-po` subagent | `opus` | `claude-opus-5-5` (self-reported) | dispatched by the orchestrator to file the story, with no model override | **met.** It measured before it recommended: M-5's table ruled out `--branches`, `--branches --tags` and `--branches --remotes` on real trees. It put the one real product fork to the user instead of guessing |
+| PLANNED (contract) | `lead-po`, the orchestrator session | `opus` | `claude-opus-5-5` | no dispatch | RED amended three Contract blocks (C-1 spelling, C-4, C-5) and no acceptance criterion. See the RED row |
+| RED | `test-developer` | `fable` | `claude-fable-5-1` (self-reported) | explicit `model: fable` on the dispatch | **met.** The success condition is sharp negative controls from a partitioned brief. Unprompted, it moved the merged controls to a HEAD detached at `master~1`, because the Contract's own DV-3 mutation ("drop `$src_default`") is invisible from a checkout on master. It re-checked C-4 by measurement, not by reading (`--all` → `HEAD master` on the unchanged suite: exactly the three `survives` assertions fell) |
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -337,6 +557,91 @@ exists.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One level, as in HARNESS-012: the harness self-test `bash scripts/selftest.sh
+refresh`, driving the real `scripts/refresh-harness.sh --dry-run` against
+fixture repositories whose refs are arranged by hand. Every criterion is
+mechanical (C-6): an `assert_eq` of exactly 0 or exactly 1 on
+`local_line_count <path> <report>`, HARNESS-012's whole-line `grep -cx "    LOCAL
+     <path>"`. No second helper was written for the needle. Three helpers were
+added for the *fixtures*: `release_ids` (C-1's set by hand), `ref_ids` (one
+ref's objects) and `count_id` (whole-line id match), plus `side_commit` in the
+new block.
+
+**Two places in `.claude/tests/refresh.test.sh` change.** The tail of
+HARNESS-012's block `LOCAL asks whether upstream ever SHIPPED the blob…` is
+rewritten (C-4), and one new block follows it: `LOCAL counts only the release
+line as shipped: HEAD, the default branch, and its origin counterpart`. 79 ->
+122 executed. Assertions are numbered below as they run within those two
+blocks; 1-10 are HARNESS-012's, untouched.
+
+| # | assertion (verbatim) | AC | on arrival (release 51) |
+|---|---|---|---|
+| 1-10 | HARNESS-012's dangling-blob fixture, walks 1-3, older release | AC-7 | green (7-9 were HARNESS-012's RED) |
+| 11-16 | `fixture: <f> is reachable from the unmerged local branch 'survives'` / `fixture: and from nothing in the release set (HEAD, master)` (x3) | AC-5 precondition | green |
+| 17 | `an unmerged local branch is not a release: its content is LOCAL - walk 1, .claude/hooks` | AC-5 | **RED** |
+| 18 | `and at walk 2, scripts/*.sh` | AC-5 | **RED** |
+| 19 | `and at walk 3, the named files` | AC-5 | **RED** |
+| 20 | `fixture: HEAD is detached off the default branch for this report` | DV-3 precondition | green |
+| 21-26 | `fixture: <f> is reachable from master once 'survives' is merged` / `fixture: and not from the detached HEAD, so only the default branch vouches for it` (x3) | AC-5 control precondition | green |
+| 27 | `once the branch is merged into the default branch, walk 1 is silent` | AC-5 control | green (control) |
+| 28 | `and walk 2` | AC-5 control | green (control) |
+| 29 | `and walk 3` | AC-5 control | green (control) |
+| 30-35 | `fixture: <f> is reachable from <ref>` / `fixture: and from nothing in the release set (HEAD, master)` for `refs/stash`, `refs/remotes/origin/xcompare/exp`, `refs/pull/7/head` | AC-1/2/3 precondition | green |
+| 36 | `fixture: the run answered rather than refusing to check` | AC-7 guard not tripped | green |
+| 37 | `a live stash is not a release: content reachable only from refs/stash is LOCAL` | AC-1 | **RED** |
+| 38 | `while a file committed on the default branch, in the same run, is not` | AC-1 control | green (control) |
+| 39 | `a stale remote-tracking branch is not a release: content reachable only from origin/xcompare/exp is LOCAL` | AC-2 | **RED** |
+| 40 | `a fetched PR ref is not a release: content reachable only from refs/pull/7/head is LOCAL` | AC-3 | **RED** |
+| 41 | `while a file from an OLDER release of the default branch, in the same run, is still not named` | AC-4 | green (control) |
+| 42-44 | `fixture: HEAD is detached…` / `fixture: the PR's content is reachable from master once merged` / `fixture: and not from the detached HEAD` | AC-3 control precondition | green |
+| 45 | `once the PR is merged into the default branch, the same content is not listed` | AC-3 control | green (control) |
+| 46 | `while the stash, in the same run, is still LOCAL` | AC-1 (in-run control for 45) | **RED** |
+| 47-49 | `fixture: master is an ancestor of origin/master, i.e. behind it` / `fixture: the content is reachable from refs/remotes/origin/master` / `fixture: and from neither HEAD nor master` | AC-2 control precondition | green |
+| 50 | `a local default branch behind its origin: content reachable only from origin/master is not listed` | AC-2 control | green (control) |
+| 51 | `while the stash, in the same run, is still LOCAL` | AC-1 (in-run control for 50) | **RED** |
+| 52-56 | `fixture: no origin/HEAD, no main, no master - the script cannot name a default branch` / `fixture: and two commits, so the history guard does not answer first` / `fixture: the hook's content is reachable from the checked-out branch` / `fixture: the stashed content is reachable from refs/stash` / `fixture: and not from the checked-out branch` | AC-6 precondition | green |
+| 57 | `fixture: the run answered rather than refusing to check` | AC-7 guard not tripped | green |
+| 58 | `with no nameable default branch, content from the checked-out branch is not listed` | AC-6 | green (control) |
+| 59 | `while content reachable only from refs/stash, in the same fixture, is LOCAL` | AC-6 control | **RED** |
+
+**AC-4 in the same run.** Assertions 37, 39, 40 (the three positives) and 38,
+41 (committed on master; an older release of master) read one report from one
+fixture. The existing quiet-half assertions AC-4 names - `while merely being
+behind is silent` (line 244), `a project holding upstream's own files is told
+nothing` (267), `while a scripts/ file matching upstream is silent` (313) - are
+untouched and green in the RED run.
+
+**AC-7** is HARNESS-012's own assertions, executed and green in this run and
+not duplicated: `fixture: <f> exists in upstream's store…` / `…no ref of
+upstream reaches it…` (x3 each), `a local fix whose blob dangles in upstream is
+named LOCAL - walk 1, .claude/hooks`, `and at walk 2, scripts/*.sh, which asks
+the same question of its own blob`, `and at walk 3, the named files, whose line
+has its own copy of the test`; and the no-history block's `a source with a
+single commit says it could not check`, `while a source with real history still
+answers`. Assertions 36 and 57 add the "answered" half inside the new fixtures
+so a positive cannot go red for AC-7's reason.
+
+**AC-8**: floor raised 79 -> 122 in `.claude/tests/floors.conf` (line 47, plus a
+dated note at the foot) and in `selftest.test.sh`'s `COUNTS` table (line 452).
+122 is the executed count read off the summary line `113 passed, 9 failed`.
+`selftest.sh` compares the *passed* count against the floor, so `refresh` sits
+below its floor until GREEN, as HARNESS-010/011/012 recorded.
+
+**Which walk gets which file.** AC-5's three positives are one per walk, as
+HARNESS-012's were (`.claude/hooks/phase-guard.sh`, `scripts/gates.sh`,
+`.claude/harness/rules.md`). The new block's three positives are also one per
+walk, deliberately: stash -> walk 1, stale tracking ref -> walk 2, PR ref ->
+walk 3. The membership test is one helper, so a fix that reached one walk
+reaches all three; spreading the refs over the walks costs nothing and keeps
+each walk's line under a ref it has not seen before.
+
+**Out of scope, pinned where cheap.** The four injected refs are left in the
+fixture for every block that follows, so the copy loop, the hand-over and the
+self-replacement cases now run against a checkout holding a stash, a PR ref,
+a stale tracking ref and an `origin/master` - and all stay green, which is the
+"changes what the report SAYS, never what the refresh DOES" non-goal observed
+for free.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -356,6 +661,279 @@ exists.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+### The command
+
+    bash scripts/selftest.sh refresh            # the suite; 7m15s wall on this machine today (2m15s in HARNESS-012's run)
+    VERBOSE=1 bash scripts/selftest.sh refresh  # names every executed assertion
+
+### The failure, verbatim (RED, 2026-09-24, tree at `0c7138a` + this RED diff, release-51 script untouched)
+
+    === refresh ===
+
+      it refuses to run when running would be unsafe
+
+      what it replaces, and what it refuses to touch
+
+      it reports before it acts
+
+      it names the files of yours it is about to overwrite
+
+      LOCAL covers scripts/, where the production code lives
+
+      LOCAL asks whether upstream ever SHIPPED the blob, not whether its store holds it
+        FAIL an unmerged local branch is not a release: its content is LOCAL - walk 1, .claude/hooks
+             expected: 1
+             actual:   0
+        FAIL and at walk 2, scripts/*.sh
+             expected: 1
+             actual:   0
+        FAIL and at walk 3, the named files
+             expected: 1
+             actual:   0
+
+      LOCAL counts only the release line as shipped: HEAD, the default branch, and its origin counterpart
+        FAIL a live stash is not a release: content reachable only from refs/stash is LOCAL
+             expected: 1
+             actual:   0
+        FAIL a stale remote-tracking branch is not a release: content reachable only from origin/xcompare/exp is LOCAL
+             expected: 1
+             actual:   0
+        FAIL a fetched PR ref is not a release: content reachable only from refs/pull/7/head is LOCAL
+             expected: 1
+             actual:   0
+        FAIL while the stash, in the same run, is still LOCAL
+             expected: 1
+             actual:   0
+        FAIL while the stash, in the same run, is still LOCAL
+             expected: 1
+             actual:   0
+        FAIL while content reachable only from refs/stash, in the same fixture, is LOCAL
+             expected: 1
+             actual:   0
+
+      LOCAL refuses to answer from a source with no usable history
+
+      the source ref is named when it is not a release
+
+      the procedure belongs to the release being installed
+
+      it survives replacing the file it is being read from
+
+    refresh: 113 passed, 9 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (113 assertions executed, 79 declared).
+    1 of 1 harness suite(s) FAILED.
+
+    real    7m15.026s
+    user    0m24.982s
+    sys     1m29.873s
+
+(That run started before the floor was raised, hence `79 declared`. Re-run with
+the floor at 122 the tail reads as below; `selftest.sh` compares the *passed*
+count with the floor, so the suite sits below it until the nine go green. GREEN's
+run should read `122 passed, 0 failed` and meet the floor exactly.)
+
+    refresh: 113 passed, 9 failed
+    FAIL refresh  did 113 units of work, below the floor of 122 in .claude/tests/floors.conf
+
+    assertion floors: 0 of 1 suite(s) met their declared floor.
+    1 of 1 harness suite(s) FAILED.
+
+**Why it is the right failure.** Each `actual: 0` is the whole-line count of
+`    LOCAL     <path>` in a dry-run report: the script judged the file and
+called it shipped. Immediately before each report, the fixture assertions
+passed - **not one `fixture:` line is red** - saying the blob is reachable from
+the injected ref (`rev-list --objects <ref>` lists it) and reachable from
+*nothing* in `HEAD master [origin/master]`. So release 51 had a blob in front of
+it that only a stash, a stale tracking ref, a PR ref or an unmerged local branch
+reaches, asked `--all`, heard YES, and stayed silent. That is the defect in the
+Context, reproduced once per ref kind and at all three walks for AC-5. The
+nine are exactly the assertions that the C-4 re-check predicted `--all` would
+satisfy and Option B would not; no quiet-half assertion, old or new, is red; and
+36 and 57 (`the run answered rather than refusing to check`) are green, so none
+of the nine is a no-history refusal wearing a LOCAL count of 0.
+
+**On arrival** (release 51 script, release 51 suite): `refresh: 79 passed, 0
+failed` (C-7). The C-4 re-check run - unchanged suite, `--all` -> `HEAD master`
+via `scripts/mutate.sh` - read `76 passed, 3 failed`, the three `once a
+surviving ref reaches the blob, walk N is silent`; restore verified with `cmp`.
+
+### Files touched
+
+| file | change |
+|---|---|
+| `.claude/tests/refresh.test.sh` | line 48 `git init -q` -> `git init -q -b master` with a comment; three fixture helpers beside `local_line_count`; the tail of HARNESS-012's block (old lines 419-440) rewritten into AC-5's positive and control; one new `describe` block before `LOCAL refuses to answer…`. 79 -> 122 executed. Nothing else in the file edited |
+| `.claude/tests/floors.conf` | `floor \| refresh \| 79` -> `122`, plus a dated note at the foot |
+| `.claude/tests/selftest.test.sh` | `COUNTS` table, `refresh 79` -> `refresh 122` (line 452) |
+| `docs/backlog/stories/HARNESS-013.md` | `## Contract` amendments in C-1, C-4, C-5 (each marked "RED amendment"); `## Test plan`; this section |
+
+`scripts/refresh-harness.sh` was **not opened for writing**. The only time it
+changed was inside `scripts/mutate.sh` for the C-4 re-check, which restored it
+and verified the restore; `git status` shows it clean.
+
+**HARNESS-012 assertion names changed (C-4), old -> new:**
+
+| old (release 51) | new |
+|---|---|
+| `fixture: <f> is now reachable from the surviving branch` (x3) | `fixture: <f> is reachable from the unmerged local branch 'survives'` + `fixture: and from nothing in the release set (HEAD, master)` (x3 each) |
+| `once a surviving ref reaches the blob, walk 1 is silent` | `an unmerged local branch is not a release: its content is LOCAL - walk 1, .claude/hooks` (expected 0 -> 1) |
+| `and walk 2` | `and at walk 2, scripts/*.sh` (expected 0 -> 1) |
+| `and walk 3` | `and at walk 3, the named files` (expected 0 -> 1) |
+| - | `once the branch is merged into the default branch, walk 1 is silent`, `and walk 2`, `and walk 3` (new; HARNESS-012's AC-1 control kept, under Option B) |
+
+The comment at old line 419-423 ("whether or not it is the default one") was
+replaced with one that says what is now checked and why HEAD is detached.
+
+**C-4 re-checked against the tree, and how.** Before editing, the release-51
+suite was run against the release-51 script with `bash scripts/mutate.sh
+scripts/refresh-harness.sh 's/rev-list --objects --all/rev-list --objects HEAD
+master/' -- bash scripts/selftest.sh refresh`. Result: `76 passed, 3 failed`,
+the three `once a surviving ref…` assertions and nothing else (`mutate: command
+exited 1; restored (verified byte-for-byte…)`). So no other existing assertion
+depends on a non-default ref counting as shipped, by measurement rather than by
+reading. The "source ref is named" block was read as well: it moves HEAD to
+`some-feature` and asserts only on the NOTE text.
+
+### What the tests pin, and what they leave to GREEN
+
+No import and no signature: the suite runs the script and reads its report.
+Pinned:
+
+* **The report's per-file line** `    LOCAL     <path>`, matched whole with
+  `grep -cx`, and the path spellings `.claude/<dir>/<rel>`, `scripts/<b>`,
+  `<named file>` - unchanged from HARNESS-012 (C-3).
+* **The release set's membership**, observed from outside: a blob reachable
+  only from `refs/stash`, `refs/remotes/origin/<not-default>`,
+  `refs/pull/*/head` or an unmerged `refs/heads/<b>` is LOCAL; a blob reachable
+  from `HEAD`, from the default branch (tip or older), or from
+  `refs/remotes/origin/<default>` when the local default is behind it, is not.
+  With no nameable default, `HEAD`'s history still counts and the stash still
+  does not.
+* **The default branch is what the NOTE block resolved** (`$src_default`): the
+  fixture has no `origin/HEAD`, so `master` is found through the `master`
+  candidate. A second resolution that agreed would also pass; C-2 says not to
+  write one.
+* **The no-history guard and the "answered" state**: 36 and 57 assert the report
+  does not say `could not check` on a two-commit upstream; HARNESS-012's
+  no-history assertions still assert that a one-commit one does.
+
+Not pinned - the implementer's choice:
+
+* the spelling of the set (array vs word list, `refs/heads/` prefix, a `--`
+  terminator) - the C-1 amendment suggests one so the mutation table has a
+  target;
+* whether `up_shipped`, `$NL`, the padded list or any variable name survives;
+* anything about the copy loop, the NOTE text, or the report's prose.
+
+### Fixture invariants GREEN must not break
+
+* HEAD is on `master` at the end of both blocks; `master` is level with
+  `refs/remotes/origin/master`; branch `survives` exists and is merged; refs
+  `refs/stash`, `refs/remotes/origin/xcompare/exp`, `refs/pull/7/head` remain.
+  The later blocks (no-history, source-ref NOTE, hand-over, self-replacement)
+  run against that checkout and are green with it.
+* The merged controls (27-29, 45) read their report with HEAD **detached at
+  `master~1`**; 20 and 42 assert it. `src_branch` is therefore empty there and
+  the NOTE does not print. Do not make the LOCAL check depend on `src_branch`.
+* Everything is hashed with `git -C "$PROJ" hash-object`, both in the script
+  and in the fixture proofs, so `core.autocrlf` (on, here) lands the same on
+  both sides. Do not hash raw bytes.
+* No `gc`, `prune`, `stash drop`, `fetch --prune` or reflog expiry in the
+  script (Out of scope). The fixtures' refs must still exist when the report
+  is read; the proofs read them before, not after.
+
+### Tests that passed on arrival, and what earns each (DV-3)
+
+All `fixture:` assertions test the fixture, not the script; no probe applies.
+Of the behavioural ones, these are green against release 51. Each mutation is
+a `sed` expression against the C-1 amendment's spelling, run as
+
+    bash scripts/mutate.sh scripts/refresh-harness.sh '<expr>' -- bash scripts/selftest.sh refresh
+
+**Not run in RED** - there is no fixed set to mutate until GREEN. GATES runs
+them and pastes the output into DV-3.
+
+| id | mutation | sed expression | predicted failures | which assertions |
+|---|---|---|---|---|
+| X-A | **`--all` put back** (DV-2 a) | `s/rev-list --objects "\${up_starts\[@\]}"/rev-list --objects --all/` | **9** | 17, 18, 19, 37, 39, 40, 46, 51, 59 - the RED run above, exactly. **0 in the quiet half** |
+| X-B | drop `refs/remotes/origin/$src_default` (DV-2 b) | `s/up_starts+=("refs\/remotes\/origin\/\$src_default")/:/` | **1** | 50 `a local default branch behind its origin: content reachable only from origin/master is not listed`. 51 stays green |
+| X-C | drop `$src_default`, keep HEAD | `s/up_starts+=("\$src_default")/:/` | **4** | 27, 28, 29 (AC-5's merged control) and 45 (AC-3's). Visible only because HEAD is detached at `master~1` for those reports; 38, 41, 50 have HEAD on master or `origin/master` in the set and stay green |
+| X-D | `--no-walk`: only tip trees count | `s/rev-list --objects "\${up_starts\[@\]}"/rev-list --objects --no-walk "${up_starts[@]}"/` | **4** | 41 (AC-4, older release), 58 (AC-6, older commit of trunk), HARNESS-012's `while a file from an older release, in the same run, is still not named`, and the pre-existing `while merely being behind is silent` (line 244). Tip-content controls 38, 45, 50, 27-29 stay green |
+| X-E | drop HEAD | `s/up_starts=(HEAD)/up_starts=()/` | **1** | 58 `with no nameable default branch, content from the checked-out branch is not listed` - the set is empty there and `rev-list` with no start lists nothing. Everywhere else `master` covers HEAD. 59 stays green |
+| X-F | **wrong value**: paths instead of ids, nothing is ever shipped | `s/awk '{print \$1}'/awk '{print \$2}'/` | **12** | every quiet-half assertion: `while merely being behind is silent`, `a project holding upstream's own files is told nothing`, `while a scripts/ file matching upstream is silent`, HARNESS-012's older-release one, 27, 28, 29, 38, 41, 45, 50, 58 |
+
+Which earns which: 27-29 and 45 -> X-C; 38 -> X-F (it is tip content on the
+default branch, so only "nothing is shipped" can name it); 41 -> X-D; 50 ->
+X-B; 58 -> X-E. X-A is DV-2's first half and reproduces this RED run. If GATES
+sees a different count, the prediction is wrong or the fixture drifted -
+find which before adjusting anything.
+
+**About X-C's visibility (the Contract's question).** With HEAD on master the
+mutation is invisible at every report, because HEAD reaches everything master
+does. So the fixture detaches HEAD at `master~1` (the pre-merge commit) for
+the two merged controls, proves it (20, 42), and proves the blob is reachable
+from `master` and not from `HEAD` (21-26, 43-44). That makes the control
+earnable without a different mutation. It affects 27, 28, 29 and 45 only.
+
+### Negative controls - expected values
+
+No metric and no threshold: every control is a count of one report line, 0 or
+1. A bash suite has no import failure, so **every assertion executed in RED**,
+controls included; the "RED" column is measured, against the release-51
+script. Where release 51 and Option B give the same answer the value is
+expected to hold in GREEN; X-B..X-F are what show it holds for the right
+reason.
+
+| control | measures | RED (measured, release 51) | GREEN (expected) |
+|---|---|---|---|
+| 27, 28, 29 merged `survives`, per walk | count == 0 | 0, 0, 0 | 0, 0, 0 |
+| 38 committed on master, same run as the positives | count == 0 | 0 | 0 |
+| 41 older release of master, same run | count == 0 | 0 | 0 |
+| 45 PR merged into master | count == 0 | 0 | 0 |
+| 46, 51 stash still LOCAL in the control runs | count == 1 | **0, 0 (red)** | 1, 1 |
+| 50 master behind origin/master | count == 0 | 0 | 0 |
+| 58 no nameable default, HEAD's history | count == 0 | 0 | 0 |
+| 59 stash under no nameable default | count == 1 | **0 (red)** | 1 |
+| 36, 57 report does not say `could not check` | count == 0 | 0, 0 | 0, 0 |
+| 11-16, 30-35 blob reachable from the injected ref / not from the release set | 1 / 0 | 1/0 x6 | same |
+| 20, 42 HEAD detached | `symbolic-ref -q HEAD` empty | "" | "" |
+| 21-26, 43-44 blob from master / not from HEAD | 1 / 0 | 1/0 x4 | same |
+| 47-49 master behind; blob from origin/master; not from HEAD/master | 0 (exit) / 1 / 0 | 0, 1, 0 | same |
+| 52-56 no default; two commits; hook from HEAD; stash from refs/stash; not from HEAD | 0 / 2 / 1 / 1 / 0 | 0, 2, 1, 1, 0 | same |
+
+### DV-2 predictions, stated once
+
+(a) `--all` back: **9 failures**, all positives (17-19, 37, 39, 40, 46, 51,
+59), **none** in the quiet half - satisfies "at least AC-1, AC-2, AC-3's
+positives". (b) `origin/$src_default` dropped: **1 failure**, assertion 50.
+
+### Discovered, and worth knowing
+
+* **Timing.** `selftest.sh refresh` took **7m15s** wall for the RED run and
+  **15m16s** for the C-4 re-check under `mutate.sh`, then **2m31s** for the
+  post-floor re-run of the identical suite - against HARNESS-012's 2m15s on
+  the same machine. So the first two were machine load, not the suite;
+  `sys` (1m30-1m40) says process spawn dominates as before. The new material
+  is six more dry runs and ~60 git subprocesses, about 15s at the quiet
+  figure. Nothing in this bash harness is timed per test; CI on ubuntu spawns
+  an order of magnitude faster. All three timings are local; no CI figure
+  exists yet for this tree.
+* **`selftest.sh selftest`**: `54 passed, 0 failed` - the two floor records
+  agree at 122. **`gates.sh --fast`**: `All required gates passed (0 ran, 5
+  unconfigured, 0 known)`, BOOTSTRAPPED=no. **`check-sigpipe.sh`**: 40 files,
+  38 with pipefail, 0 findings. **`check-grep-count.sh`**: 40 files, 0 findings.
+* **`git stash` needs no identity** on this git (probed), but the fixture passes
+  one, so the answer never depends on the runner's config.
+* **The stash is reachable via `refs/stash` only through the stash commit's
+  tree** - `rev-list --objects refs/stash` lists the blob (checked, and it is
+  what assertion 30 pins). `cat-file -e` would have said the same and proved
+  less, as C-5 says.
+* **Nothing changes the approach.** Every C-5 recipe worked first time; the one
+  addition is detaching HEAD for the merged controls, recorded in C-4 and C-5.
+  GREEN can build exactly the C-1 amendment's six lines.
+* **Model.** This RED ran on `claude-fable-5-1`, matching the plan row
+  (`fable`). No override was reported to me.
 
 ## Regressions
 
@@ -530,7 +1108,7 @@ this machine nor ubuntu CI sets it. The fixture therefore resolves through the
 it down AC-6's no-default path. RED may pin `git init -q -b master` for that
 reason.
 
-## Open question
+## Open question - DECIDED: Option B (the user, 2026-09-24)
 
 **Is a LOCAL branch of the upstream checkout that is not merged into its default
 branch a release?** The evidence does not settle it (M-6), and the two answers
@@ -573,3 +1151,37 @@ for started on a local branch. It is still a product decision about what the
 alarm should say to a maintainer about their own unmerged work, so it goes to
 the user. **AC-5 must be rewritten to the chosen option before the story leaves
 PLANNED.** Record the decision in `## Notes` as PO-1, with who made it.
+
+**PO-1. The Open question is decided: Option B.** The user answered on
+2026-09-24, in the session that filed the story: "B". A release is the default
+branch, its `origin` counterpart, and HEAD. An unmerged local branch is not
+one. AC-5 was rewritten to that form while the story was still PLANNED, so
+there is no `## Amendments` entry. The consequence M-7 names follows: the three
+`survives` assertions HARNESS-012 added (`once a surviving ref reaches the
+blob, walk N is silent`, `refresh.test.sh` ~424-440) contradict Option B and
+must be rewritten in RED. They make the SAME content reachable from a
+surviving non-default branch and assert silence; under B that content is LOCAL.
+
+**PO-2. RED verified by the orchestrator, 2026-09-24.**
+* `bash scripts/selftest.sh refresh`, run by the orchestrator: `refresh: 113
+  passed, 9 failed`, `below the floor of 122`, 2m27s. These are the same nine
+  failures RED reported, each `expected 1 / actual 0`. `git diff --quiet main --
+  scripts/` is clean, and no `.bak` is left under `.claude/state/mutations/`.
+* **AC-6's red is the right red, reproduced independently.** AC-6's fixture is
+  a minimal hand-built upstream, so an `actual: 0` could also come from a script
+  that refused it or never reached its report. The orchestrator built its own:
+  a `develop`-only upstream with two commits and a live stash, different file
+  contents, and none of RED's code. Against it the release-51 script printed
+  `Dry run: nothing was written.`, no `could not check`, and no LOCAL line. The
+  script completes and misses the stash, which is the defect.
+* `selftest: 54 passed, 0 failed` (both floor records agree at 122).
+  `gates.sh --fast`: `0 ran, 5 unconfigured`. `check-sigpipe` and
+  `check-grep-count`: 0 findings over 40 files.
+* **Cosmetic, not blocking:** two assertions share the name `while the stash,
+  in the same run, is still LOCAL` (the in-run checks beside the AC-3 and AC-2
+  controls). A failure report naming it will not say which one. GATES should
+  read the line order when a DV mutation reports that name.
+* **Timing to watch at REVIEW:** RED measured the suite at 7m15s and 15m16s
+  under load, and 2m31s quiet. It went from about 2m to about 2.5m quiet
+  locally. Read the `refresh` step's time out of the PR's first CI log before
+  calling it green.

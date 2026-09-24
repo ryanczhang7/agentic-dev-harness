@@ -45,7 +45,13 @@ printf 'echo new\n'            > "$UP/scripts/brand-new.sh"
 # The upstream fixture is a REPOSITORY, not a directory of files, because the
 # question "has upstream ever had this content?" is answered out of its object
 # store. Two commits, so an older version of a file genuinely exists there.
-( cd "$UP" && git init -q 2>/dev/null \
+#
+# Its default branch is PINNED to `master` (HARNESS-013, C-4). Since release 52
+# the name of the default branch decides what counts as shipped, and the script
+# finds it by trying origin/HEAD, main, master. A machine whose
+# init.defaultBranch says `trunk` would otherwise send the whole suite down the
+# no-default path and make it pass or fail for reasons unrelated to any story.
+( cd "$UP" && git init -q -b master 2>/dev/null \
     && git add -A >/dev/null 2>&1 \
     && git -c user.email=t@t -c user.name=t commit -qm "upstream, one release ago" >/dev/null 2>&1 )
 printf 'upstream agent, a release later\n' > "$UP/.claude/agents/lead-po.md"
@@ -356,6 +362,27 @@ describe "LOCAL asks whether upstream ever SHIPPED the blob, not whether its sto
 # grep-count guard permits.
 local_line_count() { printf '%s\n' "$2" | grep -cx "    LOCAL     $1"; }
 
+# THE RELEASE SET, COMPUTED BY HAND (HARNESS-013, C-1). Since release 52 the
+# script counts a blob as shipped when it is reachable from HEAD, from the
+# default branch, or from `refs/remotes/origin/<default>` when that ref exists -
+# and from nothing else. Every fixture below that injects a ref proves, before
+# it reads the report, that its blob IS reachable from the injected ref and is
+# NOT reachable from this set. Without that proof a red could come from a
+# fixture that did not arrange what it claims, and a green from one that
+# arranged too much. None of these helpers read the script: they are the
+# suite's own reading of the Contract, so a mutation of the script's set cannot
+# move them.
+release_ids() { # <repo> <default branch, or "">: object ids C-1's set reaches
+  starts="HEAD"
+  [ -n "$2" ] && starts="$starts $2"
+  [ -n "$2" ] && git -C "$1" rev-parse --verify --quiet "refs/remotes/origin/$2" >/dev/null 2>&1 \
+    && starts="$starts refs/remotes/origin/$2"
+  # shellcheck disable=SC2086  # a word list of ref names chosen above, never user data
+  git -C "$1" rev-list --objects $starts 2>/dev/null | awk '{print $1}'
+}
+ref_ids()  { git -C "$1" rev-list --objects "$2" 2>/dev/null | awk '{print $1}'; }  # <repo> <ref>
+count_id() { printf '%s\n' "$1" | grep -cx "$2"; }                                  # <id list> <id>
+
 # Upstream ships a scripts/ file for walk 2 to compare against. (rules.md and
 # phase-guard.sh are already committed above, in the fixture's first release.)
 printf 'upstream gates\n' > "$UP/scripts/gates.sh"
@@ -416,28 +443,246 @@ assert_eq "and at walk 3, the named files, whose line has its own copy of the te
 assert_eq "while a file from an older release, in the same run, is still not named" 0 \
   "$(local_line_count .claude/agents/lead-po.md "$out")"
 
-# AC-1's control: the same content, once a ref of upstream reaches it. A branch
-# that SURVIVES is a ref, whether or not it is the default one - so a fix that
-# asked HEAD's ancestry instead of every ref would name these three and fail
-# here. Green against the unfixed script too, since existence implies it; what
-# earns it is the `--all` -> `HEAD` mutation in the story's handoff.
+# HARNESS-013, AC-5: the same content on a LOCAL BRANCH THAT SURVIVES, never
+# merged into the default branch. Through release 51 this fixture asserted the
+# opposite - a surviving ref of any name silenced the alarm, because `--all`
+# counts every ref as a release. That is the HARNESS-010 incident before its
+# push: the throwaway branch existed in this very clone, and a dry run from it
+# would have been silent about the four files HARNESS-012 was written to name.
+# Under Option B (PO-1) a release is the default branch, its origin
+# counterpart, and HEAD; an unmerged local branch is none of those, so the
+# three files stay LOCAL. The fixture proves both halves of its precondition
+# first: reachable from `survives`, and from nothing in the release set.
 ( cd "$UP" && git checkout -q -b survives 2>/dev/null \
     && printf '%s\n' "$FIX1" > .claude/hooks/phase-guard.sh \
     && printf '%s\n' "$FIX2" > scripts/gates.sh \
     && printf '%s\n' "$FIX3" > .claude/harness/rules.md \
     && git add -A >/dev/null 2>&1 \
-    && git -c user.email=t@t -c user.name=t commit -qm "shipped on a side branch" >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "on a side branch, never merged" >/dev/null 2>&1 \
     && git checkout -q - 2>/dev/null )
-up_reachable_ids="$(git -C "$UP" rev-list --objects --all | awk '{print $1}')"
+survives_ids="$(ref_ids "$UP" survives)"; release_set="$(release_ids "$UP" master)"
 for f in .claude/hooks/phase-guard.sh scripts/gates.sh .claude/harness/rules.md; do
-  assert_eq "fixture: $f is now reachable from the surviving branch" 1 \
-    "$(printf '%s\n' "$up_reachable_ids" | grep -cx "$(git -C "$PROJ" hash-object "$f")")"
+  h="$(git -C "$PROJ" hash-object "$f")"
+  assert_eq "fixture: $f is reachable from the unmerged local branch 'survives'" 1 "$(count_id "$survives_ids" "$h")"
+  assert_eq "fixture: and from nothing in the release set (HEAD, master)" 0 "$(count_id "$release_set" "$h")"
 done
 out="$(refresh --dry-run "$UP")"
-assert_eq "once a surviving ref reaches the blob, walk 1 is silent" 0 \
+assert_eq "an unmerged local branch is not a release: its content is LOCAL - walk 1, .claude/hooks" 1 \
+  "$(local_line_count .claude/hooks/phase-guard.sh "$out")"
+assert_eq "and at walk 2, scripts/*.sh" 1 "$(local_line_count scripts/gates.sh "$out")"
+assert_eq "and at walk 3, the named files" 1 "$(local_line_count .claude/harness/rules.md "$out")"
+
+# AC-5's control, which is also HARNESS-012's AC-1 control kept under the new
+# definition: merge `survives` into the default branch and the same three fall
+# silent. HEAD is DETACHED at the pre-merge commit while the report is read, so
+# that `master` is the ONLY member of the release set that reaches the blobs.
+# From a checkout sitting on master, HEAD reaches everything master does and a
+# set that dropped `$src_default` would be invisible; from here it is not
+# (DV-3). Detached, so the "not a release" NOTE has no branch name to print.
+# Green against release 51 too, since `--all` reaches a merged commit either
+# way; what earns it is the "drop $src_default" mutation in the handoff.
+( cd "$UP" && git -c user.email=t@t -c user.name=t merge -q --no-ff --no-edit survives >/dev/null 2>&1 \
+    && git checkout -q --detach master~1 2>/dev/null )
+head_ids="$(ref_ids "$UP" HEAD)"; master_ids="$(ref_ids "$UP" master)"
+assert_eq "fixture: HEAD is detached off the default branch for this report" "" \
+  "$(git -C "$UP" symbolic-ref -q HEAD 2>/dev/null || true)"
+for f in .claude/hooks/phase-guard.sh scripts/gates.sh .claude/harness/rules.md; do
+  h="$(git -C "$PROJ" hash-object "$f")"
+  assert_eq "fixture: $f is reachable from master once 'survives' is merged" 1 "$(count_id "$master_ids" "$h")"
+  assert_eq "fixture: and not from the detached HEAD, so only the default branch vouches for it" 0 "$(count_id "$head_ids" "$h")"
+done
+out="$(refresh --dry-run "$UP")"
+assert_eq "once the branch is merged into the default branch, walk 1 is silent" 0 \
   "$(local_line_count .claude/hooks/phase-guard.sh "$out")"
 assert_eq "and walk 2" 0 "$(local_line_count scripts/gates.sh "$out")"
 assert_eq "and walk 3" 0 "$(local_line_count .claude/harness/rules.md "$out")"
+( cd "$UP" && git checkout -q master 2>/dev/null )
+
+# ---------------------------------------------------------------------------
+describe "LOCAL counts only the release line as shipped: HEAD, the default branch, and its origin counterpart"
+
+# HARNESS-013. Release 51 asked `rev-list --objects --all`, and `--all` is
+# every ref plus HEAD - so every ref was a release. A live stash, a fetched PR
+# kept as a ref, and a stale remote-tracking branch each silenced the alarm for
+# exactly the files it exists to name. The third is the one that bit: any clone
+# that fetched while HARNESS-010's throwaway branch existed on origin, and has
+# not run `git fetch --prune` since, still holds
+# `refs/remotes/origin/xcompare/HARNESS-010`, and against that clone the four
+# files HARNESS-012 brought back drop out of the report again (17 -> 13,
+# reproduced with the real commit; story, M-3). Pruning is not something a
+# refresh can rely on: this repository's own clone held 40 stale tracking refs.
+#
+# The user's decision (PO-1, Option B): a release is the default branch, its
+# `origin` counterpart, and whatever is checked out. Nothing else. The fixtures
+# have no remote, so each ref is made with `update-ref` - which is what the
+# real case is too: a ref the clone holds. Every injected ref is proved to
+# reach its blob, and the release set (release_ids, above) proved NOT to, before
+# any report is read.
+#
+# One run carries all three positives together with the quiet half (AC-4): a
+# file at an OLDER release of the default branch, and a file committed on it,
+# both silent in the SAME report that names the other three. A set narrowed to
+# tip trees, or to nothing, fails here beside the assertion it was written for.
+
+# A commit on top of master whose only ref is <ref>. The working tree and
+# master are left exactly as found.
+side_commit() { # <ref> <file> <content>
+  ( cd "$UP" && git checkout -q -b _side master 2>/dev/null \
+      && printf '%s\n' "$3" > "$2" && git add -A >/dev/null 2>&1 \
+      && git -c user.email=t@t -c user.name=t commit -qm "$1" >/dev/null 2>&1 \
+      && git update-ref "$1" HEAD \
+      && git checkout -q master 2>/dev/null && git branch -qD _side >/dev/null 2>&1 )
+}
+
+STASHED='upstream hook
+# a fix sitting in a stash of the upstream checkout, never committed'
+STALE='upstream gates
+# pushed to a throwaway branch, deleted on origin, never pruned in this clone'
+PULLED='upstream rules
+# a pull request fetched as a ref and never merged'
+
+new_project
+printf '%s\n' "$STASHED" > "$PROJ/.claude/hooks/phase-guard.sh"   # AC-1, walk 1
+printf '%s\n' "$STALE"   > "$PROJ/scripts/gates.sh"               # AC-2, walk 2
+printf '%s\n' "$PULLED"  > "$PROJ/.claude/harness/rules.md"       # AC-3, walk 3
+printf 'upstream suite\n' > "$PROJ/.claude/tests/lib.test.sh"     # AC-1 control: on master since the first release
+printf 'upstream agent\n' > "$PROJ/.claude/agents/lead-po.md"     # AC-4: an OLDER release, not the tip
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "three local fixes upstream once saw, off its release line" >/dev/null 2>&1 )
+
+# AC-1: the stash. Written into the tracked file on master and stashed, so the
+# working tree is back to master's and `refs/stash` alone reaches the blob.
+( cd "$UP" && printf '%s\n' "$STASHED" > .claude/hooks/phase-guard.sh \
+    && git -c user.email=t@t -c user.name=t stash -q >/dev/null 2>&1 )
+# AC-2: the stale tracking branch, the sharp case.
+side_commit refs/remotes/origin/xcompare/exp scripts/gates.sh "$STALE"
+# AC-3: the fetched PR.
+side_commit refs/pull/7/head .claude/harness/rules.md "$PULLED"
+
+release_set="$(release_ids "$UP" master)"
+for spec in "refs/stash|.claude/hooks/phase-guard.sh" \
+            "refs/remotes/origin/xcompare/exp|scripts/gates.sh" \
+            "refs/pull/7/head|.claude/harness/rules.md"; do
+  ref="${spec%%|*}"; f="${spec#*|}"
+  h="$(git -C "$PROJ" hash-object "$f")"
+  assert_eq "fixture: $f is reachable from $ref" 1 "$(count_id "$(ref_ids "$UP" "$ref")" "$h")"
+  assert_eq "fixture: and from nothing in the release set (HEAD, master)" 0 "$(count_id "$release_set" "$h")"
+done
+
+out="$(refresh --dry-run "$UP")"
+assert_eq "fixture: the run answered rather than refusing to check" 0 \
+  "$(printf '%s\n' "$out" | grep -c 'could not check')"
+assert_eq "a live stash is not a release: content reachable only from refs/stash is LOCAL" 1 \
+  "$(local_line_count .claude/hooks/phase-guard.sh "$out")"
+assert_eq "while a file committed on the default branch, in the same run, is not" 0 \
+  "$(local_line_count .claude/tests/lib.test.sh "$out")"
+assert_eq "a stale remote-tracking branch is not a release: content reachable only from origin/xcompare/exp is LOCAL" 1 \
+  "$(local_line_count scripts/gates.sh "$out")"
+assert_eq "a fetched PR ref is not a release: content reachable only from refs/pull/7/head is LOCAL" 1 \
+  "$(local_line_count .claude/harness/rules.md "$out")"
+assert_eq "while a file from an OLDER release of the default branch, in the same run, is still not named" 0 \
+  "$(local_line_count .claude/agents/lead-po.md "$out")"
+
+# AC-3's control: the PR merged into the default branch. HEAD detached at the
+# pre-merge commit for the same reason as the AC-5 control above - master must
+# be the only member of the set that vouches for the blob, or the mutation
+# that drops it is invisible. The stash is still there and still LOCAL in the
+# same report, so the silence is specific to the merged file and not a mute.
+( cd "$UP" && git -c user.email=t@t -c user.name=t merge -q --no-ff --no-edit refs/pull/7/head >/dev/null 2>&1 \
+    && git checkout -q --detach master~1 2>/dev/null )
+h="$(git -C "$PROJ" hash-object .claude/harness/rules.md)"
+assert_eq "fixture: HEAD is detached off the default branch for this report" "" \
+  "$(git -C "$UP" symbolic-ref -q HEAD 2>/dev/null || true)"
+assert_eq "fixture: the PR's content is reachable from master once merged" 1 "$(count_id "$(ref_ids "$UP" master)" "$h")"
+assert_eq "fixture: and not from the detached HEAD" 0 "$(count_id "$(ref_ids "$UP" HEAD)" "$h")"
+out="$(refresh --dry-run "$UP")"
+assert_eq "once the PR is merged into the default branch, the same content is not listed" 0 \
+  "$(local_line_count .claude/harness/rules.md "$out")"
+assert_eq "while the stash, in the same run, is still LOCAL" 1 \
+  "$(local_line_count .claude/hooks/phase-guard.sh "$out")"
+( cd "$UP" && git checkout -q master 2>/dev/null )
+
+# AC-2's control, and the quiet-half case that rules out every set without
+# `origin/<default>`: the local default branch is BEHIND its origin, and the
+# file's content is on the commit it has not merged yet. That is a project
+# refreshed from a newer clone and now checked against an older one; measured
+# on real trees, dropping this ref costs four false alarms (story, M-5). The
+# fixture is not a clone, so origin/HEAD does not exist and the script resolves
+# the default through its `master` candidate - the same path a real checkout
+# with no origin/HEAD takes, which is common.
+BEHIND='upstream command
+# shipped in a release this checkout has fetched but not yet merged'
+printf '%s\n' "$BEHIND" > "$PROJ/.claude/commands/advance-story.md"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "a file from a release the upstream checkout has not merged" >/dev/null 2>&1 )
+( cd "$UP" && printf '%s\n' "$BEHIND" > .claude/commands/advance-story.md \
+    && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "a release the local branch has not merged" >/dev/null 2>&1 \
+    && git update-ref refs/remotes/origin/master HEAD \
+    && git reset -q --hard HEAD~1 >/dev/null 2>&1 )
+h="$(git -C "$PROJ" hash-object .claude/commands/advance-story.md)"
+assert_eq "fixture: master is an ancestor of origin/master, i.e. behind it" 0 \
+  "$(git -C "$UP" merge-base --is-ancestor master refs/remotes/origin/master; echo $?)"
+assert_eq "fixture: the content is reachable from refs/remotes/origin/master" 1 \
+  "$(count_id "$(ref_ids "$UP" refs/remotes/origin/master)" "$h")"
+assert_eq "fixture: and from neither HEAD nor master" 0 \
+  "$(count_id "$(git -C "$UP" rev-list --objects HEAD master | awk '{print $1}')" "$h")"
+out="$(refresh --dry-run "$UP")"
+assert_eq "a local default branch behind its origin: content reachable only from origin/master is not listed" 0 \
+  "$(local_line_count .claude/commands/advance-story.md "$out")"
+assert_eq "while the stash, in the same run, is still LOCAL" 1 \
+  "$(local_line_count .claude/hooks/phase-guard.sh "$out")"
+# Bring master back level with its origin for the blocks below; the refs made
+# here (stash, xcompare/exp, pull/7, origin/master) are deliberately left in
+# place, since every later block runs against a checkout that holds them.
+( cd "$UP" && git merge -q --ff-only refs/remotes/origin/master >/dev/null 2>&1 )
+
+# AC-6: an upstream whose default branch cannot be identified. No origin/HEAD,
+# no main, no master - the script's NOTE already declines to classify such a
+# checkout, and the alarm follows the same rule: the set is HEAD alone. Unable
+# to tell is not evidence that content was never released, so a file from the
+# checked-out branch's history is silent. The stash is still excluded, because
+# excluding it never depended on finding a default branch. Two commits, so the
+# history guard does not answer first and turn this into an AC-7 case.
+UP2="$WORK/upstream-trunk"
+rm -rf "$UP2"; mkdir -p "$UP2/.claude/hooks" "$UP2/.claude/tests" "$UP2/.claude/harness" "$UP2/scripts"
+printf 'trunk hook\n'    > "$UP2/.claude/hooks/phase-guard.sh"
+printf 'trunk suite\n'   > "$UP2/.claude/tests/lib.test.sh"
+printf 'echo trunk\n'    > "$UP2/scripts/brand-new.sh"
+printf '2026-09-24\n'    > "$UP2/.claude/harness/VERSION"
+( cd "$UP2" && git init -q -b trunk 2>/dev/null && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "trunk, one release ago" >/dev/null 2>&1 \
+    && printf 'trunk hook\n# a release later\n' > .claude/hooks/phase-guard.sh \
+    && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "trunk moves on" >/dev/null 2>&1 \
+    && printf 'trunk suite\n# left in a stash\n' > .claude/tests/lib.test.sh \
+    && git -c user.email=t@t -c user.name=t stash -q >/dev/null 2>&1 )
+new_project
+printf 'trunk hook\n'                   > "$PROJ/.claude/hooks/phase-guard.sh"  # trunk's older release
+printf 'trunk suite\n# left in a stash\n' > "$PROJ/.claude/tests/lib.test.sh"    # the stash
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "from an upstream with no nameable default" >/dev/null 2>&1 )
+nameable=0
+for cand in main master; do
+  git -C "$UP2" rev-parse --verify --quiet "$cand" >/dev/null 2>&1 && nameable=$((nameable+1))
+done
+git -C "$UP2" symbolic-ref -q refs/remotes/origin/HEAD >/dev/null 2>&1 && nameable=$((nameable+1))
+assert_eq "fixture: no origin/HEAD, no main, no master - the script cannot name a default branch" 0 "$nameable"
+assert_eq "fixture: and two commits, so the history guard does not answer first" 2 \
+  "$(git -C "$UP2" rev-list --count HEAD)"
+hook_h="$(git -C "$PROJ" hash-object .claude/hooks/phase-guard.sh)"
+stash_h="$(git -C "$PROJ" hash-object .claude/tests/lib.test.sh)"
+head2_ids="$(ref_ids "$UP2" HEAD)"
+assert_eq "fixture: the hook's content is reachable from the checked-out branch" 1 "$(count_id "$head2_ids" "$hook_h")"
+assert_eq "fixture: the stashed content is reachable from refs/stash" 1 "$(count_id "$(ref_ids "$UP2" refs/stash)" "$stash_h")"
+assert_eq "fixture: and not from the checked-out branch" 0 "$(count_id "$head2_ids" "$stash_h")"
+out="$(refresh --dry-run "$UP2")"
+assert_eq "fixture: the run answered rather than refusing to check" 0 \
+  "$(printf '%s\n' "$out" | grep -c 'could not check')"
+assert_eq "with no nameable default branch, content from the checked-out branch is not listed" 0 \
+  "$(local_line_count .claude/hooks/phase-guard.sh "$out")"
+assert_eq "while content reachable only from refs/stash, in the same fixture, is LOCAL" 1 \
+  "$(local_line_count .claude/tests/lib.test.sh "$out")"
 
 # ---------------------------------------------------------------------------
 describe "LOCAL refuses to answer from a source with no usable history"
