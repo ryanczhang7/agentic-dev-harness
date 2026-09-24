@@ -5,7 +5,7 @@ slug: the-local-alarm-counts-only-release-refs
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-013-the-local-alarm-counts-only-release-refs
 depends_on: [HARNESS-012]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write
@@ -502,6 +502,7 @@ name, below the table.
 | PLANNED (filing) | `lead-po` subagent | `opus` | `claude-opus-5-5` (self-reported) | dispatched by the orchestrator to file the story, with no model override | **met.** It measured before it recommended: M-5's table ruled out `--branches`, `--branches --tags` and `--branches --remotes` on real trees. It put the one real product fork to the user instead of guessing |
 | PLANNED (contract) | `lead-po`, the orchestrator session | `opus` | `claude-opus-5-5` | no dispatch | RED amended three Contract blocks (C-1 spelling, C-4, C-5) and no acceptance criterion. See the RED row |
 | RED | `test-developer` | `fable` | `claude-fable-5-1` (self-reported) | explicit `model: fable` on the dispatch | **met.** The success condition is sharp negative controls from a partitioned brief. Unprompted, it moved the merged controls to a HEAD detached at `master~1`, because the Contract's own DV-3 mutation ("drop `$src_default`") is invisible from a checkout on master. It re-checked C-4 by measurement, not by reading (`--all` → `HEAD master` on the unchanged suite: exactly the three `survives` assertions fell) |
+| GREEN | `feature-developer` | `opus` | `claude-opus-5-5` (self-reported) | explicit `model: opus` | **met.** The tests were left untouched (`git diff --quiet a8134b6 -- .claude/tests/`) and the result is `122 passed, 0 failed`. It checked the orchestrator's mechanism claim before acting on it and found that claim was right: the Contract's own C-1 spelling would have added a false alarm that release 51 does not have (PO-3) |
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -935,6 +936,135 @@ positives". (b) `origin/$src_default` dropped: **1 failure**, assertion 50.
 * **Model.** This RED ran on `claude-fable-5-1`, matching the plan row
   (`fable`). No override was reported to me.
 
+### GREEN
+
+**Model:** `claude-opus-5-5` (plan row `opus`). No override was reported to me.
+**Phase:** `current-story.env` still read `PHASE=RED` throughout; the brief said
+the orchestrator would set GREEN first, and I did not change it. The one file
+written is `scripts/refresh-harness.sh`, which classifies `harness`, so the lock
+permitted it either way. Nothing is committed.
+
+**Diff summary, `scripts/refresh-harness.sh` only.** The single `--all` line is
+replaced by the C-1 amendment's six lines, with one addition, a `--` ending the
+revision list:
+
+    up_starts=(HEAD)
+    if [ -n "$src_default" ]; then
+      up_starts+=("$src_default")
+      git -C "$UP" rev-parse --verify --quiet "refs/remotes/origin/$src_default" >/dev/null 2>&1 \
+        && up_starts+=("refs/remotes/origin/$src_default")
+    fi
+    up_reachable="$(git -C "$UP" rev-list --objects "${up_starts[@]}" -- 2>/dev/null | awk '{print $1}')"
+
+`$src_default` is the NOTE block's, read and not re-resolved (C-2). The comment
+above the check now says "the release line", why `--all` was too wide, where
+the default comes from, and why the `--` is there; the one-line comment inside
+the block says "from the release line" instead of "from a ref". `up_shipped`,
+`NL`, `up_reachable_padded`, the `up_has_history` guard, the NOTE, the report
+text, the three walks and the copy loop are untouched (C-3; the diff has two
+hunks, both inside comments or the one line). No `--all`, `--branches`,
+`--remotes`, `--tags` or `--reflog`; no temp file; no new pipeline.
+
+**The suite, first against the unchanged script (watched it fail), then the fix:**
+
+    refresh: 113 passed, 9 failed
+    FAIL refresh  did 113 units of work, below the floor of 122 in .claude/tests/floors.conf
+    real    6m8.847s
+
+    refresh: 122 passed, 0 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (122 assertions executed, 122 declared).
+    1 harness suite(s) passed.
+
+    real    10m42.557s
+    user    0m25.147s
+    sys     2m1.525s
+
+(The wall time is machine load again: `user` is the same 25s as RED's runs. A
+second, VERBOSE run also read `122 passed, 0 failed`, and its numbered list
+matches the Test plan's 1-59 one to one.)
+
+    check-sigpipe: scanned 40 shell file(s), 38 with pipefail, 0 finding(s)
+    check-grep-count: scanned 40 shell file(s), 0 finding(s)
+    selftest: 54 passed, 0 failed
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).   [BOOTSTRAPPED=no]
+
+**Negative controls, RED against GREEN.** Every one is an `assert_eq` on a
+0/1 count, so an `ok` in the VERBOSE run IS the measured value.
+
+| # | control | expected | RED (release 51) | GREEN (measured) |
+|---|---|---|---|---|
+| 27, 28, 29 | merged `survives`, HEAD detached at `master~1`, per walk | 0 | 0, 0, 0 | 0, 0, 0 |
+| 38 | committed on master, same run as the positives | 0 | 0 | 0 |
+| 41 | older release of master, same run | 0 | 0 | 0 |
+| 45 | PR merged into master, HEAD detached | 0 | 0 | 0 |
+| 46, 51 | stash still LOCAL in the control runs | 1 | 0, 0 (red) | 1, 1 |
+| 50 | master behind origin/master | 0 | 0 | 0 |
+| 58 | no nameable default, HEAD's history | 0 | 0 | 0 |
+| 59 | stash under no nameable default | 1 | 0 (red) | 1 |
+| 36, 57 | report does not say `could not check` | 0 | 0, 0 | 0, 0 |
+| 11-16, 30-35 | blob from injected ref / not from the release set | 1 / 0 | 1/0 x6 | 1/0 x6 |
+| 20, 42 | HEAD detached | "" | "" | "" |
+| 21-26, 43-44 | blob from master / not from HEAD | 1 / 0 | 1/0 x4 | 1/0 x4 |
+| 47-49 | master behind; from origin/master; not from HEAD/master | 0 / 1 / 0 | 0, 1, 0 | 0, 1, 0 |
+| 52-56 | no default; 2 commits; hook from HEAD; stash from refs/stash; not from HEAD | 0/2/1/1/0 | same | same |
+| AC-4's three | `while merely being behind is silent`, `a project holding upstream's own files is told nothing`, `while a scripts/ file matching upstream is silent` | 0 | ok | ok |
+| AC-7 | `a source with a single commit says it could not check`, `while a source with real history still answers`, HARNESS-012's 1-10 | - | ok | ok |
+
+No divergence. A pass here shows the value and not the reason; X-B..X-F
+are what show the reason, and they belong to GATES.
+
+**DV-2 / DV-3 targets.** Except for the added ` --`, the lines are spelled as
+in the C-1 amendment. Each of RED's six `sed` expressions was dry-run with
+`sed EXPR FILE | diff FILE -` (stdout only, the file was not touched) and each
+changes exactly one line:
+X-A gives `rev-list --objects --all -- 2>/dev/null`, X-D gives `--no-walk
+"${up_starts[@]}" --`, both still valid; X-B turns the `&&` continuation into
+`&& :`; X-C and X-E hit `up_starts+=("$src_default")` and `up_starts=(HEAD)`;
+X-F hits the `awk`. GATES should not need to adjust them. With X-E the list is
+empty and `git rev-list --objects --` exits 0 with no output (checked in scratch).
+So the set is empty as predicted, not an error.
+
+**The `--`: the ambiguity is real, and the suite could not see it.**
+Reproduced first at the git level, in a scratch repo on `master` with a
+committed file named `master`:
+
+    $ git rev-list --objects HEAD master
+    fatal: ambiguous argument 'master': both revision and filename
+    Use '--' to separate paths from revisions, like this:
+    exit=128
+    $ out="$(git rev-list --objects HEAD master 2>/dev/null | awk '{print $1}')"   -> 0 lines
+    $ git rev-list --objects HEAD master --              -> 6 lines, exit 0
+    $ git rev-list --objects HEAD refs/heads/master      -> 6 lines
+    $ git rev-parse --verify --quiet master              -> resolves (the NOTE's own test is not affected)
+    directory named master:              without -- exit=128, with -- exit=0
+    UNTRACKED file named master only:    without -- exit=128
+
+Git consults the working tree, so an untracked file or a directory does it too.
+The same applies to `HEAD` and to `refs/remotes/origin/<b>` as paths. Then end
+to end, against the real script: a scratch upstream with two commits and a
+file `master` at its root, and a project holding the *older* release of one
+hook, which is a quiet-half case. The script hands off to upstream's own copy,
+so each variant was placed at `$UP/scripts/refresh-harness.sh` in turn (scratch
+only):
+
+    shipped line (with --):                     LOCAL lines: 0
+    same line without --:                           LOCAL     .claude/hooks/h.sh
+                                                LOCAL lines: 1
+    without --, file 'master' moved aside:      LOCAL lines: 0
+    release 51's --all line:                    LOCAL lines: 0
+
+So the C-1 amendment's spelling, taken literally, would have **introduced** a
+false alarm that release 51 does not have. It would also cover the whole quiet
+half of any upstream that has such a path. Why `--` and not `refs/heads/$src_default`:
+the NOTE accepts any `$cand` that `rev-parse --verify` resolves, and that can be
+something other than a local branch. In a scratch repo with a *tag* `master` and
+no branch of that name, `rev-parse --verify master` exits 0 while `rev-list
+--objects refs/heads/master --` exits 128. Because rev-list fails as a whole on
+one bad argument, that too would empty the set. `--` keeps the name exactly as
+the NOTE resolved it (C-2). No test was added (tests are frozen in GREEN). If
+this is wanted as a pinned case, it is a RED change for a later story.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -1185,3 +1315,30 @@ surviving non-default branch and assert silence; under B that content is LOCAL.
   under load, and 2m31s quiet. It went from about 2m to about 2.5m quiet
   locally. Read the `refresh` step's time out of the PR's first CI log before
   calling it green.
+
+**PO-3. GREEN, 2026-09-24: two things the orchestrator records against itself
+and against the Contract.**
+* **The phase was set late.** The orchestrator dispatched the GREEN developer
+  while `current-story.env` still said `PHASE=RED`, and set GREEN only when the
+  developer reported it. The lock did not refuse the write, because
+  `scripts/refresh-harness.sh` classifies as `harness` and the lock permits that
+  in every phase. No production code reached a commit under `phase: RED`: the
+  RED commit `a8134b6` holds tests and docs only, and GREEN was set before the
+  GREEN commit. The tests were not touched after RED
+  (`git diff --quiet a8134b6 -- .claude/tests/` is clean).
+* **C-1's amended spelling had a defect, and GREEN's `--` fixes it.**
+  Reproduced by the orchestrator on different inputs from GREEN's: branch
+  `main` and a DIRECTORY `main/`, where GREEN used a file named `master`:
+
+      without --: 0 objects
+         stderr: fatal: ambiguous argument 'main': both revision and filename
+      with --:    5 objects
+
+  Behind `2>/dev/null` the set comes out empty, and every file would be
+  reported LOCAL. `--` keeps the default's name exactly as the NOTE resolved
+  it (C-2). GREEN also showed that `refs/heads/$src_default` fails when the
+  name resolves to a tag. The suite cannot see this case, and no test was added
+  because tests are frozen in GREEN. If it needs pinning, that is a RED change
+  for a later story.
+* Orchestrator's own run: `refresh: 122 passed, 0 failed`, `122 assertions
+  executed, 122 declared`.
