@@ -595,6 +595,28 @@ After all six: `git diff --stat 4a0e72d -- scripts/` printed nothing, and 0 `.ba
      inputs, not the subagent's code. That claim is also what an agent says
      when it wants to stop failing. -->
 
+### A-1. AC-5: from two open options to Option B (user, 2026-09-24)
+
+* **Which:** AC-5.
+* **What it said** (as filed on `main` in `0c7138a`): "a local branch that is
+  not the default. THIS CRITERION IS NOT FINAL", followed by two alternative
+  outcomes. *Option A*: content reachable only from an unmerged local branch is
+  NOT listed. *Option B*: it IS listed, with a merge as the control.
+* **What it says now:** Option B. Content reachable only from an unmerged local
+  branch is listed LOCAL. *Control:* after the branch is merged into the
+  default branch, the content is not listed.
+* **Who approved it:** the user, in the session, answering the story's
+  `## Open question` with "B" on 2026-09-24.
+* **Why:** the criterion was filed deliberately unfinished, because the choice
+  was a product decision (see `## Open question`, PO-1). It was rewritten while
+  the story was still in PLANNED, before any test existed. It is recorded here
+  because `check-boundaries.sh` compares criteria against the base branch, and
+  the base carries the unfinished form. The diff cannot see that the change was
+  made in PLANNED, and the change should be on record either way.
+* **No subagent claim is involved.** No agent argued that a criterion was
+  wrong, so there is nothing to reproduce. The change is the user's decision
+  on a question the story itself asked.
+
 ## Model guidance
 
 Planned by `bash scripts/plan.sh write HARNESS-013` from `.claude/harness/models.conf`.
