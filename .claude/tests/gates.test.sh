@@ -307,7 +307,13 @@ assert_contains "committed changes are still the story's" "WARN         changes:
 rm -f "$FIX/src/shaders/sky.glsl"
 printf 'test("y", () => {})\n' > "$FIX/tests/other.test.ts"
 out="$(gates)"
-case "$out" in
+# Anchored to the changes report (`WARN         changes: …` / `FAIL         changes: …`).
+# The file is untracked and classifies as test, so AC-4 (HARNESS-014) REQUIRES
+# `    UNTRACKED  tests/other.test.ts` in this same output; a needle floating
+# over the whole output was satisfied by that line and could only pass by
+# breaking AC-4 (R-1b).
+changes_lines="$(printf '%s\n' "$out" | grep -E '^(WARN|FAIL) +changes: ')" || changes_lines=""
+case "$changes_lines" in
   *"tests/other.test.ts"*) _bad "a test file is not a changed source path" "reported it: $out" ;;
   *) _ok "a test file is not a changed source path" ;;
 esac

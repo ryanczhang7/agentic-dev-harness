@@ -483,7 +483,11 @@ rm -f "$FIX/Zed.ts" "$FIX/notes.md" "$FIX/.claude/commands/x.md" "$FIX/.claude/s
 # ignore files, because .git/info/exclude is the remedy the refusal points a
 # user to for a stray they mean to keep, so it has to actually work.
 printf 'src/scratch-ignored.ts\n' >> "$FIX/.gitignore"
-fix_commit "ignore rule for the scratch file"   # .gitignore is gated, so HEAD carries it
+# Commit ONLY .gitignore (it is gated, so HEAD carries it). Not fix_commit: that
+# is `add -A`, which would track handoff/x.patch and tests/stray.test.ts, and
+# the three "is listed" assertions below read them as UNTRACKED (R-1a).
+git -C "$FIX" add .gitignore >/dev/null 2>&1
+git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "ignore rule for the scratch file" >/dev/null 2>&1
 h_clean="$(gate_tree_hash_of HEAD)"
 printf 'export const scratch = 1\n' > "$FIX/src/scratch-ignored.ts"
 assert_eq "fixture: the .gitignore'd scratch file classifies as ignored" "ignored" "$(classify "src/scratch-ignored.ts")"

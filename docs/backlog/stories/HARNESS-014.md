@@ -5,7 +5,7 @@ slug: the-gate-stamp-covers-the-commit-to-be-n
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: RED
 branch: story/HARNESS-014-the-gate-stamp-covers-the-commit-to-be-n
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/gates.sh, .claude/tests/lib.test.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write
@@ -986,6 +986,140 @@ the output below.
 **GREEN on re-entry.** Expected to be a no-op: the source that GREEN wrote is
 committed before this return and is not edited again. The orchestrator verifies
 this by running the suites, and does not re-dispatch.
+
+#### Corrected and earned (RED, re-entry, 2026-09-24, test-developer)
+
+Two test files changed, nothing else: `.claude/tests/lib.test.sh` (R-1a) and
+`.claude/tests/gates.test.sh` (R-1b). No assertion name, claim or expected
+value changed. Executed counts unchanged: lib 217, gates 134, so
+`floors.conf` and `selftest.test.sh` are untouched. Every mutation below went
+through `scripts/mutate.sh`; the restore line is quoted for each.
+
+**R-1a, `lib.test.sh:486` — the fixture.** Before:
+
+    fix_commit "ignore rule for the scratch file"   # .gitignore is gated, so HEAD carries it
+
+After (commit only `.gitignore`; the two strays stay untracked when read):
+
+    git -C "$FIX" add .gitignore >/dev/null 2>&1
+    git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "ignore rule for the scratch file" >/dev/null 2>&1
+
+`h_clean` still means what it says: at that point the working tree is HEAD
+plus the `.gitignore` edit plus two untracked strays, so after committing
+`.gitignore` alone the tree `git commit -a` would make IS HEAD, and the four
+`AC-6 … does not move the stamp` assertions compare `gate_tree_hash` against
+`gate_tree_hash_of HEAD` with the strays present and untracked — which is the
+AC-1/AC-6 claim, not a vacuous equality. Nothing after the block reads the
+fixture.
+
+*Earned, pair (`AC-6: and is not listed by untracked_gated`, `… either`):* the
+ignore filter dropped from `untracked_gated` (DV-2 X-D's mutation). Output,
+trimmed to header / FAIL lines / summary / restore:
+
+    === mutate: .claude/hooks/lib.sh (1 line(s) changed by s/--others --exclude-standard/--others/) ===
+      1088 -   git -C "$HARNESS_ROOT" ls-files --others --exclude-standard 2>/dev/null \
+      1088 +   git -C "$HARNESS_ROOT" ls-files --others 2>/dev/null \
+    === mutate: running bash scripts/selftest.sh lib ===
+        FAIL AC-6: and is not listed by untracked_gated
+        FAIL AC-6: and is not listed by untracked_gated either
+        FAIL AC-6 control: with the exclude rule removed the same file is listed
+    lib: 214 passed, 3 failed
+    FAIL lib  did 214 units of work, below the floor of 217 in .claude/tests/floors.conf
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20260924T213148Z.208594.bak) ===
+
+(The control goes red under this mutation too, because the `.gitignore`'d
+`src/scratch-ignored.ts` is then listed as well; the next mutation isolates the
+control.)
+
+*Earned, control (`AC-6 control: with the exclude rule removed the same file is
+listed`):* `untracked_gated` made to drop exactly the excluded scratch file from
+its listing — the "list nothing for this file" defect the control exists to
+catch. Exactly one assertion goes red:
+
+    === mutate: .claude/hooks/lib.sh (1 line(s) changed by s/| cut -f2- | LC_ALL=C sort$/| cut -f2- | LC_ALL=C sort | grep -v scratch-excluded/) ===
+      1089 -     | classify_stdin | gated_stdin | cut -f2- | LC_ALL=C sort
+      1089 +     | classify_stdin | gated_stdin | cut -f2- | LC_ALL=C sort | grep -v scratch-excluded
+    === mutate: running bash scripts/selftest.sh lib ===
+        FAIL AC-6 control: with the exclude rule removed the same file is listed
+    lib: 216 passed, 1 failed
+    FAIL lib  did 216 units of work, below the floor of 217 in .claude/tests/floors.conf
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20260924T213627Z.216535.bak) ===
+
+**R-1b, `gates.test.sh:310-313` — the needle.** Before:
+
+    case "$out" in
+      *"tests/other.test.ts"*) _bad "a test file is not a changed source path" "reported it: $out" ;;
+      *) _ok "a test file is not a changed source path" ;;
+    esac
+
+After (read only the `changes:` report lines, then the same containment test):
+
+    changes_lines="$(printf '%s\n' "$out" | grep -E '^(WARN|FAIL) +changes: ')" || changes_lines=""
+    case "$changes_lines" in
+      *"tests/other.test.ts"*) _bad "a test file is not a changed source path" "reported it: $out" ;;
+      *) _ok "a test file is not a changed source path" ;;
+    esac
+
+A first spelling piped into `grep -q` and `check-sigpipe.sh` refused it
+(`pipeline into an early-exit reader under pipefail`); the shape above has no
+early-exit reader and the guard reports 0 findings.
+
+*The anchored needle is not satisfied by the AC-4 line.* On the unmutated tree,
+the same fixture state rebuilt outside the suite (a scratch script over
+`_lib.sh`'s `make_project_fixture`, identical conf/story/file writes):
+
+    --- whole-output floating needle (the OLD assertion) matches?
+    yes: the path is in the output
+    --- UNTRACKED line present (grep -cx):
+    1
+    --- lines naming the path:
+    15:    UNTRACKED  tests/other.test.ts
+    --- changes: lines (the NEW needle reads only these):
+    []
+    NEW needle: no match (passes)
+
+So the old needle could only pass by breaking AC-4; the new one passes while
+the AC-4 line is present.
+
+*Earned:* `gates.sh`'s changed-path filter mutated to report `test`-classified
+paths as changed source paths. Exactly one assertion goes red:
+
+    === mutate: scripts/gates.sh (1 line(s) changed by s/\$1 == "source" { print \$2 }/$1 == "source" || $1 == "test" { print $2 }/) ===
+      596 -                 | sort -u | classify_stdin | awk -F'\t' '$1 == "source" { print $2 }')"
+      596 +                 | sort -u | classify_stdin | awk -F'\t' '$1 == "source" || $1 == "test" { print $2 }')"
+    === mutate: running bash scripts/selftest.sh gates ===
+        FAIL a test file is not a changed source path
+             …
+             WARN         changes: tests/other.test.ts is exercised by no gate with a covers line
+             …
+                 UNTRACKED  tests/other.test.ts
+    gates: 133 passed, 1 failed
+    FAIL gates  did 133 units of work, below the floor of 134 in .claude/tests/floors.conf
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20260924T221136Z.274543.bak) ===
+
+(The `…` elides the gates' own printf output that `reported it: $out` pastes;
+the two quoted lines are the `changes:` line the mutation made appear and the
+AC-4 line, both from the same run.) Both mutation runs of the gates suite (the
+`grep -q` spelling and the final one) turned exactly this assertion red.
+
+*After the restores:* `bash scripts/selftest.sh lib` → `lib: 217 passed, 0
+failed`; `bash scripts/selftest.sh gates` → `gates: 134 passed, 0 failed`;
+`check-sigpipe.sh` 0 findings, `check-grep-count.sh` 0 findings; no `.bak`
+under `.claude/state/mutations/`; `git status` shows `lib.sh` and `gates.sh`
+unmodified.
+
+**Orchestrator's check of the re-entry (2026-09-24).** This is a mutation of my
+own, different from the test-developer's. It predicts a single red assertion,
+the R-1a control:
+
+    === mutate: .claude/hooks/lib.sh (1 line(s) changed by s#cut -f2- | LC_ALL=C sort#cut -f2- | sed /^src/d | LC_ALL=C sort#) ===
+        FAIL AC-6 control: with the exclude rule removed the same file is listed
+    lib: 216 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against …/.claude_hooks_lib.sh.20260924T224804Z.330211.bak) ===
+
+One predicted and one red. `lib.sh` is clean afterwards and no `.bak`
+remains. So the corrected fixture now discriminates, and the other 216 lib
+assertions pass against the committed implementation.
 
 ## Gate results
 
