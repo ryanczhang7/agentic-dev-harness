@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-014-the-gate-stamp-covers-the-commit-to-be-n
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [.claude/hooks/lib.sh, scripts/gates.sh, .claude/tests/lib.test.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, VERSION]  # files this story expects to write
+touches: [.claude/hooks/lib.sh, scripts/gates.sh, .claude/tests/lib.test.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -205,11 +205,150 @@ the commit named.
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
-**Left for PLANNED**, following HARNESS-012 and HARNESS-013. The contract
-depends on the answer to `## Open question`. The evidence it will draw on is in
-`## Notes`: the callers of `gate_tree_hash` (M-1), the candidate computation
-already measured equal to CI's on the real tree (M-3, row C), and the existing
-assertions that pin today's behaviour (M-6).
+Pinned at PLANNED → RED, 2026-09-24, against `80bf504`. **RED may amend any
+block below in place, with a one-line reason beside the change; GREEN builds
+what the amended block says.** The criteria above are not amendable here (they
+go through `## Amendments`).
+
+### C-1. `gate_tree_hash` — `.claude/hooks/lib.sh`
+
+* **Signature unchanged:** no arguments, prints one 40-hex hash (or
+  `unavailable` with a non-zero return, as today). It still ends in
+  `_hash_blob_listing`, and `gated_stdin` is not touched.
+* **New meaning: "the tree `git commit -a` would make right now".** Tracked
+  files as they are in the working tree, plus whatever is staged (new files
+  included), minus tracked deletions. Untracked files contribute nothing,
+  whatever they classify as.
+* **Computation (measured as M-3 row C):** seed a temporary index from a copy
+  of the **real** index (`git rev-parse --git-path index`, so a linked worktree
+  uses its own), falling back to `git read-tree HEAD` only when no real index
+  exists; then `GIT_INDEX_FILE="$idx" git add -u .`; then `ls-files -s` as
+  today. The temporary index stays at `.claude/state/.tree-index.$$` and is
+  removed on every path. Seeding from the index rather than an empty one keeps
+  the CRLF property `lib.test.sh:239-254` pins.
+* **The real index is never written.** A run of `gate_tree_hash` leaves
+  `git status --porcelain` and `git diff --cached` byte-identical.
+* The header comment above the function (`# The working tree as it is right
+  now, tracked or not.`) is rewritten to the new meaning, and the
+  `code_changed_since` comment at `lib.sh:936-939` is corrected to state the
+  asymmetry (see `## Out of scope`).
+
+### C-2. `untracked_gated` — new, `.claude/hooks/lib.sh`
+
+* `untracked_gated` — no arguments; prints, one per line, repo-relative and
+  `LC_ALL=C` sorted, every path that `git -C "$HARNESS_ROOT" ls-files --others
+  --exclude-standard` lists **and** `classify_stdin | gated_stdin` keeps.
+  Prints nothing when there are none; returns 0 either way.
+* `--exclude-standard` is what makes `.gitignore` **and** `.git/info/exclude`
+  count (AC-6). It is the one line DV-2 X-D removes.
+* This is the only definition of "untracked gated file". `gates.sh` calls it;
+  it does not re-derive the listing.
+
+### C-3. `gates.sh` — naming (AC-4)
+
+* In **every mode that runs gate commands** (full, `--fast`, `--gate`,
+  `--required`; not `--list`, not `--audit`), after the `--- gate summary ---`
+  block and before the record step, when `untracked_gated` prints anything:
+
+      <blank line>
+      untracked: N gated file(s) are not part of the recorded tree:
+          UNTRACKED  <path>
+          UNTRACKED  <path>
+      Stage them (git add) if they belong to the story, or exclude them
+      (.git/info/exclude) or move them if they do not.
+
+  Each file line is exactly four spaces, `UNTRACKED`, two spaces, the path, and
+  nothing after it, so `grep -cx '    UNTRACKED  <path>'` counts it. The
+  lead line contains the words `not part of the recorded tree`. When the list
+  is empty, none of this is printed: no `untracked:` line, no `UNTRACKED`.
+* Docs-class, vendor, ignored and harness-markdown files are never named
+  (that is `gated_stdin`, unchanged).
+
+### C-4. `gates.sh` — refusal (AC-5, Option R)
+
+* **"Active story"** means the story `gates.sh` would record into: `$STORY`,
+  from `--story <id>` or the lock's `current-story.env`, with its file present.
+  That is the branch that today calls `record_in_story`.
+* On a **full** run with an active story and a non-empty `untracked_gated`:
+  `record_in_story` is **not** called (the story file is byte-for-byte
+  unchanged), and in place of the `recorded in …` line it prints one line
+  beginning `(not recorded: ` that says N untracked gated file(s) are not in
+  the tree this run would stamp, and names both remedies (stage, or exclude /
+  move). The run then **exits 1**, whatever the gates did. Precedence: a gate
+  failure also exits 1; a BLOCKED run that is refused exits 1, not 3, because
+  nothing was recorded for a PO decision to stand on.
+* The `.claude/state/last-gate-run` stamp of a refused run says `FULL=no`, so
+  the Stop hook does not count it as GATES' full run. (PO-F; RED may pin it
+  with an assertion, it is not an AC.)
+* With **no** active story (CI, `ci-local.sh`'s gates step), or on a partial
+  run, there is no refusal: the naming of C-3 is printed and the exit status
+  is the gates' own, exactly as today.
+* Staging the named files, or excluding them through `.git/info/exclude`,
+  makes the same run record and exit 0 (AC-5's control).
+
+### C-5. Unchanged, and must stay so
+
+`gate_tree_hash_of`, `gated_stdin`, `paths.conf`, `check-boundaries.sh`
+(its `:366-374` branch needs no edit: it becomes right because
+`gate_tree_hash` does), `.github/workflows/*`, `code_changed_since`'s
+behaviour, HARNESS-001's file.
+
+### C-6. Procedure — `.claude/commands/advance-story.md`
+
+At GATES, beside "Then run `bash scripts/gates.sh`" (`:142`), one short
+paragraph: the stamp covers tracked and **staged** files only; a file the story
+created must be `git add`-ed before the full run; with an active story,
+`gates.sh` refuses to record while it names any `UNTRACKED` file, and a user's
+own stray belongs in `.git/info/exclude`. Nothing else in the procedure
+changes.
+
+### C-7. Release
+
+`.claude/harness/VERSION` 52 → 53, in GATES, as HARNESS-013 did. (The
+frontmatter's `touches: … VERSION` means this file.)
+
+### C-8. Callers of every changed export
+
+**No signature changes.** One new export (`untracked_gated`), one changed
+meaning (`gate_tree_hash`). Every reader of `gate_tree_hash`, re-listed with
+`grep -rn gate_tree_hash .claude scripts .github` at `80bf504` — identical to
+M-1:
+
+| Caller | Effect of C-1 |
+|---|---|
+| `scripts/gates.sh:206` `record_in_story` | records the new meaning — intended |
+| `scripts/check-boundaries.sh:369` (local branch) | now agrees with `:367` (CI's) — the fix |
+| `.claude/tests/lib.test.sh:239-254` (autocrlf) | must still pass (AC-7) |
+| `.claude/tests/lib.test.sh:348-368` ("covers what the gates judge") | three assertions rewritten by RED so their files are tracked (AC-7, M-6) |
+| `.claude/tests/boundaries.test.sh:1196-1222` | must still pass (AC-7) |
+| `.claude/tests/gate-reminder.test.sh:277`, `lib.sh:936,986` | comments only; `lib.sh:936` is corrected by C-1 |
+| `.claude/tests/worktree.test.sh:290-318` (reaches it through `gates.sh` / `check-boundaries.sh`) | must still pass (AC-7) |
+
+RED's handoff states that this list was checked against the tree.
+
+### C-9. Oracle partition (from PO-D)
+
+* **Settled numbers, read out:** AC-8's floors — whatever `bash
+  scripts/selftest.sh <suite>` reports executed, written identically into
+  `floors.conf` and `selftest.test.sh`'s `COUNTS`. The baseline is `lib 197`,
+  `gates 92`, `boundaries 73`. DV-1's specimen numbers (four `UNTRACKED` lines,
+  `62c0c30…` for CI) are read out from M-2/M-3, not re-derived.
+* **Oracle-free:** none. There is no metric to invent.
+* **Mechanical, pin exactly:** AC-1 to AC-7. Hash equality against
+  `gate_tree_hash_of <commit>` in fixture repos; whole-line `grep -cx` counts
+  of `    UNTRACKED  <path>`; the `(not recorded: ` prefix; exit statuses; a
+  byte-for-byte `cmp` of the story file for AC-5; the existing `ok    gate
+  record matches …` / `gates were recorded against tree` messages of
+  `check-boundaries.sh` for AC-2.
+
+### C-10. Baselines (read out, do not re-measure)
+
+* Specimen classification: M-2. Specimen hashes: M-3. New-file flow: M-4.
+* Existing assertions that pin the old behaviour: M-6 — only `a hook moves
+  the hash` fails under C-1.
+* `boundaries` suite: ~15 min per run on this machine (M-6 / PO-B), so RED
+  runs it once, at the end, not per edit.
+* Test-only dependencies: none. Bash, git, coreutils.
 
 ## Deferred verifications
 
@@ -751,3 +890,24 @@ record, the user's untracked `handoff-world-080/*.patch` files must be
 excluded (for example with a line in `.git/info/exclude`) or moved. The story
 never does either itself (Out of scope). The orchestrator puts that to the
 user when GATES arrives.
+
+**PO-F. A refused run does not discharge GATES (PLANNED → RED, 2026-09-24).**
+Under Option R a full run that declines to record still writes
+`.claude/state/last-gate-run`. If that stamp said `FULL=yes`, the Stop hook
+(`gate-reminder.sh:111`) would treat GATES' obligation as met by a run that
+left `## Gate results` untouched. So C-4 pins `FULL=no` for a refused run. It
+follows from AC-5 rather than adding scope; it is a contract pin, not an AC,
+and RED may test it.
+
+**PO-G. PLANNED → RED checks (2026-09-24, against `80bf504`).**
+* *Epic done-when:* `epic:` is empty; this is a standalone harness fix, so
+  there is no epic promise for it to fall short of.
+* *Required gate:* `project.conf:227-234` gives all eight gates an empty command
+  (`BOOTSTRAPPED=no`), so no `gates.sh` gate reads this artifact and none can
+  be escalated into `required_gates`. The binding check is `selftest.sh`'s
+  `lib`, `gates` and `boundaries` suites, a required CI step (`gates.yml`).
+  `required_gates: []` stays.
+* *Callers:* C-8, re-grepped; no signature changes.
+* *Deferred verifications:* DV-1 to DV-3, all owned by GATES, already written.
+* *`touches:`* corrected from `VERSION` to `.claude/harness/VERSION`, the
+  file that actually carries the release number.
