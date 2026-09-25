@@ -121,8 +121,11 @@ suites and a new policy guard. CI runs them as a required step, so
   *Control:* the `new-story` suite fails when the template still says
   `Do THREE mutations`.
 - **AC-6: `/audit-mutations` is where the exhaustive work lives.**
-  * Its command file says it runs **on request**, plus whatever the answer to
-    `## Open question` adds.
+  * Its command file says it runs **on request**. Under Option S (the
+    user's decision, 2026-09-25) `/advance-story` REVIEW → DONE also
+    *recommends* `/audit-mutations <epic>` in its report when the story it
+    closes was the last open story of its epic. It never runs it. A story with
+    an empty `epic:` gets no recommendation.
   * Where a `mutation` gate is configured, it runs `bash scripts/gates.sh
     --gate mutation`. It also takes over earning assertions that passed on
     arrival, and verifying handoff mutation tables, for the stories in its
@@ -288,7 +291,7 @@ budget.**
   a consuming project picks it up through `refresh-harness.sh` or by adding the
   line by hand. This story does not edit any other repository.
 
-## Open question - for the user, before this story leaves PLANNED
+## Open question - DECIDED: Option S (the user, 2026-09-25)
 
 **Is `/audit-mutations` tied to epics, and if so, how?** The user said "only
 when I request, or potentially for each epic". The answer changes AC-6's
@@ -458,3 +461,10 @@ fail is not a test" is untouched. The HARNESS-014 evidence argues for fewer
 probes, not for none: X-A, the defect put back, is the one mutation whose
 result would have mattered had it gone the other way. It is also the one the
 budget keeps.
+
+**PO-D. The Open question is decided: Option S.** The user answered "S" on
+2026-09-25. `/audit-mutations` runs on request, and REVIEW → DONE only
+*suggests* it when an epic's last open story closes. AC-6 was rewritten to
+that form on `main` before the story left PLANNED, so the base branch carries
+the final criterion and no `## Amendments` entry is needed (the HARNESS-014
+precedent, PO-E).
