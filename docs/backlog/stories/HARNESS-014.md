@@ -4,8 +4,8 @@ title: The gate stamp covers the commit to be, not untracked files
 slug: the-gate-stamp-covers-the-commit-to-be-n
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-014-the-gate-stamp-covers-the-commit-to-be-n
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/gates.sh, .claude/tests/lib.test.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write
@@ -1647,3 +1647,16 @@ local and never committed; a copy of the previous version is at
 staged or edited. After the change, `untracked_gated` printed nothing. This is
 the remedy AC-6 made real, used on the tree it was built for. The story diff
 contains no part of it (`## Out of scope`).
+
+**PO-I. Merged, and CI read (REVIEW → DONE, 2026-09-25).** PR #83 was merged
+at 2026-09-25T01:59:04Z as `4521945`. First CI run on `613c56e`: `boundaries`
+passed in 4s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36082124964),
+and its log reads `ok    gate record matches commit 613c56e (tree
+e877e7dfbb8edd9f444c312c2b08c500a7bfaa25)`. That is the same tree the local
+run in the main checkout reported, with the user's untracked files present.
+`gates` passed in 1m29s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36082125009);
+its harness self-test step took 1m16s. Neither workflow sets
+`timeout-minutes`, so both are far from a limit. No gate went through the
+*pending CI* path.
