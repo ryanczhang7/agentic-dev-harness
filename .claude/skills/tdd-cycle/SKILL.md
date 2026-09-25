@@ -276,18 +276,23 @@ done the right thing.
 
 ### A mutation is only as informative as the independence of what observes it
 
-Three mutations of one codec: two dropped a field, and each was caught **only**
-by the round-trip property, because no structural test asserted either field. The
-third flipped a float writer to big-endian, and six tests caught it - but only
-because the container assertions read the bytes through a reader that imports
-nothing from the source tree.
+One codec was mutated three ways. Two mutants dropped a field, and each was
+caught **only** by the round-trip property, because no structural test asserted
+either field. The third flipped a float writer to big-endian, and six tests
+caught it - but only because the container assertions read the bytes through a
+reader that imports nothing from the source tree.
 
 That is the general rule, and it is why a round-trip suite is weaker evidence
 than it looks: **a codec that is uniformly wrong round-trips through itself
 perfectly.** When you choose what observes a mutation, prefer the thing that does
-not share the implementation's assumptions. And mutate in two directions - a
-missing field and a wrong value fail differently, and a suite that catches an
-omission can be blind to a corruption.
+not share the implementation's assumptions. And a missing field and a wrong value
+fail differently: a suite that catches an omission can be blind to a corruption.
+
+That is the lesson behind the one extra mutation that `rules.md`,
+"Mutation work per story", lets a format or codec story add to its default
+"defect put back": make it a wrong **value**, not another missing field. Everything beyond the budget -
+earning every assertion that passed on arrival, a full mutation table - is
+`/audit-mutations`' work, not the story's.
 
 ## When the failing test needs a dependency
 

@@ -268,12 +268,16 @@ Three things follow from that shape, and each was learned the expensive way:
   mutation needs no special permission — and a story that bounced back to RED
   mid-cycle gets its corrected assertions earned by the *same* experiment, which
   is the cheapest way there is to satisfy `tdd-cycle`'s corrective-RED rule.
-- **Do three mutations, and make one a wrong value rather than a missing
-  field.** Two dropped-field mutations of one codec were each caught only by the
-  property test; the one that flipped a float writer's byte order was caught by
-  six tests, and only because the container assertions read bytes through an
-  independent reader. A suite that catches an omission can be blind to a
-  corruption.
+- **Write the budget, not more.** `rules.md`, "Mutation work per story", fixes
+  the default: one "defect put back" entry for the story's central claim, plus
+  what the law owes for tests written against existing code, each run against
+  the one suite that holds its assertion. A format or codec story may add one
+  entry that corrupts a **value** rather than dropping a field: dropped-field
+  mutations of one codec were each caught only by the property test, while a
+  flipped float byte order was caught by six tests, and only because the
+  container assertions read bytes through an independent reader. Exhaustive
+  earning of assertions that passed on arrival is not a story entry; it goes to
+  `/audit-mutations`.
 
 `check-boundaries.sh` refuses a PR whose `## Deferred verifications` names no
 phase, or that reaches REVIEW with neither a pasted result nor an explicit
