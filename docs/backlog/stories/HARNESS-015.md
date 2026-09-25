@@ -175,11 +175,169 @@ suites and a new policy guard. CI runs them as a required step, so
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
-**Left for PLANNED**, as in HARNESS-012 to HARNESS-014. It depends on the answer to
-`## Open question`, and on two shapes the PO pins before RED: the on-request
-line's exact form (for example `ondemand | <id> | <why>`, parsed like `slow`) and
-the exact summary line of AC-1. The sites it must name are listed in `## Notes`,
-M-2.
+Pinned at PLANNED → RED, 2026-09-25, against `698b1ae`. **RED may amend any
+block below in place, with a one-line reason beside the change; GREEN builds
+what the amended block says.** The criteria are not amendable here.
+
+**A correction to M-3, found while pinning this block:** the three profiles do
+**not** mark `mutation` as `slow`. Only this repository's
+`project.conf:242` does. So a consuming project that copied a profile runs its
+mutation tool even on `--fast`, which means in every RED and GREEN as well.
+C-5 closes that.
+
+### C-1. The `ondemand` line — `project.conf` syntax
+
+    ondemand | <gate-id> | <why it is not run per story>
+
+It is parsed in the same loop as `slow` (`gates.sh:108-119`) into a new
+`ONDEMANDS` table of `<id>\t<why>` lines, and documented in `project.conf`'s
+header beside `slow`. This repository's `project.conf` gains
+`ondemand | mutation | per-story cost the user declined (HARNESS-015); run it with /audit-mutations`.
+
+### C-2. `gates.sh` — what a run does with an on-request gate (AC-1)
+
+* In the gate loop, **after** the `--gate` / `--required` filters and
+  **before** the `--fast` `slow` check (`:281`): if the gate has an `ondemand`
+  line, `$ONLY` is not that gate, and the story did not escalate it through
+  `required_gates`, the gate is not run. Its command is never executed. One
+  line is appended to the summary:
+
+      ON REQUEST   <id> (not run: <why>; bash scripts/gates.sh --gate <id>)
+
+  `ON REQUEST` is followed by three spaces, which keeps the 13-column status
+  field that `PASS`, `UNCONFIGURED` and the others use. This applies to a full
+  run and to `--fast` alike. The gate is **not** added to `--fast`'s
+  `skipped:` list; it is reported once, as on-request.
+* Checked before configured-ness: an on-request gate with no command is also
+  `ON REQUEST`, not `UNCONFIGURED`.
+* **`--gate <id>`** runs it exactly as today. **A story escalation**
+  (`required_gates: [mutation]`) runs it too, with the existing
+  `(required by story <id>)` suffix.
+* **`--required`** reaches the gate only if it is required, and the audit
+  (C-3) forbids that.
+* **Unchanged:** the result string (`pass (N ran, M unconfigured, K known)`),
+  the stamp (`FULL=yes` on a full run: the on-request gate is not part of what
+  a story's full run judges), the recording, and exit statuses. An on-request
+  gate is counted in none of `ran`, `unconfigured` or `known`.
+
+### C-3. `gates.sh --audit` (AC-2)
+
+Each of these prints one `FAIL <id> …` line and counts as a manifest problem,
+so the audit exits 1:
+
+* an `ondemand` line naming no configured gate:
+  `` an `ondemand` line names no configured gate ``;
+* an `ondemand` line with an empty reason:
+  `marked on-request with no reason; say why it is not run per story`;
+* an `ondemand` line naming a gate whose requirement **in `project.conf`**,
+  not after any story escalation, is `required`:
+  `an on-request gate cannot be required: no full run would ever judge it`.
+
+### C-4. `gates.sh --list`
+
+Beside the existing `slow:` row it prints
+`on-request: <why> (run with --gate <id>)`.
+
+### C-5. Stack profiles (AC-3)
+
+`node-typescript.md`, `python-uv.md` and `rust-cargo.md` each gain
+`ondemand | mutation | <why>` in the same block as their `gate | mutation`
+line. `profiles.test.sh`:
+
+* the profile checker recognises the `ondemand` kind, and its orphan check
+  (`:118`) covers it: no `ondemand` line may name an unconfigured gate;
+* it asserts, for each profile file that configures a `mutation` gate,
+  `<profile>: its mutation gate is on request`.
+
+`new-profile.md` gains one sentence telling authors to do the same.
+
+### C-6. `rules.md` — the budget (AC-4)
+
+A new top-level section, headed exactly `# Mutation work per story`, placed
+after `# Non-negotiables`. It states AC-4's three parts: what is required per
+story, how a mutation runs (one suite), and what is not per story (which goes
+to `/audit-mutations`). It also says the budget is a default the PO writes and
+the orchestrator runs, not a cap that `check-boundaries.sh` enforces (PO-B).
+
+### C-7. The sites, and the policy guard (AC-4, AC-6)
+
+**New suite `.claude/tests/policy.test.sh`** (suite name `policy`). It
+defines `policy_problems <root>`, which prints one line
+`<relative-path>: <reason>` per violation, and runs it twice:
+
+* over `REPO_ROOT`, where it must print nothing: the real tree;
+* over a fixture copy with one site regressed, where it must print exactly one
+  line, naming that file. This is AC-4's control. DV-1 is the same check
+  against the real tree.
+
+**The rules `policy_problems` applies:**
+
+| Files | Must | Must not |
+|---|---|---|
+| the six sites: `.claude/commands/advance-story.md`, `.claude/commands/complete-story.md`, `.claude/skills/story-authoring/SKILL.md`, `.claude/skills/story-authoring/reference/sections.md`, `.claude/skills/tdd-cycle/SKILL.md`, `scripts/new-story.sh` | contain the fixed string `Mutation work per story` | match `grep -Eiw '(three\|two) mutations'` |
+| `.claude/harness/rules.md` | have a line exactly `# Mutation work per story` | match `grep -Eiw '(three\|two) mutations'` |
+| `.claude/commands/audit-mutations.md` | contain `on request` and `bash scripts/gates.sh --gate mutation` | - |
+| `.claude/commands/advance-story.md` and `.claude/commands/complete-story.md` | - | contain `mutation-tester` or `--gate mutation` |
+| `.claude/commands/advance-story.md` | contain `/audit-mutations` in its REVIEW → DONE section (Option S) | - |
+
+Wording of the sites is GREEN's, under these rules:
+
+* **The codec lesson survives.** `tdd-cycle`'s anecdote and the "wrong value,
+  not a missing field" advice are kept as *the one extra mutation a format or
+  codec story may add*, reworded so that neither says "three".
+* **`/advance-story`'s mutation-table bullet (`:294-302`)** becomes one
+  mutation, the one whose predicted catch is a single assertion, run against
+  that assertion's suite.
+* **`/advance-story` GREEN → GATES (`:128-138`)** runs the story's deferred
+  verifications, each against the one suite that holds its assertion.
+* **`/advance-story` REVIEW → DONE, Option S:** when the closed story's
+  `epic:` is non-empty and no other story in that epic is short of DONE, the
+  report recommends `/audit-mutations <epic>`. It never runs it.
+
+### C-8. The story template — `scripts/new-story.sh` (AC-5)
+
+The `## Deferred verifications` comment's closing sentences (`:107-111`) are
+replaced. The new text names `Mutation work per story`, says the default is
+one "defect put back" entry for the story's central claim, and sends
+exhaustive earning to `/audit-mutations`. `new-story.test.sh` generates a story
+and asserts on its text: `Mutation work per story` present, `THREE` absent.
+The existing assertions in that suite hold.
+
+### C-9. `/audit-mutations` (AC-6)
+
+The command file says that it runs on request, and when the loop recommends
+it (Option S). It says it runs `bash scripts/gates.sh --gate mutation` where
+the gate is configured, and reasons by hand otherwise, as today. It also says
+it owns earning assertions that passed on arrival, and verifying mutation
+tables, for the stories in its scope.
+
+### C-10. Callers, readers and release
+
+* **No function signature changes.**
+* **What reads the gate summary:** a grep for `UNCONFIGURED` / `unconfigured`
+  outside `gates.sh`, across `scripts`, `.claude/hooks`, `.claude/tests` and
+  `.github`, finds only `profiles.test.sh:118`, a label.
+  `check-boundaries.sh` reads `## Gate results` only for its `result:` and
+  `tree:` lines, whose form does not change. So adding `ondemand` to this
+  repository's `project.conf` changes the recorded summary from
+  `UNCONFIGURED mutation` to `ON REQUEST   mutation …`, and no reader breaks.
+  `gates.test.sh` builds its own `project.conf` per block and is indifferent.
+* **Release:** `.claude/harness/VERSION` 53 → 54, in GATES.
+
+### C-11. Oracle partition
+
+* **Settled, read out:** AC-8's floors. Baselines from `floors.conf` at
+  `698b1ae`: `gates 134`, `profiles 37`, `new-story 25`; `policy` is new.
+* **Oracle-free:** none.
+* **Mechanical, pin exactly:** everything else. That means the exact
+  `ON REQUEST` line and a marker file that the gate command writes (AC-1);
+  audit exit status and `FAIL` lines (AC-2); per-profile assertion names
+  (AC-3); `policy_problems` output lines (AC-4, AC-6); and generated-template
+  text (AC-5).
+
+### C-12. Test-only dependencies
+
+None. Bash, git, awk and coreutils.
 
 ## Deferred verifications
 
@@ -236,38 +394,26 @@ budget.**
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-015` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `opus` | planning is the judgement phase: decomposition, the oracle partition, and what goes in the contract |
+| RED | `test-developer` | `fable` | the measured case. With a partitioned contract to work from, the brief carries the judgement and the weaker model writes sharper negative controls than the stronger one did without it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `opus` | reading review feedback against the contract is judgement, and a wrong call here ships |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation, with no failing test in front of any of it |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -468,3 +614,16 @@ budget keeps.
 that form on `main` before the story left PLANNED, so the base branch carries
 the final criterion and no `## Amendments` entry is needed (the HARNESS-014
 precedent, PO-E).
+
+**PO-E. PLANNED → RED checks (2026-09-25, against `698b1ae`).**
+* *Epic done-when:* `epic:` is empty, so there is no epic promise to fall
+  short of.
+* *Required gate:* every `gates.sh` gate is unconfigured
+  (`project.conf:227-234`). The binding check is `selftest.sh`, a required CI
+  step, through its `gates`, `profiles`, `new-story` and `policy` suites.
+  `required_gates: []` stays.
+* *Callers:* C-10. No signature changes, and no reader of the summary line
+  breaks.
+* *Deferred verifications:* DV-1 alone, owned by GATES. That is the budget
+  this story introduces, applied to itself.
+* *Correction to M-3:* recorded at the head of `## Contract`.
