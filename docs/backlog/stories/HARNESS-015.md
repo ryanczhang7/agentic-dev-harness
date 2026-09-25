@@ -4,8 +4,8 @@ title: Mutation work per story is one targeted probe; exhaustive earning moves t
 slug: mutation-work-per-story-is-one-targeted
 epic: 
 type: chore
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-015-mutation-work-per-story-is-one-targeted
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/audit-mutations.md, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/skills/tdd-cycle/SKILL.md, scripts/new-story.sh, scripts/gates.sh, .claude/skills/stack-profiles/reference/*.md, .claude/harness/project.conf, .claude/tests/gates.test.sh, .claude/tests/profiles.test.sh, .claude/tests/new-story.test.sh, .claude/tests/policy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write
@@ -454,6 +454,23 @@ budget.**
 
 **Owner: GATES**
 
+**Result (GATES, 2026-09-25, orchestrator, at the GREEN commit).** One mutation
+against the one suite that holds the assertion, which is this story's own
+budget:
+
+    === mutate: .claude/commands/advance-story.md (1 line(s) changed by s/^verifies its own restore, and run each entry against the one suite that holds$/verifies its own restore. Do three mutations rather than one, and run each entry against the one suite that holds/) ===
+      132 - verifies its own restore, and run each entry against the one suite that holds
+      132 + verifies its own restore. Do three mutations rather than one, and run each entry against the one suite that holds
+    === mutate: running bash scripts/selftest.sh policy ===
+        FAIL policy_problems over the real tree prints nothing: one budget, in rules.md, and every site defers to it
+             actual:   .claude/commands/advance-story.md: still prescribes a per-story mutation count (matches `(three|two) mutations`)
+    policy: 16 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte …) ===
+
+With the old sentence put back on a real line, the guard fires and names
+exactly that file, in one line. **DV-1 passes.** It took seconds, where
+HARNESS-014's DV-2 and DV-3 took about 2h20.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -488,6 +505,7 @@ name, below the table.
 - PLANNED → RED, `lead-po` (orchestrator): `claude-opus-5-5`, as planned.
 - RED, `test-developer`: explicit `model: fable` → **fable** (`claude-fable-5-1`), as planned. It corrected the orchestrator's own wrong M-3 "correction", which the orchestrator verified: the `slow | mutation` lines are at `node-typescript.md:59`, `python-uv.md:62` and `rust-cargo.md:73`.
 - GREEN, `feature-developer`: explicit `model: opus` → **opus** (`claude-opus-5-5`), as planned. It confirmed every control value RED recorded, ran the one AC-3 mutation the budget allows (`profiles: 49 passed, 1 failed`, restored), and weakened nothing.
+- GATES: no dispatch. The orchestrator ran DV-1 (one mutation, one suite) and the full gates on `claude-opus-5-5`.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -975,10 +993,21 @@ each stays as recorded once the real behaviour exists.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-25T06:41:12Z
+    commit: eee7ef1 (working tree had uncommitted changes)
+    tree:   03e816209a1c74ce2360ad95c352b7cf2eb6dd03
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
