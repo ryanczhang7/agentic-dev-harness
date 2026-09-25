@@ -4,8 +4,8 @@ title: The gate stamp covers the commit to be, not untracked files
 slug: the-gate-stamp-covers-the-commit-to-be-n
 epic: 
 type: fix
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-014-the-gate-stamp-covers-the-commit-to-be-n
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/gates.sh, .claude/tests/lib.test.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write
@@ -420,6 +420,39 @@ untracked `.patch` file, rather than touching the user's files.
 
 **Owner: GATES**
 
+**Result (GATES, 2026-09-24, orchestrator, at `9c95a78`).** The specimen was
+present and untouched throughout. `git status --porcelain` was byte-identical
+before and after (`cmp`).
+
+*Check 1: hash equality on the real tree.*
+
+    gate_tree_hash:          aa61c1070f1e11ff75ca435d0ae06b5d032cebe6
+    gate_tree_hash_of HEAD:  aa61c1070f1e11ff75ca435d0ae06b5d032cebe6
+    DV-1: EQUAL
+
+*Check 2: `gates.sh --fast` on the real tree* (run in GREEN at the same
+commit, exit 0). It printed exactly four lines, all `.patch`, and none of the
+three docs-class files:
+
+    untracked: 4 gated file(s) are not part of the recorded tree:
+        UNTRACKED  handoff-world-080/part-_lib.sh.patch
+        UNTRACKED  handoff-world-080/part-phase-guard.sh.patch
+        UNTRACKED  handoff-world-080/part-phase-guard.test.sh.patch
+        UNTRACKED  handoff-world-080/world-080-phase-guard-sed-inplace.patch
+
+*Control on a real line: the defect put back.*
+
+    === mutate: .claude/hooks/lib.sh (1 line(s) changed by s/GIT_INDEX_FILE="$idx" git add -u \./GIT_INDEX_FILE="$idx" git add -A ./) ===
+      1065 -       && GIT_INDEX_FILE="$idx" git add -u . >/dev/null 2>&1 \
+      1065 +       && GIT_INDEX_FILE="$idx" git add -A . >/dev/null 2>&1 \
+    gate_tree_hash:          02f668aa1f0ee34b6ae597e5c03b5d05a0cb9a37
+    gate_tree_hash_of HEAD:  aa61c1070f1e11ff75ca435d0ae06b5d032cebe6
+    DV-1: DIFFER
+    === mutate: command exited 1; restored (verified byte-for-byte against …/.claude_hooks_lib.sh.20260924T230847Z.363601.bak) ===
+
+**DV-1 passes.** On the tree it judges, the fix makes the local stamp equal
+CI's, and removing the fix breaks that equality.
+
 ### DV-2. Wrong-value mutations of the hash
 
 *Condition.* Each of the following, run one at a time through
@@ -444,6 +477,69 @@ its handoff, and GATES compares against them.
 
 **Owner: GATES**
 
+**Result (GATES, 2026-09-24, orchestrator, at `9c95a78`).** Each mutation was
+run through `scripts/mutate.sh` in its own detached `git worktree` of
+`9c95a78` under the session scratchpad, four at a time, so that no suite read a
+mutated `lib.sh` in the main checkout. Every run ended `restored (verified
+byte-for-byte …)`, `git status` of each mutated file was empty afterwards, and
+the worktrees were removed. Each line gives the red assertions from that run's
+suite output, verbatim.
+
+    X-A  s/GIT_INDEX_FILE="$idx" git add -u \./GIT_INDEX_FILE="$idx" git add -A ./   (lib.sh)
+      lib: 211 passed, 6 failed
+        FAIL an untracked hook does not move the hash
+        FAIL AC-1: an untracked gated file does not move the stamp off HEAD's
+        FAIL AC-3 control: an UNSTAGED new file is not in the stamp, so it differs from the later commit's
+        FAIL AC-6: a .gitignore'd file does not move the stamp
+        FAIL AC-6: a file excluded through .git/info/exclude does not move the stamp
+        FAIL AC-6 control: and it still does not move the stamp - untracked is untracked
+      gates: 134 passed, 0 failed
+      boundaries: 77 passed, 2 failed
+        FAIL AC-2: an untracked gated file does not spoil the local verdict
+        FAIL AC-2: and the local run exits 0
+
+    X-B  s/\[ -f "$real" \] && cp "$real" "$idx"/false/   (seed from HEAD, not the index)
+      lib: 216 passed, 1 failed
+        FAIL AC-3: a staged new file is in the stamp, which equals the following commit's
+      boundaries: 79 passed, 0 failed
+
+    X-C  s/GIT_INDEX_FILE="$idx" git add -u \./true/   (the index copy hashed as-is)
+      lib: 214 passed, 3 failed
+        FAIL a hook moves the hash
+        FAIL source moves the hash
+        FAIL AC-1 control: an unstaged edit to a TRACKED source file moves the stamp
+      boundaries: 79 passed, 0 failed
+
+    X-D  s/--others --exclude-standard/--others/   (untracked_gated)
+      lib: 214 passed, 3 failed
+        FAIL AC-6: and is not listed by untracked_gated
+        FAIL AC-6: and is not listed by untracked_gated either
+        FAIL AC-6 control: with the exclude rule removed the same file is listed
+      gates: 129 passed, 5 failed
+        FAIL AC-6: excluded via .git/info/exclude, nothing is named
+        FAIL AC-5 control: excluded, the run records
+        FAIL AC-5 control: excluded, the run exits 0
+        FAIL AC-6: a .gitignore'd stray is not named
+        FAIL and the count in the reason says 1, not 2
+
+**Against RED's predictions (handoff §6).** X-B (lib 1, AC-3 positive only, and
+its control stays green), X-C (lib 3, the named three) and X-D gates (5, the
+named five) match exactly. Two differ, and both differences come from R-1a
+rather than from a missed catch:
+* **X-A: lib 6, predicted 4.** The two extras are the AC-6 "does not move the
+  stamp" pair. After R-1a, `handoff/x.patch` and `tests/stray.test.ts` are
+  still untracked in that block, so `add -A` folds them in. The prediction was
+  written when `:486` had committed them. Because this makes X-A red those two
+  through the strays and not through the ignored file, DV-3 earns them
+  separately with M6b.
+* **X-D: lib 3, predicted 2.** The extra is `AC-6 control: … the same file is
+  listed`. Without `--exclude-standard`, the ignored `src/scratch-ignored.ts`
+  is listed as well, so the exact listing no longer matches.
+
+The X-C case the story singled out ("hash HEAD passes every positive case")
+is caught by `AC-1 control`, and AC-1's positive case stays green under it, as
+required. **DV-2 passes.**
+
 ### DV-3. Every assertion that passes on arrival is earned by a mutation
 
 *Condition.* RED's handoff lists every new or rewritten assertion that is
@@ -455,6 +551,57 @@ runs each one and pastes the output here.
 *Why not RED.* Most of the mutations target code that GREEN writes.
 
 **Owner: GATES**
+
+**Result (GATES, 2026-09-24, orchestrator, at `9c95a78`).** Every new or
+rewritten assertion that was green on arrival appears below, with the mutation
+that turned it red. The list is handoff §5 plus `a blocked gate is still
+reported as BLOCKED`. Each mutation went through `scripts/mutate.sh`. Each
+ended `restored (verified byte-for-byte …)`, and each file's `git status` was
+empty afterwards. M5–M15 ran in detached worktrees, as DV-2 did. M6b, M16 and
+M17 ran in the main checkout with nothing else running.
+
+| Assertion(s) green on arrival | Mutation (file) | Red in that run |
+|---|---|---|
+| lib `a command prompt does not move the hash`, `a docs file does not move the hash`, `a hook moves the hash` (AC-7 rewrites) | M1–M3 on `gated_stdin` (`lib.sh`), run in RED | each red; output in handoff §5 |
+| lib `an untracked hook does not move the hash` | X-A (`lib.sh`) | red (DV-2) |
+| lib `AC-1 control: …`, `source moves the hash` | X-C (`lib.sh`) | both red (DV-2) |
+| lib `AC-3: a staged new file is in the stamp, …` | X-B (`lib.sh`) | red, alone (DV-2) |
+| lib `C-1: gate_tree_hash leaves git status --porcelain unchanged`, `C-1: and leaves the staged diff unchanged` | M5 `s/&& GIT_INDEX_FILE="$idx" git add -u/\&\& git add -u/` (`lib.sh`: the real index written) | `lib: 212 passed, 5 failed`; both C-1 red |
+| lib `AC-6: a .gitignore'd file does not move the stamp`, `AC-6: a file excluded through .git/info/exclude does not move the stamp` | M6b `s/git add -u \. >/git add -u . \&\& GIT_INDEX_FILE="$idx" git add -f src >/` (`lib.sh`: force-adds the ignored `src/` files and **not** the strays, which are outside `src/`) | `lib: 213 passed, 4 failed`; both red. M6 (`add -A -f`) and X-A redden them too, but through the strays; M6b isolates the ignored file |
+| gates `AC-4 control: the root docs file is not named` | M7 `gated_stdin` keeps `docs` (`lib.sh`) | red (`gates: 113 passed, 21 failed`; the rest is the docs story file cascading) |
+| gates `AC-4 control: the harness markdown file is not named` | M8 `gated_stdin` keeps `.md` (`lib.sh`) | red (`gates: 115 passed, 19 failed`) |
+| gates `AC-4 control: no untracked gated file, no UNTRACKED anywhere …`, `… and no untracked: lead line either` | M9 `s/^if \[ -n "$untracked" \]; then/if true; then/` (`gates.sh`) | both red (`gates: 120 passed, 14 failed`) |
+| gates `a --fast run is partial, so it is NOT refused: exit is the gates' own`, `no active story: exit is the gates' own, 0` | M10: the refusal condition reduced to `[ "$untracked_n" -gt 0 ]` (`gates.sh`) | exactly those two (`gates: 132 passed, 2 failed`) |
+| gates `not a refusal for untracked files`, `no active story: and there is no refusal for untracked files` | M16: a `(not recorded: N untracked gated file(s)` line printed on every run that names a file (`gates.sh:689`) | both red (`gates: 130 passed, 4 failed`, with the two refusal-count assertions, now doubled) |
+| gates `the gates' own verdict is still printed - …` | M11: `[ "$REFUSED" = 1 ] && exit 1` before the verdict `printf` (`gates.sh`) | red (`gates: 131 passed, 3 failed`) |
+| gates `AC-5 control: staged, nothing is named`, `… the run records`, `… the run exits 0`, `… and ## Gate results now carries a tree stamp` | M12: `ls-files --others --cached` (`untracked_gated` lists staged files) | all four red (`gates: 115 passed, 19 failed`) |
+| gates `AC-5 control: excluded, …` (2), `AC-6: excluded via .git/info/exclude, nothing is named`, `AC-6: a .gitignore'd stray is not named` | X-D (`lib.sh`) | all four red (DV-2) |
+| gates `C-4: the stamp of a recorded run says FULL=yes` | M13 `s/^FULLRUN=yes$/FULLRUN=no/` (`gates.sh`) | red (`gates: 124 passed, 10 failed`) |
+| gates `and its not-recorded line is the ordinary partial-run one`, `no active story: the not-recorded line is the ordinary no-story one`, `a blocked gate is still reported as BLOCKED` | M17: the three messages reworded, one run (`gates.sh`) | all three red (`gates: 127 passed, 7 failed`; the other four are older assertions on the same messages) |
+| boundaries `AC-2: CI's verdict on the same commit is the same`, `AC-2: and CI's run exits 0` | M14 `s/now=..gate_tree_hash_of ".PR_HEAD_SHA"./now=0000000/` (`check-boundaries.sh`) | exactly those two (`boundaries: 77 passed, 2 failed`) |
+| boundaries `AC-2 control: a committed source change is refused locally`, `… and refused by CI's computation too` | M15: the stamp comparison replaced by `if true` (`check-boundaries.sh`) | both red, with the two older stamp-refusal assertions (`boundaries: 75 passed, 4 failed`) |
+| lib `fixture: the stray patch classifies as source`, `… stray test classifies as test`, `… .gitignore'd scratch file classifies as ignored` | none | **WAIVED**: these are premise checks on `paths.conf` (out of scope) that make the fixture mean what its comments say. No production code of this story stands behind them |
+
+M16's first attempt is discarded and recorded here so the discard can be
+seen. My sed replacement had `\&` where it needed `&`, which left a bare `&`
+in `gates.sh`. That is a syntax error, not a wrong value, and it turned 65
+assertions red for that reason. It was re-run with `bash -n scripts/gates.sh
+&&` placed ahead of the suite, and the result above is from that re-run.
+
+Excerpt of the M17 run, as a sample of the pasted form:
+
+    FAIL a launch failure is BLOCKED, not FAIL
+    FAIL a failure alongside a block is reported as both
+    FAIL a project pattern is honoured
+    FAIL and so does the not-recorded line
+    FAIL and its not-recorded line is the ordinary partial-run one
+    FAIL a blocked gate is still reported as BLOCKED
+    FAIL no active story: the not-recorded line is the ordinary no-story one
+    gates: 127 passed, 7 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against …) ===
+
+**DV-3 passes.** Every assertion that was green on arrival is either earned by
+a mutation or WAIVED above with its reason.
 
 ## Amendments
 
@@ -495,6 +642,15 @@ name, below the table.
   Verdict for the measured claim: the partitioned brief produced controls for
   every AC, found the untracked `project.conf` in the `gates` fixture on its own,
   and amended C-4 with two pins the contract had left open.
+- GREEN, `feature-developer`: explicit `model: opus` → **opus**
+  (`claude-opus-5-5`), as planned. It stopped at two defective frozen tests
+  instead of weakening either. That is the failure mode the plan keeps opus
+  here for, and it did not occur.
+- RED re-entry (R-1), `test-developer`: explicit `model: fable` → **fable**,
+  as planned. Both corrections were earned by mutation, and the orchestrator's
+  own mutation confirmed one of them.
+- GREEN re-entry: no dispatch. The orchestrator verified it as a no-op.
+- GATES: no dispatch. The orchestrator ran DV-1 to DV-3 and the full gates on `claude-opus-5-5`, with no failure to hand to `feature-developer`.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -1123,10 +1279,21 @@ assertions pass against the committed implementation.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-24T23:50:59Z
+    commit: 9c95a78 (working tree had uncommitted changes)
+    tree:   e877e7dfbb8edd9f444c312c2b08c500a7bfaa25
+    result: pass (0 ran, 8 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    UNCONFIGURED mutation
 
 ## Gate probes
 
@@ -1468,3 +1635,15 @@ and RED may test it.
 * *Deferred verifications:* DV-1 to DV-3, all owned by GATES, already written.
 * *`touches:`* corrected from `VERSION` to `.claude/harness/VERSION`, the
   file that actually carries the release number.
+
+**PO-H. The specimen is excluded, by the user's decision (GATES, 2026-09-24).**
+DV-1 ran first, against the specimen untouched. Before the full `gates.sh`
+run, the user was asked how to clear the four `handoff-world-080/*.patch`
+files that the refusal (C-4) would otherwise name. The user chose "Exclude
+them". On that instruction the orchestrator appended
+`handoff-world-080/*.patch` to this checkout's `.git/info/exclude`. That file is
+local and never committed; a copy of the previous version is at
+`.git/info/exclude.pre-harness014`. The files themselves were not moved,
+staged or edited. After the change, `untracked_gated` printed nothing. This is
+the remedy AC-6 made real, used on the tree it was built for. The story diff
+contains no part of it (`## Out of scope`).
