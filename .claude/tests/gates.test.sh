@@ -19,6 +19,13 @@ write_conf "$FIX" <<'EOF'
 gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
 evidence | unit | Tests +[1-9][0-9]* passed
 EOF
+# project.conf is gated (harness, not markdown) and write_conf creates it
+# UNTRACKED. HARNESS-014 makes a full run with an active story refuse to record
+# while any untracked gated file exists, so the fixture's conf is tracked once,
+# here; every later write_conf is then an edit to a tracked file, which the
+# stamp covers and the refusal ignores. Its content still changes per block.
+git -C "$FIX" add -A >/dev/null 2>&1
+git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "track project.conf" >/dev/null 2>&1
 out="$(gates)"
 assert_contains "a live gate passes" "PASS         unit" "$out"
 
@@ -300,7 +307,13 @@ assert_contains "committed changes are still the story's" "WARN         changes:
 rm -f "$FIX/src/shaders/sky.glsl"
 printf 'test("y", () => {})\n' > "$FIX/tests/other.test.ts"
 out="$(gates)"
-case "$out" in
+# Anchored to the changes report (`WARN         changes: …` / `FAIL         changes: …`).
+# The file is untracked and classifies as test, so AC-4 (HARNESS-014) REQUIRES
+# `    UNTRACKED  tests/other.test.ts` in this same output; a needle floating
+# over the whole output was satisfied by that line and could only pass by
+# breaking AC-4 (R-1b).
+changes_lines="$(printf '%s\n' "$out" | grep -E '^(WARN|FAIL) +changes: ')" || changes_lines=""
+case "$changes_lines" in
   *"tests/other.test.ts"*) _bad "a test file is not a changed source path" "reported it: $out" ;;
   *) _ok "a test file is not a changed source path" ;;
 esac
@@ -585,6 +598,161 @@ case "$out" in
   *"project.conf changed"*) _bad "an ordinary --fast run is not accused" "it fired anyway: $out" ;;
   *) _ok "an ordinary --fast run is not accused" ;;
 esac
+
+# ---------------------------------------------------------------------------
+describe "untracked gated files are named, whole-line, in every run (HARNESS-014, AC-4)"
+
+# The stamp now describes the tree `git commit -a` would make, so a file the
+# working tree holds and the commit will not - a stray .patch, a new test nobody
+# staged - is judged by the gates and absent from the record. gates.sh names each
+# one as `    UNTRACKED  <path>`: four spaces, the word, two spaces, the path,
+# nothing after. Matched WHOLE here, by grep -cx, never by the bare word - a
+# needle of `UNTRACKED` would be satisfied by the sentence explaining it.
+count_line() { printf '%s\n' "$2" | grep -cxF -- "$1"; }   # <exact line> <text>
+count_re()   { awk 'BEGIN { re = ARGV[1]; ARGV[1] = "" } $0 ~ re { n++ } END { print n + 0 }' "$1" <<< "$2"; }
+fix_commit() { git -C "$FIX" add -A -- . ':!.claude/state' >/dev/null 2>&1
+               git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "$1" >/dev/null 2>&1; }
+
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+story "$FIX" T-1 GATES </dev/null
+fix_commit "clean tree, story in GATES"        # nothing untracked, nothing dirty
+set_phase "$FIX" GATES
+
+# One untracked file per class the specimen had, plus the two the rule must
+# leave alone: a root docs file and a harness markdown file.
+mkdir -p "$FIX/handoff" "$FIX/.claude/commands"
+printf 'diff --git a/x b/x\n' > "$FIX/handoff/x.patch"          # source
+printf 'test("stray", () => {})\n' > "$FIX/tests/stray.test.ts"  # test
+printf '# stray notes\n' > "$FIX/notes.md"                       # docs
+printf '# a prompt\n' > "$FIX/.claude/commands/x.md"             # harness markdown
+
+out="$(gates --fast)"; rc=$?
+assert_eq "--fast names the stray patch, whole line" 1 "$(count_line '    UNTRACKED  handoff/x.patch' "$out")"
+assert_eq "--fast names the stray test, whole line"  1 "$(count_line '    UNTRACKED  tests/stray.test.ts' "$out")"
+assert_eq "and exactly those two: one UNTRACKED line per untracked gated file" 2 "$(count_re '^    UNTRACKED  ' "$out")"
+assert_eq "AC-4 control: the root docs file is not named"       0 "$(count_re 'UNTRACKED.*notes\.md' "$out")"
+assert_eq "AC-4 control: the harness markdown file is not named" 0 "$(count_re 'UNTRACKED.*\.claude/commands/x\.md' "$out")"
+assert_contains "and says, in words, that they are not part of the recorded tree" "not part of the recorded tree" "$out"
+assert_contains "and names the remedy for a file the story owns: stage it" "git add" "$out"
+assert_contains "and the remedy for a stray the user keeps: .git/info/exclude" ".git/info/exclude" "$out"
+assert_eq "a --fast run is partial, so it is NOT refused: exit is the gates' own" 0 "$rc"
+assert_eq "and its not-recorded line is the ordinary partial-run one" 1 \
+  "$(count_re '^\(not recorded in the story: a partial run is not evidence of anything\)$' "$out")"
+assert_eq "not a refusal for untracked files" 0 "$(count_re '^\(not recorded: .*untracked gated file' "$out")"
+
+# ---------------------------------------------------------------------------
+describe "a full run with an active story refuses to record while anything is named (HARNESS-014, AC-5, Option R)"
+
+# The record says "the gates ran against exactly this tree". While the working
+# tree holds a gated file the stamp cannot describe, that sentence is false, so
+# the run leaves ## Gate results byte-for-byte alone, says why on one line, and
+# exits 1 even though every gate passed. The user's decision, 2026-09-24 (PO-E).
+cp "$FIX/docs/backlog/stories/T-1.md" "$FIX/.claude/state/T-1.before"
+out="$(gates)"; rc=$?
+assert_eq "the full run still names each file" 2 "$(count_re '^    UNTRACKED  ' "$out")"
+assert_eq "AC-5: ## Gate results is byte-for-byte unchanged" yes \
+  "$(cmp -s "$FIX/.claude/state/T-1.before" "$FIX/docs/backlog/stories/T-1.md" && printf yes || printf no)"
+assert_eq "AC-5: nothing claims to have recorded" 0 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-5: one line beginning '(not recorded: ' gives the reason - N untracked gated file(s)" 1 \
+  "$(count_re '^\(not recorded: .*2 untracked gated file' "$out")"
+assert_eq "AC-5: and the run exits 1 although every gate passed" 1 "$rc"
+assert_contains "the gates' own verdict is still printed - the refusal is about the record, not the code" \
+  "All required gates passed" "$out"
+# PO-F, a contract pin rather than an AC: a refused run must not discharge GATES.
+assert_eq "C-4: the stamp of a refused run says FULL=no" 1 \
+  "$(count_re '^FULL=no$' "$(tr -d '\r' < "$FIX/.claude/state/last-gate-run")")"
+
+# Precedence: a BLOCKED run that is refused exits 1, not 3 - nothing was recorded
+# for a PO decision to stand on.
+write_conf "$FIX" <<'EOF'
+gate     | unit  | required | . | printf 'Tests  47 passed (47)\n'
+gate     | types | required | . | printf 'error: could not execute process (never executed)\n'; exit 101
+evidence | unit  | Tests +[1-9][0-9]* passed
+evidence | types | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates)"; rc=$?
+assert_contains "a blocked gate is still reported as BLOCKED" "BLOCKED      types" "$out"
+assert_eq "C-4: but a refused run exits 1, not 3" 1 "$rc"
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+git -C "$FIX" add .claude/harness/project.conf >/dev/null 2>&1   # the conf only; the strays stay untracked
+git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "conf back to one passing gate" >/dev/null 2>&1
+
+# AC-5: with NO active story - CI, and ci-local.sh's gates step - there is no
+# refusal. The files are still named; the exit is the gates' own.
+set_phase "$FIX" ""
+out="$(gates)"; rc=$?
+assert_eq "no active story: the files are still named" 2 "$(count_re '^    UNTRACKED  ' "$out")"
+assert_eq "no active story: exit is the gates' own, 0" 0 "$rc"
+assert_eq "no active story: the not-recorded line is the ordinary no-story one" 1 \
+  "$(count_re '^\(not recorded: no active story' "$out")"
+assert_eq "no active story: and there is no refusal for untracked files" 0 \
+  "$(count_re '^\(not recorded: .*untracked gated file' "$out")"
+set_phase "$FIX" GATES
+
+# AC-5 control (i): once the named files are STAGED, the same run records and
+# exits 0, and names nothing.
+git -C "$FIX" add handoff/x.patch tests/stray.test.ts >/dev/null 2>&1
+out="$(gates)"; rc=$?
+assert_eq "AC-5 control: staged, nothing is named"        0 "$(count_re 'UNTRACKED' "$out")"
+assert_eq "AC-5 control: staged, the run records"         1 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-5 control: staged, the run exits 0"         0 "$rc"
+assert_eq "AC-5 control: and ## Gate results now carries a tree stamp" 1 \
+  "$(count_re '^    tree:   [0-9a-f]{40}$' "$(tr -d '\r' < "$FIX/docs/backlog/stories/T-1.md")")"
+assert_eq "C-4: the stamp of a recorded run says FULL=yes" 1 \
+  "$(count_re '^FULL=yes$' "$(tr -d '\r' < "$FIX/.claude/state/last-gate-run")")"
+git -C "$FIX" reset -q -- handoff/x.patch tests/stray.test.ts 2>/dev/null   # untracked again
+git -C "$FIX" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null           # record wiped
+
+# AC-5 control (ii) and AC-6: excluded through .git/info/exclude, the same run
+# records and exits 0. This is the remedy the refusal points a user to for a
+# stray they mean to keep, so it has to actually work.
+cp "$FIX/.git/info/exclude" "$FIX/.claude/state/exclude.before"
+printf 'handoff/x.patch\ntests/stray.test.ts\n' >> "$FIX/.git/info/exclude"
+out="$(gates)"; rc=$?
+assert_eq "AC-6: excluded via .git/info/exclude, nothing is named" 0 "$(count_re 'UNTRACKED' "$out")"
+assert_eq "AC-5 control: excluded, the run records"            1 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-5 control: excluded, the run exits 0"            0 "$rc"
+git -C "$FIX" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null
+
+# AC-6 control: with the exclude rule removed, the same files are named again
+# and the run is refused again.
+cp "$FIX/.claude/state/exclude.before" "$FIX/.git/info/exclude"
+out="$(gates)"; rc=$?
+assert_eq "AC-6 control: exclude rule removed, both files are named again" 2 "$(count_re '^    UNTRACKED  ' "$out")"
+assert_eq "AC-6 control: and the run is refused again" 1 "$rc"
+
+# AC-6, the other ignore file: a .gitignore rule for one stray silences that one
+# and only that one. .gitignore is itself gated and tracked, so editing it is an
+# ordinary edit the stamp covers - and the record is still refused, because the
+# other stray is still there.
+printf 'handoff/\n' >> "$FIX/.gitignore"
+out="$(gates)"; rc=$?
+assert_eq "AC-6: a .gitignore'd stray is not named"      0 "$(count_line '    UNTRACKED  handoff/x.patch' "$out")"
+assert_eq "AC-6: while the other stray still is"          1 "$(count_line '    UNTRACKED  tests/stray.test.ts' "$out")"
+assert_eq "and the count in the reason says 1, not 2" 1 "$(count_re '^\(not recorded: .*1 untracked gated file' "$out")"
+assert_eq "and one stray is enough to refuse"             1 "$rc"
+git -C "$FIX" checkout -q -- .gitignore 2>/dev/null
+
+# AC-4 control: with no untracked GATED file - the docs and the prompt still
+# untracked - no UNTRACKED line appears at all, and the run records.
+rm -rf "$FIX/handoff" "$FIX/tests/stray.test.ts"
+out="$(gates)"; rc=$?
+assert_eq "AC-4 control: no untracked gated file, no UNTRACKED anywhere in the output" 0 "$(count_re 'UNTRACKED' "$out")"
+assert_eq "AC-4 control: and no untracked: lead line either" 0 "$(count_re 'not part of the recorded tree' "$out")"
+assert_eq "and the run records" 1 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "and exits 0"         0 "$rc"
+
+rm -f "$FIX/notes.md" "$FIX/.claude/commands/x.md" "$FIX/.claude/state/T-1.before" "$FIX/.claude/state/exclude.before"
+git -C "$FIX" checkout -q -- . 2>/dev/null
+set_phase "$FIX" ""
 
 
 summary "gates"

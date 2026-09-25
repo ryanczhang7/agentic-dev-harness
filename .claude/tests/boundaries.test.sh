@@ -1222,6 +1222,49 @@ run_boundaries
 refused "a test changing alone breaks the stamp too" "gates were recorded against tree"
 
 # ---------------------------------------------------------------------------
+describe "the local verdict and CI's verdict agree about an untracked file (HARNESS-014, AC-2)"
+
+# CI recomputes the stamp from the PR head COMMIT (PR_HEAD_SHA set), which holds
+# no untracked file. The local run recomputed it from the working tree with
+# `git add -A`, which folded every untracked gated file in. So a record made
+# against a clean tree was refused locally the moment a stray .patch appeared,
+# while CI accepted the same commit - and HARNESS-012 and -013 ran this script in
+# a throwaway worktree to get an answer they could trust. After HARNESS-014 the
+# working-tree hash is the tree `git commit -a` would make, and the two agree.
+run_boundaries_at_head() { # sets $out and $rc, with PR_HEAD_SHA at HEAD, as CI and ci-local.sh do
+  out="$( cd "$FIX" && GITHUB_HEAD_REF= PR_HEAD_SHA="$(git rev-parse HEAD)" bash scripts/check-boundaries.sh main 2>&1 )"
+  rc=$?
+}
+
+printf '%s\n' "$GATE_STORY_NOTE" | story_blocked REVIEW      # record made by gates.sh, tree fully committed
+mkdir -p "$FIX/handoff"
+printf 'diff --git a/x b/x\n' > "$FIX/handoff/x.patch"         # untracked; classifies source, as the specimen does
+run_boundaries
+assert_contains "AC-2: an untracked gated file does not spoil the local verdict" \
+  "ok    gate record matches the working tree" "$out"
+assert_eq "AC-2: and the local run exits 0" 0 "$rc"
+run_boundaries_at_head
+assert_contains "AC-2: CI's verdict on the same commit is the same" \
+  "ok    gate record matches commit" "$out"
+assert_eq "AC-2: and CI's run exits 0" 0 "$rc"
+
+# Control: a COMMITTED change to a tracked source file is refused by both, with
+# the same message. The test moves with it so that only the stamp is left to
+# refuse. Without this, "always say the record matches" passes AC-2.
+printf 'export const x = 4\n'                       > "$FIX/src/main.ts"
+printf 'test("x", () => {})\n// and one more\n'     > "$FIX/tests/main.test.ts"
+commit_all "source changed after the gates ran, stray still present"
+run_boundaries
+refused "AC-2 control: a committed source change is refused locally" "gates were recorded against tree"
+run_boundaries_at_head
+refused "AC-2 control: and refused by CI's computation too" "gates were recorded against tree"
+# The stray was swept into that commit by commit_all's `add -A`. Take it out of
+# the tree so that no later block inherits a source file none of them wrote.
+git -C "$FIX" rm -q -r --cached handoff >/dev/null 2>&1
+rm -rf "$FIX/handoff"
+commit_all "stray removed"
+
+# ---------------------------------------------------------------------------
 describe "production code arrives with tests, or with an inventory"
 
 # Law 1, at the commit. Replacing the condition with `false` sends every PR down

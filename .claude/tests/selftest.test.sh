@@ -435,14 +435,14 @@ while read -r n v; do
   got="$(floor_of "$n")"
   [ "$got" = "$v" ] || wrong="$wrong $n=${got:-<none>}(want $v)"
 done <<'COUNTS'
-boundaries 73
+boundaries 79
 ci-local 28
 classify 42
 doctor 29
 gate-reminder 32
-gates 92
+gates 134
 grep-count 20
-lib 197
+lib 217
 mutate 44
 new-story 25
 phase 33
@@ -463,7 +463,7 @@ assert_eq "and each records the executed count measured on this tree" "" "$wrong
 # lands. See the note at the foot of floors.conf.
 assert_eq "profiles is floored at its 37 executed assertions, not its 1 call site" \
   37 "$(floor_of profiles)"
-assert_eq "lib is floored at its 197 executed assertions, not its 104 call sites" \
-  197 "$(floor_of lib)"
+assert_eq "lib is floored at its 217 executed assertions, not its call-site count" \
+  217 "$(floor_of lib)"
 
 summary "selftest"

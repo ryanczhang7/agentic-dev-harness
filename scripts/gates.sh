@@ -677,12 +677,38 @@ if [ "$warns" -gt 0 ]; then
   printf '  waiver | <id> | <why this optional gate is expected to fail, and where that is recorded>\n'
 fi
 
+# UNTRACKED GATED FILES ARE NOT IN THE STAMP (HARNESS-014). The recorded tree is
+# the one `git commit -a` would make, which is what CI recomputes from the
+# commit; an untracked file that some gate read is in neither. Name every one,
+# in every mode that runs a gate, so a file the story created and never staged
+# is seen before it is missing from the commit rather than after.
+untracked="$(untracked_gated)"
+untracked_n=0
+if [ -n "$untracked" ]; then
+  untracked_n="$(printf '%s\n' "$untracked" | awk 'END { print NR }')"
+  printf '\nuntracked: %d gated file(s) are not part of the recorded tree:\n' "$untracked_n"
+  printf '%s\n' "$untracked" | awk '{ print "    UNTRACKED  " $0 }'
+  printf 'Stage them (git add) if they belong to the story, or exclude them\n'
+  printf '(.git/info/exclude) or move them if they do not.\n'
+fi
+
 # FULL says whether this was a whole run. The Stop hook decides from this stamp
 # whether a phase's gate obligation has been met, and `--fast`, `--gate` and
 # `--required` all write it too - so without the line a `--gate unit` could
 # discharge GATES, whose entire job is the full suite.
 FULLRUN=yes
 { [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ]; } && FULLRUN=no
+
+# A full run with a story to record into refuses to record while anything is
+# named above: the stamp would describe a tree that is not the one about to be
+# committed. With no active story (CI, ci-local.sh) there is nothing to refuse,
+# and the exit status stays the gates' own. A refused run did not discharge the
+# full run, so its stamp says FULL=no.
+REFUSED=0
+if [ "$FULLRUN" = yes ] && [ "$untracked_n" -gt 0 ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
+  REFUSED=1
+  FULLRUN=no
+fi
 
 if [ "$fails" -gt 0 ]; then
   result="fail ($fails required gate(s) failed$([ "$blocked" -gt 0 ] && printf ', %d blocked' "$blocked"))"
@@ -720,6 +746,8 @@ else
     printf '\n(not recorded: no active story; use --story <id> to record it in one)\n'
   elif [ ! -f "$STORY_FILE" ]; then
     printf '\n(not recorded: no story file at docs/backlog/stories/%s.md)\n' "$STORY"
+  elif [ "$REFUSED" = 1 ]; then
+    printf '\n(not recorded: %d untracked gated file(s) are not in the tree this run would stamp; stage them (git add) or exclude them (.git/info/exclude) or move them, then run again)\n' "$untracked_n"
   else
     record_in_story "$STORY_FILE" "$result" "$(printf '%b' "$results")"
     printf '\nrecorded in docs/backlog/stories/%s.md (## Gate results)\n' "$STORY"
@@ -743,8 +771,15 @@ if [ "$fails" -gt 0 ]; then
   printf '\n%d required gate(s) failed.\n' "$fails"
   exit 1
 fi
-if [ "$blocked" -gt 0 ]; then exit 3; fi
+# A refused BLOCKED run exits 1, not 3: nothing was recorded for a PO decision
+# about the blocked gate to stand on.
+if [ "$blocked" -gt 0 ]; then
+  [ "$REFUSED" = 1 ] && exit 1
+  exit 3
+fi
 printf '\nAll required gates passed (%d ran, %d unconfigured, %d known).\n' "$ran" "$unconfigured" "$known"
+# The verdict above is about the code; the refusal is about the record.
+[ "$REFUSED" = 1 ] && exit 1
 if [ "$FAST" = 0 ] && [ -z "$ONLY" ] && [ "$REQUIRED_ONLY" = 0 ]; then
   printf 'CI runs one more script that this does not: bash scripts/check-boundaries.sh\n'
   printf 'It is not a gate because it judges the COMMIT rather than the code - the phase in\n'

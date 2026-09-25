@@ -934,9 +934,13 @@ classify_stdin() {
 # for. Observed in the field, twice.
 #
 # The set that matters is already defined: it is the one gate_tree_hash covers
-# - see gated_stdin - never docs, vendor or ignored. So the question this asks
-# is precisely "would the recorded gate hash still match", and the two answers
-# cannot drift apart.
+# - see gated_stdin - never docs, vendor or ignored. For TRACKED files the
+# question this asks is precisely "would the recorded gate hash still match".
+# For UNTRACKED files it is not: gate_tree_hash leaves them out (HARNESS-014),
+# but this walk still sees them, so editing an untracked gated file after a
+# gate run asks for a re-run the stamp does not need. That false alarm errs on
+# the safe side and is left as it is; making the two predicates agree again is
+# its own story if anyone ever hits it.
 #
 # Ignored TOP-LEVEL directories are pruned before the walk rather than filtered
 # after it, because `src-tauri/target` holds six figures of files and a Stop
@@ -1032,20 +1036,33 @@ _hash_blob_listing() {
       }' | LC_ALL=C sort | git hash-object --stdin
 }
 
-# gate_tree_hash   The working tree as it is right now, tracked or not.
+# gate_tree_hash   The tree `git commit -a` would make right now: tracked files
+# as they are in the working tree, plus whatever is staged (new files
+# included), minus tracked deletions. UNTRACKED FILES CONTRIBUTE NOTHING,
+# whatever they classify as - a commit contains none of them, so a hash that
+# counted them could never match what CI recomputes from the commit
+# (gate_tree_hash_of). A file the story created counts once it is `git add`-ed;
+# gates.sh names the ones that are not (untracked_gated) and refuses to record
+# while there are any.
+#
+# Computed in a temporary index seeded from a COPY of the real one (the
+# worktree's own, via `git rev-parse --git-path index`), then `add -u`. The
+# real index is never written. Seeding from the index rather than an empty one
+# matters for CRLF: into an empty index every file is new, so git applies
+# normalisation the real commit never had, and on any CRLF file committed
+# before .gitattributes pinned LF the hash would disagree with CI's. With no
+# real index at all (a fresh clone that never populated one), HEAD's tree is
+# the seed instead.
 gate_tree_hash() {
-  local idx
+  local idx real
   idx="$HARNESS_ROOT/.claude/state/.tree-index.$$"
   mkdir -p "$HARNESS_ROOT/.claude/state"; rm -f "$idx"
-  # Start from HEAD's index, not an empty one. Into an empty index every file
-  # is new, so git applies CRLF normalisation the real commit never had, and
-  # the hash recorded here disagrees with the one CI recomputes from the PR
-  # head on any CRLF file committed before .gitattributes pinned LF. Then no
-  # amount of re-running the gates can make them match. Seeded with HEAD,
-  # `add -A` treats those files exactly as a real commit would.
+  real="$(cd "$HARNESS_ROOT" && git rev-parse --git-path index 2>/dev/null)"
+  case "$real" in ''|/*|[A-Za-z]:*) ;; *) real="$HARNESS_ROOT/$real" ;; esac
   ( cd "$HARNESS_ROOT" \
-      && { GIT_INDEX_FILE="$idx" git read-tree HEAD >/dev/null 2>&1 || :; } \
-      && GIT_INDEX_FILE="$idx" git add -A . >/dev/null 2>&1 \
+      && { { [ -n "$real" ] && [ -f "$real" ] && cp "$real" "$idx"; } \
+           || { GIT_INDEX_FILE="$idx" git read-tree HEAD >/dev/null 2>&1 || :; }; } \
+      && GIT_INDEX_FILE="$idx" git add -u . >/dev/null 2>&1 \
       && GIT_INDEX_FILE="$idx" git ls-files -s ) \
     | awk -F'\t' '{ split($1, a, " "); print a[2] "\t" $2 }' \
     | _hash_blob_listing
@@ -1060,6 +1077,17 @@ gate_tree_hash_of() {
   git -C "$HARNESS_ROOT" ls-tree -r "$1" 2>/dev/null \
     | awk -F'\t' '{ split($1, a, " "); if (a[2] == "blob") print a[3] "\t" $2 }' \
     | _hash_blob_listing
+}
+
+# untracked_gated   Every untracked, non-ignored file some gate could read -
+# the files gate_tree_hash leaves out and a commit would not contain.
+# Repo-relative, LC_ALL=C sorted, one per line; nothing when there are none.
+# Returns 0 either way. --exclude-standard is what makes .gitignore AND
+# .git/info/exclude count. This is the ONE definition: gates.sh calls it.
+untracked_gated() {
+  git -C "$HARNESS_ROOT" ls-files --others --exclude-standard 2>/dev/null \
+    | classify_stdin | gated_stdin | cut -f2- | LC_ALL=C sort
+  return 0
 }
 
 # --- Story frontmatter ------------------------------------------------------

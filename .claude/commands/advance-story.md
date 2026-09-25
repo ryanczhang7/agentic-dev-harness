@@ -146,6 +146,12 @@ means a test is wrong — in which case return the story to RED (see below). A
 `WARN` on an optional gate is read, not skipped; a known permanent failure gets
 a `waiver` line with its reason.
 
+**The stamp covers tracked and staged files only** — the tree `git commit -a`
+would make, which is what CI recomputes. A file the story created must be
+`git add`-ed before the full run. With an active story, `gates.sh` refuses to
+record (exit 1) while it names any `UNTRACKED` file; a user's own stray that
+should stay untracked belongs in `.git/info/exclude`, not in the commit.
+
 **A required gate reported `BLOCKED` (exit 3) is a third thing, and it is your
 decision.** BLOCKED means the environment would not let the gate start — a
 policy refusing an unsigned local binary, a missing runtime — so it neither
