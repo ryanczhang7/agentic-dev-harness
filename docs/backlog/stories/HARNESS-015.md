@@ -4,8 +4,8 @@ title: Mutation work per story is one targeted probe; exhaustive earning moves t
 slug: mutation-work-per-story-is-one-targeted
 epic: 
 type: chore
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-015-mutation-work-per-story-is-one-targeted
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/audit-mutations.md, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/skills/tdd-cycle/SKILL.md, scripts/new-story.sh, scripts/gates.sh, .claude/skills/stack-profiles/reference/*.md, .claude/harness/project.conf, .claude/tests/gates.test.sh, .claude/tests/profiles.test.sh, .claude/tests/new-story.test.sh, .claude/tests/policy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write
@@ -1072,9 +1072,9 @@ Windows 11); CI's `gates` job for this same suite took 1m21s on PR #84.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-09-25T06:41:12Z
-    commit: eee7ef1 (working tree had uncommitted changes)
-    tree:   03e816209a1c74ce2360ad95c352b7cf2eb6dd03
+    run:    2026-09-26T15:48:43Z
+    commit: a57ce14 (working tree had uncommitted changes)
+    tree:   59845ba7b454bf1da6a9d730862a8fab1f89a39c
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1195,3 +1195,11 @@ precedent, PO-E).
 * *Deferred verifications:* DV-1 alone, owned by GATES. That is the budget
   this story introduces, applied to itself.
 * *Correction to M-3:* recorded at the head of `## Contract`.
+
+**PO-F. After R-1, the whole selftest (2026-09-26).** Before returning to
+REVIEW, the orchestrator ran the whole `bash scripts/selftest.sh` rather than
+the story's suites, which is R-1's lesson. Result: `20 harness suite(s)
+passed`, `assertion floors: all 20 suite(s) met their declared floor (1482
+assertions executed, 1482 declared)`. GREEN on re-entry was a no-op, since
+`gates.sh` was untouched since `eee7ef1`. The RED re-entry dispatch was
+`test-developer` with explicit `model: fable`, which resolved to **fable**.
