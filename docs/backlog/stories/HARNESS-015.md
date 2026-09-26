@@ -4,8 +4,8 @@ title: Mutation work per story is one targeted probe; exhaustive earning moves t
 slug: mutation-work-per-story-is-one-targeted
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: in-progress
+phase: RED
 branch: story/HARNESS-015-mutation-work-per-story-is-one-targeted
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/audit-mutations.md, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/skills/tdd-cycle/SKILL.md, scripts/new-story.sh, scripts/gates.sh, .claude/skills/stack-profiles/reference/*.md, .claude/harness/project.conf, .claude/tests/gates.test.sh, .claude/tests/profiles.test.sh, .claude/tests/new-story.test.sh, .claude/tests/policy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write
@@ -990,6 +990,83 @@ each stays as recorded once the real behaviour exists.
          or Gate probes section describes a failure without showing one
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### R-1. REVIEW → RED, 2026-09-26: CI's `gates` job failed on a line-number pin that GREEN moved
+
+**How it was found.** PR #84's first CI run: `gates` failed in 1m21s, and every
+suite passed except `sigpipe`:
+
+    FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+    sigpipe: 81 passed, 1 failed
+
+Reproduced locally, with the same result:
+
+    scripts/gates.sh:68 no longer holds [BOOTSTRAPPED="$(grep] - it holds: export CLAUDE_PROJECT_DIR="$ROOT"
+    scripts/gates.sh:445 no longer holds [why="could not launch: $(] - it holds:     [ "$is_slow" = 0 ] && printf '     %-12s slow:   %s\n' "" "$slowwhy"
+
+**What is wrong, and what is not.** The assertion is right. It is a freshness
+pin, written to fail loudly when a pinned line moves, and it did. GREEN's
+changes to `gates.sh` (the `ondemand` parsing and reporting) moved the two
+pinned lines, to `:74` and `:485` (`grep -n` at the GREEN commit). What is
+stale is two numbers in `DISCARDED` (`.claude/tests/sigpipe.test.sh:567-568`),
+a frozen test file. So this is a return to RED under `rules.md`'s "a gate
+failure whose only legal fix is a write the current phase forbids".
+
+**Why it was not caught before REVIEW.** The orchestrator ran the suites the
+story names, and never the full `bash scripts/selftest.sh`, which is what CI
+runs. `sigpipe` pins real line numbers in `gates.sh`, so any story that edits
+`gates.sh` is exposed to it. The lesson for the orchestrator: before REVIEW,
+run the full selftest, or at least every suite that reads a changed file.
+
+**What it asserts now.** The same thing, with the pins at `gates.sh:74` and
+`gates.sh:485`.
+
+#### Corrected and earned (RED re-entry)
+
+Re-entry 2026-09-26, Test Developer, source frozen. Verified the destination
+first: `grep -n 'BOOTSTRAPPED="$(grep\|why="could not launch: $(' scripts/gates.sh`
+prints `74:` and `485:` on this tree. The whole change to
+`.claude/tests/sigpipe.test.sh` (`DISCARDED`, lines 567-568):
+
+    -scripts/gates.sh:68:BOOTSTRAPPED="$(grep
+    -scripts/gates.sh:445:why="could not launch: $(
+    +scripts/gates.sh:74:BOOTSTRAPPED="$(grep
+    +scripts/gates.sh:485:why="could not launch: $(
+
+No other pin, assertion text or count changed. The corrected pin passes on
+arrival, so it is earned by the one mutation the budget allows: insert a
+line above `gates.sh:74`, which moves both pinned lines by one. Through
+`mutate.sh`, against the one suite that holds the assertion (trimmed; the
+`sed` line-insert makes the diff display every following line as shifted,
+only the first pair is shown):
+
+    $ bash scripts/mutate.sh scripts/gates.sh '74s/^/# probe\n/' -- bash scripts/selftest.sh sigpipe
+    === mutate: scripts/gates.sh (765 line(s) changed by 74s/^/# probe\n/) ===
+      74 - BOOTSTRAPPED="$(grep -E '^BOOTSTRAPPED=' "$CONF" | head -1 | cut -d= -f2- | tr -d '[:space:]')"
+      74 + # probe
+    === mutate: running bash scripts/selftest.sh sigpipe ===
+      C-5: the twelve status-discarded lines in this tree are excluded by the rule, not by markers
+        FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+             expected: 12 lines, none stale
+             actual:   12 lines,
+               scripts/gates.sh:74 no longer holds [BOOTSTRAPPED="$(grep] - it holds: # probe
+               scripts/gates.sh:485 no longer holds [why="could not launch: $(] - it holds:       outcome=blocked
+    sigpipe: 81 passed, 1 failed
+    FAIL sigpipe  did 81 units of work, below the floor of 82 in .claude/tests/floors.conf
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20260926T152104Z.12379.bak) ===
+
+Exactly the corrected assertion went red, naming both moved pins by their new
+numbers. Unmutated, straight after:
+
+    $ bash scripts/selftest.sh sigpipe
+    sigpipe: 82 passed, 0 failed
+
+Restore confirmed: no `.bak` under `.claude/state/mutations/` (only `log`),
+and `git status --short scripts/gates.sh` prints nothing. **GREEN is a no-op
+on this return**: `scripts/gates.sh` is untouched and the suite passes
+against it as committed at `eee7ef1`. Timings are from a local run (Git Bash,
+Windows 11); CI's `gates` job for this same suite took 1m21s on PR #84.
 
 ## Gate results
 
