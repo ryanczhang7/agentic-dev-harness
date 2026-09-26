@@ -12,6 +12,7 @@ that a JavaScript or Godot front end drives.
     gate | coverage  | required | . | cargo llvm-cov --workspace --fail-under-lines 100
     gate | build     | required | . | cargo build --release --workspace
     gate | mutation  | optional | . | cargo mutants
+    ondemand | mutation | cargo mutants re-runs the suite once per mutant; run it with /audit-mutations, not per story
 
     task | install | - | . | cargo fetch
     task | dev     | - | . | cargo run

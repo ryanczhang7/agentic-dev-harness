@@ -13,6 +13,7 @@ to a browser through a bundler.
     gate | integration | optional | . | pnpm exec playwright test
     gate | build     | required | . | pnpm build
     gate | mutation  | optional | . | pnpm exec stryker run
+    ondemand | mutation | stryker re-runs the suite once per mutant; run it with /audit-mutations, not per story
 
     task | install | - | . | pnpm install --frozen-lockfile
     task | dev     | - | . | pnpm dev
