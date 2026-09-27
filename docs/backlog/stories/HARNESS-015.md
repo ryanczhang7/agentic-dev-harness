@@ -4,8 +4,8 @@ title: Mutation work per story is one targeted probe; exhaustive earning moves t
 slug: mutation-work-per-story-is-one-targeted
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-015-mutation-work-per-story-is-one-targeted
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/audit-mutations.md, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/skills/tdd-cycle/SKILL.md, scripts/new-story.sh, scripts/gates.sh, .claude/skills/stack-profiles/reference/*.md, .claude/harness/project.conf, .claude/tests/gates.test.sh, .claude/tests/profiles.test.sh, .claude/tests/new-story.test.sh, .claude/tests/policy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write
@@ -1203,3 +1203,17 @@ passed`, `assertion floors: all 20 suite(s) met their declared floor (1482
 assertions executed, 1482 declared)`. GREEN on re-entry was a no-op, since
 `gates.sh` was untouched since `eee7ef1`. The RED re-entry dispatch was
 `test-developer` with explicit `model: fable`, which resolved to **fable**.
+
+**PO-G. Merged, and CI read (REVIEW → DONE, 2026-09-27).** PR #84 was merged
+at 2026-09-27T21:59:59Z as `20c39fe`.
+
+* **First CI run, on `811e60c`:** `gates` **failed** in 1m21s on `sigpipe`'s
+  C-5 freshness pin. That is R-1 above.
+* **Run on `3e20af9`:** `gates` passed in 1m34s
+  (https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36253258008)
+  and `boundaries` passed in 6s
+  (https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36253258047).
+
+Neither workflow sets `timeout-minutes`, so both runs are far from a limit.
+No gate went through the *pending CI* path. `epic:` is empty, so under
+Option S there is no `/audit-mutations` recommendation.
