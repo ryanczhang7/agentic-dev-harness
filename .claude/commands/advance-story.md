@@ -129,15 +129,15 @@ question, now expecting green.
 in `## Deferred verifications` that names GATES as its owner, and paste what
 happened into the block: what was mutated, which assertion went red, and that the
 file was restored. Use `scripts/mutate.sh`, which is allowed in every phase and
-verifies its own restore. Do three mutations rather than one where the entry is
-about a format or a codec, and make one of them a wrong **value** rather than a
-missing field: two dropped-field mutations of one codec were each caught only by
-its property test, while the one that flipped a float writer's byte order was
-caught by six tests — and only because the container assertions read the bytes
-through a reader importing nothing from the source tree. A round-trip suite that
-verifies a format through its own reader passes against an encoder that is
-uniformly wrong. If an entry can no longer run, write `WAIVED` and the reason;
-leaving it silent is what `check-boundaries.sh` now refuses.
+verifies its own restore, and run each entry against the one suite that holds
+its assertion, not the full suite. How many entries a story carries is the
+budget in `rules.md`, "Mutation work per story": by default one "defect put
+back" mutation for the story's central claim, plus what the law owes for tests
+written against existing code; a format or codec story may add one wrong
+**value** mutation. Anything beyond that — earning every assertion that passed on
+arrival — is `/audit-mutations`' work, not this phase's. If an entry can no
+longer run, write `WAIVED` and the reason; leaving it silent is what
+`check-boundaries.sh` refuses.
 
 Then run `bash scripts/gates.sh`. It writes
 its own summary into the story's `## Gate results`; never paste or edit one.
@@ -204,7 +204,12 @@ job runs, which makes it fail intermittently rather than every time — the wors
 of the two. Do not reorder these to be helpful.
 
 **REVIEW → DONE.** Only once the PR is merged. Set the phase to DONE, clear the
-lock with `bash scripts/phase.sh clear`, and report what the next story is.
+lock with `bash scripts/phase.sh clear`, and report what the next story is. If
+the closed story's `epic:` is non-empty and no other story in that epic is short
+of DONE, the report also recommends `/audit-mutations <epic>`, scoped to the
+paths the epic's stories touched — the exhaustive mutation work that `rules.md`,
+"Mutation work per story", keeps out of every story. Recommend it; never run it.
+A story with an empty `epic:` gets no recommendation.
 
 Before you call the PR green, **read the timings out of its first CI log** — not
 just the pass/fail. A pass within 10 % of a limit is a pending failure, and a
@@ -294,12 +299,12 @@ Rules for you as orchestrator:
 - **When the claim is "this suite discriminates", the check is a mutation you
   run.** A handoff's mutation table — *changing X fails 9 tests, changing Y
   fails 1* — could not be verified in RED, where the suite did not load, and
-  is easy to write. Against the committed implementation, pick a mutation the
-  table predicts a count for, preferring one whose predicted catch is a
-  **single** assertion (a lone assertion is where a vacuous test hides), run
-  the suite, compare the count, and confirm the suite is green again after the
-  file is back. Two mutations, one run each, is enough; matching counts turn the
-  table from a claim into evidence. Record it in `## Notes`.
+  is easy to write. Against the committed implementation, run **one** mutation
+  from the table: the one whose predicted catch is a **single** assertion (a
+  lone assertion is where a vacuous test hides), against the one suite that
+  holds that assertion. Compare the count, and confirm the suite is green again
+  after the file is back. Record it in `## Notes`. Verifying the rest of the
+  table is `/audit-mutations`' work (`rules.md`, "Mutation work per story").
 
   Use the script, in any phase:
 

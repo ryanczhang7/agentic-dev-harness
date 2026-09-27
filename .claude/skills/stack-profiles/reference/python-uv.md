@@ -11,6 +11,7 @@ Python 3.12+ managed by `uv`. Suits services, CLIs, data and ML work.
     gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=100
     gate | build     | required | . | uv build
     gate | mutation  | optional | . | uv run mutmut run
+    ondemand | mutation | mutmut re-runs the suite once per mutant; run it with /audit-mutations, not per story
 
     task | install | - | . | uv sync --all-extras
     task | dev     | - | . | uv run <entry point>

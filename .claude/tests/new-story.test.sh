@@ -110,4 +110,22 @@ assert_contains "and told what one is" "deliberately broken input" "$(cat "$STOR
 assert_contains "and the story names the gate that would fail if it broke" \
   "REQUIRED gate that would fail" "$(cat "$STORY")"
 
+# ---------------------------------------------------------------------------
+describe "the deferred-verifications comment carries the mutation budget, not a count (HARNESS-015, AC-5)"
+
+# The template used to close its `## Deferred verifications` comment with "Do
+# THREE mutations rather than one", which made every new story carry a per-story
+# count that rules.md never set. The budget now lives in one place - the
+# `# Mutation work per story` section of rules.md - and the template names it,
+# says what the default entry is, and sends exhaustive earning to
+# /audit-mutations. Scoped to the section's own text, so a mention elsewhere in
+# the story cannot satisfy it.
+dv="$(awk '/^## Deferred verifications/ { on = 1; next } on && /^## / { exit } on { print }' "$STORY")"
+assert_contains "names the rules.md section" "Mutation work per story" "$dv"
+assert_contains "says the default is one \"defect put back\" entry for the central claim" "defect put back" "$dv"
+assert_contains "and sends exhaustive earning to /audit-mutations" "/audit-mutations" "$dv"
+# The old rule's tell, as a whole word and case-sensitive: `THREE` was how the
+# template shouted it, and the story must be born without it.
+assert_eq "the word THREE is absent from the generated story" 0 "$(grep -cw THREE "$STORY")"
+
 summary "new-story"

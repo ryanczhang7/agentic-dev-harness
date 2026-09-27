@@ -106,10 +106,13 @@ cat >> "$file" <<'TEMPLATE'
          reason. check-boundaries.sh refuses a PR that has neither
      Schedule it into GATES rather than RED where you can: source is writable
      there, and a story that bounced back to RED mid-cycle gets its corrected
-     assertions earned by the same mutation, for free. Do THREE mutations rather
-     than one, and make one of them a wrong VALUE rather than a missing field: a
-     suite that catches an omission can be blind to a corruption, and a codec
-     that is uniformly wrong round-trips through itself perfectly. -->
+     assertions earned by the same mutation, for free. How many entries is the
+     budget in rules.md, `Mutation work per story`: by default ONE
+     "defect put back" entry for the story's central claim, run against the one
+     suite that holds its assertion. A format or codec story may add one wrong VALUE
+     mutation - a codec that is uniformly wrong round-trips through itself
+     perfectly. Exhaustive earning of assertions that passed on arrival is not
+     an entry here; it goes to `/audit-mutations`. -->
 
 ## Amendments
 

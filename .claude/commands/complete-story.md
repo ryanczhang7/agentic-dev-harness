@@ -46,12 +46,16 @@ approval between phases is exactly when they get quietly reordered:
   is exactly when this gets skipped, and it is the difference between a correct
   escalation and a plausible excuse for not failing.
 - **A mutation table in the handoff is a claim until you run one.** When RED
-  says the suite discriminates, pick a mutation it predicts a count for — the
-  one whose predicted catch is a single assertion, for preference — run it with
-  `bash scripts/mutate.sh <file> '<expression>' -- <test command>`, which
-  restores the file and verifies the restore, then compare the count and confirm
-  green. Unattended is when this gets skipped too, and when a hand-rolled
-  `sed -i` leaves a mutation in the tree.
+  says the suite discriminates, run **one** mutation it predicts a count for —
+  the one whose predicted catch is a single assertion — with
+  `bash scripts/mutate.sh <file> '<expression>' -- <test command>`, against the
+  one suite that holds that assertion. It restores the file and verifies the
+  restore; compare the count and confirm green. Unattended is when this gets
+  skipped too, and when a hand-rolled `sed -i` leaves a mutation in the tree.
+  That one run, the story's deferred verifications and nothing more is the
+  budget (`rules.md`, "Mutation work per story"); the rest of the table, and
+  every assertion that passed on arrival, is `/audit-mutations`' work, which
+  this loop never starts.
 - **A required gate that reports `BLOCKED` (exit 3) is one of the reasons to
   stop and ask.** The environment would not let it start, so it has no verdict;
   do not retry it on a hunch, and do not treat it as a code defect. The path —

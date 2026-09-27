@@ -4,7 +4,7 @@
 #   bash scripts/gates.sh                  run every gate; record the result in the active story
 #   bash scripts/gates.sh --story WORLD-3  ... and record it in that story instead
 #   bash scripts/gates.sh --list           show what is configured
-#   bash scripts/gates.sh --gate unit      run one gate  (not recorded: a partial run is not evidence)
+#   bash scripts/gates.sh --gate unit      run one gate, `ondemand` or not  (not recorded: a partial run is not evidence)
 #   bash scripts/gates.sh --required       required gates only  (not recorded)
 #   bash scripts/gates.sh --fast           every gate not marked `slow`  (not recorded)
 #   bash scripts/gates.sh --audit          check the manifest itself, run nothing
@@ -34,6 +34,12 @@
 # paying for a release bundle on every loop. A gate is fast unless something says
 # otherwise, so the subset is right by default and wrong only where someone said
 # so out loud. A --fast run is never recorded: it is not a full run.
+#
+# `ondemand` lines name the gates NO run executes unless asked: `--gate <id>`,
+# or a story that names the gate in `required_gates`. `slow` alone still let a
+# mutation tool run on every full run - every story's GATES, every PR's CI job.
+# A run that leaves one out prints `ON REQUEST   <id> (not run: <why>; ...)`
+# and counts it in nothing. --audit refuses one on a required gate.
 #
 # A full run writes its own summary into the story's ## Gate results, stamped
 # with the commit and a hash of the code it ran against. Nobody pastes it.
@@ -77,7 +83,7 @@ while [ $# -gt 0 ]; do
     --fast) FAST=1 ;;
     --audit) AUDIT=1 ;;
     --story) shift; STORY="${1:-}" ;;
-    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
     *) printf 'unknown option: %s\n' "$1" >&2; exit 2 ;;
   esac
   shift
@@ -88,10 +94,10 @@ trim() { printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
 TAB=$(printf '\t')
 ESC=$(printf '\033')
 
-# --- evidence, floor, waiver and slow tables --------------------------------
+# --- evidence, floor, waiver, slow and ondemand tables ----------------------
 # Read up front, so that --gate <id> still finds its own lines. Stored as
 # "<id><TAB><value>" lines; no associative arrays, for bash 3.2.
-EVIDENCE=""; WAIVERS=""; FLOORS=""; SLOWS=""; CIFACTORS=""; COVERS=""; BLOCKEDWHEN=""; GATE_IDS=""
+EVIDENCE=""; WAIVERS=""; FLOORS=""; SLOWS=""; ONDEMANDS=""; CIFACTORS=""; COVERS=""; BLOCKEDWHEN=""; GATE_IDS=""
 GATE_REQ=""   # "<id><TAB>required|optional" per gate, after any story escalation
 while IFS= read -r line; do
   line="${line%%$'\r'}"
@@ -105,7 +111,7 @@ while IFS= read -r line; do
   # line", and a misspelt `floor` id fails the audit outright, but a misspelt
   # `slow` id is silent - the gate it meant to exclude simply stays in --fast.
   [ "$kind" = "gate" ] && { GATE_IDS="$GATE_IDS $tid"; continue; }
-  case "$kind" in evidence|waiver|floor|slow|ci-factor|covers|blocked-when) ;; *) continue ;; esac
+  case "$kind" in evidence|waiver|floor|slow|ondemand|ci-factor|covers|blocked-when) ;; *) continue ;; esac
   # -f3- so that a regex containing `|` (alternation) survives the split.
   tval=$(trim "$(printf '%s' "$line" | cut -d'|' -f3-)")
   [ -n "$tid" ] || continue
@@ -117,6 +123,8 @@ while IFS= read -r line; do
     floor)    FLOORS="$FLOORS$tid$TAB$tval
 " ;;
     slow)     SLOWS="$SLOWS$tid$TAB$tval
+" ;;
+    ondemand) ONDEMANDS="$ONDEMANDS$tid$TAB$tval
 " ;;
     ci-factor) CIFACTORS="$CIFACTORS$tid$TAB$tval
 " ;;
@@ -258,11 +266,12 @@ while IFS= read -r line; do
   # An escalation makes the gate required for everything below, and says so
   # wherever the gate is reported, so nobody has to wonder why `integration`
   # blocked this story and not the last one.
-  escalated=""
+  escalated=""; story_asked=0
+  confreq="$req"   # what project.conf says, before any story escalation
   case "$STORY_REQUIRES" in
     *" $id "*)
       [ "$req" = "required" ] || escalated=" (required by story $STORY)"
-      req=required ;;
+      req=required; story_asked=1 ;;
   esac
 
   # Recorded before any filter skips the gate: the changes check below needs
@@ -273,6 +282,35 @@ while IFS= read -r line; do
 
   [ -n "$ONLY" ] && [ "$ONLY" != "$id" ] && continue
   [ "$REQUIRED_ONLY" = 1 ] && [ "$req" != "required" ] && continue
+
+  # An `ondemand` gate runs only when asked for: by name (--gate), or by a
+  # story that escalated it. Decided before --fast's `slow` check, so it is
+  # reported once, as on request, and not again in `skipped:`; and before
+  # configured-ness, so one with no command is ON REQUEST, not UNCONFIGURED.
+  # It is counted in none of ran, unconfigured or known. A line with no reason,
+  # or on a gate project.conf itself requires, is a manifest fault - a required
+  # gate no full run executes is a hole shaped like a gate.
+  ondwhy=$(table_lookup "$ONDEMANDS" "$id"); is_ondemand=$?
+  if [ "$LIST" = 0 ] && [ "$is_ondemand" = 0 ]; then
+    ond_broken=""
+    if [ -z "$ondwhy" ]; then
+      ond_broken="marked on-request with no reason; say why it is not run per story"
+    elif [ "$confreq" = "required" ]; then
+      ond_broken="an on-request gate cannot be required: no full run would ever judge it"
+    fi
+    if [ -n "$ond_broken" ]; then
+      if [ "$AUDIT" = 1 ]; then
+        printf 'FAIL %-12s %s\n' "$id" "$ond_broken"
+      else
+        results="$results\nFAIL         $id ($ond_broken)"
+      fi
+      fails=$((fails+1)); continue
+    fi
+    if [ "$AUDIT" = 0 ] && [ "$ONLY" != "$id" ] && [ "$story_asked" = 0 ]; then
+      results="$results\nON REQUEST   $id (not run: $ondwhy; bash scripts/gates.sh --gate $id)"
+      continue
+    fi
+  fi
 
   # --fast leaves out the gates a `slow` line names. It is a deliberate subset,
   # not a cheaper full run: it is never recorded, and a gate the story escalated
@@ -303,6 +341,7 @@ while IFS= read -r line; do
       [ "$bid" = "$id" ] && printf '%-12s %-9s %-6s blocked-when: %s\n' "" "" "" "$bpat"
     done <<< "$BLOCKEDWHEN"
     [ "$is_slow" = 0 ] && printf '%-12s %-9s %-6s slow:     %s (left out of --fast)\n' "" "" "" "${slowwhy:-no reason given}"
+    [ "$is_ondemand" = 0 ] && printf '%-12s %-9s %-6s on-request: %s (run with --gate %s)\n' "" "" "" "${ondwhy:-no reason given}" "$id"
     [ -n "$escalated" ] && printf '%-12s %-9s %-6s optional for the repo,%s\n' "" "" "" "$escalated"
     continue
   fi
@@ -404,6 +443,7 @@ while IFS= read -r line; do
     [ -n "$floor" ]  && printf '     %-12s floor:  %s\n' "" "$floor"
     [ -n "$cifactor" ] && printf '     %-12s ci-factor: %s\n' "" "$cifactor"
     [ "$is_slow" = 0 ] && printf '     %-12s slow:   %s\n' "" "$slowwhy"
+    [ "$is_ondemand" = 0 ] && printf '     %-12s on-request: %s\n' "" "$ondwhy"
     [ -n "$waiver" ] && printf '     %-12s waiver: %s\n' "" "$waiver"
     continue
   fi
@@ -517,6 +557,15 @@ if [ "$AUDIT" = 1 ]; then
       *) printf 'FAIL %-12s a `slow` line names no configured gate\n' "$sid"; fails=$((fails+1)) ;;
     esac
   done <<< "$SLOWS"
+  # And an `ondemand` line naming no gate is worse than silent: the gate it
+  # meant stays on every full run, which is the cost the line exists to stop.
+  while IFS="$TAB" read -r oid _; do
+    [ -n "$oid" ] || continue
+    case " $GATE_IDS " in
+      *" $oid "*) ;;
+      *) printf 'FAIL %-12s an `ondemand` line names no configured gate\n' "$oid"; fails=$((fails+1)) ;;
+    esac
+  done <<< "$ONDEMANDS"
   # Same for a ci-factor: a measurement filed against a gate that does not
   # exist is a number nobody will ever find when they need it.
   while IFS="$TAB" read -r cid _; do

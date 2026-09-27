@@ -754,5 +754,177 @@ rm -f "$FIX/notes.md" "$FIX/.claude/commands/x.md" "$FIX/.claude/state/T-1.befor
 git -C "$FIX" checkout -q -- . 2>/dev/null
 set_phase "$FIX" ""
 
+# ---------------------------------------------------------------------------
+describe "ondemand: a gate marked on request is left out of a full run and of --fast (HARNESS-015, AC-1)"
+
+# `slow` only keeps a gate out of --fast, so a `mutation` gate marked slow still
+# ran on every full gates.sh run: every story's GATES and every PR's CI job. On
+# HARNESS-014 that class of work was 2h20 of a 7.5h story and found nothing.
+# `ondemand | <id> | <why>` says the gate runs only when somebody asks for it -
+# `--gate <id>`, or a story that names it in `required_gates` - and a run that
+# leaves it out says so on ONE whole line, with the reason and the command.
+#
+# The gate command writes a MARKER. Whether the command ran is then a fact about
+# the filesystem rather than a reading of the summary, and it is asserted on
+# both sides: absent after a full run and after --fast, present after --gate and
+# after a story escalation.
+MARKER="$FIX/.claude/state/mutation-ran"
+ONREQ='ON REQUEST   mutation (not run: per-story cost the user declined; bash scripts/gates.sh --gate mutation)'
+marker_state() { if [ -e "$MARKER" ]; then printf present; else printf absent; fi; }
+
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | build    | required | . | printf 'Bundled 3 targets\n'
+gate     | mutation | optional | . | touch .claude/state/mutation-ran; printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+evidence | build    | Bundled [1-9][0-9]* targets
+evidence | mutation | Killed [0-9]+ of
+slow     | build    | a release bundle, which RED and GREEN have no use for
+ondemand | mutation | per-story cost the user declined
+EOF
+story "$FIX" T-1 GATES </dev/null
+fix_commit "ondemand fixture: a mutation gate on request"
+set_phase "$FIX" GATES
+
+rm -f "$MARKER"
+out="$(gates)"; rc=$?
+assert_eq "a full run does not execute the on-request gate's command" absent "$(marker_state)"
+assert_eq "and reports it once, whole line: ON REQUEST, the reason, and the command that runs it" \
+  1 "$(count_line "$ONREQ" "$out")"
+assert_eq "it is not reported UNCONFIGURED" 0 "$(count_re '^UNCONFIGURED +mutation' "$out")"
+assert_eq "and it is counted in none of ran, unconfigured or known" \
+  1 "$(count_re '^All required gates passed \(2 ran, 0 unconfigured, 0 known\)\.$' "$out")"
+assert_eq "the run exits 0: the on-request gate does not touch the verdict" 0 "$rc"
+assert_eq "and the recorded ## Gate results carries the ON REQUEST line" \
+  1 "$(count_line "    $ONREQ" "$(tr -d '\r' < "$FIX/docs/backlog/stories/T-1.md")")"
+assert_eq "and the stamp still says FULL=yes: the on-request gate is not part of what a full run judges" \
+  1 "$(count_re '^FULL=yes$' "$(tr -d '\r' < "$FIX/.claude/state/last-gate-run")")"
+
+rm -f "$MARKER"
+out="$(gates --fast)"; rc=$?
+assert_eq "--fast does not execute it either" absent "$(marker_state)"
+assert_eq "--fast reports the same ON REQUEST line, once" 1 "$(count_line "$ONREQ" "$out")"
+assert_eq "and --fast's skipped list names the slow gate only: on request is reported once, not twice" \
+  1 "$(count_line '--fast skipped: build' "$out")"
+assert_eq "--fast exits 0" 0 "$rc"
+
+# AC-1 control (i): asked for by name, it runs.
+rm -f "$MARKER"
+out="$(gates --gate mutation)"; rc=$?
+assert_eq "AC-1 control: --gate mutation executes the command" present "$(marker_state)"
+assert_eq "and reports it as PASS, with its observed count" 1 "$(count_re '^PASS +mutation \([0-9]+s, observed 12\)$' "$out")"
+assert_eq "and prints no ON REQUEST line" 0 "$(count_re '^ON REQUEST ' "$out")"
+
+# AC-1 control (ii): a story that escalates the gate asked for it.
+story "$FIX" T-1 GATES <<'EOF'
+required_gates: [mutation]
+EOF
+fix_commit "the story escalates mutation"
+rm -f "$MARKER"
+out="$(gates)"; rc=$?
+assert_eq "AC-1 control: a story with required_gates: [mutation] gets it run on a full run" present "$(marker_state)"
+assert_eq "with the existing escalation suffix in the gate header" \
+  1 "$(count_line '=== gate: mutation (required (required by story T-1)) ===' "$out")"
+assert_eq "and no ON REQUEST line" 0 "$(count_re '^ON REQUEST ' "$out")"
+assert_eq "and the run passes with the gate counted as ran" \
+  1 "$(count_re '^All required gates passed \(3 ran, 0 unconfigured, 0 known\)\.$' "$out")"
+story "$FIX" T-1 GATES </dev/null
+fix_commit "the story no longer escalates mutation"
+
+# C-2: on-request is decided before configured-ness. This repository's own
+# project.conf declares `mutation` with no command, and after this story it is
+# ON REQUEST there rather than UNCONFIGURED.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . |
+evidence | unit     | Tests +[1-9][0-9]* passed
+ondemand | mutation | no tool chosen yet; run it with /audit-mutations
+EOF
+out="$(gates)"; rc=$?
+assert_eq "an on-request gate with no command is ON REQUEST, not UNCONFIGURED" \
+  1 "$(count_line 'ON REQUEST   mutation (not run: no tool chosen yet; run it with /audit-mutations; bash scripts/gates.sh --gate mutation)' "$out")"
+assert_eq "and UNCONFIGURED does not name it" 0 "$(count_re '^UNCONFIGURED +mutation' "$out")"
+assert_eq "and the result counts it in nothing" \
+  1 "$(count_re '^All required gates passed \(1 ran, 0 unconfigured, 0 known\)\.$' "$out")"
+assert_eq "exit 0" 0 "$rc"
+
+# C-4: --list shows the line beside the gate.
+out="$(gates --list)"
+assert_contains "--list shows the on-request row with the reason and the command" \
+  "on-request: no tool chosen yet; run it with /audit-mutations (run with --gate mutation)" "$out"
+
+# ---------------------------------------------------------------------------
+describe "ondemand: an on-request gate cannot be required (HARNESS-015, AC-2)"
+
+# A required gate that no full run ever judges is a hole shaped like a gate.
+# The audit refuses the combination, and refuses the two ways an `ondemand`
+# line can be empty of meaning - naming no gate, or giving no reason - in the
+# words `slow` already uses for the same faults.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | required | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+evidence | mutation | Killed [0-9]+ of
+ondemand | mutation | per-story cost the user declined
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "ondemand on a required gate fails the audit, naming the gate and why" \
+  1 "$(count_re '^FAIL +mutation +an on-request gate cannot be required: no full run would ever judge it$' "$out")"
+assert_eq "and the audit exits 1" 1 "$rc"
+assert_eq "and counts it as a manifest problem" 1 "$(count_re '^1 manifest problem\(s\)\.$' "$out")"
+
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+evidence | mutation | Killed [0-9]+ of
+ondemand | mutatoin | a typo, so the gate it meant runs on every full run
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "ondemand naming no configured gate fails the audit" \
+  1 "$(count_re '^FAIL +mutatoin +an `ondemand` line names no configured gate$' "$out")"
+assert_eq "and exits 1" 1 "$rc"
+
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+evidence | mutation | Killed [0-9]+ of
+ondemand | mutation |
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "ondemand with no reason fails the audit" \
+  1 "$(count_re '^FAIL +mutation +marked on-request with no reason; say why it is not run per story$' "$out")"
+assert_eq "and exits 1" 1 "$rc"
+
+# AC-2 control: the same line on an OPTIONAL gate is what the story asks every
+# stack profile to carry, and the audit passes it.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+evidence | mutation | Killed [0-9]+ of
+ondemand | mutation | per-story cost the user declined
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-2 control: the same line on an optional gate passes the audit" 0 "$rc"
+assert_eq "and the audit says so" 1 "$(count_re '^Manifest audit passed\.$' "$out")"
+assert_eq "and no FAIL names the gate" 0 "$(count_re '^FAIL +mutation' "$out")"
+
+# C-3: "required" means required IN project.conf. A story escalation makes the
+# gate required for that story's runs - and runs it, above - without making the
+# manifest wrong.
+story "$FIX" T-1 GATES <<'EOF'
+required_gates: [mutation]
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "a story escalation does not make the audit fail: the manifest itself is fine" 0 "$rc"
+assert_eq "and no FAIL names the gate" 0 "$(count_re '^FAIL +mutation' "$out")"
+story "$FIX" T-1 GATES </dev/null
+
+rm -f "$MARKER"
+git -C "$FIX" checkout -q -- . 2>/dev/null
+set_phase "$FIX" ""
+
 
 summary "gates"

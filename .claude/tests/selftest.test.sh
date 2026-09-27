@@ -440,15 +440,16 @@ ci-local 28
 classify 42
 doctor 29
 gate-reminder 32
-gates 134
+gates 169
 grep-count 20
 lib 217
 mutate 44
-new-story 25
+new-story 29
 phase 33
 phase-guard 300
 plan 42
-profiles 37
+policy 17
+profiles 50
 refresh 122
 settings 20
 sigpipe 82
@@ -461,8 +462,8 @@ assert_eq "and each records the executed count measured on this tree" "" "$wrong
 # moved lib from 139 to 197 and phase-guard from 188 to 288 - both floors are
 # recorded in RED, so both suites sit BELOW them until the reconciled parser
 # lands. See the note at the foot of floors.conf.
-assert_eq "profiles is floored at its 37 executed assertions, not its 1 call site" \
-  37 "$(floor_of profiles)"
+assert_eq "profiles is floored at its 50 executed assertions, not its call-site count" \
+  50 "$(floor_of profiles)"
 assert_eq "lib is floored at its 217 executed assertions, not its call-site count" \
   217 "$(floor_of lib)"
 

@@ -310,3 +310,32 @@ inspect.
   to be an exact inverse of a single-occurrence match.
 - Agentic scaffolding (`.claude/`, `docs/`, `scripts/`, `.github/`) never ships
   in a production image. Keep `.dockerignore` honest.
+
+# Mutation work per story
+
+The non-negotiables above say when a mutation is *owed*. This says how much a
+story spends by default, because nothing else bounds it: on HARNESS-014 the
+mutation work was 18 mutations, about 27 full-suite runs and 2h20 of a 7.5h
+story, and none of the 18 found a defect. This section is the one place the
+budget is stated; every command, skill and template defers to it.
+
+- **Required per story.** One mutation that earns each test written or
+  corrected against code that already exists, and, for a story that changes a
+  rule over the tree, one probe against a real line of that tree - both the
+  unchanged law above. Plus, for the story's central claim, one "defect put
+  back" mutation: reintroduce the defect the story exists to remove and watch
+  the assertion that pins it go red. A format or codec story may add one more,
+  a wrong *value* rather than a missing field (`tdd-cycle` has the case).
+- **How a mutation runs.** Through `scripts/mutate.sh`, against the one suite -
+  or the narrowest test command - that holds the assertion it targets. Never
+  the full suite per mutation.
+- **Not per story.** Exhaustively earning every assertion that passed on
+  arrival, verifying a handoff's whole mutation table, and the `mutation` gate
+  (which every stack profile marks `ondemand`). Those belong to
+  `/audit-mutations`, which runs on request, and which `/advance-story`
+  recommends - never runs - when a story closes the last open story of its
+  epic.
+
+This is a default the PO writes into `## Deferred verifications` and the
+orchestrator runs, not a cap: `check-boundaries.sh` does not count entries, and
+a story with a real reason for more writes them and says why.

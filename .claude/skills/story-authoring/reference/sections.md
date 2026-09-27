@@ -58,9 +58,11 @@ no phase, and one that reaches REVIEW with neither a result nor a waiver.
 
 Prefer GATES as the owner where you have the choice: source is writable there, so
 the mutation needs no exemption, and a story that bounced back to RED mid-cycle
-earns its corrected assertions from the same experiment. Three mutations beat one
-for anything format-shaped, and one of them should corrupt a **value** rather than
-drop a field.
+earns its corrected assertions from the same experiment. How many entries is the
+budget in `rules.md`, "Mutation work per story": by default one "defect put back"
+entry for the central claim, run against the one suite holding its assertion. A
+format-shaped story may add one that corrupts a **value** rather than dropping a
+field. Exhaustive earning goes to `/audit-mutations`, not into the story.
 
 ## Amendments - Lead PO, with the user
 
