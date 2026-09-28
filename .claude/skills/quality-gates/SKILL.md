@@ -52,6 +52,12 @@ then correct in a new project, and wrong only where someone said so out loud.
 Never mark a gate slow to stop it failing - that is what a waiver is for, and
 waivers are refused on required gates for the same reason.
 
+`slow` keeps a gate out of `--fast` and nothing else: it still runs on every
+full run. A gate that should not run per story at all takes an `ondemand` line
+instead, reason required, and runs only with `--gate <id>` or when a story
+escalates it; `--audit` refuses one on a required gate. The `mutation` gate
+below carries both.
+
 A `--fast` run is never recorded in a story. It is not a full run, and only a
 full run is evidence.
 
@@ -151,7 +157,15 @@ sends the story back to RED instead.
 | `coverage` | required | Is anything shipped unexercised? |
 | `integration` | optional | Do the seams hold against real dependencies? |
 | `build` | required | Does a production artefact come out? |
-| `mutation` | optional | Would the tests notice if the code were wrong? |
+| `mutation` | optional, on request | Would the tests notice if the code were wrong? |
+
+The `mutation` gate is on request in every stack profile: an `ondemand` line in
+`project.conf` keeps it out of a full run and out of `--fast`, and the summary
+says so on one line - `ON REQUEST   mutation (not run: <why>; bash
+scripts/gates.sh --gate mutation)`. Run it with `bash scripts/gates.sh --gate
+mutation` or `/audit-mutations`; a story that needs it names it in
+`required_gates`. How much mutation work a story owes by default, and why the
+rest waits for an audit, is `rules.md`'s `# Mutation work per story`.
 
 A gate marked required with no command configured is a warning before the
 bootstrap story lands (`BOOTSTRAPPED=no`) and a hard failure after it. That is
