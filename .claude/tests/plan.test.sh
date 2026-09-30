@@ -1300,4 +1300,261 @@ assert_eq "AC-4: a blocked story that also declares nothing is listed once, as B
 assert_eq "AC-4: with waves, blocked and unplaceable together, it exits 0" \
   "0|1" "$(waves_rc)|$(wline '2 wave(s), 1 blocked, 1 unplaceable.')"
 
+# ---------------------------------------------------------------------------
+describe "conflicts --pairs: the clear pairs, for an orchestrator to read (HARNESS-009)"
+
+# WHY. lead-po selects which stories may run in two worktrees at once, and the
+# rule it is given is: only a pair `conflicts` reports `clear`. The table is for
+# a human - padded columns, a header, a rule, DRIFT lines, a footer and an
+# "UNKNOWN is not clear" note - and an orchestrator that parses columns out of
+# it is one reformat away from selecting the wrong pair. `--pairs` is the same
+# judgement in a shape with nothing to misparse: `<id>\t<id>` per clear pair,
+# nothing else on stdout, exit 0.
+#
+# THE CENTRAL CLAIM IS AN OMISSION, so every omission below is discriminated
+# against a SIBLING THAT IS PRINTED from the same run: the CONFLICT pair, the
+# UNKNOWN story and the blocked story all sit in one backlog beside clear pairs,
+# and the blocked story declares a path that collides with nothing, so were it
+# wrongly let in it would produce clear-looking lines. An output that is merely
+# empty fails the exact-equality assertions; one that lets a pair in fails the
+# whole-line counts.
+#
+# NEEDLES. Exact equality against the whole of stdout, or whole-line counts
+# (`grep -cxF`) and whole-field equality in awk - never a floating substring.
+# `A<TAB>B` floats inside `A<TAB>BC`, and `H-1` inside `H-10`; the second
+# fixture is built out of ids that prefix one another for exactly that reason.
+#
+# stdout and stderr are captured SEPARATELY here, unlike `plan()`: the Contract
+# says `--pairs` is read from stdout only, so a helper that folded stderr in
+# would let a usage message pass as output, or output hide in a usage message.
+
+PAIRS_ERR="$FIX/.pairs.stderr"
+# pairs_run <args...>   Sets p_out (stdout), p_err (stderr), p_rc (status).
+pairs_run() {
+  p_out="$( cd "$FIX" && bash scripts/plan.sh conflicts "$@" 2>"$PAIRS_ERR" )"; p_rc=$?
+  p_err="$(cat "$PAIRS_ERR")"
+}
+# table_clear_pairs   The table's `clear` rows over the same backlog, rendered
+# as `<id>\t<id>` in the table's own order - read from the STATUS column, never
+# from a floating `clear`, which the footer's "UNKNOWN is not clear" also holds.
+# Captured first, then read: no pipe into the reader (WORLD-086's house rule).
+table_clear_pairs() {
+  local t; t="$( cd "$FIX" && bash scripts/plan.sh conflicts 2>/dev/null )"
+  awk '$1 == "clear" && $3 == "+" { printf "%s\t%s\n", $2, $4 }' <<<"$t"
+}
+# pline <a> <b>   How many stdout lines are EXACTLY `<a>\t<b>`.
+pline() { grep -cxF "$1	$2" <<<"$p_out"; }
+# naming <id>   How many stdout lines carry <id> as either whole field.
+naming() { awk -F'\t' -v id="$1" '$1 == id || $2 == id { n++ } END { print n + 0 }' <<<"$p_out"; }
+
+# --- AC-1: one backlog holding every kind of pair ---------------------------
+#
+#   A  touches src/a.ts             (and a **Writes:** line touches: misses,
+#                                    so the table prints a DRIFT line)
+#   B  touches src/b.ts
+#   C  touches src/a.ts             -> A + C is CONFLICT
+#   D  declares nothing             -> every D pair is UNKNOWN
+#   E  touches src/e.ts, depends on F (RED) -> blocked, never a candidate;
+#                                    its path is disjoint, so letting it in
+#                                    would produce clear-looking lines
+#   F  touches src/f.ts, phase RED
+#
+# Clear, in story_walk order: A+B, A+F, B+C, B+F, C+F. Single-letter ids so the
+# glob order the walk uses cannot depend on the locale's collation.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+CONTRACT:**Writes:** `src/a.ts`, `src/a-extra.ts`
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/b.ts
+EOF
+story_with C feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with D feature PLANNED 1 </dev/null
+story_with E feature PLANNED 1 <<'EOF'
+TOUCHES:src/e.ts
+DEPENDS:F
+EOF
+story_with F feature RED 1 <<'EOF'
+TOUCHES:src/f.ts
+EOF
+
+pairs_run --pairs
+assert_eq "AC-1: --pairs prints exactly the clear pairs, one <id><TAB><id> line each, in the table's order, and nothing else" \
+  "A	B
+A	F
+B	C
+B	F
+C	F" "$p_out"
+assert_eq "AC-1: --pairs exits 0 though the backlog holds a CONFLICT and an UNKNOWN pair" "0" "$p_rc"
+assert_eq "AC-1: --pairs writes nothing to stderr on an ordinary run" "" "$p_err"
+
+# The negative controls, each a whole-line or whole-field count so that a
+# neighbouring line cannot satisfy it. The sibling assertion comes first: an
+# empty stdout would satisfy every "absent" below.
+assert_eq "AC-1 control: the clear sibling A<TAB>B is printed exactly once" "1" "$(pline A B)"
+assert_eq "AC-1 control: the CONFLICT pair A + C is never printed, either way round" "0|0" \
+  "$(pline A C)|$(pline C A)"
+assert_eq "AC-1 control: the UNKNOWN story D appears on no line - unknown is not permission" "0" "$(naming D)"
+assert_eq "AC-1 control: the blocked story E appears on no line, though its path collides with nothing" "0" "$(naming E)"
+
+# Shape, stated independently of the exact equality above so a failure names
+# which property broke: every line two non-empty fields and one TAB, nothing
+# trailing; five distinct pairs; no pair twice in either orientation.
+assert_eq "AC-1: every line is <id><TAB><id> - one TAB, no space, no trailing whitespace" "0" \
+  "$(awk '!/^[^\t ]+\t[^\t ]+$/ { n++ } END { print n + 0 }' <<<"$p_out")"
+assert_eq "AC-1: each pair is printed once, in one orientation only" "5|5" \
+  "$(awk -F'\t' '{ k = ($1 < $2) ? $1 "\t" $2 : $2 "\t" $1; if (!(k in s)) { s[k] = 1; n++ } } END { print n + 0 }' <<<"$p_out")|$(awk 'END { print NR }' <<<"$p_out")"
+assert_eq "AC-1: no header, rule, DRIFT, footer or UNKNOWN note reaches stdout" "0" \
+  "$(awk '/STATUS|-----|DRIFT|conflict\(s\)|UNKNOWN|not clear|fewer than/ { n++ } END { print n + 0 }' <<<"$p_out")"
+
+# ONE COMPUTATION, TWO RENDERINGS. The lines are the table's clear rows over the
+# same backlog, compared whole and in order. This is what keeps --pairs from
+# being a second judgement that one day disagrees with the first.
+assert_eq "AC-1: --pairs is exactly the table's clear rows over the same backlog, in the same order" \
+  "$(table_clear_pairs)" "$p_out"
+
+# AC-5, the half a suite can hold: the table over this same backlog is byte for
+# byte what it printed before --pairs existed, and still exits 1 on a CONFLICT.
+# GREEN ON ARRIVAL - a regression guard, earned in RED by a mutate.sh probe on
+# the table's `clear` detail text (the story's handoff has the output).
+out="$( cd "$FIX" && bash scripts/plan.sh conflicts 2>/dev/null )"; t_rc=$?
+# `sp` is the one trailing space shared_paths leaves on a CONFLICT detail,
+# written as a variable because an editor that strips trailing whitespace would
+# otherwise change this expectation silently.
+sp=" "
+assert_eq "AC-5: conflicts with no argument prints the same table as before --pairs existed" \
+  "STATUS    PAIR                      DETAIL
+--------- ------------------------- ------------------------
+clear     A + B                     no shared path
+CONFLICT  A + C                     src/a.ts${sp}
+UNKNOWN   A + D                     declares neither touches: nor Contract paths - cannot judge
+clear     A + F                     no shared path
+clear     B + C                     no shared path
+UNKNOWN   B + D                     declares neither touches: nor Contract paths - cannot judge
+clear     B + F                     no shared path
+UNKNOWN   C + D                     declares neither touches: nor Contract paths - cannot judge
+clear     C + F                     no shared path
+UNKNOWN   D + F                     declares neither touches: nor Contract paths - cannot judge
+
+DRIFT     A             contract names src/a-extra.ts, touches: does not
+
+1 conflict(s), 4 pair(s) that could not be judged, 1 drift warning(s).
+UNKNOWN is not clear: a story that declares neither touches: nor Contract
+paths gives no basis to judge. Judge those pairs by hand, or fill touches:." "$out"
+assert_eq "AC-5: and still exits 1 when there is a CONFLICT" "1" "$t_rc"
+
+# --- AC-1: ids that are prefixes of one another -----------------------------
+#
+#   H-1    declares nothing        -> UNKNOWN with everything
+#   H-10   touches src/a.ts
+#   H-11   touches src/b.ts
+#   H-110  touches src/a.ts        -> H-10 + H-110 is CONFLICT
+#   H-2    touches src/z.ts, depends on H-10 (PLANNED) -> blocked
+#
+# Clear: H-10+H-11 and H-11+H-110, and nothing else. An implementation that
+# drops the UNKNOWN story's pairs by substring (`*H-1*`) drops both, and one
+# that drops the CONFLICT pair by substring drops H-11+H-110 with it. Glob order
+# over these names differs between the C and en_US collations, so the ORDER is
+# checked against the table and the SET against a C-sorted literal.
+fresh
+story_with H-1 feature PLANNED 1 </dev/null
+story_with H-10 feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with H-11 feature PLANNED 1 <<'EOF'
+TOUCHES:src/b.ts
+EOF
+story_with H-110 feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with H-2 feature PLANNED 1 <<'EOF'
+TOUCHES:src/z.ts
+DEPENDS:H-10
+EOF
+
+pairs_run --pairs
+p_set="$(awk -F'\t' '{ print (($1 < $2) ? $1 "\t" $2 : $2 "\t" $1) }' <<<"$p_out")"
+assert_eq "AC-1: with ids that prefix one another, the set of lines is exactly the two clear pairs" \
+  "H-10	H-11
+H-11	H-110" "$(LC_ALL=C sort <<<"$p_set")"
+assert_eq "AC-1: and in the table's order, matching it line for line" "$(table_clear_pairs)" "$p_out"
+assert_eq "AC-1 control: the UNKNOWN story H-1 is on no line, while H-10, H-11 and H-110 are" \
+  "0|1|2|1" "$(naming H-1)|$(naming H-10)|$(naming H-11)|$(naming H-110)"
+assert_eq "AC-1 control: the CONFLICT pair H-10 + H-110 is never printed, either way round" "0|0" \
+  "$(pline H-10 H-110)|$(pline H-110 H-10)"
+assert_eq "AC-1 control: the blocked story H-2 is on no line" "0" "$(naming H-2)"
+assert_eq "AC-1: with prefix ids, --pairs exits 0" "0" "$p_rc"
+
+# --- AC-1: nothing may pair -------------------------------------------------
+#
+# Only a CONFLICT and UNKNOWNs: the table exits 1, --pairs prints nothing and
+# exits 0 - "nothing may pair" is an answer, and `pairs=$(plan.sh conflicts
+# --pairs)` under `set -e` must not die on it.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with C feature PLANNED 1 </dev/null
+pairs_run --pairs
+assert_eq "AC-1: a backlog with no clear pair gives empty stdout and exit 0 (the table's CONFLICT status does not leak)" \
+  "|0" "$p_out|$p_rc"
+assert_eq "AC-5: while the table over the same backlog still exits 1" "1" "$(conflicts_rc)"
+assert_eq "AC-1: a set -e caller survives the empty answer" "survived" \
+  "$( cd "$FIX" && bash -ec 'p="$(bash scripts/plan.sh conflicts --pairs 2>/dev/null)"; printf survived' )"
+
+# --- AC-1: fewer than two startable stories ---------------------------------
+#
+# The table prints a sentence here; --pairs prints nothing. Three shapes: an
+# empty backlog, one story, and two stories one of which is blocked - the last
+# is the one where "two stories exist" and "two are startable" differ.
+fresh
+pairs_run --pairs
+assert_eq "AC-1: an empty backlog gives empty stdout and exit 0" "|0" "$p_out|$p_rc"
+
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+pairs_run --pairs
+assert_eq "AC-1: one startable story gives empty stdout and exit 0, not the fewer-than-two sentence" \
+  "|0" "$p_out|$p_rc"
+
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/b.ts
+DEPENDS:A
+EOF
+pairs_run --pairs
+assert_eq "AC-1: two stories, one blocked, is fewer than two startable: empty stdout and exit 0" \
+  "|0" "$p_out|$p_rc"
+
+# --- AC-1: an unrecognised argument refuses ---------------------------------
+#
+# A typo must not fall back to the human table, which an orchestrator would
+# then misparse. Over a backlog WITH a clear pair, so "prints no table" is not
+# satisfied by there being nothing to print. `conflicts` bare is unchanged, and
+# the AC-5 assertions above hold it.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/b.ts
+EOF
+for bad in --pair --json pairs; do
+  pairs_run "$bad"
+  assert_eq "AC-1: conflicts $bad exits non-zero and prints nothing on stdout" \
+    "nonzero|" "$(if [ "$p_rc" -ne 0 ]; then printf nonzero; else printf zero; fi)|$p_out"
+  assert_eq "AC-1: conflicts $bad puts a usage message on stderr" "1" \
+    "$(awk 'tolower($0) ~ /usage/ { n = 1 } END { print n + 0 }' <<<"$p_err")"
+done
+pairs_run --pairs
+assert_eq "AC-1 control: the same backlog's --pairs prints its one clear pair, so the refusals above are not an empty backlog" \
+  "A	B|0" "$p_out|$p_rc"
+
 summary "plan"
