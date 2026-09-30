@@ -4,8 +4,8 @@ title: A story declares the files it touches, so the harness can say which may r
 slug: a-story-declares-the-files-it-touches-so
 epic: 
 type: chore
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-006-a-story-declares-the-files-it-touches-so
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, scripts/new-story.sh, .claude/tests/plan.test.sh, .claude/tests/new-story.test.sh, .claude/tests/boundaries.test.sh, .claude/skills/story-authoring/SKILL.md, CLAUDE.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -196,7 +196,22 @@ So REVIEW reads it and records, here, that the section exists and answers two
 questions a Lead PO will actually have: what granularity to declare (file, or
 directory glob) and what to do when a story genuinely cannot know yet.
 
-**Result:** <!-- filled at REVIEW -->
+**Result (REVIEW, 2026-09-30, read by the orchestrator):** the section exists -
+`.claude/skills/story-authoring/SKILL.md`, "## Declare the files a story
+touches", directly after `## Sizing`'s `depends_on` paragraph. It states the rule
+("a decomposition whose footprints partition is one that can be worked in
+parallel") and answers both questions:
+- *granularity* - files the story WRITES, not reads; a glob only for a real
+  family of siblings, because paths are compared as literal text and the other
+  story must spell the glob the same way for the collision to show; a directory
+  glob as a hedge says nothing;
+- *cannot know yet* - leave `touches: []`, which reads as declared-nothing and
+  so UNKNOWN, never clear; a story whose files cannot be named at planning time
+  is usually a spike; fill it in PLANNED once the Contract exists, where DRIFT
+  then reconciles the two.
+It also says `touches:` is intent, unchecked against the diff. `CLAUDE.md`'s
+"Two stories at once" section, which said `conflicts` did not read `touches:` at
+all, was rewritten to match.
 
 **AC-4's drift case against the REAL backlog. Owner: GATES.**
 
@@ -222,7 +237,51 @@ is DRIFT lines for those, and the question GATES answers is whether that noise
 is tolerable for a warning or means the Contract extractor needs its own story.
 Record which.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-30):** run on the committed GREEN tree, this story's
+`touches:` filled in:
+
+    $ bash scripts/plan.sh conflicts; echo "exit=$?"
+    UNKNOWN   HARNESS-001 + HARNESS-002 declares neither touches: nor Contract paths - cannot judge
+    ... 20 UNKNOWN rows in all: every pair involving 001-005, which predate the field
+    CONFLICT  HARNESS-006 + HARNESS-009 .claude/tests/plan.test.sh scripts/plan.sh
+
+    DRIFT     HARNESS-006   contract names .claude/hooks/lib.sh, touches: does not
+    DRIFT     HARNESS-006   contract names .claude/skills/stack-profiles/reference/, touches: does not
+    DRIFT     HARNESS-006   contract names AC-1..AC, touches: does not
+    DRIFT     HARNESS-006   contract names check-boundaries.sh, touches: does not
+    DRIFT     HARNESS-006   contract names gates.sh, touches: does not
+    DRIFT     HARNESS-006   contract names new-story.sh, touches: does not
+    DRIFT     HARNESS-006   contract names plan.sh, touches: does not
+    DRIFT     HARNESS-006   contract names project.conf, touches: does not
+    DRIFT     HARNESS-006   contract names scripts/selftest.sh, touches: does not
+    DRIFT     HARNESS-009   contract names check-boundaries.sh, touches: does not
+    DRIFT     HARNESS-009   contract names gates.sh, touches: does not
+    DRIFT     HARNESS-009   contract names lead-po.md, touches: does not
+    DRIFT     HARNESS-009   contract names phase-guard.sh, touches: does not
+    DRIFT     HARNESS-009   contract names phase.sh, touches: does not
+    DRIFT     HARNESS-009   contract names plan.sh, touches: does not
+
+    1 conflict(s), 20 pair(s) that could not be judged, 15 drift warning(s).
+    exit=1
+
+- **Judged, as expected.** HARNESS-006 is judged against HARNESS-009 on its
+  declared paths rather than UNKNOWN, and the verdict is a REAL conflict: both
+  stories write `scripts/plan.sh` and its suite. Before this story that pair was
+  UNKNOWN.
+- **Drift: 15 lines, 0 real.** Every one is a path the Contract prose MENTIONS
+  and does not write (a reader, an example, a bare basename of a declared file),
+  or not a path at all (`AC-1..AC`, a directory prefix). The prediction revised
+  at PLANNED held.
+- **Verdict: the noise is NOT tolerable as a signal, and the cause is the
+  extractor, not the drift rule.** `contract_paths` answers "what does the prose
+  mention", which was good enough for `conflicts` (a false CONFLICT is loud and
+  gets read) and is not good enough for drift, where 15 of 15 false warnings
+  teach the reader to skip the section. Fixing it means changing what
+  `contract_paths` reads - which this Contract forbids, because
+  `contract_unenforced` and the RED model policy share it. So it is a follow-up
+  story, recommended in the PR, not a change made here. Drift stays a warning
+  (it never changes the exit status), so shipping it costs noise, not a false
+  refusal.
 
 **AC-5's control earns its assertion. Owner: GATES.**
 
@@ -233,7 +292,20 @@ so it has never been watched to fail. GATES earns it with ONE mutation through
 (`for key in id title type status phase`), run
 `bash scripts/selftest.sh boundaries`, and paste the red naming that assertion.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-30):**
+
+    $ bash scripts/mutate.sh scripts/check-boundaries.sh 's/for key in id title type status phase; do/for key in id title type status phase touches; do/' -- bash scripts/selftest.sh boundaries
+    === mutate: scripts/check-boundaries.sh (1 line(s) changed by ...) ===
+        FAIL a story with no touches: key is not refused for lacking one
+             expected NOT to contain: touches
+             actual:                   FAIL  docs/backlog/stories/T-1.md: frontmatter missing 'touches'
+    boundaries: 75 passed, 5 failed
+    mutate log: scripts/check-boundaries.sh ... exited 1  restored (verified)
+
+The control's own assertion went red on exactly the defect it names. The other
+four reds are pre-existing cases whose fixture stories also lack the key, which
+is the backlog-unmergeable consequence AC-5's control exists to prevent. File
+restored; `git diff --quiet scripts/` clean afterwards.
 
 **The central claim, defect put back. Owner: GATES.**
 
@@ -242,7 +314,29 @@ Revert `cmd_conflicts`' source of paths to `contract_paths` alone, through
 ("a story with `touches:` and an empty Contract is judged, not UNKNOWN") must go
 red. Paste it.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-30):** the pair's source of paths put back to
+`contract_paths` (drift left in place, so this isolates the central claim):
+
+    $ bash scripts/mutate.sh scripts/plan.sh 's/pa="$(story_paths /pa="$(contract_paths /;s/pb="$(story_paths /pb="$(contract_paths /' -- bash scripts/selftest.sh plan
+        FAIL a story with touches: is judged on those paths, not on its Contract
+        FAIL and changing only touches: changes the verdict
+        FAIL touches: [] falls through to the Contract, like an absent key
+        FAIL two stories whose touches: intersect are a CONFLICT
+        FAIL and the shared path is named on the row
+        FAIL and the command exits non-zero
+        FAIL two stories whose touches: are disjoint are clear
+        FAIL touches: with an empty Contract is judged, not UNKNOWN
+        FAIL and the summary counts no unjudged pair
+        FAIL and the pair is still judged on touches:
+        FAIL and the summary line counts it
+        FAIL drift and a conflict are counted separately
+        FAIL and the conflict still decides the exit status
+    plan: 62 passed, 13 failed
+    === mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+AC-3's assertion is red. 13 rather than RED's M-6 prediction of 19, because M-6
+also removed drift; the six drift-only assertions correctly stay green when only
+the pair source is reverted.
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -273,6 +367,11 @@ name, below the table.
 | SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation, with no failing test in front of any of it |
 
 **Resolved:**
+
+- PLANNED, `lead-po` (orchestrator, no dispatch): `claude-opus-5-5`, as planned.
+- RED, `test-developer`: explicit `model: fable` → **fable** (`claude-fable-5-1`, self-reported), as planned. 33 plan + 2 new-story + 1 boundaries assertions; flagged the backtick trap in `new-story.sh`'s unquoted frontmatter heredoc and the early-return trap in `cmd_conflicts`, both of which GREEN hit exactly as described. Its one single-assertion mutation prediction checked (M-4) was right: predicted 1, measured 1.
+- GREEN, `feature-developer`: explicit `model: opus` → **opus** (`claude-opus-5-5`, self-reported), as planned. Tests unchanged (`git diff --stat HEAD -- .claude/tests` empty after GREEN); every control value RED recorded confirmed.
+- GATES: no dispatch. The orchestrator ran the three GATES-owned deferred verifications and the full selftest on `claude-opus-5-5`.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -768,10 +867,21 @@ as the PLANNED revision predicted. The other 20 pairs are UNKNOWN. Exit 1.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-30T03:09:00Z
+    commit: d4cd164 (working tree had uncommitted changes)
+    tree:   fa7ddf26436d9cbfca79b104aba02f866e69f5fa
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
