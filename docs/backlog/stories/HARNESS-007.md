@@ -4,8 +4,8 @@ title: The planner cuts stories into waves that can be worked together
 slug: the-planner-cuts-stories-into-waves-that
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-007-the-planner-cuts-stories-into-waves-that
 depends_on: [HARNESS-006]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/plan-product.md, .claude/skills/story-authoring/SKILL.md, scripts/plan.sh, .claude/tests/plan.test.sh, .claude/harness/VERSION]  # files this story expects to write
@@ -718,3 +718,11 @@ last-member mutant is `s/for m in \${waves\[\$w\]}; do$/for m in ${waves[$w]##* 
 Tried on a scratch COPY only (not through `mutate.sh`, and not on the tree):
 the AC-2 mutual fixture gave `WAVE 1   A  B  C`, and the AC-2 literal fixture
 was unchanged. GATES still owns the real run.
+
+**DONE, 2026-09-30.** Merged in #89 (merge commit c068309), release 58. PR CI:
+the `gates` job passed in 1m43s. Its harness self-test step took 86s, against
+`timeout-minutes: 45`; it was 72s on #88, and the new `plan` block accounts
+for the difference
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36756350738).
+`boundaries` passed in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36756350705).
