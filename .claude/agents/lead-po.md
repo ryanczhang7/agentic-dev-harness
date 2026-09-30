@@ -195,13 +195,18 @@ put first the PR that has the smaller effect on the other branch. Say plainly
 that the second PR's gates ran against a tree without the first. Never say or
 imply that the two were verified together, because no gate here has seen them
 together. **The position this harness takes: the second PR waits for the
-first to merge.** After the user merges the first, rebase the second branch
-onto the updated `main` in its worktree. Run `bash scripts/gates.sh` there, push,
-and only then report the second PR ready. That rebased tree is the tree `main`
-will have after the second merge, so this one gate run is the joint
-verification, and it costs one run per extra PR. Nothing forces the run: the
-stamp is checked at the PR head, so an un-rebased second PR stays green. If the
-rebase conflicts, or the gates fail, the pair was jointly wrong even though its
+first to merge.** After the user merges the first, merge the updated `main`
+into the second branch in its worktree - a merge, not a rebase, because the
+branch is already published and a rebase would need a force-push. Run
+`bash scripts/gates.sh` there, commit its record with the story still at
+REVIEW, push, and only then report the second PR ready. That merged tree is the
+tree `main` will have after the second merge, so this one gate run is the joint
+verification, and it costs one run per extra PR. Nothing forces it until you
+merge: the stamp is checked at the PR head, so a second PR left behind `main`
+stays green. Once `main` brings the first PR's code in, the old stamp no
+longer matches the tree and `check-boundaries.sh` refuses it, so the re-run is
+not optional. If the merge
+conflicts, or the gates fail, the pair was jointly wrong even though its
 declarations were clear. Treat that as a gate failure in the second story, and
 say that is what it was. The user merges both PRs. You never merge.
 

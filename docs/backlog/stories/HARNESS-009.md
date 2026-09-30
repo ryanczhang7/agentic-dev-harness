@@ -4,8 +4,8 @@ title: lead-po dispatches into more than one worktree
 slug: lead-po-dispatches-into-more-than-one-wo
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-009-lead-po-dispatches-into-more-than-one-wo
 depends_on: [HARNESS-008]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/agents/lead-po.md, scripts/plan.sh, .claude/tests/plan.test.sh]  # files this story expects to write
@@ -194,7 +194,36 @@ REVIEW reads it and records here that it answers three questions without
 needing this story to be re-read: how a pair is chosen, what happens to the
 others when one goes red, and what the report says about merge order.
 
-**Result:** <!-- filled at REVIEW -->
+**Result (REVIEW, 2026-09-30, `lead-po`):** read `## More than one worktree` in
+`.claude/agents/lead-po.md` cold, against the criteria. It answers all three
+questions without this story, and also covers AC-2 and AC-5:
+
+- *How a pair is chosen (AC-1):* candidates are what `plan.sh next` does not
+  call `blocked`; pairs are the lines of `plan.sh conflicts --pairs` and
+  nothing else; "UNKNOWN is not permission"; for 3+ worktrees every pair in the
+  set, stories already in flight included, must be a line; empty output means
+  one at a time. Never parse the table.
+- *Dispatch (AC-2):* the worktree is on the story's `branch:`; `phase.sh show`
+  run in it first; a different `STORY_ID` is refused by name. States that
+  `phase.sh set` overwrites and the branch guard is only a backstop - which
+  matches what PLANNED measured.
+- *One goes red (AC-3):* the failing story takes its usual route; every other
+  finishes its current phase, stops at the boundary, and gets a `## Notes` line
+  naming who failed which gate where; the report lists every story's worktree,
+  stopped phase and reason; resume only once the cause is understood.
+- *Merge order (AC-4):* stated with its reason; says plainly the second PR's
+  gates ran without the first; forbids implying joint verification; the user
+  merges.
+- *Single worktree (AC-5):* "nothing in this section applies"; `lead-po` never
+  creates a worktree on its own initiative.
+
+One REVIEW change to the prose: GREEN's text had the second branch **rebased**
+onto `main`, which on a published branch means a force-push. Changed to merging
+`main` into the branch - the same tree, no history rewrite - and added the
+consequence measured in `check-boundaries.sh:366`: the stamp is recomputed at
+`PR_HEAD_SHA`, so once `main` brings the first PR's code into the branch the
+old record stops matching and CI refuses it until `gates.sh` runs again. No
+test touches this prose; `plan.test.sh` is unaffected.
 
 **AC-1's selection rule against the REAL backlog. Owner: GATES.**
 
@@ -316,7 +345,22 @@ proceed, serialise the second PR's gates behind the first merge, or something
 else - and why. A story that ships parallel dispatch without recording a
 position here has shipped the problem silently.
 
-**Result:** <!-- filled at REVIEW -->
+**Result (REVIEW, 2026-09-30, decision):** **serialise the second PR's gates
+behind the first merge.** After the user merges the first PR, `lead-po` merges
+the updated `main` into the second branch, re-runs `gates.sh` in that worktree,
+commits the record at REVIEW, pushes, and only then calls the second PR ready.
+A merge conflict or a gate failure there is a gate failure of the second story.
+
+Why this over "report and proceed": the merged tree is exactly `main` after the
+second merge, so one extra gate run per extra PR is a real joint check, where
+reporting alone would leave a joint failure to be found on `main`. Nothing in
+the harness forced that run before - the stamp is checked at the PR head
+(`check-boundaries.sh:366`, `PR_HEAD_SHA`), so a second PR left behind `main`
+stays green. Once `main` is merged in, the old stamp no longer matches, so the
+re-run is enforced by CI rather than by prose alone. Why merge rather than
+rebase: the branch is published, and rebasing it needs a force-push. What this
+does **not** give: a gate that runs two unmerged branches together - still out
+of scope, as `## Out of scope` says.
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -352,6 +396,7 @@ name, below the table.
 - RED, `test-developer`: dispatched with `model: opus`; resolved `opus` per the agent file, no override (its own report). As planned.
 - GREEN, `feature-developer`: dispatched with `model: opus`; resolved `opus` per the agent file, no override (its own report). As planned.
 - GATES, `lead-po` (this session): `claude-opus-5-5` (opus), as planned. No subagent dispatched: both GATES verifications ran green-to-red-to-green without a fix.
+- REVIEW, `lead-po` (this session): `claude-opus-5-5` (opus), as planned.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -618,8 +663,8 @@ the reader). `bash scripts/gates.sh --fast` - 0 ran, 5 unconfigured
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-09-30T21:13:55Z
-    commit: 56395f1 (working tree had uncommitted changes)
+    run:    2026-09-30T21:55:31Z
+    commit: 1e911a4 (working tree had uncommitted changes)
     tree:   a78951fb519df8de165a0f29a0e705df52189ad3
     result: pass (0 ran, 7 unconfigured, 0 known)
 
