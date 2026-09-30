@@ -28,6 +28,25 @@ regions" is a split that produces two stories neither of which can be
 demonstrated. "Regions persist across reload" and "Regions render with distinct
 colours" is a split that produces two demonstrable behaviours.
 
+**A second axis: the footprint.** One RED to GREEN cycle is how big a story may
+be. What it writes is the other half of whether it has been cut well, because
+that decides what can run beside it:
+
+- **A story that cannot state its footprint is not ready to be cut.** If you
+  cannot list the files it will write, you do not yet know what it does. Cut a
+  spike to find out, or cut further until the files can be named. `touches: []`
+  is the honest record of that state, not a finished story (see below).
+- **Two stories that must share a file are one story or two waves.** Not two
+  stories chained with `depends_on` because they would collide. Prefer two waves
+  when each is its own behaviour: merging them breaks the first axis, and the
+  collision only costs time. `plan.sh waves` puts them in different waves
+  without a false dependency. Prefer one story when the two would edit the same
+  part of that file, such as the same function or the same table. Then they are
+  not two behaviours, and in parallel they would conflict on every line. Merge
+  only if the result still fits one cycle. Before either, check whether the
+  file can be owned by one story, with the other building on what that one
+  merged.
+
 The rule above is framed around RED→GREEN. The bootstrap story runs under
 SCAFFOLD instead, where nothing forces a test to exist, so over-sizing it is
 both easier and more expensive: keep it to the toolchain and the gates, and
@@ -36,7 +55,11 @@ put every project-specific piece in a story of its own afterwards. See
 
 Order matters as well as size. `depends_on` in the frontmatter is enforced:
 `phase.sh set` refuses to start a story while a dependency is not DONE. Use it
-whenever a spike decides something a later story builds on.
+whenever a spike decides something a later story builds on, and only for that:
+true ordering, where B needs what A decided. "These two would touch the same
+file" is a collision, `touches:` expresses it, and `plan.sh waves` acts on it.
+A `depends_on` used for collision makes the backlog look more sequential than
+it is, and hides which chains are real.
 
 ## Declare the files a story touches
 
@@ -48,7 +71,9 @@ neither writes a file the other writes. `depends_on` answers the first half;
 
 `bash scripts/plan.sh conflicts` intersects these lists pairwise and reports
 each pair of startable stories as `CONFLICT` (naming the shared path), `clear`,
-or `UNKNOWN`. **A decomposition whose footprints partition is one that can be
+or `UNKNOWN`. `bash scripts/plan.sh waves` groups the same answer into waves.
+Within a wave, every pair is clear. Stories blocked by `depends_on` and stories
+that declare nothing are listed separately and are placed in no wave. **A decomposition whose footprints partition is one that can be
 worked in parallel**; one whose stories all touch the same file is a queue,
 however it is drawn. Fill `touches:` when you cut the story, because that is
 when the planner can still act on the answer — a `## Contract` is written later,
@@ -65,9 +90,10 @@ every pair it touches.
 
 **When the story cannot know yet**, leave it `touches: []` — which is how
 `new-story.sh` writes it, and which is read as *declared nothing*, exactly like
-an absent key: the pair is `UNKNOWN`, never `clear`. That is honest, and it is a
-signal as well: a story whose files cannot be named at planning time is usually
-a spike, or not yet understood well enough to cut. Fill the list in PLANNED once
+an absent key: the pair is `UNKNOWN`, never `clear`, and `waves` places the
+story in no wave. That is honest, and it is a signal as well: a story whose
+files cannot be named at planning time is usually a spike, or not yet
+understood well enough to cut (Sizing, the second axis). Fill the list in PLANNED once
 the Contract exists. The Contract says what it writes on a column-0 line,
 ``**Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh` ``, and where
 that line names a path `touches:` does not cover, `conflicts` prints a `DRIFT`
