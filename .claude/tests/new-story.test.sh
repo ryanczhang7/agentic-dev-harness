@@ -128,4 +128,30 @@ assert_contains "and sends exhaustive earning to /audit-mutations" "/audit-mutat
 # template shouted it, and the story must be born without it.
 assert_eq "the word THREE is absent from the generated story" 0 "$(grep -cw THREE "$STORY")"
 
+# ---------------------------------------------------------------------------
+describe "a new story declares the files it touches (HARNESS-006, AC-5)"
+
+# `plan.sh conflicts` reads `touches:` from frontmatter to say which stories
+# can run together, and it can only read what the template asked for. The key
+# is born EMPTY - `[]`, which cmd_conflicts treats exactly like an absent key -
+# with a comment saying what it is for, because the template is the only
+# documentation most story authors read. The whole line is pinned, anchored:
+# a comment that drifted into saying something else would still satisfy a
+# floating "touches:" needle.
+assert_eq "the frontmatter carries touches: [] with a comment naming plan.sh conflicts" 1 \
+  "$(grep -cx 'touches: \[\] *# files this story expects to write; `plan.sh conflicts` reads it' "$STORY")"
+
+# Between depends_on and required_gates, inside the frontmatter: the three
+# machine-read lists together, before the closing `---`. A `touches:` line that
+# landed in the body would be prose, and frontmatter_list would never see it.
+order="$(awk '
+  NR == 1 && /^---/ { next }
+  /^---/ { exit }
+  /^depends_on:/     { printf "depends_on " }
+  /^touches:/        { printf "touches " }
+  /^required_gates:/ { printf "required_gates " }
+' "$STORY")"
+assert_eq "and it sits between depends_on and required_gates" \
+  "depends_on touches required_gates " "$order"
+
 summary "new-story"
