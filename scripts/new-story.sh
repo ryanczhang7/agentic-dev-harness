@@ -29,6 +29,12 @@ status: todo
 phase: PLANNED
 branch: story/$id-$slug
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
+EOF
+# The rest of the frontmatter interpolates nothing, and the touches: comment
+# names a command in backticks - so it goes in a QUOTED heredoc, for the
+# reason above.
+cat >> "$file" <<'EOF'
+touches: []         # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 EOF

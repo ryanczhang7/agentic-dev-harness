@@ -38,6 +38,43 @@ Order matters as well as size. `depends_on` in the frontmatter is enforced:
 `phase.sh set` refuses to start a story while a dependency is not DONE. Use it
 whenever a spike decides something a later story builds on.
 
+## Declare the files a story touches
+
+Two stories can be worked at the same time only if neither is blocked and
+neither writes a file the other writes. `depends_on` answers the first half;
+`touches:` answers the second:
+
+    touches: [scripts/plan.sh, .claude/tests/plan.test.sh]
+
+`bash scripts/plan.sh conflicts` intersects these lists pairwise and reports
+each pair of startable stories as `CONFLICT` (naming the shared path), `clear`,
+or `UNKNOWN`. **A decomposition whose footprints partition is one that can be
+worked in parallel**; one whose stories all touch the same file is a queue,
+however it is drawn. Fill `touches:` when you cut the story, because that is
+when the planner can still act on the answer — a `## Contract` is written later,
+at the end of PLANNED, and by then the backlog has been cut.
+
+**Granularity: files, and a glob only for a real family.** List the repo-
+relative files the story expects to WRITE — not the ones it reads. Paths are
+compared as literal text, so `scripts/plan.sh` and `scripts/*.sh` do not
+collide with each other; a glob is worth it only for a set of sibling files the
+story genuinely edits as one (`.claude/skills/stack-profiles/reference/*.md`),
+and the other story must use the same spelling for the collision to show. A
+directory glob as a hedge ("somewhere under `src/`") says nothing and costs
+every pair it touches.
+
+**When the story cannot know yet**, leave it `touches: []` — which is how
+`new-story.sh` writes it, and which is read as *declared nothing*, exactly like
+an absent key: the pair is `UNKNOWN`, never `clear`. That is honest, and it is a
+signal as well: a story whose files cannot be named at planning time is usually
+a spike, or not yet understood well enough to cut. Fill the list in PLANNED once
+the Contract exists; where the Contract then names a path `touches:` does not
+cover, `conflicts` prints a `DRIFT` warning so the two can be reconciled rather
+than one silently winning.
+
+`touches:` is a declaration of intent. Nothing yet checks it against the diff
+the story actually produced.
+
 ## When the evidence lives in an optional gate
 
 Before leaving PLANNED, read the acceptance criteria against the gate list. If

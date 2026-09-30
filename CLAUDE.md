@@ -94,18 +94,24 @@ bash scripts/plan.sh conflicts
 ```
 
 It compares the file paths two stories declare and reports `CONFLICT`, `clear`
-or `UNKNOWN`. **It reads the paths in each story's `## Contract` section** — not
-the `touches:` frontmatter, which it does not read at all.
+or `UNKNOWN`. **It reads each story's `touches:` frontmatter first**, and falls
+back to the paths its `## Contract` mentions only when `touches:` is absent or
+`[]`. `touches:` is written when the story is cut, so it is the one declaration
+that exists before anyone has started — fill it (`story-authoring` says how).
 
-**`UNKNOWN` is not `clear`, and it is the answer you will usually get.** A
-`## Contract` is written at the end of PLANNED, so every story that has not
-started yet declares nothing and every pair involving one is unjudgeable. That
-is the ordinary state of a fresh backlog, not a fault. When you see it:
+**`UNKNOWN` is not `clear`.** A story with neither a filled `touches:` nor a
+written `## Contract` declares nothing, and every pair involving it is
+unjudgeable — the stories that predate the field, for a start. When you see it:
 
-- write the `## Contract` for both stories first — it is work the story needs
-  anyway, and it is the only thing that makes the answer mechanical; or
+- fill `touches:` for both stories — one line of frontmatter, and the thing
+  that makes the answer mechanical; or
 - judge the pair by hand, and treat two stories that touch the same script as a
   conflict until you have read both.
+
+A story that declares both gets a `DRIFT` line for each Contract path its
+`touches:` does not cover. It is a warning, never a refusal, and today it is
+noisy: the Contract reader counts every path the prose *mentions*, not only the
+ones the story writes, so read a DRIFT line before acting on it.
 
 Never read `UNKNOWN` as permission. The command exits non-zero only on a real
 `CONFLICT`, precisely so that the ordinary unjudgeable case does not train you

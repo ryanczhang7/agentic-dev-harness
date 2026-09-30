@@ -26,17 +26,27 @@ plan() { ( cd "$FIX" && bash scripts/plan.sh "$@" 2>&1 ); }
 
 # story_with <id> <type> <phase> <ac-count> ; section bodies on stdin as
 # `SECTION:body` lines, so a case says only what it is about.
+#
+# `TOUCHES:` is the HARNESS-006 frontmatter declaration, and its three states
+# are the ones the Contract distinguishes: no line means no `touches:` key at
+# all; `TOUCHES:` with nothing after it writes `touches: []`, the line
+# new-story.sh emits into every fresh story; `TOUCHES:a, b` writes
+# `touches: [a, b]`. The middle one exists so a test can say "empty list" and
+# "absent key" as two different fixtures, because PO decision 1 says they must
+# be judged the same and only two fixtures can show that.
 story_with() {
-  local id="$1" type="$2" phase="$3" acs="$4" extra contract="" deferred="" deps=""
+  local id="$1" type="$2" phase="$3" acs="$4" extra contract="" deferred="" deps="" touches="" has_touches=0
   extra="$(cat)"
   case "$extra" in *CONTRACT:*) contract="$(printf '%s\n' "$extra" | sed -n 's/^CONTRACT://p')" ;; esac
   case "$extra" in *DEFERRED:*) deferred="$(printf '%s\n' "$extra" | sed -n 's/^DEFERRED://p')" ;; esac
   case "$extra" in *DEPENDS:*)  deps="$(printf '%s\n' "$extra" | sed -n 's/^DEPENDS://p')" ;; esac
+  case "$extra" in *TOUCHES:*)  has_touches=1; touches="$(printf '%s\n' "$extra" | sed -n 's/^TOUCHES://p')" ;; esac
   mkdir -p "$FIX/docs/backlog/stories"
   {
     printf -- '---\nid: %s\ntitle: Fixture story\nslug: fixture\ntype: %s\nstatus: todo\nphase: %s\nbranch: story/%s-fixture\n' \
       "$id" "$type" "$phase" "$id"
     [ -n "$deps" ] && printf -- 'depends_on: [%s]\n' "$deps"
+    [ "$has_touches" = 1 ] && printf -- 'touches: [%s]\n' "$touches"
     printf -- '---\n\n## Acceptance criteria\n\n'
     local i=1
     while [ "$i" -le "$acs" ]; do printf -- '- **AC-%s** - it works.\n' "$i"; i=$((i+1)); done
@@ -374,4 +384,296 @@ case "$out" in
   *CONFLICT*) _bad "a blocked story is not a conflict candidate" "reported anyway: $out" ;;
   *) _ok "a blocked story is not a conflict candidate" ;;
 esac
+
+# ---------------------------------------------------------------------------
+describe "conflicts: a story declares the files it touches in frontmatter (HARNESS-006)"
+
+# WHY THE DECLARATION MOVES. The block above reads `## Contract`, and a Contract
+# is written at the end of PLANNED - after the backlog has been cut. So at the
+# moment the planner decides which stories can run together, every pair is
+# UNKNOWN: ten of ten on this repository's own backlog at release 45. The check
+# was honest and useless. `touches:` is the same fact stated when the story is
+# AUTHORED, read by frontmatter_list - the reader depends_on already uses - and
+# cmd_conflicts takes a story's paths from it first, falling back to the
+# Contract only when it is absent or empty.
+#
+# EVERY ROW ASSERTION BELOW READS THE STATUS COLUMN of the named pair, never a
+# floating substring: `clear` also appears in the footer sentence that exists
+# to say UNKNOWN is NOT clear, and `DRIFT` could one day appear in prose.
+
+# row_status <a> <b>   The first column of the pair's row, or nothing.
+row_status() { awk -v a="$1" -v b="$2" '$2 == a && $3 == "+" && $4 == b { print $1; exit }' <<<"$out"; }
+# drift_for <id>   Every DRIFT line for the story - first column exactly DRIFT,
+# second the id - so a test can say "names this path" and "names no other".
+drift_for()  { awk -v id="$1" '$1 == "DRIFT" && $2 == id { print }' <<<"$out"; }
+# conflicts_rc   The exit status of the command, which is a claim of its own.
+conflicts_rc() { ( cd "$FIX" && bash scripts/plan.sh conflicts >/dev/null 2>&1 ); printf '%s' "$?"; }
+fresh() { rm -rf "$FIX/docs/backlog/stories"; mkdir -p "$FIX/docs/backlog/stories"; }
+
+# --- AC-1: touches: is what the story is judged on --------------------------
+#
+# A's Contract names the very file B touches; A's `touches:` does not. Judged
+# on `touches:`, the pair is clear. Judged on the Contract - today's code - or
+# on the UNION of the two, it is a CONFLICT on src/ui/panel.tsx. The row can
+# only read `clear` if the frontmatter took precedence.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+CONTRACT:`src/ui/panel.tsx` gains a slot.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/ui/panel.tsx
+EOF
+out="$(plan conflicts)"
+assert_eq "a story with touches: is judged on those paths, not on its Contract" \
+  "clear" "$(row_status A B)"
+
+# The reverse: the same two stories with the Contract left alone and A's
+# `touches:` moved onto B's file. Only the frontmatter changed, and the verdict
+# flips. Without this the assertion above is also satisfied by "ignore both".
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/ui/panel.tsx
+CONTRACT:`src/core/world.ts` gains a slot.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/ui/panel.tsx
+EOF
+out="$(plan conflicts)"
+assert_eq "and changing only touches: changes the verdict" \
+  "CONFLICT" "$(row_status A B)"
+
+# THE CONTROL, PO decision 1. `touches: []` is what new-story.sh writes into
+# every fresh story, so its meaning decides what a whole new backlog reports.
+# It declares NOTHING: the story falls through to its Contract exactly as if
+# the key were absent. Two fixtures, because two wrong readings exist and each
+# passes one of them:
+#   * "empty means touches no file" -> clear against everything. Refused by the
+#     first case, where A's Contract collides with B and the row must say so.
+#   * "empty means stop, declare nothing, do not consult the Contract" ->
+#     UNKNOWN in the first case. Also refused by it.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:
+CONTRACT:`src/core/world.ts` gains a slot.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan conflicts)"
+assert_eq "touches: [] falls through to the Contract, like an absent key" \
+  "CONFLICT" "$(row_status A B)"
+
+# And with no Contract to fall through to, it is UNKNOWN - never clear. This
+# is the second reading's other half: `[]` as "touches no file" would make
+# every story new-story.sh creates read clear against everything.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan conflicts)"
+assert_eq "touches: [] with no Contract is UNKNOWN, not clear" \
+  "UNKNOWN" "$(row_status A B)"
+
+# --- AC-2: intersecting sets are CONFLICT, disjoint sets are clear -----------
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts, src/ui/panel.tsx
+EOF
+story_with B feature RED 1 <<'EOF'
+TOUCHES:docs/wiki/design.md, src/ui/panel.tsx
+EOF
+out="$(plan conflicts)"
+assert_eq "two stories whose touches: intersect are a CONFLICT" \
+  "CONFLICT" "$(row_status A B)"
+assert_contains "and the shared path is named on the row" "src/ui/panel.tsx" \
+  "$(awk '$2 == "A" && $3 == "+" && $4 == "B" { print; exit }' <<<"$out")"
+# Not the unshared ones: a row naming every path either side declares would
+# also contain the needle above, and would send the reader to the wrong file.
+assert_not_contains "and only the shared path" "src/core/world.ts" \
+  "$(awk '$2 == "A" && $3 == "+" && $4 == "B" { print; exit }' <<<"$out")"
+assert_eq "and the command exits non-zero" "1" "$(conflicts_rc)"
+
+# The control: same shape, no overlap.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts, src/core/climate.ts
+EOF
+story_with B feature RED 1 <<'EOF'
+TOUCHES:src/ui/panel.tsx, docs/wiki/design.md
+EOF
+out="$(plan conflicts)"
+assert_eq "two stories whose touches: are disjoint are clear" \
+  "clear" "$(row_status A B)"
+assert_eq "and the command exits 0" "0" "$(conflicts_rc)"
+
+# --- AC-3: touches: plus an EMPTY Contract is judged, not UNKNOWN ------------
+#
+# The whole point. Both stories here are what a freshly planned backlog looks
+# like - a filled `touches:`, a Contract nobody has written - and the pair is
+# judged. Today's code reports UNKNOWN for it.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/new-story.sh
+EOF
+out="$(plan conflicts)"
+assert_eq "touches: with an empty Contract is judged, not UNKNOWN" \
+  "clear" "$(row_status A B)"
+assert_contains "and the summary counts no unjudged pair" \
+  "0 pair(s) that could not be judged" "$out"
+# No Contract means nothing to drift from: drift is judged only when BOTH
+# sources are present.
+assert_eq "and an empty Contract raises no drift warning" "" "$(drift_for A)$(drift_for B)"
+
+# THE CONTROL. A story with neither `touches:` nor Contract paths still cannot
+# be judged, and UNKNOWN is still never spelled `clear`. Absent key, not `[]`:
+# the `[]` twin of this case is under AC-1.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+story_with B feature PLANNED 1 </dev/null
+out="$(plan conflicts)"
+assert_eq "a story with neither touches: nor Contract paths is still UNKNOWN" \
+  "UNKNOWN" "$(row_status A B)"
+# The row's detail used to say "no Contract paths declared yet", which after
+# this story is only half the diagnosis and would send a planner to write a
+# Contract when one line of frontmatter is the cheaper fix.
+assert_contains "and the row says which declaration is missing" "touches" \
+  "$(awk '$2 == "A" && $3 == "+" && $4 == "B" { print; exit }' <<<"$out")"
+assert_eq "and a Contract-less story with touches: on the other side raises no drift" \
+  "" "$(drift_for A)$(drift_for B)"
+
+# --- AC-4: a Contract path absent from touches: is a drift warning -----------
+#
+# The Contract is the sharper document, written later by someone who has read
+# the code. When it names a file the declaration did not, one of the two is
+# wrong, and neither should silently overrule the other: the pair is still
+# judged on `touches:` (AC-1), and the disagreement is printed.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+CONTRACT:`scripts/plan.sh` gains story_touches; `scripts/new-story.sh` emits the key.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan conflicts)"
+assert_eq "a Contract path absent from touches: is one DRIFT line for that story" \
+  "1" "$(drift_for A | grep -c .)"
+assert_contains "naming the path" "scripts/new-story.sh" "$(drift_for A)"
+assert_not_contains "and not the path both documents agree on" "scripts/plan.sh" "$(drift_for A)"
+assert_eq "a story whose Contract is empty has nothing to drift from" "" "$(drift_for B)"
+# The exact line the Contract specifies, anchored: first column DRIFT, second
+# the id, then the path in the wording the reader will grep for.
+assert_eq "in the documented wording" "1" \
+  "$(grep -c '^DRIFT[[:space:]]\{1,\}A[[:space:]]\{1,\}contract names scripts/new-story.sh, touches: does not$' <<<"$out")"
+# It is a WARNING. The exit status is about conflicts, and there is none here.
+assert_eq "and drift alone does not change the exit status" "0" "$(conflicts_rc)"
+assert_eq "and the pair is still judged on touches:" "clear" "$(row_status A B)"
+assert_eq "and the summary line counts it" "1" \
+  "$(grep -cx '0 conflict(s), 0 pair(s) that could not be judged, 1 drift warning(s).' <<<"$out")"
+
+# A GLOB IN touches: COVERS THE FILES IT MATCHES. A story declaring a directory
+# glob and a Contract naming one file under it has not drifted; the two
+# documents agree at different granularities.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/ui/*.tsx
+CONTRACT:`src/ui/panel.tsx` exports Panel().
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan conflicts)"
+assert_eq "a Contract path matched by a touches: glob is not drift" "" "$(drift_for A)"
+
+# The control for the glob rule: a glob that does NOT match the Contract's path
+# still drifts. Without this, "globs never drift" satisfies the case above.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/*.ts
+CONTRACT:`src/ui/panel.tsx` exports Panel().
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan conflicts)"
+assert_contains "but a glob that does not match the path is drift" \
+  "src/ui/panel.tsx" "$(drift_for A)"
+
+# DRIFT IS PER STORY, NOT PER PAIR. A backlog with one startable story has no
+# pair to judge and still has a declaration that can disagree with its
+# Contract - this story's own situation at PLANNED, where it was the only
+# startable story in its backlog.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+CONTRACT:`scripts/plan.sh` gains story_touches; `scripts/new-story.sh` emits the key.
+EOF
+out="$(plan conflicts)"
+assert_contains "drift is reported even with fewer than two startable stories" \
+  "scripts/new-story.sh" "$(drift_for A)"
+assert_eq "and still exits 0" "0" "$(conflicts_rc)"
+
+# Drift beside a real conflict: the warning is counted and the conflict still
+# decides the exit status. Both numbers on one summary line, so a count that
+# overwrote the other would show.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+CONTRACT:`scripts/plan.sh` gains story_touches; `scripts/new-story.sh` emits the key.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+EOF
+out="$(plan conflicts)"
+assert_eq "drift and a conflict are counted separately" "1" \
+  "$(grep -cx '1 conflict(s), 0 pair(s) that could not be judged, 1 drift warning(s).' <<<"$out")"
+assert_eq "and the conflict still decides the exit status" "1" "$(conflicts_rc)"
+
+# DRIFT NEEDS BOTH DOCUMENTS. A story with a Contract and no `touches:` has
+# nothing for the Contract to drift FROM; printing its whole path list as
+# drift would be noise on every story that predates the field. The other
+# conjunct - a Contract-less story does not drift - is pinned under AC-3.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:`scripts/plan.sh` gains story_touches; `scripts/new-story.sh` emits the key.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan conflicts)"
+assert_eq "a story with a Contract and no touches: key is not drift" "" "$(drift_for A)"
+
+# A blocked story is not startable, so it is not drift-checked either: the
+# report is about what could run now. Same rule the pair table applies.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+DEPENDS:A
+TOUCHES:src/ui/panel.tsx
+CONTRACT:`src/ui/other.tsx` also changes.
+EOF
+out="$(plan conflicts)"
+assert_eq "a blocked story is not drift-checked" "" "$(drift_for B)"
+
+# THE MODEL POLICY DOES NOT MOVE. cmd_models reads the Contract alone to decide
+# the RED row - a story with a lock-policed `touches:` and an empty Contract is
+# still a story with no brief, and RED stays on the stronger model.
+fresh
+story_with A feature PLANNED 2 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan models A)"
+assert_contains "touches: does not stand in for the Contract in the model plan" \
+  "RED	test-developer	opus" "$out"
 summary "plan"

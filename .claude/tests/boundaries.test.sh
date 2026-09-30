@@ -1354,4 +1354,30 @@ run_boundaries
 assert_contains "an inventory naming every file is accepted" \
   "ok    every changed source file is named in ## Scaffold inventory" "$out"
 
+# ---------------------------------------------------------------------------
+describe "a story that predates touches: is still accepted (HARNESS-006, AC-5 control)"
+
+# HARNESS-006 added `touches:` to the story template and to what
+# `plan.sh conflicts` reads. It is a NEW field: every story already in a
+# backlog lacks it, and a required-key check that grew a sixth key would make
+# the whole backlog unmergeable in one release. So a story with no `touches:`
+# key raises nothing about it. story_on_branch writes exactly such a story.
+#
+# PASSES ON ARRIVAL: nothing refuses the key's absence today, so this assertion
+# has never been watched to fail. It is earned in GATES, per the story's
+# `## Deferred verifications`, by adding `touches` to check-boundaries.sh's
+# required-key loop (`for key in id title type status phase`) through
+# scripts/mutate.sh and watching THIS assertion go red - the refusal that
+# mutation prints is `frontmatter missing 'touches'`, which the needle below
+# matches. The needle is the bare word so that any other spelling of a refusal
+# about the key is caught too; the check's output names no other "touches".
+story_on_branch <<'EOF'
+## Notes
+
+Written before the field existed.
+EOF
+run_boundaries
+assert_not_contains "a story with no touches: key is not refused for lacking one" \
+  "touches" "$out"
+
 summary "boundaries"
