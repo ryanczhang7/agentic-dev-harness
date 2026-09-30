@@ -4,8 +4,8 @@ title: lead-po dispatches into more than one worktree
 slug: lead-po-dispatches-into-more-than-one-wo
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-009-lead-po-dispatches-into-more-than-one-wo
 depends_on: [HARNESS-008]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/agents/lead-po.md, scripts/plan.sh, .claude/tests/plan.test.sh]  # files this story expects to write
@@ -791,3 +791,15 @@ selftest on `ubuntu-latest` (31 s measured, `gates.yml`), so the local figure
 is process-spawn cost, not a timeout risk - REVIEW reads the real CI timing.
 `gates.sh`: `pass (0 ran, 7 unconfigured, 0 known)`, as for every harness
 story while `BOOTSTRAPPED=no`.
+
+**DONE, 2026-09-30.** Merged in #90 (merge commit f76e233), release 59 - the
+VERSION bump lands in this DONE commit, as HARNESS-016's did, because the PR
+changed `lead-po.md` and `plan.sh` without one. PR CI: the `gates` job passed
+in 1m41s. Its harness self-test step took 89s, against no `timeout-minutes`
+(GitHub's 6h default); it was 86s on #89
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36782581224).
+`boundaries` passed in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36782581538).
+No epic, so no `/audit-mutations` recommendation. Loose end noted in GREEN:
+the comment at `.claude/tests/grep-count.test.sh:141` citing `plan.sh` line
+108 was already stale before this story (the first `<<<` is at line 185).
