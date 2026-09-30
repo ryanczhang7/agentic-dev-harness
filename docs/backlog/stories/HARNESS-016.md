@@ -4,8 +4,8 @@ title: Drift reads the paths a Contract writes, not every path it mentions
 slug: drift-reads-the-paths-a-contract-writes
 epic: 
 type: chore
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-016-drift-reads-the-paths-a-contract-writes
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, CLAUDE.md]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -272,6 +272,22 @@ MUST fail: the read-only mention reappears on a DRIFT line. RED cannot run it:
 there is no `contract_writes` to revert from. Run through `scripts/mutate.sh`
 against `.claude/tests/plan.test.sh` only. Owner: GATES
 
+*Result (GATES, 2026-09-30).* The first run, with only `story_drift` switched back to `contract_paths`, did NOT turn AC-1 red, because a Contract with a `**Writes:**` line makes `contract_paths` return that line, so this mutant is equivalent whenever one exists. It failed a different assertion: `FAIL a Contract with no **Writes:** line produces no DRIFT line, whatever its prose names` (94/1). This entry was wrongly designed, not the suite. The defect actually put back is "drift reads the prose", both lines:
+
+    bash scripts/mutate.sh scripts/plan.sh 's/c="\$(contract_writes "\$1")"; \[ -n "\$c" \] || return 0/c="$(contract_paths "$1")"; [ -n "$c" ] || return 0/; s/if \[ -n "\$w" \]; then printf/if false; then printf/' -- bash .claude/tests/plan.test.sh
+        FAIL files a Contract only reads or cites are not drift when touches: covers every file it writes
+        FAIL and the summary counts no drift warning
+        FAIL a written file missing from touches: is exactly one DRIFT line, naming that file
+        FAIL and the summary counts exactly one
+        FAIL a Contract with no **Writes:** line produces no DRIFT line, whatever its prose names
+        FAIL with no touches:, a pair is judged on the **Writes:** lines, not on files merely read
+        FAIL a **Writes:** line naming only harness paths puts RED on the stronger model
+        FAIL a source file the prose only reads does not make a harness-only **Writes:** enforced
+    plan: 87 passed, 8 failed
+    === mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+AC-1's no-DRIFT assertion went red. The file was restored and verified by `mutate.sh`.
+
 **DV-2 — a probe against the real backlog (the rule judges it).** On the real
 `docs/backlog/stories/`, `plan.sh conflicts` prints 0 DRIFT lines (today: 9).
 Then, with `scripts/mutate.sh`, append to HARNESS-007's Contract a
@@ -279,11 +295,28 @@ Then, with `scripts/mutate.sh`, append to HARNESS-007's Contract a
 run must print exactly one DRIFT line naming `scripts/phase.sh`, file restored.
 RED cannot run it: the reader it probes does not exist yet. Owner: GATES
 
+*Result (GATES, 2026-09-30).* Real backlog, unmutated: `7 conflict(s), 0 pair(s) that could not be judged, 0 drift warning(s).` (9 before this story). Probe:
+
+    bash scripts/mutate.sh docs/backlog/stories/HARNESS-007.md 's/^\*\*Test-only dependencies:\*\* none\.$/&\n\n**Writes:** `scripts\/plan.sh`, `.claude\/tests\/plan.test.sh`, `scripts\/phase.sh`/' -- bash scripts/plan.sh conflicts
+    DRIFT     HARNESS-007   contract names scripts/phase.sh, touches: does not
+    7 conflict(s), 0 pair(s) that could not be judged, 1 drift warning(s).
+    === mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+Exit 1 comes from the 7 real CONFLICTs. `git diff --quiet` on HARNESS-007.md came back clean afterwards.
+
 **DV-3 — AC-3 against the real backlog.** `plan.sh models <id> | grep '^RED'`
 for every story at the start commit, with the pre-change `scripts/plan.sh`
 (from `git show c37b02a:scripts/plan.sh`) and the post-change one, diffed.
 Expected: the table in the Contract's baseline, zero moved model columns.
 RED cannot run it: there is no post-change `plan.sh`. Owner: GATES
+
+*Result (GATES, 2026-09-30).* Pre-change `plan.sh` from `git show c37b02a:scripts/plan.sh`, against the post-change one, over every story on this branch:
+
+    HARNESS-001..005  opus  -> opus   same
+    HARNESS-006..015  fable -> fable  same
+    HARNESS-016       fable -> opus   MOVED (Amendment A-1)
+
+Zero moves among 001..015, as the Contract predicted.
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
      the phase that wants it; omit the section otherwise. Written by the Lead PO
@@ -311,6 +344,7 @@ RED cannot run it: there is no post-change `plan.sh`. Owner: GATES
      mutation - a codec that is uniformly wrong round-trips through itself
      perfectly. Exhaustive earning of assertions that passed on arrival is not
      an entry here; it goes to `/audit-mutations`. -->
+
 
 ## Amendments
 
@@ -643,6 +677,24 @@ running the suite against the scratch candidate (outside the real
 | AC-3(c): source path on `**Writes:**` | `fable` | `fable` | `fable` |
 | new-story: example escapes the comment | N3 FAILs with `commented 1` | n/a | FAILed with `commented 1` (template mutant with an uncommented `**Writes:** \`src/example.ts\``) |
 
+**GREEN confirmation (2026-09-30, feature-developer, shipped `scripts/plan.sh`
+and `scripts/new-story.sh`, this machine).** Each control re-measured outside
+the assertion, by building the same fixture with the suite's own
+`make_project_fixture` and `story_with` and reading `plan.sh`'s output:
+
+| Control | Expected (RED) | Measured on shipped code | Match |
+|---|---|---|---|
+| AC-1: one written file dropped from `touches:` | the `.claude/tests/plan.test.sh` DRIFT line, `1 drift warning(s)` | `DRIFT     A             contract names .claude/tests/plan.test.sh, touches: does not` and `0 conflict(s), 0 pair(s) that could not be judged, 1 drift warning(s).` | yes |
+| AC-2 drift: omitted written path beside junk | the `scripts/new-story.sh` DRIFT line only | exactly that one line, `1 drift warning(s)` | yes |
+| AC-2 conflict: shared real path beside junk | `CONFLICT 5 src/core/world.ts` | `CONFLICT 5 src/core/world.ts` | yes |
+| AC-4: two `**Writes:**` on the same file | `CONFLICT 5 src/core/world.ts` | `CONFLICT 5 src/core/world.ts` | yes |
+| AC-3(c): source path on `**Writes:**` | `fable` | `fable` (measured with `src/core/world.ts` + `.claude/tests/plan.test.sh`; the suite's own fixture, `src/core/world.ts` + `scripts/plan.sh`, passes its assertion) | yes |
+| new-story: example escapes the comment | N3 FAILs with `commented 1` | via `scripts/mutate.sh scripts/new-story.sh 's/^## Contract$/## Contract\n\n**Writes:** `src\/example.ts`/'`: `FAIL ... expected: commented 0 / actual: commented 1`, `new-story: 33 passed, 1 failed`, restored byte-for-byte | yes |
+
+No divergence from RED's candidate. Suites on the shipped code: `plan: 95
+passed, 0 failed`, `new-story: 34 passed, 0 failed` - the edited HARNESS-006
+drift fixtures included, so the escalation's option 1 holds on the real reader.
+
 ### Contract callers list - checked
 
 `grep -rn -E "contract_paths|story_drift|story_paths|contract_writes"` over the
@@ -701,10 +753,21 @@ the Contract's list is correct (97/112 def, 132, 344-346, 353-356, 391,
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-30T13:44:53Z
+    commit: 302adbf (working tree had uncommitted changes)
+    tree:   c1726f80ead2589eff521c30be46f0a196e3c87a
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -765,3 +828,16 @@ Record which, and why, in the Contract.
    `required_gates` stays `[]`.
 4. HARNESS-006..009 sit on `fable` only through bare-basename noise. Not acted
    on here; the user chose to file a follow-up story (HARNESS-017).
+
+**Orchestrator's check of RED's mutation table (GREEN, 2026-09-30).** RED listed
+"`**Writes:**` lines union" as passing on arrival, earned by the mutant "read
+only the first `**Writes:**` line", which should fail that one assertion. I ran it
+against the shipped reader:
+
+    bash scripts/mutate.sh scripts/plan.sh 's/index(\$0, "\*\*Writes:\*\*") == 1 {/index($0, "**Writes:**") == 1 \&\& !seen++ {/' -- bash .claude/tests/plan.test.sh
+        FAIL every **Writes:** line is read, and they union
+    plan: 94 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+The count matched the prediction: one assertion. After the restore, `plan: 95 passed, 0 failed`.
+GREEN resolved model: `feature-developer`, **claude-opus-5-5** (dispatch passed `model: opus`; agent confirmed).

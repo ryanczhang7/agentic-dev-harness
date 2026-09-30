@@ -68,6 +68,12 @@ cat >> "$file" <<'TEMPLATE'
      acceptance criteria: the criteria are frozen and change only through
      ## Amendments; this is a working agreement RED is expected to sharpen.
      One block per thing the story touches:
+       * the files it WRITES, on one line at column 0 that starts
+         `**Writes:**`, each path backticked and repository-relative:
+           **Writes:** `src/core/world.ts`, `tests/world.test.ts`
+         `bash scripts/plan.sh conflicts` compares it with `touches:` and prints
+         DRIFT for a written file `touches:` does not cover. Without the line
+         there is no DRIFT at all, and files the prose merely cites never count
        * module paths and exported names, exactly
        * exact signatures, and the types the assertions will destructure
        * THE SEMANTICS BEHIND EACH NUMBER - not clamp(latitude) but "latitude
