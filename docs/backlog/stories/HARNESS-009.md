@@ -5,7 +5,7 @@ slug: lead-po-dispatches-into-more-than-one-wo
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-009-lead-po-dispatches-into-more-than-one-wo
 depends_on: [HARNESS-008]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/agents/lead-po.md, scripts/plan.sh, .claude/tests/plan.test.sh]  # files this story expects to write
@@ -222,7 +222,59 @@ that mutation makes five HARNESS-004 pairs UNKNOWN (four of them formerly
 `clear`), so `--pairs` must fall from 11 lines to 7 with no line naming
 HARNESS-004. Paste the output and the restore line.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-30, at `56395f1`):** as expected, 11 lines, and
+exactly the table's `clear` rows (compared as whole strings: `identical`).
+
+    $ bash scripts/plan.sh conflicts            # rc=1
+    CONFLICT  HARNESS-001 + HARNESS-002 .claude/tests/boundaries.test.sh
+    CONFLICT  HARNESS-001 + HARNESS-003 .claude/tests/boundaries.test.sh
+    clear     HARNESS-001 + HARNESS-004 no shared path
+    clear     HARNESS-001 + HARNESS-005 no shared path
+    clear     HARNESS-001 + HARNESS-009 no shared path
+    CONFLICT  HARNESS-002 + HARNESS-003 .claude/tests/boundaries.test.sh
+    clear     HARNESS-002 + HARNESS-004 no shared path
+    clear     HARNESS-002 + HARNESS-005 no shared path
+    clear     HARNESS-002 + HARNESS-009 no shared path
+    clear     HARNESS-003 + HARNESS-004 no shared path
+    clear     HARNESS-003 + HARNESS-005 no shared path
+    clear     HARNESS-003 + HARNESS-009 no shared path
+    CONFLICT  HARNESS-004 + HARNESS-005 .claude/tests/phase-guard.test.sh
+    clear     HARNESS-004 + HARNESS-009 no shared path
+    clear     HARNESS-005 + HARNESS-009 no shared path
+    4 conflict(s), 0 pair(s) that could not be judged, 0 drift warning(s).
+
+    $ bash scripts/plan.sh conflicts --pairs    # rc=0
+    HARNESS-001	HARNESS-004
+    HARNESS-001	HARNESS-005
+    HARNESS-001	HARNESS-009
+    HARNESS-002	HARNESS-004
+    HARNESS-002	HARNESS-005
+    HARNESS-002	HARNESS-009
+    HARNESS-003	HARNESS-004
+    HARNESS-003	HARNESS-005
+    HARNESS-003	HARNESS-009
+    HARNESS-004	HARNESS-009
+    HARNESS-005	HARNESS-009
+
+The real-tree UNKNOWN probe:
+
+    === mutate: docs/backlog/stories/HARNESS-004.md (1 line(s) changed by s/^touches: \[[^]]*\]/touches: []/) ===
+      11 - touches: [.claude/tests/phase-guard.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
+      11 + touches: []  # files this story expects to write; `plan.sh conflicts` reads it
+    HARNESS-001	HARNESS-005
+    HARNESS-001	HARNESS-009
+    HARNESS-002	HARNESS-005
+    HARNESS-002	HARNESS-009
+    HARNESS-003	HARNESS-005
+    HARNESS-003	HARNESS-009
+    HARNESS-005	HARNESS-009
+    rc=0
+    7 lines
+    0 lines naming HARNESS-004
+    === mutate: command exited 0; restored (verified byte-for-byte against .../docs_backlog_stories_HARNESS-004.md.20260930T202933Z.886115.bak) ===
+
+11 → 7 with no line naming HARNESS-004, as rehearsed at PLANNED.
+
 
 **AC-1's central claim, defect put back. Owner: GATES.**
 
@@ -233,7 +285,27 @@ omits UNKNOWN must go red and name itself; the suite must be green again after
 the restore. RED cannot run this - there is no `--pairs` to break. RED's
 handoff declines it and names the assertion GATES should watch.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-30, at `56395f1`):** the mutation lets UNKNOWN pairs
+into `--pairs`; both controls RED's handoff named went red, and the file was
+restored.
+
+    === mutate: scripts/plan.sh (1 line(s) changed by s/\[ "\$verdict" = clear \] && printf/[ "$verdict" != CONFLICT ] \&\& printf/) ===
+      543 -         [ "$verdict" = clear ] && printf '%s\t%s\n' "${ids[$i]}" "${ids[$j]}"
+      543 +         [ "$verdict" != CONFLICT ] && printf '%s\t%s\n' "${ids[$i]}" "${ids[$j]}"
+    === mutate: running bash .claude/tests/plan.test.sh ===
+        FAIL AC-1: --pairs prints exactly the clear pairs, one <id><TAB><id> line each, in the table's order, and nothing else
+        FAIL AC-1 control: the UNKNOWN story D appears on no line - unknown is not permission
+        FAIL AC-1: each pair is printed once, in one orientation only
+        FAIL AC-1: --pairs is exactly the table's clear rows over the same backlog, in the same order
+        FAIL AC-1: with ids that prefix one another, the set of lines is exactly the two clear pairs
+        FAIL AC-1: and in the table's order, matching it line for line
+        FAIL AC-1 control: the UNKNOWN story H-1 is on no line, while H-10, H-11 and H-110 are
+        FAIL AC-1: a backlog with no clear pair gives empty stdout and exit 0 (the table's CONFLICT status does not leak)
+    plan: 159 passed, 8 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_plan.sh.20260930T203009Z.888436.bak) ===
+
+The suite is green again after the restore: see the full selftest in `## Notes`.
+
 
 **The joint-correctness question of AC-4. Owner: REVIEW, as a decision rather
 than a measurement.**
@@ -279,6 +351,7 @@ name, below the table.
 - PLANNED → RED, `lead-po` (this session): `claude-opus-5-5` (opus), as planned.
 - RED, `test-developer`: dispatched with `model: opus`; resolved `opus` per the agent file, no override (its own report). As planned.
 - GREEN, `feature-developer`: dispatched with `model: opus`; resolved `opus` per the agent file, no override (its own report). As planned.
+- GATES, `lead-po` (this session): `claude-opus-5-5` (opus), as planned. No subagent dispatched: both GATES verifications ran green-to-red-to-green without a fix.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -543,10 +616,21 @@ the reader). `bash scripts/gates.sh --fast` - 0 ran, 5 unconfigured
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-30T21:13:55Z
+    commit: 56395f1 (working tree had uncommitted changes)
+    tree:   a78951fb519df8de165a0f29a0e705df52189ad3
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -651,3 +735,14 @@ judge in the AC-4 position `lead-po.md` now takes:** "rebase the second branch
 REVIEW, so that commit is an exit from REVIEW with the ordering rule attached.
 Whether merging `main` into the branch (no force-push) is the better
 instruction is REVIEW's call.
+
+**GATES, 2026-09-30.** Both GATES-owned deferred verifications ran and are
+pasted in their blocks (real backlog 11 → 7 under the HARNESS-004 probe;
+defect put back, `plan: 159 passed, 8 failed` with both named UNKNOWN controls
+red, restored). Full `bash scripts/selftest.sh` after the restores, exit 0:
+20 suites, 0 failed (`plan: 167 passed, 0 failed`; floors met, 1613
+assertions executed). Wall clock 2098 s on this Windows machine; CI runs the
+selftest on `ubuntu-latest` (31 s measured, `gates.yml`), so the local figure
+is process-spawn cost, not a timeout risk - REVIEW reads the real CI timing.
+`gates.sh`: `pass (0 ran, 7 unconfigured, 0 known)`, as for every harness
+story while `BOOTSTRAPPED=no`.
