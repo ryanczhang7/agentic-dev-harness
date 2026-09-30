@@ -966,4 +966,338 @@ EOF
 assert_eq "a **Writes:** line with one source path keeps RED on the weaker model" \
   "fable" "$(red_model A)"
 
+# ---------------------------------------------------------------------------
+describe "waves: the planner cuts stories into waves (HARNESS-007)"
+
+# WHAT THIS IS FOR. `conflicts` reports which pairs of startable stories would
+# fight over a file. A planner does not think in pairs; it thinks in "which of
+# these can run together". `waves` arranges the same pairwise answer as groups:
+# within a wave every pair is clear, and a story that collides with something
+# in every existing wave opens the next one. Greedy first fit, in candidate
+# order - not minimal, and not claimed to be.
+#
+# LAST IN THE FILE ON PURPOSE. Every fixture set below starts from an empty
+# stories directory (`fresh`, defined in the HARNESS-006 block above), which
+# would delete stories any later section depended on.
+#
+# EVERY NEEDLE IS A WHOLE LINE OR A WHOLE FIELD. `WAVE 1` floating also matches
+# `WAVE 10`, and an id `T-1` floating matches `T-10`: grep -cxF for lines, awk
+# field equality for ids. And no assertion here is an absence on its own: "U is
+# in no wave" is satisfied by a command that prints nothing, which is exactly
+# what RED prints. Each absence travels with a presence in the same assertion,
+# so every one of them was watched fail. Exit 0 is an absence too: before
+# `waves` existed it fell to the `*` arm, cmd_both, whose `die` runs in a
+# command substitution and does not end the script - so `plan.sh waves` exited
+# 0, and a bare "exits 0" assertion passed on arrival. Measured in RED: three
+# did. Each is now paired with the summary line it implies.
+
+# wline <exact line>   How many lines of $out are exactly this.
+wline() { grep -cxF -- "$1" <<<"$out"; }
+# where <id>...   "A=1 B=2 U=-": the wave(s) each id is placed in, read by field
+# equality on WAVE lines, comma-joined if more than one; `-` for none. Asking
+# for several ids at once is what ties an absence to a presence.
+where() {
+  local id s=""
+  for id in "$@"; do
+    s="$s$id=$(awk -v id="$id" '
+      $1 == "WAVE" { for (k = 3; k <= NF; k++) if ($k == id) w = w (w == "" ? "" : ",") $2 }
+      END { print (w == "" ? "-" : w) }' <<<"$out") "
+  done
+  printf '%s' "${s% }"
+}
+# labels_for <id>   The first field of every line whose second field is the id,
+# space-joined: WAVE lines have the wave number there, so this sees only
+# BLOCKED and UNKNOWN lines.
+labels_for() { awk -v id="$1" '$2 == id { s = s (s == "" ? "" : " ") $1 } END { print s }' <<<"$out"; }
+# wave_count   How many WAVE lines there are.
+wave_count() { awk '$1 == "WAVE" { n++ } END { print n + 0 }' <<<"$out"; }
+# waves_rc   The exit status, which is a claim of its own.
+waves_rc() { ( cd "$FIX" && bash scripts/plan.sh waves >/dev/null 2>&1 ); printf '%s' "$?"; }
+
+# --- AC-1: pairwise disjoint stories all land in wave 1 --------------------
+#
+# B is in flight (RED): it still occupies its files, so it is a candidate, as
+# it is for `conflicts`. The WHOLE output is pinned once here, because it is
+# the simplest case of the Contract's "Output, exactly": label padded to 9,
+# ids joined by two spaces, one blank line, the summary.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with B feature RED 1 <<'EOF'
+TOUCHES:src/b.ts
+EOF
+story_with C feature PLANNED 1 <<'EOF'
+TOUCHES:src/c.ts, docs/c.md
+EOF
+out="$(plan waves)"
+assert_eq "AC-1: pairwise disjoint stories, in flight or not, are all in wave 1 and nothing else is printed" \
+  "WAVE 1   A  B  C
+
+1 wave(s), 0 blocked, 0 unplaceable." "$out"
+assert_eq "AC-1: and there are waves, so it exits 0" \
+  "0|1" "$(waves_rc)|$(wline '1 wave(s), 0 blocked, 0 unplaceable.')"
+
+# Collision is an exact comparison of whole paths - the `conflicts`
+# intersection - not a substring or prefix match.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.tsx, src/a.ts.bak
+EOF
+out="$(plan waves)"
+assert_eq "AC-1: paths that merely share a prefix do not collide, so both are in wave 1" \
+  "1" "$(wline 'WAVE 1   A  B')"
+
+# AC-1 CONTROL: two whose sets intersect - in one path among several - never
+# share a wave, and each is in exactly one wave.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts, src/core/world.ts
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/b.ts, src/core/world.ts
+EOF
+out="$(plan waves)"
+assert_eq "AC-1 control: two stories sharing one path are in different waves, each in exactly one" \
+  "A=1 B=2" "$(where A B)"
+assert_eq "AC-1 control: wave 1 is exactly A" "1" "$(wline 'WAVE 1   A')"
+assert_eq "AC-1 control: wave 2 is exactly B" "1" "$(wline 'WAVE 2   B')"
+assert_eq "AC-1 control: the summary counts two waves" \
+  "1" "$(wline '2 wave(s), 0 blocked, 0 unplaceable.')"
+
+# MANY, and the reason the needles are anchored: ten stories all sharing one
+# file need ten waves, and `WAVE 10` is a line a floating `WAVE 1` would match.
+# The label is padded to 9, so a two-digit wave has two spaces, not three.
+fresh
+for id in A B C D E F G H I J; do
+  story_with "$id" feature PLANNED 1 <<'EOF'
+TOUCHES:docs/shared.md
+EOF
+done
+out="$(plan waves)"
+assert_eq "many: ten stories sharing one file make ten waves, one story each" \
+  "A=1 B=2 C=3 D=4 E=5 F=6 G=7 H=8 I=9 J=10" "$(where A B C D E F G H I J)"
+assert_eq "many: wave 10 is printed with the label padded to 9 columns" \
+  "1" "$(wline 'WAVE 10  J')"
+assert_eq "many: and exactly one line is wave 1's, despite wave 10 existing" \
+  "1" "$(wline 'WAVE 1   A')"
+assert_eq "many: the summary counts ten waves" \
+  "1" "$(wline '10 wave(s), 0 blocked, 0 unplaceable.')"
+
+# A DONE story is omitted entirely: it would collide with A, and if it were a
+# candidate it would open a second wave.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with D feature DONE 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+out="$(plan waves)"
+assert_eq "a DONE story is omitted entirely: one wave, A alone, and no line names D" \
+  "1|WAVE 1   A|" \
+  "$(wave_count)|$(awk '$1 == "WAVE"' <<<"$out")|$(labels_for D)"
+
+# --- AC-2: a wave is a set of MUTUALLY disjoint stories --------------------
+#
+# As written: A-B collide, B-C collide, A-C do not. First fit puts C back in
+# wave 1 beside A. A "next fit" placement, which only tries the newest wave,
+# would compare C with B alone and open a third.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/p1.ts
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/p1.ts, src/p2.ts
+EOF
+story_with C feature PLANNED 1 <<'EOF'
+TOUCHES:src/p2.ts
+EOF
+out="$(plan waves)"
+assert_eq "AC-2: A and C share wave 1 and B, which collides with both, is in wave 2" \
+  "A=1 B=2 C=1" "$(where A B C)"
+assert_eq "AC-2: wave 1 is exactly A and C, in candidate order" "1" "$(wline 'WAVE 1   A  C')"
+assert_eq "AC-2: wave 2 is exactly B" "1" "$(wline 'WAVE 2   B')"
+assert_eq "AC-2: two waves, not three" "1" "$(wline '2 wave(s), 0 blocked, 0 unplaceable.')"
+
+# AC-2 CONTROL, mutual disjointness. The case above CANNOT catch a placement
+# that compares a candidate only with the last story placed in each wave: C's
+# wave-1 neighbour is A either way. Here A and C collide and B is disjoint from
+# both, in id order A, B, C. Wave 1 is {A, B}; checked only against its last
+# member B, C would wrongly join it. Checked against every member, it collides
+# with A and opens wave 2.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/p1.ts
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/p2.ts
+EOF
+story_with C feature PLANNED 1 <<'EOF'
+TOUCHES:src/p1.ts
+EOF
+out="$(plan waves)"
+assert_eq "AC-2 control: C collides with A, so it is NOT in wave 1 even though wave 1's last member B is clear of it" \
+  "A=1 B=1 C=2" "$(where A B C)"
+assert_eq "AC-2 control: wave 1 is exactly A and B" "1" "$(wline 'WAVE 1   A  B')"
+assert_eq "AC-2 control: wave 2 is exactly C" "1" "$(wline 'WAVE 2   C')"
+
+# --- AC-3: a story that declares nothing is unplaceable --------------------
+#
+# U has no touches: key and no Contract; V has `touches: []`, the line
+# new-story.sh writes, and no Contract. Both declare nothing, and both are
+# reported, never compared - so neither can land in wave 1 by default.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with U feature PLANNED 1 </dev/null
+story_with V feature PLANNED 1 <<'EOF'
+TOUCHES:
+EOF
+out="$(plan waves)"
+assert_eq "AC-3: undeclared stories are in no wave, and the declared one is placed" \
+  "A=1 U=- V=-" "$(where A U V)"
+assert_eq "AC-3: wave 1 is exactly A - the undeclared did not silently land there" \
+  "1" "$(wline 'WAVE 1   A')"
+assert_eq "AC-3: a story with no touches: key and no Contract is listed as unplaceable, with the reason" \
+  "1" "$(wline 'UNKNOWN  U  declares no paths - cannot be placed')"
+assert_eq "AC-3: so is one with touches: [] and no Contract" \
+  "1" "$(wline 'UNKNOWN  V  declares no paths - cannot be placed')"
+assert_eq "AC-3: the summary counts them as unplaceable" \
+  "1" "$(wline '1 wave(s), 0 blocked, 2 unplaceable.')"
+assert_eq "AC-3 control: with one placeable story there are waves, so it exits 0" \
+  "0|1" "$(waves_rc)|$(wline '1 wave(s), 0 blocked, 2 unplaceable.')"
+
+# "Declares nothing" means story_paths is empty - the same answer `conflicts`
+# uses - so a story with no touches: but a Contract **Writes:** line DOES
+# declare, is compared, and here collides with A.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with W feature PLANNED 1 <<'EOF'
+CONTRACT:**Writes:** `src/a.ts`
+EOF
+out="$(plan waves)"
+assert_eq "a story declaring only through its Contract is placed, and collides on that path" \
+  "A=1 W=2|" "$(where A W)|$(labels_for W)"
+
+# AC-3 CONTROL, the exit status: nothing but undeclared candidates means no
+# waves, and that is not a success. The whole output is pinned.
+fresh
+story_with U feature PLANNED 1 </dev/null
+story_with V feature PLANNED 1 <<'EOF'
+TOUCHES:
+EOF
+out="$(plan waves)"
+assert_eq "AC-3 control: only undeclared stories - UNKNOWN lines in candidate order, no wave, the summary" \
+  "UNKNOWN  U  declares no paths - cannot be placed
+UNKNOWN  V  declares no paths - cannot be placed
+
+0 wave(s), 0 blocked, 2 unplaceable." "$out"
+assert_eq "AC-3 control: and with nothing judged it exits 1, not 0" "1" "$(waves_rc)"
+
+# Zero waves for the other reasons: a backlog of nothing but DONE stories, and
+# an empty one. The summary is always printed, and neither is a success.
+fresh
+story_with D feature DONE 1 <<'EOF'
+TOUCHES:src/d.ts
+EOF
+out="$(plan waves)"
+assert_eq "a backlog of only DONE stories prints just the zero summary" \
+  "
+0 wave(s), 0 blocked, 0 unplaceable." "$out"
+assert_eq "and exits 1" "1" "$(waves_rc)"
+fresh
+out="$(plan waves)"
+assert_eq "an empty backlog prints the zero summary" \
+  "1" "$(wline '0 wave(s), 0 blocked, 0 unplaceable.')"
+assert_eq "and exits 1" "1" "$(waves_rc)"
+
+# --- AC-4: a story blocked by depends_on is reported, not placed -----------
+#
+# P is PLANNED, D is DONE. B depends on P: blocked. C depends on D: startable,
+# placed normally. E depends on D, P and a story that does not exist: the line
+# names every dep that is not DONE, in depends_on order, and skips D. Q is DONE
+# with a non-DONE dependency: DONE is decided first, so Q is omitted rather
+# than reported blocked. B and E both touch A's file, so a placement that
+# ignored ordering would also have to open a second wave for them.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:src/a.ts
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+DEPENDS:P
+TOUCHES:src/a.ts
+EOF
+story_with C feature PLANNED 1 <<'EOF'
+DEPENDS:D
+TOUCHES:src/c.ts
+EOF
+story_with D feature DONE 1 <<'EOF'
+TOUCHES:src/d.ts
+EOF
+story_with E feature PLANNED 1 <<'EOF'
+DEPENDS:D, P, Z
+TOUCHES:src/a.ts
+EOF
+story_with P feature PLANNED 1 <<'EOF'
+TOUCHES:src/p.ts
+EOF
+story_with Q feature DONE 1 <<'EOF'
+DEPENDS:P
+TOUCHES:src/a.ts
+EOF
+out="$(plan waves)"
+assert_eq "AC-4: blocked stories are in no wave; a story whose dependency is DONE is placed normally" \
+  "A=1 B=- C=1 E=- P=1" "$(where A B C E P)"
+assert_eq "AC-4: wave 1 is exactly the startable stories, in candidate order" \
+  "1" "$(wline 'WAVE 1   A  C  P')"
+assert_eq "AC-4: the blocked story is reported as blocked, naming the dependency and its phase" \
+  "1" "$(wline 'BLOCKED  B  depends_on P (PLANNED)')"
+assert_eq "AC-4: every dependency not DONE is named, in order, a missing one as (missing)" \
+  "1" "$(wline 'BLOCKED  E  depends_on P (PLANNED), Z (missing)')"
+# Q's absence is tied to the summary line: on its own, "no line names Q" is
+# also what an empty or failing run prints.
+assert_eq "AC-4: the summary counts two blocked, and the DONE story Q, whose dependency is not DONE, appears nowhere" \
+  "Q=-||1" "$(where Q)|$(labels_for Q)|$(wline '1 wave(s), 2 blocked, 0 unplaceable.')"
+
+# BLOCKED BEFORE UNKNOWN, and every line kind in its place: the Contract's shape
+# block, with ids chosen so that line order CANNOT fall out of id order. A
+# declares nothing, B is blocked (and declares nothing, so it could be either:
+# it must be listed once, as BLOCKED), F is the dependency, E collides with C.
+fresh
+story_with A feature PLANNED 1 </dev/null
+story_with B feature PLANNED 1 <<'EOF'
+DEPENDS:F
+EOF
+story_with C feature PLANNED 1 <<'EOF'
+TOUCHES:src/x.ts
+EOF
+story_with D feature PLANNED 1 <<'EOF'
+TOUCHES:src/y.ts
+EOF
+story_with E feature PLANNED 1 <<'EOF'
+TOUCHES:src/x.ts
+EOF
+story_with F feature RED 1 <<'EOF'
+TOUCHES:src/w.ts
+EOF
+out="$(plan waves)"
+assert_eq "AC-4: every WAVE line, then BLOCKED, then UNKNOWN, then a blank line and the summary" \
+  "WAVE 1   C  D  F
+WAVE 2   E
+BLOCKED  B  depends_on F (RED)
+UNKNOWN  A  declares no paths - cannot be placed
+
+2 wave(s), 1 blocked, 1 unplaceable." "$out"
+assert_eq "AC-4: a blocked story that also declares nothing is listed once, as BLOCKED" \
+  "BLOCKED" "$(labels_for B)"
+assert_eq "AC-4: with waves, blocked and unplaceable together, it exits 0" \
+  "0|1" "$(waves_rc)|$(wline '2 wave(s), 1 blocked, 1 unplaceable.')"
+
 summary "plan"
