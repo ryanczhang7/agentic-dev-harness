@@ -154,4 +154,40 @@ order="$(awk '
 assert_eq "and it sits between depends_on and required_gates" \
   "depends_on touches required_gates " "$order"
 
+# ---------------------------------------------------------------------------
+describe "the Contract asks for a **Writes:** line, and a new story declares none (HARNESS-016)"
+
+# `plan.sh conflicts` prints DRIFT when a Contract's column-0 `**Writes:**` line
+# names a file `touches:` does not, and is silent without one. The template is
+# where an author learns the line exists, so its `## Contract` comment asks for
+# it - and asks INSIDE the comment, because a `**Writes:**` line emitted into
+# every fresh story would be a declaration nobody made.
+#
+# Both halves are read from the `## Contract` section alone, split by the same
+# comment stripping plan.sh applies: what is inside `<!-- -->` and what is not.
+contract="$(awk '/^## Contract/ { on = 1; next } on && /^## / { exit } on { print }' "$STORY")"
+# uncommented   The section with every <!-- ... --> removed, across lines.
+uncommented="$(awk '{ s = s $0 "\n" }
+  END {
+    while ((i = index(s, "<!--")) > 0) {
+      r = substr(s, i); j = index(r, "-->")
+      if (j == 0) { s = substr(s, 1, i - 1); break }
+      s = substr(s, 1, i - 1) substr(r, j + 3)
+    }
+    printf "%s", s
+  }' <<<"$contract")"
+in_comment=$(( $(grep -cF '**Writes:**' <<<"$contract") - $(grep -cF '**Writes:**' <<<"$uncommented") ))
+assert_eq "the Contract comment names the **Writes:** line" "yes" \
+  "$([ "$in_comment" -ge 1 ] && printf yes || printf no)"
+assert_contains "and says plan.sh conflicts compares it with touches:" \
+  "plan.sh conflicts" "$contract"
+# ONE ASSERTION FOR BOTH, so that neither half can pass alone: the template
+# mentions `**Writes:**` inside the comment (fails today: no mention at all),
+# AND no uncommented line of the section starts with it (fails if the example
+# escapes the comment). A comment mention cannot satisfy the second half,
+# because comments are stripped before it is counted.
+assert_eq "a fresh story's Contract mentions **Writes:** only inside the comment, and declares no write" \
+  "commented 0" \
+  "$([ "$in_comment" -ge 1 ] && printf commented || printf absent) $(grep -c '^\*\*Writes:\*\*' <<<"$uncommented")"
+
 summary "new-story"

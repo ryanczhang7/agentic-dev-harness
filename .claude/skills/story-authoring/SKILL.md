@@ -68,9 +68,12 @@ every pair it touches.
 an absent key: the pair is `UNKNOWN`, never `clear`. That is honest, and it is a
 signal as well: a story whose files cannot be named at planning time is usually
 a spike, or not yet understood well enough to cut. Fill the list in PLANNED once
-the Contract exists; where the Contract then names a path `touches:` does not
-cover, `conflicts` prints a `DRIFT` warning so the two can be reconciled rather
-than one silently winning.
+the Contract exists. The Contract says what it writes on a column-0 line,
+``**Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh` ``, and where
+that line names a path `touches:` does not cover, `conflicts` prints a `DRIFT`
+warning so the two can be reconciled rather than one silently winning. DRIFT
+reads only that line: files the prose merely cites never drift, and a Contract
+with no `**Writes:**` line drifts on nothing.
 
 `touches:` is a declaration of intent. Nothing yet checks it against the diff
 the story actually produced.

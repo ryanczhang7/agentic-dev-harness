@@ -108,10 +108,10 @@ unjudgeable — the stories that predate the field, for a start. When you see it
 - judge the pair by hand, and treat two stories that touch the same script as a
   conflict until you have read both.
 
-A story that declares both gets a `DRIFT` line for each Contract path its
-`touches:` does not cover. It is a warning, never a refusal, and today it is
-noisy: the Contract reader counts every path the prose *mentions*, not only the
-ones the story writes, so read a DRIFT line before acting on it.
+A story that declares both gets a `DRIFT` line for each path on its Contract's
+`**Writes:**` line that its `touches:` does not cover. It is a warning, never a
+refusal. It reads only the `**Writes:**` line, not every path the prose
+*mentions*, so a Contract with no `**Writes:**` line gets no DRIFT at all.
 
 Never read `UNKNOWN` as permission. The command exits non-zero only on a real
 `CONFLICT`, precisely so that the ordinary unjudgeable case does not train you

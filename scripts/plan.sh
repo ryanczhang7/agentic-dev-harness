@@ -109,9 +109,52 @@ field() { printf '%s' "$1" | awk -F'|' -v n="$2" '{ gsub(/^[[:space:]]+|[[:space
 # fresh backlog declares those three paths and every pair collides. Measured on
 # this repository's own five stories: all five "declared" go.mod and
 # requirements.txt, and all five actually declare nothing.
+#
+# A `**Writes:**` LINE OUTRANKS THE PROSE (HARNESS-016). When the Contract has
+# one, this returns exactly contract_writes, so the pair table and the RED model
+# judge what the story says it writes rather than every file its prose cites.
+# The prose extraction below is the fallback for a Contract that declares
+# nothing better, and it drops four shapes that are never repository paths:
+#   1. anything containing `..`                      AC-1..AC
+#   2. anything ending in `/`, a directory prefix    .claude/skills/x/reference/
+#   3. anything ending in a dot and only digits      1.2, 4.9
+#   4. no `/` and a one-character stem before the first dot   e.g, i.bak, 0.139s
+# Every other token stays, bare basenames included: `plan.sh` in prose is often
+# the only name a pre-016 story gives a file it writes, and dropping it would
+# turn a real CONFLICT into `clear` with nothing saying so. One awk over the
+# grep's whole output, so nothing downstream exits early on a pipefail writer.
 contract_paths() { # <file>
+  local w; w="$(contract_writes "$1")"
+  if [ -n "$w" ]; then printf '%s\n' "$w"; return 0; fi
   section "$1" "Contract" | strip_comments \
     | grep -oE '\.claude/[A-Za-z0-9_./-]+|[A-Za-z0-9_][A-Za-z0-9_./-]*\.[A-Za-z0-9]+' \
+    | awk '/\.\./ { next }
+           /\/$/ { next }
+           /\.[0-9]+$/ { next }
+           !/\// && /^[^.]\./ { next }
+           { print }' \
+    | sort -u
+}
+
+# contract_writes <file>   The paths on the `**Writes:**` lines of a story's
+# `## Contract`: every backticked token on a line that starts, at column 0,
+# with `**Writes:**`. Several lines union. One per line, sorted and unique;
+# empty when the Contract has no such line.
+#
+# This is the Contract's COMMITMENT to what it writes, and it exists because
+# prose cannot say that: HARNESS-009 writes "No change to `phase.sh`" and no
+# extractor reading prose can tell the promise from a write. Only the author
+# knows, so the author says, on a line a reader can find.
+#
+# strip_comments first, as above: the new-story.sh template carries its own
+# example `**Writes:**` inside the Contract comment, and a fresh story that
+# declared it would drift on a file nobody meant to write.
+contract_writes() { # <file>
+  section "$1" "Contract" | strip_comments \
+    | awk 'index($0, "**Writes:**") == 1 {
+             n = split($0, part, "`")
+             for (k = 2; k < n; k += 2) if (part[k] != "") print part[k]
+           }' \
     | sort -u
 }
 
@@ -335,9 +378,15 @@ cmd_write() {
 # ten on this repository. `touches:` is written when the story is cut, which is
 # when the planner can still act on the answer.
 #
-# DRIFT: when a story declares both, a Contract path that `touches:` neither
-# names nor matches as a glob is printed as a warning. The contract is the
-# sharper document; a story that turned out to touch more than it said should
+# DRIFT: when a story declares both, a path on its Contract's `**Writes:**`
+# line that `touches:` neither names nor matches as a glob is printed as a
+# warning. `touches:` is the planner's guess at cut time, `**Writes:**` is the
+# Contract's commitment, and DRIFT is the disagreement between the two. It
+# reads contract_writes, NOT contract_paths: until HARNESS-016 it read the
+# prose, and every file the prose merely cited - a helper called, a script
+# promised untouched - was a DRIFT line, 15 of 15 false on this repository. A
+# Contract with no `**Writes:**` line has said nothing to disagree with, so it
+# drifts on nothing. A story that turned out to touch more than it said should
 # say so rather than be silently overruled either way. A warning, so it never
 # changes the exit status - and it is judged per story, so it runs before the
 # "fewer than two" return rather than being skipped by it.
@@ -346,14 +395,16 @@ story_paths() { # <file>
   if [ -n "$t" ]; then printf '%s\n' "$t"; else contract_paths "$1"; fi
 }
 
-# story_drift <file>   Contract paths not covered by touches:, one per line.
-# `case $p in $g` rather than equality, so `src/ui/*.tsx` covers
-# `src/ui/panel.tsx`. Read line by line: an unquoted `for g in $t` would
-# expand the globs against this checkout.
+# story_drift <file>   `**Writes:**` paths not covered by touches:, one per
+# line. `case $p in $g` as well as equality, so `src/ui/*.tsx` covers
+# `src/ui/panel.tsx`. No basename matching: a `**Writes:**` entry is a
+# repository-relative path, and a bare `plan.sh` there is itself the drift.
+# Read line by line: an unquoted `for g in $t` would expand the globs against
+# this checkout.
 story_drift() { # <file>
   local t c p g hit
   t="$(story_touches "$1")"; [ -n "$t" ] || return 0
-  c="$(contract_paths "$1")"; [ -n "$c" ] || return 0
+  c="$(contract_writes "$1")"; [ -n "$c" ] || return 0
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     hit=0
