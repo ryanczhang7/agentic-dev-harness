@@ -244,7 +244,27 @@ will actually hit, neither of which this story's own prose settles:
     says "one story or two waves", and REVIEW should confirm the document says
     which to prefer and why, rather than leaving it as a coin toss.
 
-**Result:** <!-- filled at REVIEW -->
+**Result (REVIEW, 2026-09-30, lead-po):** both documents answer both
+questions. I read the diffs against `main`.
+
+- *Granularity.* In `plan-product.md` step 5, "Granularity": list the files
+  the story WRITES. Paths compare as literal text, so `src/core/*` and
+  `src/core/world.ts` are reported clear of each other; use a glob only for a
+  set of sibling files. For "some of `src/core/`": list every file it might
+  plausibly write, because over-declaring is the safer error. If it cannot
+  list candidates, it is not ready to cut: leave it `touches: []`, and it
+  shows as UNKNOWN.
+- *One story or two waves.* Both documents prefer two waves when each is its
+  own behaviour, because merging would break the one-cycle limit. They prefer
+  one story when both edit the same function or table, and only if the merge
+  still fits one cycle. `SKILL.md` adds that one story can own the file while
+  the other builds on it after merge. `depends_on` is kept for true ordering in
+  both.
+
+`git diff main -- .claude/commands/plan-product.md .claude/skills/story-authoring/SKILL.md`:
+41 lines added in `plan-product.md` step 5, and in `SKILL.md` a
+"second axis: the footprint" under Sizing plus three amended paragraphs. No
+other section changed.
 
 **AC-1 to AC-3 against the REAL backlog. Owner: GATES.**
 
