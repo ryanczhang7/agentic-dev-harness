@@ -4,8 +4,8 @@ title: Drift reads the paths a Contract writes, not every path it mentions
 slug: drift-reads-the-paths-a-contract-writes
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-016-drift-reads-the-paths-a-contract-writes
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, CLAUDE.md]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -119,7 +119,171 @@ suite, which is a required CI step (`gates` job).
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
+RED may amend any block below in place, with a one-line reason beside the
+change; GREEN builds what the amended block says. `.claude/tests/*` and
+`scripts/*` both classify as `harness`, so the phase lock freezes none of this
+story's files in any phase: this Contract is the only enforcement there is. RED
+writes only `.claude/tests/*`; GREEN writes no test file.
+
+**Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh`, `scripts/new-story.sh`, `.claude/tests/new-story.test.sh`, `.claude/skills/story-authoring/SKILL.md`, `CLAUDE.md`
+
+**PO decision 1 — the mechanism is an explicit declaration.** A Contract says
+what it writes on a line that starts, at column 0, with `**Writes:**`; the
+paths are the backticked tokens on that line. More than one such line is
+allowed and they union. The stricter-extractor option was measured against
+AC-1 and rejected: HARNESS-009's Contract says "No change to `phase.sh`,
+`gates.sh` or `check-boundaries.sh`", and no extractor reading prose can tell a
+path the story promises not to touch from one it writes — spelled in full, the
+negation would drift under any extractor. Only the author knows which files
+are written, so the author says. The cost the Notes named, a third place a
+story names its files, is accepted: `touches:` is the planner's guess at cut
+time, `**Writes:**` is the Contract's commitment, and DRIFT is exactly the
+disagreement between the two.
+
+**`scripts/plan.sh`**, in order of the helpers:
+
+- `contract_writes <file>` — **new.** The paths on `**Writes:**` lines of the
+  story's `## Contract`, after `strip_comments`, one per line, `sort -u`. Empty
+  when there is no such line. A `**Writes:**` inside an HTML comment is not
+  read (the template's own example lives in one; see `new-story.sh` below).
+- `contract_paths <file>` — **same signature, narrower output.** When
+  `contract_writes` is non-empty it returns exactly that. Otherwise it returns
+  the prose extraction it returns today, minus tokens that are not paths. A
+  token is dropped when it:
+  1. contains `..` (`AC-1..AC`);
+  2. ends in `/` (`.claude/skills/stack-profiles/reference/`);
+  3. ends in a dot followed only by digits (`1.2`, `4.9`);
+  4. contains no `/` and has a one-character stem before its first dot
+     (`e.g`, `i.bak`, `0.139s`).
+  Every other token is kept, including bare basenames such as `plan.sh` —
+  the fallback exists for stories that declare nothing better, and dropping
+  real basenames there would turn CONFLICT into clear silently.
+- `contract_unenforced <file>` — **unchanged code**, reads `contract_paths` as
+  it does today, so it follows the new output. See AC-3 below for why that
+  moves no RED row.
+- `story_paths <file>` — **unchanged code**: `touches:` if non-empty, else
+  `contract_paths`. AC-4's fallback therefore judges a `**Writes:**` line when
+  there is one and the filtered prose when there is not.
+- `story_drift <file>` — **reads `contract_writes`, not `contract_paths`.** A
+  story whose Contract has no `**Writes:**` line produces no DRIFT line: it has
+  not said what it writes, so there is nothing to disagree with `touches:`.
+  Coverage stays as HARNESS-006 pinned it — equality, or a `touches:` entry
+  matching as a `case` glob. No basename matching: a `**Writes:**` entry is a
+  repository-relative path, and a bare basename there is itself the drift.
+- `cmd_conflicts` — output format unchanged: the DRIFT line text
+  `contract names <path>, touches: does not`, the summary line and the exit
+  status are byte-for-byte what HARNESS-006 shipped.
+
+**Callers of changed behaviour** (no signature changes; `rg` over the tree at
+the start commit, excluding `.claude/worktrees/`):
+
+    scripts/plan.sh:132   contract_unenforced -> contract_paths   follows it
+    scripts/plan.sh:346   story_paths         -> contract_paths   follows it
+    scripts/plan.sh:356   story_drift         -> contract_paths   CHANGES to contract_writes
+    scripts/plan.sh:391   cmd_conflicts       -> story_drift
+    scripts/plan.sh:408-9 cmd_conflicts       -> story_paths
+    .claude/tests/plan.test.sh:317   comment only
+    docs/backlog/stories/HARNESS-007.md:99,304  prose: `waves` is to reuse
+                              story_touches/contract_paths - unaffected, and
+                              better served by story_paths, which it should call
+    docs/backlog/stories/HARNESS-008.md:291,301  prose describing the pre-006
+                              cmd_conflicts; unaffected
+                              (RED, amended: added - the rg found it and the
+                              list above did not; prose only, no behaviour)
+
+RED's handoff states that this list was checked against the tree.
+
+**`.claude/tests/plan.test.sh`** carries AC-1 to AC-4 under a new
+`describe "drift reads what a Contract writes (HARNESS-016)"`, using the
+existing `story_with` fixture (`CONTRACT:` lines and `TOUCHES:`). Every
+existing assertion stays byte-identical and green — AC-4's control. Check
+before writing that the existing conflict fixtures' Contract tokens
+(`src/core/world.ts`, `src/ui/panel.tsx`, …) survive the four drop rules; if one
+does not, stop and say so rather than editing it.
+
+*(RED, amended 2026-09-30; option 1 of RED's escalation in the handoff, approved
+by the orchestrator:)* each HARNESS-006 drift fixture - every fixture in the
+"is a drift warning" section - gains one `CONTRACT:**Writes:** ...` line naming
+the paths its prose already names. Reason: those fixtures stated their Contract
+in prose only and asserted that it drifts, which PO decision 1 forbids (no
+`**Writes:**`, no DRIFT). The input changes and no assertion does: the diff
+against the base is insertions only. AC-4's control, the conflict and UNKNOWN
+assertions, is unaffected.
+
+**`scripts/new-story.sh`** — the `## Contract` template comment gains one
+bullet asking for the `**Writes:**` line and saying `plan.sh conflicts` compares
+it with `touches:`. It stays inside the HTML comment: no uncommented
+`**Writes:**` line is emitted, so a fresh story declares no writes and drifts
+on nothing. **`.claude/tests/new-story.test.sh`** pins both: the comment names
+`**Writes:**`, and `contract_writes` of a freshly generated story is empty.
+
+**`.claude/skills/story-authoring/SKILL.md`** (near line 72) and
+**`CLAUDE.md`** (the DRIFT paragraph near line 111, "today it is noisy") say
+that DRIFT compares `**Writes:**` with `touches:` and is silent without it. Not
+asserted by a test: prose.
+
+**Oracle partition.**
+- *Settled* — AC-3. The baseline is below; read it out, do not re-derive it.
+- *Mechanical* — AC-1, AC-2, AC-4. Exact lines, exact counts, anchored
+  needles: `grep -cx` on the DRIFT line, never a floating `DRIFT` substring
+  (a needle of `DRIFT` is satisfied by the summary's `drift warning(s)`).
+- *Oracle-free* — none.
+
+**Baseline for AC-3**, measured at `c37b02a` on this machine with
+`plan.sh models <id> | grep '^RED'` for every story in the backlog:
+
+    HARNESS-001..005        opus   (no-contract)
+    HARNESS-006..015        fable  (base row)
+    HARNESS-016             opus   (no-contract, before this Contract existed)
+
+And the simulation of the four drop rules over every existing Contract: no
+story's `contract_unenforced` changes. What keeps HARNESS-006..015 on `fable`
+is a bare basename that classifies `source` — `plan.sh`, `phase.sh` — and rule
+4 does not drop those. No existing story has a `**Writes:**` line, so none is
+read differently by the first branch. **Expected: zero RED rows move among
+HARNESS-001..015.** If GREEN measures anything else, that is an escalation, not
+a fix.
+
+**HARNESS-016 itself moves, and that is measured, not assumed.** With this
+Contract written, the pre-change `plan.sh` reads its prose, finds bare
+`plan.sh`/`phase.sh` (`source`) and says `fable`; the post-change one reads the
+`**Writes:**` line above, all `harness`/`docs`, and says `unenforced` → `opus`.
+Measured with the pre-change code on this file:
+
+    RED	test-developer	fable	the measured case. ...
+
+Any story that gains a `**Writes:**` line can move the same way; this is the
+only one that does in this story. See `## Amendments`.
+
+**A finding this story does NOT act on.** The same measurement shows
+HARNESS-006..009 are harness-only stories on `fable`, because a bare `plan.sh`
+in their prose classifies as `source` and switches the `unenforced` exception
+off. A `**Writes:**` line in their Contracts would move them to `opus`. That is
+the RED-model change AC-3 says must be decided rather than happen as a side
+effect, so it is left to the user, reported, and not made here.
+
+**Test-only dependencies:** none. bash, awk, coreutils.
+
 ## Deferred verifications
+
+**DV-1 — defect put back (central claim, AC-1).** With `story_drift` reading
+`contract_paths` again instead of `contract_writes`, AC-1's no-DRIFT assertion
+MUST fail: the read-only mention reappears on a DRIFT line. RED cannot run it:
+there is no `contract_writes` to revert from. Run through `scripts/mutate.sh`
+against `.claude/tests/plan.test.sh` only. Owner: GATES
+
+**DV-2 — a probe against the real backlog (the rule judges it).** On the real
+`docs/backlog/stories/`, `plan.sh conflicts` prints 0 DRIFT lines (today: 9).
+Then, with `scripts/mutate.sh`, append to HARNESS-007's Contract a
+`**Writes:**` line naming `scripts/phase.sh` (not in its `touches:`), and the
+run must print exactly one DRIFT line naming `scripts/phase.sh`, file restored.
+RED cannot run it: the reader it probes does not exist yet. Owner: GATES
+
+**DV-3 — AC-3 against the real backlog.** `plan.sh models <id> | grep '^RED'`
+for every story at the start commit, with the pre-change `scripts/plan.sh`
+(from `git show c37b02a:scripts/plan.sh`) and the post-change one, diffed.
+Expected: the table in the Contract's baseline, zero moved model columns.
+RED cannot run it: there is no post-change `plan.sh`. Owner: GATES
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
      the phase that wants it; omit the section otherwise. Written by the Lead PO
@@ -160,40 +324,54 @@ suite, which is a required CI step (`gates` job).
      inputs, not the subagent's code. That claim is also what an agent says
      when it wants to stop failing. -->
 
+**A-1 — AC-3, a deliberate move of one story's RED row. Approved by the user,
+2026-09-29, at PLANNED.** AC-3's text is unchanged; this is the entry it asks
+for. Stories moved: **HARNESS-016 only, `fable` → `opus`.** Reason: its own
+Contract declares a `**Writes:**` line that is entirely `harness`/`docs`, so
+the post-change reader applies the `unenforced` exception to it, which is the
+exception doing what `models.conf` says it is for — the lock freezes none of
+this story's files. The pre-change reader said `fable` only because bare
+`plan.sh`/`phase.sh` in the prose classify as `source`. The RED model *policy*
+(`models.conf`) is not changed. HARNESS-001..015 are expected to move zero
+rows; DV-3 measures that. Reproduction: the orchestrator's own measurement,
+recorded under the Contract's AC-3 baseline.
+
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-016` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `opus` | planning is the judgement phase: decomposition, the oracle partition, and what goes in the contract |
+| RED | `test-developer` | `fable` | the measured case. With a partitioned contract to work from, the brief carries the judgement and the weaker model writes sharper negative controls than the stronger one did without it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `opus` | reading review feedback against the contract is judgement, and a wrong call here ships |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation, with no failing test in front of any of it |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
+
+- RED, `test-developer`: resolved **claude-opus-5-5** (explicit `model: opus` on the dispatch; the agent reported running on Opus 5.5). Verdict against the success condition: met. 12 new plan tests and 3 new new-story tests fail, each because the **Writes:** reader, the drop rules or the template bullet is absent. All 75 prior plan assertions and 31 new-story assertions stay green (orchestrator run, 2026-09-30). One escalation: the Contract contradicted HARNESS-006 fixtures. It was reproduced by the orchestrator and resolved as a fixture-input amendment.
+
+**Departure, RED: `opus`, not the planned `fable`.** The table above was
+rendered by the PRE-change `plan.sh`, which reads this Contract's prose and
+calls the story enforced. The post-change reader, which this story builds,
+reads the `**Writes:**` line and applies `unenforced` → `opus` (Amendment A-1).
+The lock freezes none of this story's files, so the Contract is the only
+enforcement — the case the `unenforced` row exists for. Stay on `opus` as
+orchestrator. Brief: the criteria, the oracle partition and the Contract; not a
+pre-decided test list. Success condition that could fail: RED's tests go red
+on AC-1, AC-2 and AC-3's `**Writes:**` fixture for the absence of
+`contract_writes` and nothing else, and every existing `plan.test.sh`
+assertion stays green.
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -215,6 +393,59 @@ suite, which is a required CI step (`gates` job).
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Level: integration - every test runs the real `scripts/plan.sh` (or
+`scripts/new-story.sh`) inside a throwaway fixture, and reads its stdout. That
+is where the contract lives: DRIFT lines, CONFLICT rows and the RED model are
+all printed output, and `contract_writes` has no subcommand to call directly.
+
+`.claude/tests/plan.test.sh`, new `describe "drift reads what a Contract writes
+(HARNESS-016)"` (appended; no existing line edited):
+
+| # | Test (assertion name) | AC | Today |
+|---|---|---|---|
+| 1 | files a Contract only reads or cites are not drift when touches: covers every file it writes | AC-1 | FAIL |
+| 2 | and the summary counts no drift warning | AC-1 | FAIL |
+| 3 | a written file missing from touches: is exactly one DRIFT line, naming that file | AC-1 control | FAIL |
+| 4 | and the summary counts exactly one | AC-1 control | FAIL |
+| 5 | a Contract with no **Writes:** line produces no DRIFT line, whatever its prose names | AC-1 (PO decision 1) | FAIL |
+| 6 | every **Writes:** line is read, and they union | AC-1 / Contract | pass on arrival |
+| 7 | a **Writes:** line inside an HTML comment declares nothing | AC-1 / Contract | pass on arrival |
+| 8 | a bare basename on a **Writes:** line is drift, not covered by the full path | Contract (no basename matching) | pass on arrival |
+| 9 | non-path tokens and directory prefixes never reach a DRIFT line; the omitted written path does | AC-2 + control | FAIL |
+| 10 | two Contracts sharing only non-path tokens are clear, not a CONFLICT | AC-2 | FAIL |
+| 11 | and the command exits 0 | AC-2 | FAIL |
+| 12 | a real shared path beside the junk is still a CONFLICT naming only that path | AC-2 control | FAIL |
+| 13 | a bare basename is still a path on the prose fallback | AC-2 other direction / AC-4 | pass on arrival |
+| 14 | with no touches:, a pair is judged on the **Writes:** lines, not on files merely read | AC-4 | FAIL |
+| 15 | and two **Writes:** lines naming the same file are a CONFLICT on it | AC-4 control | pass on arrival |
+| 16 | a **Writes:** side and a prose-only side are still judged against each other | AC-4 | pass on arrival |
+| 17 | a prose-only Contract naming a bare plan.sh keeps RED on the weaker model | AC-3 (a) | pass on arrival |
+| 18 | a **Writes:** line naming only harness paths puts RED on the stronger model | AC-3 (b), A-1's mechanism | FAIL |
+| 19 | a source file the prose only reads does not make a harness-only **Writes:** enforced | AC-3 (b') | FAIL |
+| 20 | a **Writes:** line with one source path keeps RED on the weaker model | AC-3 (c) control | pass on arrival |
+
+AC-4's other half - the existing conflict and UNKNOWN assertions, unchanged -
+is the untouched HARNESS-006 blocks above it. Their Contract tokens
+(`src/core/world.ts`, `src/ui/panel.tsx`, `src/ui/other.tsx`, `scripts/plan.sh`,
+`scripts/task.sh`, `scripts/new-story.sh`, `.claude/tests/plan.test.sh`) all
+contain a `/`, so none of the four drop rules can touch them; and the
+conflict/UNKNOWN assertions stayed green under a Contract-faithful candidate
+(see the handoff). The drift fixtures needed a `**Writes:**` line under PO
+decision 1: escalated, resolved as option 1 (see the handoff), input-only.
+
+`.claude/tests/new-story.test.sh`, new `describe "the Contract asks for a
+**Writes:** line, and a new story declares none (HARNESS-016)"`:
+
+| # | Test | Covers | Today |
+|---|---|---|---|
+| N1 | the Contract comment names the **Writes:** line | Contract, new-story block | FAIL |
+| N2 | and says plan.sh conflicts compares it with touches: | Contract, new-story block | FAIL |
+| N3 | a fresh story's Contract mentions **Writes:** only inside the comment, and declares no write | Contract, new-story block | FAIL |
+
+N3 is one assertion over two facts (`commented 0`) so that neither half passes
+alone: it fails today because there is no mention, and fails if the example
+escapes the comment because the uncommented count becomes 1.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -234,6 +465,218 @@ suite, which is a required CI step (`gates` job).
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+### Escalation - RESOLVED (option 1, approved by the orchestrator 2026-09-30)
+
+RED stopped on a contradiction in the Contract: PO decision 1 says a Contract
+with no `**Writes:**` line produces no DRIFT line, and HARNESS-006's drift
+fixtures stated their Contract in prose only and asserted that it drifts. A
+Contract-faithful candidate (scratch copy, never `scripts/`) turned 7 of those
+assertions red (`plan: 68 passed, 7 failed`), and made `a Contract path matched
+by a touches: glob is not drift` vacuous. The orchestrator reproduced it and
+approved option 1. The Contract's `plan.test.sh` block is amended in place to
+say so.
+
+**What changed:** every fixture in the HARNESS-006 "is a drift warning" section
+gained one `CONTRACT:**Writes:** ...` line naming the paths its prose already
+names - seven fixtures:
+
+| Fixture | Line added |
+|---|---|
+| the one-DRIFT-line case | `**Writes:** `scripts/plan.sh`, `scripts/new-story.sh`` |
+| glob matches (now meaningful again) | `**Writes:** `src/ui/panel.tsx`` |
+| glob does not match | `**Writes:** `src/ui/panel.tsx`` |
+| fewer than two startable stories | `**Writes:** `scripts/plan.sh`, `scripts/new-story.sh`` |
+| drift beside a conflict | `**Writes:** `scripts/plan.sh`, `scripts/new-story.sh`` |
+| Contract but no `touches:` key (not drift) | `**Writes:** `scripts/plan.sh`, `scripts/new-story.sh`` |
+| blocked story (not drift-checked) | `**Writes:** `src/ui/other.tsx`` |
+
+The last two assert the ABSENCE of drift for a reason other than "no Writes
+line" (no `touches:`; blocked). Without a Writes line they would pass under the
+new reader for the wrong reason, the same vacuity as the glob-match case, so they
+got one too. The input changed and no assertion did: `git diff --numstat` on
+`plan.test.sh` against the base reads `290 0` - insertions only. AC-4's control
+(the conflict and UNKNOWN assertions) is untouched.
+
+**Still green on today's code**, as expected: today's reader reads the prose,
+and the added `**Writes:**` line contains the same paths. **GREEN proves the
+edited fixtures against the new reader**; the scratch candidate already runs the
+whole file at `95 passed, 0 failed`, which is a claim until GREEN's run on the
+shipped `scripts/plan.sh`.
+
+### Commands
+
+    bash .claude/tests/plan.test.sh        # ~2-3 min on this machine
+    bash .claude/tests/new-story.test.sh   # ~1.5 s
+    bash scripts/selftest.sh plan          # the binding CI form
+
+### Counts (all local, this machine)
+
+| Suite | Before RED | After RED, pre-change `scripts/plan.sh` | Scratch Contract-faithful candidate |
+|---|---|---|---|
+| plan | 75 passed, 0 failed (inferred: 83 - 8 new passes, no old FAIL printed) | **83 passed, 12 failed** - the 12 are all new HARNESS-016 assertions; all 75 pre-existing, including the 7 edited drift fixtures, green | 95 passed, 0 failed |
+| new-story | 31 passed, 0 failed (HEAD's file, run) | 31 passed, 3 failed | 34 passed, 0 failed |
+
+### Failure output (pre-change code, trimmed to the new block)
+
+    drift reads what a Contract writes (HARNESS-016)
+      FAIL files a Contract only reads or cites are not drift when touches: covers every file it writes
+           expected:
+           actual:   DRIFT     A             contract names .claude/harness/rules.md, touches: does not
+           DRIFT     A             contract names plan.sh, touches: does not
+           DRIFT     A             contract names scripts/check-boundaries.sh, touches: does not
+           DRIFT     A             contract names scripts/phase.sh, touches: does not
+      FAIL and the summary counts no drift warning
+      FAIL a written file missing from touches: is exactly one DRIFT line, naming that file
+           expected: DRIFT     A             contract names .claude/tests/plan.test.sh, touches: does not
+           actual:   (that line plus the four read-only mentions above)
+      FAIL and the summary counts exactly one
+      FAIL a Contract with no **Writes:** line produces no DRIFT line, whatever its prose names
+           actual:   DRIFT     A             contract names scripts/new-story.sh, touches: does not
+      FAIL non-path tokens and directory prefixes never reach a DRIFT line; the omitted written path does
+           actual:   DRIFT ... .claude/skills/stack-profiles/reference/ | 0.139s | 1.2 | 4.9 | AC-1..AC | e.g | i.bak | scripts/new-story.sh
+      FAIL two Contracts sharing only non-path tokens are clear, not a CONFLICT
+           expected: clear      actual: CONFLICT
+      FAIL and the command exits 0
+           expected: 0          actual: 1
+      FAIL a real shared path beside the junk is still a CONFLICT naming only that path
+           expected: CONFLICT 5 src/core/world.ts
+           actual:   CONFLICT 11 .claude/skills/stack-profiles/reference/
+      FAIL with no touches:, a pair is judged on the **Writes:** lines, not on files merely read
+           expected: clear      actual: CONFLICT
+      FAIL a **Writes:** line naming only harness paths puts RED on the stronger model
+           expected: opus       actual: fable
+      FAIL a source file the prose only reads does not make a harness-only **Writes:** enforced
+           expected: opus       actual: fable
+    plan: 83 passed, 12 failed
+
+    the Contract asks for a **Writes:** line, and a new story declares none (HARNESS-016)
+      FAIL the Contract comment names the **Writes:** line       expected: yes  actual: no
+      FAIL and says plan.sh conflicts compares it with touches:  (Contract section has no such text)
+      FAIL a fresh story's Contract mentions **Writes:** only inside the comment, and declares no write
+           expected: commented 0
+           actual:   absent 0
+    new-story: 31 passed, 3 failed
+
+Why these are the right failures: every one is the absence of the thing the
+Contract adds - prose read for drift (no `contract_writes`), no drop rules
+(junk tokens as paths), prose read by the fallback and the model plan instead
+of the `**Writes:**` line, and no template bullet. No syntax error, no fixture
+error: the same file runs 20/20 new assertions green against the candidate.
+
+### Files touched
+
+- `.claude/tests/plan.test.sh` - new describe block appended before `summary`;
+  and one `CONTRACT:**Writes:**` line inserted into each of the seven HARNESS-006
+  drift fixtures (escalation option 1). Insertions only; no existing line
+  changed.
+- `.claude/tests/new-story.test.sh` - new describe block appended before
+  `summary`; no existing line changed.
+- `docs/backlog/stories/HARNESS-016.md` - `## Test plan`, this handoff, and two
+  Contract amendments: the callers list (below), and the drift-fixture
+  `**Writes:**` lines in the `plan.test.sh` block.
+
+Not touched: anything under `scripts/`.
+
+### What the tests pin (as fact)
+
+- **DRIFT line text**, exact, whole-line: `printf '%-9s %-13s %s' DRIFT <id>
+  "contract names <path>, touches: does not"`. Summary line exact:
+  `N conflict(s), N pair(s) that could not be judged, N drift warning(s).`
+- **`**Writes:**` reading**: a line of the `## Contract` section that starts at
+  column 0 with `**Writes:**`, after `strip_comments` (a column-0 one inside a
+  multi-line `<!-- -->` is not read); every backticked token on it is a path;
+  multiple lines union; entries compared to `touches:` by equality or `case`
+  glob only - no basename matching.
+- **drift reads only `**Writes:**`**: a Contract with none produces no DRIFT
+  line whatever its prose says.
+- **`contract_paths`**: exactly the `**Writes:**` set when there is one (the
+  pair table and the RED model both follow it); otherwise the prose extraction
+  minus the four drop rules. The fixtures exercise: `AC-1..AC` (rule 1),
+  `.claude/skills/stack-profiles/reference/` (rule 2), `1.2`, `4.9` (rule 3),
+  `e.g`, `i.bak`, `0.139s` (rule 4); and `plan.sh` must survive.
+- **CONFLICT row detail**: the tests check `$1, NF, $5` of the row, so the
+  shared-path list must be the single path (5 whitespace fields).
+- **RED model**: read as field 3 of the tab-separated `RED` row of `plan.sh
+  models <id>`.
+- **new-story**: inside the `## Contract` section of a generated story, at least
+  one `**Writes:**` inside the comment, the literal text `plan.sh conflicts`
+  somewhere in the section, and zero uncommented lines starting `**Writes:**`.
+
+**Not constrained:** the name `contract_writes` (no test calls it directly -
+the Contract names it, GREEN should keep that name); how the drop rules are
+implemented (awk, grep, case); whether surrounding whitespace on the
+`**Writes:**` line is tolerated; whether non-backticked text on the line is
+ignored (it should be, per the Contract, but no test puts any there); the
+wording of the template bullet beyond the two needles; the prose in
+`story-authoring/SKILL.md` and `CLAUDE.md` (Contract: not asserted).
+
+### Passed on arrival, and what earns each
+
+Each earned by a mutant of a **scratch** Contract-faithful candidate (a copy of
+the harness under the session scratchpad, never `scripts/`), one mutation per
+assertion, suite run against it. Local runs, this machine:
+
+| Test | Why green today is correct | Mutant of the candidate | Result |
+|---|---|---|---|
+| #7 commented `**Writes:**` not read | today's prose reader already strips comments | `contract_writes` without `strip_comments` | exactly #7 FAILs (87/8, measured before the fixture edit; the other 7 were the escalation's) |
+| #8 bare basename on `**Writes:**` drifts | today `plan.sh` != `scripts/plan.sh` either | `story_drift` also accepts a `touches:` entry ending in `/<p>` | exactly #8 FAILs |
+| #6 `**Writes:**` lines union | today's prose happens to hold both paths | read only the first `**Writes:**` line | exactly #6 FAILs |
+| #13 bare basename survives the fallback; #17 AC-3(a) | today has no drop rules | fallback drops every token without `/` | exactly #13 and #17 FAIL (86/9) |
+| #15, #16 AC-4 controls; #20 AC-3(c) | controls: today's prose reader and the new reader agree on these inputs by construction | not separately mutated - they are the controls for #14 and #18/#19, which fail today | - |
+
+These are claims about the candidate, not the shipped module. GREEN confirms
+them by running the suite; `/audit-mutations` may re-earn them.
+
+### Negative controls - expected values
+
+No thresholds here; the "numbers" are exact lines and counts. Measured by
+running the suite against the scratch candidate (outside the real
+`scripts/plan.sh`, which does not have the feature):
+
+| Control | Expected | Pre-change code | Candidate |
+|---|---|---|---|
+| AC-1: one written file dropped from `touches:` | exactly `DRIFT     A             contract names .claude/tests/plan.test.sh, touches: does not`, summary `1 drift warning(s)` | 5 DRIFT lines | 1 line, as expected |
+| AC-2 drift: omitted written path beside junk | exactly the `scripts/new-story.sh` DRIFT line | 8 lines | 1 line |
+| AC-2 conflict: shared real path beside junk | `CONFLICT 5 src/core/world.ts` | `CONFLICT 11 ...reference/` | as expected |
+| AC-4: two `**Writes:**` on the same file | `CONFLICT 5 src/core/world.ts` | same (passes) | same |
+| AC-3(c): source path on `**Writes:**` | `fable` | `fable` | `fable` |
+| new-story: example escapes the comment | N3 FAILs with `commented 1` | n/a | FAILed with `commented 1` (template mutant with an uncommented `**Writes:** \`src/example.ts\``) |
+
+### Contract callers list - checked
+
+`grep -rn -E "contract_paths|story_drift|story_paths|contract_writes"` over the
+tree excluding `.claude/worktrees/` and `.git`: every `scripts/plan.sh` line in
+the Contract's list is correct (97/112 def, 132, 344-346, 353-356, 391,
+408-409). Additionally found: `docs/backlog/stories/HARNESS-008.md:291,301`
+(prose), now added to the list; `HARNESS-006.md` (its own history, prose); and
+`.claude/state/mutations/log` (machine-local). No other code caller.
+
+### Deferred verifications - declined, GATES-owned
+
+- **DV-1** (defect put back: `story_drift` reading `contract_paths`) - I cannot
+  run it: there is no `contract_writes` to revert from. The pre-change run
+  above is the same defect and shows tests #1-#5 red, which is suggestive, not
+  DV-1.
+- **DV-2** (real-backlog probe, 0 DRIFT then 1 with a mutated HARNESS-007) - I
+  cannot run it: the reader it probes does not exist.
+- **DV-3** (AC-3 before/after `plan.sh models` over the real backlog) - I cannot
+  run it: there is no post-change `plan.sh`. Not claimed.
+
+### For GREEN
+
+- The escalation is resolved (option 1). With the edited fixtures, the scratch
+  candidate runs the whole plan suite at 95 passed, 0 failed; your run on the
+  shipped `scripts/plan.sh` is what proves the edited drift fixtures.
+- A candidate that passed all 20 new assertions: `contract_writes` = section |
+  `strip_comments` | awk on `/^\*\*Writes:\*\*/` printing each backtick span |
+  `sort -u`; `contract_paths` returns it when non-empty, else today's grep
+  piped through awk dropping `/\.\./`, `/\/$/`, `/\.[0-9]+$/`, and
+  `!/\// && /^[^.]\./`; `story_drift` swaps `contract_paths` for
+  `contract_writes`. Offered as evidence the tests are satisfiable, not as a
+  design.
+- No test-only dependency. Timings: plan suite ~2-3 min locally, new-story
+  ~1.5 s; no CI timing measured.
 
 ## Regressions
 
@@ -308,3 +751,17 @@ Record which, and why, in the Contract.
 **This story is itself a candidate conflict.** It declares `scripts/plan.sh` and
 `.claude/tests/plan.test.sh`, as do HARNESS-007 and HARNESS-009. Run it before
 007, which builds on the signal it repairs.
+
+**Decided at PLANNED (2026-09-29, lead-po):**
+1. Mechanism: the explicit `**Writes:**` line, both options weighed in the
+   Contract's PO decision 1. The stricter extractor cannot meet AC-1 against
+   HARNESS-009's "No change to ..." sentence.
+2. `contract_unenforced` moves with `contract_paths` (one extractor, as
+   HARNESS-006 insisted). Measured: zero moves among HARNESS-001..015;
+   HARNESS-016 itself moves `fable` → `opus`, approved by the user as
+   Amendment A-1.
+3. Required gate: `bash scripts/selftest.sh`, the `plan` and `new-story`
+   suites. `BOOTSTRAPPED=no`, so no `gates.sh` gate is configured and
+   `required_gates` stays `[]`.
+4. HARNESS-006..009 sit on `fable` only through bare-basename noise. Not acted
+   on here; the user chose to file a follow-up story (HARNESS-017).

@@ -559,6 +559,7 @@ assert_eq "and a Contract-less story with touches: on the other side raises no d
 fresh
 story_with A feature PLANNED 1 <<'EOF'
 TOUCHES:scripts/plan.sh
+CONTRACT:**Writes:** `scripts/plan.sh`, `scripts/new-story.sh`
 CONTRACT:`scripts/plan.sh` gains story_touches; `scripts/new-story.sh` emits the key.
 EOF
 story_with B feature PLANNED 1 <<'EOF'
@@ -586,6 +587,7 @@ assert_eq "and the summary line counts it" "1" \
 fresh
 story_with A feature PLANNED 1 <<'EOF'
 TOUCHES:src/ui/*.tsx
+CONTRACT:**Writes:** `src/ui/panel.tsx`
 CONTRACT:`src/ui/panel.tsx` exports Panel().
 EOF
 story_with B feature PLANNED 1 <<'EOF'
@@ -599,6 +601,7 @@ assert_eq "a Contract path matched by a touches: glob is not drift" "" "$(drift_
 fresh
 story_with A feature PLANNED 1 <<'EOF'
 TOUCHES:src/core/*.ts
+CONTRACT:**Writes:** `src/ui/panel.tsx`
 CONTRACT:`src/ui/panel.tsx` exports Panel().
 EOF
 story_with B feature PLANNED 1 <<'EOF'
@@ -615,6 +618,7 @@ assert_contains "but a glob that does not match the path is drift" \
 fresh
 story_with A feature PLANNED 1 <<'EOF'
 TOUCHES:scripts/plan.sh
+CONTRACT:**Writes:** `scripts/plan.sh`, `scripts/new-story.sh`
 CONTRACT:`scripts/plan.sh` gains story_touches; `scripts/new-story.sh` emits the key.
 EOF
 out="$(plan conflicts)"
@@ -628,6 +632,7 @@ assert_eq "and still exits 0" "0" "$(conflicts_rc)"
 fresh
 story_with A feature PLANNED 1 <<'EOF'
 TOUCHES:scripts/plan.sh
+CONTRACT:**Writes:** `scripts/plan.sh`, `scripts/new-story.sh`
 CONTRACT:`scripts/plan.sh` gains story_touches; `scripts/new-story.sh` emits the key.
 EOF
 story_with B feature PLANNED 1 <<'EOF'
@@ -644,6 +649,7 @@ assert_eq "and the conflict still decides the exit status" "1" "$(conflicts_rc)"
 # conjunct - a Contract-less story does not drift - is pinned under AC-3.
 fresh
 story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:**Writes:** `scripts/plan.sh`, `scripts/new-story.sh`
 CONTRACT:`scripts/plan.sh` gains story_touches; `scripts/new-story.sh` emits the key.
 EOF
 story_with B feature PLANNED 1 <<'EOF'
@@ -661,6 +667,7 @@ EOF
 story_with B feature PLANNED 1 <<'EOF'
 DEPENDS:A
 TOUCHES:src/ui/panel.tsx
+CONTRACT:**Writes:** `src/ui/other.tsx`
 CONTRACT:`src/ui/other.tsx` also changes.
 EOF
 out="$(plan conflicts)"
@@ -676,4 +683,287 @@ EOF
 out="$(plan models A)"
 assert_contains "touches: does not stand in for the Contract in the model plan" \
   "RED	test-developer	opus" "$out"
+
+# ---------------------------------------------------------------------------
+describe "drift reads what a Contract writes (HARNESS-016)"
+
+# WHY. HARNESS-006's DRIFT line compared `touches:` with every path-shaped token
+# in the Contract's prose, and on this repository's own backlog it fired 15
+# times and was wrong 15 times: files a story only READS (a helper it calls, a
+# script it cites), bare basenames of files `touches:` lists in full, directory
+# prefixes, and tokens that are not paths at all (`AC-1..AC`). A warning that is
+# always false teaches its reader to skip it.
+#
+# PO decision 1: the Contract says what it writes on a column-0 `**Writes:**`
+# line, the backticked tokens on it, unioned across lines. DRIFT compares THAT
+# with `touches:` and is silent when there is no such line. The prose extractor
+# survives only as the fallback for `conflicts` and the model plan, minus four
+# drop rules for tokens that are not paths.
+#
+# NEEDLES. Every DRIFT assertion here is a whole-line compare against the exact
+# text cmd_conflicts prints (`printf '%-9s %-13s %s'`), or an exact count of
+# such lines - never a floating `DRIFT`, which the summary's `drift warning(s)`
+# also satisfies.
+
+# drift_line <id> <path>   The one DRIFT line the Contract specifies, exactly.
+drift_line() { printf '%-9s %-13s %s' DRIFT "$1" "contract names $2, touches: does not"; }
+# red_model <id>   The model column of the RED row of `plan.sh models`, and
+# nothing else: `fable` and `opus` are compared whole, not found in a line.
+# No `exit` in the awk: it reads to the end, so the writer never meets a closed
+# pipe (WORLD-086's house rule).
+red_model() { plan models "$1" | awk -F'\t' '$1 == "RED" { print $3 }'; }
+# pair_row <a> <b>   The pair's whole row, for field-level checks of the detail.
+pair_row() { awk -v a="$1" -v b="$2" '$2 == a && $3 == "+" && $4 == b { print; exit }' <<<"$out"; }
+
+# --- AC-1: read-only mentions are not drift ----------------------------------
+#
+# A writes two files and `touches:` lists both. Its prose also names a helper it
+# calls, a script it cites, a rule it follows, and the bare basename of a file
+# `touches:` lists in full. Today every one of those is a DRIFT line.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh, .claude/tests/plan.test.sh
+CONTRACT:**Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh`
+CONTRACT:`plan.sh` calls `frontmatter_list` the way `scripts/phase.sh` does;
+CONTRACT:no change to `scripts/check-boundaries.sh`. See `.claude/harness/rules.md`.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan conflicts)"
+assert_eq "files a Contract only reads or cites are not drift when touches: covers every file it writes" \
+  "" "$(drift_for A)"
+assert_eq "and the summary counts no drift warning" "1" \
+  "$(grep -cx '0 conflict(s), 0 pair(s) that could not be judged, 0 drift warning(s).' <<<"$out")"
+
+# THE CONTROL. The same story with one written file dropped from `touches:`:
+# exactly one DRIFT line, and it is that file - not the read-only mentions,
+# which would make the count larger, and not the file both documents agree on.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+CONTRACT:**Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh`
+CONTRACT:`plan.sh` calls `frontmatter_list` the way `scripts/phase.sh` does;
+CONTRACT:no change to `scripts/check-boundaries.sh`. See `.claude/harness/rules.md`.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan conflicts)"
+assert_eq "a written file missing from touches: is exactly one DRIFT line, naming that file" \
+  "$(drift_line A .claude/tests/plan.test.sh)" "$(drift_for A)"
+assert_eq "and the summary counts exactly one" "1" \
+  "$(grep -cx '0 conflict(s), 0 pair(s) that could not be judged, 1 drift warning(s).' <<<"$out")"
+
+# NO **Writes:** LINE, NO DRIFT. A story that has not said what it writes has
+# nothing for `touches:` to disagree with - its prose is not read for drift at
+# all, however path-like. This is the rule that silences the real backlog.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+CONTRACT:`scripts/plan.sh` gains story_touches; `scripts/new-story.sh` emits the key.
+EOF
+out="$(plan conflicts)"
+assert_eq "a Contract with no **Writes:** line produces no DRIFT line, whatever its prose names" \
+  "" "$(drift_for A)"
+
+# MORE THAN ONE **Writes:** LINE, AND THEY UNION. Two lines, `touches:` covers
+# only the first: the second line's path is the one drift.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+CONTRACT:**Writes:** `scripts/plan.sh`
+CONTRACT:Then the template.
+CONTRACT:**Writes:** `scripts/new-story.sh`
+EOF
+out="$(plan conflicts)"
+assert_eq "every **Writes:** line is read, and they union" \
+  "$(drift_line A scripts/new-story.sh)" "$(drift_for A)"
+
+# A **Writes:** INSIDE AN HTML COMMENT IS NOT READ. The template's own example
+# lives in one; read without strip_comments, every fresh story would declare it.
+# Column 0 on purpose: a reader that grepped lines without stripping comments
+# first would see this one.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+CONTRACT:**Writes:** `scripts/plan.sh`
+CONTRACT:<!-- for example:
+CONTRACT:**Writes:** `scripts/ghost.sh`
+CONTRACT:-->
+EOF
+out="$(plan conflicts)"
+assert_eq "a **Writes:** line inside an HTML comment declares nothing" "" "$(drift_for A)"
+
+# NO BASENAME MATCHING. A **Writes:** entry is a repository-relative path, so a
+# bare basename there is itself the disagreement, even when `touches:` lists a
+# path ending in it.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+CONTRACT:**Writes:** `plan.sh`
+EOF
+out="$(plan conflicts)"
+assert_eq "a bare basename on a **Writes:** line is drift, not covered by the full path" \
+  "$(drift_line A plan.sh)" "$(drift_for A)"
+
+# --- AC-2: tokens that are not paths -----------------------------------------
+#
+# Each of the Contract's four drop rules has a token here: `..` (rule 1), a
+# trailing `/` (rule 2), a trailing dot-and-digits version (rule 3), and a
+# one-character stem with no `/` (rule 4: `e.g`, `i.bak`, `0.139s`).
+#
+# Drift side: the junk sits in prose beside a **Writes:** line whose second
+# path `touches:` omits. The whole DRIFT output must be that one line.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+TOUCHES:scripts/plan.sh
+CONTRACT:**Writes:** `scripts/plan.sh`, `scripts/new-story.sh`
+CONTRACT:Covers AC-1..AC-4, e.g. the 1.2 and 4.9 readers under `.claude/skills/stack-profiles/reference/`;
+CONTRACT:keeps i.bak and measured 0.139s.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/core/world.ts
+EOF
+out="$(plan conflicts)"
+assert_eq "non-path tokens and directory prefixes never reach a DRIFT line; the omitted written path does" \
+  "$(drift_line A scripts/new-story.sh)" "$(drift_for A)"
+
+# CONFLICT side, on the prose fallback: two stories with no `touches:` and no
+# **Writes:** line, whose Contracts share ONLY junk. Today every shared junk
+# token is a "shared path" and the pair is a CONFLICT.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:`src/core/world.ts` covers AC-1..AC, e.g. the 1.2 reader under `.claude/skills/stack-profiles/reference/`.
+CONTRACT:Keeps i.bak; measured 0.139s.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+CONTRACT:`src/ui/panel.tsx` covers AC-1..AC, e.g. the 1.2 reader under `.claude/skills/stack-profiles/reference/`.
+CONTRACT:Keeps i.bak; measured 0.139s.
+EOF
+out="$(plan conflicts)"
+assert_eq "two Contracts sharing only non-path tokens are clear, not a CONFLICT" \
+  "clear" "$(row_status A B)"
+assert_eq "and the command exits 0" "0" "$(conflicts_rc)"
+
+# THE CONTROL: the same two Contracts sharing one real path as well. CONFLICT,
+# and the detail is that path ALONE - five fields, the fifth the path - so no
+# junk token rode along as a second "shared path".
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:`src/core/world.ts` covers AC-1..AC, e.g. the 1.2 reader under `.claude/skills/stack-profiles/reference/`.
+CONTRACT:Keeps i.bak; measured 0.139s.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+CONTRACT:`src/ui/panel.tsx` and `src/core/world.ts` cover AC-1..AC, e.g. the 1.2 reader under `.claude/skills/stack-profiles/reference/`.
+CONTRACT:Keeps i.bak; measured 0.139s.
+EOF
+out="$(plan conflicts)"
+assert_eq "a real shared path beside the junk is still a CONFLICT naming only that path" \
+  "CONFLICT 5 src/core/world.ts" "$(pair_row A B | awk '{ print $1, NF, $5 }')"
+
+# THE OTHER DIRECTION: the drop rules must not eat real basenames. The fallback
+# exists for stories that declare nothing better, and dropping `plan.sh` here
+# would turn a real CONFLICT into clear with nothing to say so.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:`plan.sh` gains a subcommand.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+CONTRACT:`plan.sh` gains a different subcommand.
+EOF
+out="$(plan conflicts)"
+assert_eq "a bare basename is still a path on the prose fallback" \
+  "CONFLICT 5 plan.sh" "$(pair_row A B | awk '{ print $1, NF, $5 }')"
+
+# --- AC-4: no touches:, and the pair is judged on the Contract ---------------
+#
+# With a **Writes:** line the fallback judges THAT line, not the prose: A only
+# READS B's file. Today the prose is read and the pair is a CONFLICT on it.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:**Writes:** `src/core/world.ts`
+CONTRACT:Reads the layout from `src/ui/panel.tsx`; does not change it.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+CONTRACT:**Writes:** `src/ui/panel.tsx`
+EOF
+out="$(plan conflicts)"
+assert_eq "with no touches:, a pair is judged on the **Writes:** lines, not on files merely read" \
+  "clear" "$(row_status A B)"
+
+# THE CONTROL: B writes A's file. Judged, not UNKNOWN, and a CONFLICT on that
+# path alone.
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:**Writes:** `src/core/world.ts`
+CONTRACT:Reads the layout from `src/ui/panel.tsx`; does not change it.
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+CONTRACT:**Writes:** `src/core/world.ts`
+EOF
+out="$(plan conflicts)"
+assert_eq "and two **Writes:** lines naming the same file are a CONFLICT on it" \
+  "CONFLICT 5 src/core/world.ts" "$(pair_row A B | awk '{ print $1, NF, $5 }')"
+
+# Without a **Writes:** line the fallback is still the prose, so HARNESS-006's
+# pre-touches behaviour holds. (The describe blocks above pin the same thing;
+# this one pairs a declared side with an undeclared one.)
+fresh
+story_with A feature PLANNED 1 <<'EOF'
+CONTRACT:**Writes:** `src/core/world.ts`
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+CONTRACT:`src/core/world.ts` gains clampLatitude(deg: number): number.
+EOF
+out="$(plan conflicts)"
+assert_eq "a **Writes:** side and a prose-only side are still judged against each other" \
+  "CONFLICT 5 src/core/world.ts" "$(pair_row A B | awk '{ print $1, NF, $5 }')"
+
+# --- AC-3: the RED row follows contract_paths, and moves only where decided --
+#
+# contract_unenforced reads contract_paths, so it follows the new output. The
+# Contract's measurement: zero RED rows move among HARNESS-001..015 (DV-3
+# checks the real backlog). These pin the mechanism.
+#
+# (a) No **Writes:** line: harness paths in full plus a bare `plan.sh`, which
+# classifies `source`. Enforced, `fable`, exactly as today - rule 4 does not
+# drop a basename with a real stem.
+fresh
+story_with A feature PLANNED 2 <<'EOF'
+CONTRACT:`scripts/plan.sh` gains a subcommand; `.claude/tests/plan.test.sh` pins it; `plan.sh` stays bash.
+EOF
+assert_eq "a prose-only Contract naming a bare plan.sh keeps RED on the weaker model" \
+  "fable" "$(red_model A)"
+
+# (b) The same prose with a **Writes:** line naming only harness paths. The
+# declared writes are what the lock would have to freeze, and it freezes none
+# of them: the unenforced row, `opus`. This is Amendment A-1's move.
+fresh
+story_with A feature PLANNED 2 <<'EOF'
+CONTRACT:**Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh`
+CONTRACT:`scripts/plan.sh` gains a subcommand; `.claude/tests/plan.test.sh` pins it; `plan.sh` stays bash.
+EOF
+assert_eq "a **Writes:** line naming only harness paths puts RED on the stronger model" \
+  "opus" "$(red_model A)"
+
+# (b') The prose names a source file the story only reads. The **Writes:** line
+# decides, not the prose: still unenforced.
+fresh
+story_with A feature PLANNED 2 <<'EOF'
+CONTRACT:**Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh`
+CONTRACT:Reads `src/core/world.ts` for its fixture shape; does not change it.
+EOF
+assert_eq "a source file the prose only reads does not make a harness-only **Writes:** enforced" \
+  "opus" "$(red_model A)"
+
+# (c) THE CONTROL: one source path on the **Writes:** line is enough for the
+# lock to bite, so RED stays on the weaker model.
+fresh
+story_with A feature PLANNED 2 <<'EOF'
+CONTRACT:**Writes:** `src/core/world.ts`, `scripts/plan.sh`
+EOF
+assert_eq "a **Writes:** line with one source path keeps RED on the weaker model" \
+  "fable" "$(red_model A)"
+
 summary "plan"
