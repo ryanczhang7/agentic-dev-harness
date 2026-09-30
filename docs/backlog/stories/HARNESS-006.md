@@ -4,8 +4,8 @@ title: A story declares the files it touches, so the harness can say which may r
 slug: a-story-declares-the-files-it-touches-so
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-006-a-story-declares-the-files-it-touches-so
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, scripts/new-story.sh, .claude/tests/plan.test.sh, .claude/tests/new-story.test.sh, .claude/tests/boundaries.test.sh, .claude/skills/story-authoring/SKILL.md, CLAUDE.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -943,3 +943,9 @@ dropped from the drift test:
 
 Predicted exactly 1, measured exactly 1. The rest of the table is
 `/audit-mutations`' work.
+
+**DONE, 2026-09-30.** Merged in #86 (merge commit 2ea8002), release 56. PR CI:
+`gates` job success in 1m34s against `timeout-minutes: 45`
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36664195905);
+`boundaries` success in 7s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36664195949).
