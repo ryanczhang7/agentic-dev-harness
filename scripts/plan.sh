@@ -115,6 +115,18 @@ contract_paths() { # <file>
     | sort -u
 }
 
+# story_touches <file>   The paths a story's `touches:` frontmatter declares,
+# one per line, sorted and unique. Empty when the key is absent OR the list is
+# empty: `touches: []` is what new-story.sh writes into every story, so reading
+# it as "touches no file" would call every fresh story `clear` against
+# everything - UNKNOWN reported as clear, by default.
+#
+# frontmatter_list is the reader depends_on uses; a second YAML reader here
+# would be the private copy rules.md warns about.
+story_touches() { # <file>
+  frontmatter_list "$1" touches | sort -u
+}
+
 contract_unenforced() { # <file>
   local paths p found=0 enforced=0
   paths="$(contract_paths "$1")"
@@ -316,6 +328,44 @@ cmd_write() {
 #
 # IT EXITS NON-ZERO ONLY ON CONFLICT. Unknown is the ordinary state of a fresh
 # backlog, and a command that fails every time is one nobody runs.
+#
+# WHERE A STORY'S PATHS COME FROM: `touches:` first, the Contract otherwise.
+# The Contract is written before RED, which is after planning - so judged on
+# the Contract alone, every pair in a backlog being planned was UNKNOWN, ten of
+# ten on this repository. `touches:` is written when the story is cut, which is
+# when the planner can still act on the answer.
+#
+# DRIFT: when a story declares both, a Contract path that `touches:` neither
+# names nor matches as a glob is printed as a warning. The contract is the
+# sharper document; a story that turned out to touch more than it said should
+# say so rather than be silently overruled either way. A warning, so it never
+# changes the exit status - and it is judged per story, so it runs before the
+# "fewer than two" return rather than being skipped by it.
+story_paths() { # <file>
+  local t; t="$(story_touches "$1")"
+  if [ -n "$t" ]; then printf '%s\n' "$t"; else contract_paths "$1"; fi
+}
+
+# story_drift <file>   Contract paths not covered by touches:, one per line.
+# `case $p in $g` rather than equality, so `src/ui/*.tsx` covers
+# `src/ui/panel.tsx`. Read line by line: an unquoted `for g in $t` would
+# expand the globs against this checkout.
+story_drift() { # <file>
+  local t c p g hit
+  t="$(story_touches "$1")"; [ -n "$t" ] || return 0
+  c="$(contract_paths "$1")"; [ -n "$c" ] || return 0
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    hit=0
+    while IFS= read -r g; do
+      [ "$p" = "$g" ] && { hit=1; break; }
+      # shellcheck disable=SC2254  # the glob is the point
+      case "$p" in $g) hit=1; break ;; esac
+    done <<< "$t"
+    [ "$hit" = 1 ] || printf '%s\n' "$p"
+  done <<< "$c"
+}
+
 cmd_conflicts() {
   local files=() ids=() f id ph nxt
   for f in "$STORIES"/*.md; do
@@ -329,9 +379,22 @@ cmd_conflicts() {
     ids+=("$id"); files+=("$f")
   done
 
-  local n=${#ids[@]}
+  # Drift first: it is per story, and the early return below must not skip it.
+  local n=${#ids[@]} k p drift=0 drift_lines=""
+  k=0
+  while [ "$k" -lt "$n" ]; do
+    while IFS= read -r p; do
+      [ -n "$p" ] || continue
+      drift_lines="$drift_lines$(printf '%-9s %-13s %s' DRIFT "${ids[$k]}" \
+        "contract names $p, touches: does not")"$'\n'
+      drift=$((drift + 1))
+    done <<< "$(story_drift "${files[$k]}")"
+    k=$((k + 1))
+  done
+
   if [ "$n" -lt 2 ]; then
     printf 'fewer than two startable stories; nothing to compare\n'
+    [ "$drift" -gt 0 ] && printf '\n%s\n%d drift warning(s).\n' "$drift_lines" "$drift"
     return 0
   fi
 
@@ -342,11 +405,11 @@ cmd_conflicts() {
   while [ "$i" -lt "$n" ]; do
     j=$((i + 1))
     while [ "$j" -lt "$n" ]; do
-      pa="$(contract_paths "${files[$i]}")"
-      pb="$(contract_paths "${files[$j]}")"
+      pa="$(story_paths "${files[$i]}")"
+      pb="$(story_paths "${files[$j]}")"
       if [ -z "$pa" ] || [ -z "$pb" ]; then
         printf '%-9s %-25s %s\n' UNKNOWN "${ids[$i]} + ${ids[$j]}" \
-          "no Contract paths declared yet - cannot judge"
+          "declares neither touches: nor Contract paths - cannot judge"
         unknowns=$((unknowns + 1))
       else
         # One awk over a here-string: no pipe into an early-exit reader, and
@@ -366,8 +429,10 @@ cmd_conflicts() {
     i=$((i + 1))
   done
 
-  printf '\n%d conflict(s), %d pair(s) that could not be judged.\n' "$conflicts" "$unknowns"
-  [ "$unknowns" -gt 0 ] && printf 'UNKNOWN is not clear: a Contract is written before RED, so a story that has\nnot started declares nothing. Judge those pairs by hand or write the contract.\n'
+  [ "$drift" -gt 0 ] && printf '\n%s' "$drift_lines"
+  printf '\n%d conflict(s), %d pair(s) that could not be judged, %d drift warning(s).\n' \
+    "$conflicts" "$unknowns" "$drift"
+  [ "$unknowns" -gt 0 ] && printf 'UNKNOWN is not clear: a story that declares neither touches: nor Contract\npaths gives no basis to judge. Judge those pairs by hand, or fill touches:.\n'
   [ "$conflicts" -eq 0 ]
 }
 case "${1:-}" in

@@ -5,7 +5,7 @@ slug: a-story-declares-the-files-it-touches-so
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-006-a-story-declares-the-files-it-touches-so
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, scripts/new-story.sh, .claude/tests/plan.test.sh, .claude/tests/new-story.test.sh, .claude/tests/boundaries.test.sh, .claude/skills/story-authoring/SKILL.md, CLAUDE.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -705,6 +705,46 @@ runs `cmd_next` per story. No per-test timeouts exist in these suites; CI's
   trailing alnum). If GREEN changes the extractor, that is out of this
   story's Contract.
 
+### GREEN: controls confirmed
+
+Measured against the shipped `cmd_conflicts` (GREEN working tree), each
+fixture rebuilt from the table above in a throwaway `make_project_fixture`
+copy - never in `docs/backlog/stories` - and `bash scripts/plan.sh conflicts`
+run once per fixture.
+
+| Control | Expected after GREEN | Measured in GREEN | Agrees |
+|---|---|---|---|
+| AC-1: `touches: []` + Contract naming B's file | row `CONFLICT` | `CONFLICT  A + B  src/core/world.ts`, exit 1 | yes |
+| AC-1: `touches: []` + no Contract | row `UNKNOWN` | `UNKNOWN  A + B  declares neither touches: nor Contract paths - cannot judge` | yes |
+| AC-2: disjoint | row `clear`, exit `0` | `clear`, exit 0 | yes |
+| AC-2: only the shared path named | contains `src/ui/panel.tsx`, not `src/core/world.ts` | `CONFLICT  A + B  src/ui/panel.tsx`, exit 1 | yes |
+| AC-3: neither declaration | `UNKNOWN`, detail contains `touches`, no DRIFT | `UNKNOWN`, detail as above, 0 DRIFT lines | yes |
+| AC-3: empty Contract, no drift | 0 DRIFT, `0 pair(s) that could not be judged` | `clear`, 0 DRIFT, `0 conflict(s), 0 pair(s) that could not be judged, 0 drift warning(s).` | yes |
+| AC-4: agreed path not drift | exactly 1 DRIFT for A, `new-story.sh` only | `DRIFT     A             contract names scripts/new-story.sh, touches: does not` (1 line) | yes |
+| AC-4: glob covers | 0 DRIFT for A | 0 | yes |
+| AC-4: glob does not cover | 1 DRIFT naming `src/ui/panel.tsx` | `DRIFT  A  contract names src/ui/panel.tsx, touches: does not` (1 line) | yes |
+| AC-4: drift + no conflict | exit 0, `... 1 drift warning(s).` | exit 0, `0 conflict(s), 0 pair(s) that could not be judged, 1 drift warning(s).` | yes |
+| AC-4: drift + conflict | exit 1, `1 conflict(s), 0 pair(s) ..., 1 drift warning(s).` | exit 1, `1 conflict(s), 0 pair(s) that could not be judged, 1 drift warning(s).` | yes |
+| AC-4: blocked story | 0 DRIFT for B | 0 (B, depending on A, absent from both table and drift; A + C judged `clear`) | yes |
+| AC-4: single startable story (not in RED's table; pinned by the suite) | DRIFT printed, exit 0 | `fewer than two startable stories; nothing to compare`, then the DRIFT line and `1 drift warning(s).`, exit 0 | - |
+| Model policy | `RED  test-developer  opus` | `RED	test-developer	opus	what was measured was a partitioned BRIEF ...` | yes |
+| AC-5 control (boundaries) | no `touches` in check-boundaries output | `boundaries: 80 passed, 0 failed`; mutation earning it is GATES' | yes (not earned here) |
+
+No divergence from RED's expected column. Suites at the end of GREEN:
+`plan: 75 passed, 0 failed`, `new-story: 31 passed, 0 failed`,
+`boundaries: 80 passed, 0 failed`, `sigpipe: 82 passed, 0 failed`,
+`grep-count: 20 passed, 0 failed`; `check-sigpipe.sh` and
+`check-grep-count.sh` 0 findings over 41 files; `gates.sh --fast` 0 ran, 5
+unconfigured, exit 0.
+
+**Seen in passing, for GATES' real-backlog probe (not run as that probe):**
+`bash scripts/plan.sh conflicts` on the real backlog now judges HARNESS-006
+against HARNESS-009 - `CONFLICT` on `.claude/tests/plan.test.sh
+scripts/plan.sh` - and prints 15 DRIFT lines (9 for HARNESS-006, 6 for
+HARNESS-009), every one a path the Contract prose mentions rather than writes,
+or a non-path (`AC-1..AC`, `.claude/skills/stack-profiles/reference/`), exactly
+as the PLANNED revision predicted. The other 20 pairs are UNKNOWN. Exit 1.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -778,3 +818,18 @@ what it wrote. Two stories with disjoint declarations can still collide if one
 of them was wrong. AC-4's drift check catches the case where the story's own
 contract disagrees with its declaration, which is the cheap half; comparing
 either against the actual diff is named in `## Out of scope` and not scheduled.
+
+**GREEN verification by the orchestrator, 2026-09-30.** Tests unchanged since
+the RED commit (`git diff --stat HEAD -- .claude/tests` empty). One mutation from
+RED's table, the one predicting a single-assertion catch - M-4, glob match
+dropped from the drift test:
+
+    $ bash scripts/mutate.sh scripts/plan.sh '/case "$p" in $g) hit=1; break ;; esac/d' -- bash scripts/selftest.sh plan
+        FAIL a Contract path matched by a touches: glob is not drift
+             expected:
+             actual:   DRIFT     A             contract names src/ui/panel.tsx, touches: does not
+    plan: 74 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+Predicted exactly 1, measured exactly 1. The rest of the table is
+`/audit-mutations`' work.
