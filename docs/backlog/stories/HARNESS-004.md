@@ -8,6 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-004-phase-lock-covers-multiedit-and-notebook
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
+touches: [.claude/tests/phase-guard.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 

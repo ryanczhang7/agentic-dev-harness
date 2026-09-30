@@ -1,14 +1,14 @@
 ---
-id: HARNESS-005
-title: phase.sh refuses an invalid phase and keeps frontmatter in step
-slug: phase-sh-refuses-an-invalid-phase-and-ke
+id: HARNESS-016
+title: Drift reads the paths a Contract writes, not every path it mentions
+slug: drift-reads-the-paths-a-contract-writes
 epic: 
 type: chore
 status: todo
 phase: PLANNED
-branch: story/HARNESS-005-phase-sh-refuses-an-invalid-phase-and-ke
+branch: story/HARNESS-016-drift-reads-the-paths-a-contract-writes
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/phase.sh, .claude/hooks/lib.sh, .claude/tests/phase.test.sh, .claude/tests/phase-guard.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
+touches: [scripts/plan.sh, .claude/tests/plan.test.sh, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, CLAUDE.md]  # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -19,38 +19,43 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
      only an optional gate can, put it in required_gates above before RED:
      every required gate once passed over a story none of them exercised. -->
 
-Filed from `docs/wiki/audits/enforcement-mutants-2026-09-15.md`, cluster C5.
+No epic. The harness maintaining itself. Follows HARNESS-006 (release 56).
 
-`scripts/phase.sh` is the only supported way to change phase, and it writes two
-things that must agree: the machine state the hooks read and the story's
-frontmatter. Two mutants survive `bash .claude/tests/phase.test.sh`
-(24 assertions, 24 passed):
+**HARNESS-006 shipped a warning that is wrong every time it fires on this
+repository.** `plan.sh conflicts` prints a `DRIFT` line when a story's
+`## Contract` names a path its `touches:` does not cover. Its GATES probe against
+the real backlog printed 15 DRIFT lines, and 0 of them were real. After
+`touches:` was filled for HARNESS-001..005 the count was 9, all on HARNESS-007
+and HARNESS-009, and again 0 were real:
 
-1. `scripts/phase.sh:33` — `if (t == p)` → `if (t ~ p)` in `valid_phase`. The
-   comment three lines above this function records the production defect it
-   exists to prevent: "`GREEN.` matched the GREEN row, was written into the state
-   file, and `phase_allows` - finding no row for it - fell back to 'unknown
-   phase, do not block'. The lock off, by typo." The suite's one negative control
-   for it is `phase set T-11 'GREEN.'` at `.claude/tests/phase.test.sh:75`, and
-   that input does **not** discriminate the two implementations: as an awk regex,
-   `GREEN.` requires a sixth character and so fails to match the row `GREEN`
-   under `~` just as it fails under `==`. The inputs that do discriminate are the
-   ones where the typo is a *prefix or substring* of a real phase - `GREE`,
-   `RE`, `D`, or `.` - all of which `~` accepts. `cmd_set` uppercases its
-   argument, so `gree` reaches `valid_phase` as `GREE`. A test named for the
-   property it checks, using an input that cannot fail, is the shape this story
-   exists to replace.
-2. `scripts/phase.sh:165` — `set_frontmatter "$file" branch "$branch"` replaced
-   by `true`. The frontmatter `branch:` is what `check-boundaries.sh` uses to
-   decide which story claims a branch (section 3, lines 122-137); with no
-   claimant, eight checks are skipped. `new-story.sh:30` also writes `branch:`,
-   so in the common path this write is redundant - it is load-bearing only for a
-   story file written or edited by hand, or one whose branch changed. Confirm
-   which before deciding whether AC-2 is worth a test or the line is worth
-   deleting.
+    DRIFT     HARNESS-007   contract names phase.sh, touches: does not
+    DRIFT     HARNESS-007   contract names rules.md, touches: does not
+    DRIFT     HARNESS-009   contract names check-boundaries.sh, touches: does not
+    DRIFT     HARNESS-009   contract names lead-po.md, touches: does not
+    ...
 
-Required gate that would fail if this story's artifact broke: `unit`
-(`bash scripts/selftest.sh`).
+**The drift rule is right; what it reads is not.** `contract_paths` extracts
+every token in the Contract prose that looks like a path. That includes:
+- files the story only reads, such as a helper it calls or a script it cites;
+- bare basenames of files `touches:` already lists in full (`plan.sh` next to
+  `scripts/plan.sh`);
+- directory prefixes (`.claude/skills/stack-profiles/reference/`);
+- tokens that are not paths at all (`AC-1..AC`).
+
+That precision was tolerable for `conflicts`' old fallback, where a false
+CONFLICT is loud and gets read. It is not tolerable for a warning: a signal that
+is false 15 times out of 15 teaches the reader to skip it, and HARNESS-007 is
+about to build the planner on it.
+
+**Why this is its own story and not a fix inside HARNESS-006.** `contract_paths`
+has a second reader: `contract_unenforced`, which decides whether RED runs on
+the weaker model. HARNESS-006's Contract froze it for that reason. Changing what
+it returns changes the model plan, and that has to be decided rather than
+happen as a side effect.
+
+**Required gate.** `BOOTSTRAPPED=no`, so every `gates.sh` gate is unconfigured
+here. The binding check is `bash scripts/selftest.sh`, specifically the `plan`
+suite, which is a required CI step (`gates` job).
 
 ## Acceptance criteria
 
@@ -62,29 +67,27 @@ Required gate that would fail if this story's artifact broke: `unit`
      still be blind to the defect it exists to catch, and that is more
      dangerous than a vague one - it survives review and goes green. -->
 
-- **AC-1** — Given a story at RED, when `phase.sh set <id> GREE` is run (a phase
-  name that is a strict prefix of a configured one), then it exits non-zero
-  saying "unknown phase", the story's frontmatter phase is still RED, and
-  `.claude/state/current-story.env` still says `PHASE=RED`. Kills:
-  `scripts/phase.sh:33` `s#if (t == p)#if (t ~ p)#`. The existing control
-  `'GREEN.'` does not, and must be kept alongside rather than replaced.
-- **AC-2** — Given a story file whose frontmatter has no `branch:` key, when
-  `phase.sh set <id> RED` succeeds, then the file afterwards carries a `branch:`
-  equal to the branch recorded in `.claude/state/current-story.env`. Kills:
-  `scripts/phase.sh:165` `s#set_frontmatter "$file" branch "$branch"#true#`.
-- **AC-3** — Given a phase name that is a regex metacharacter matching any row
-  (`.`), when `phase.sh set <id> .` is run, then it is refused as an unknown
-  phase.
+- **AC-1** — Given a story whose `touches:` lists every file its Contract says it
+  WRITES, and whose Contract prose also mentions files it only reads (a helper
+  it calls, a script it cites, the bare basename of a file `touches:` lists in
+  full), when `bash scripts/plan.sh conflicts` runs, then no DRIFT line is
+  printed for that story. *Control:* the same story with one written file
+  removed from `touches:` still gets exactly one DRIFT line, naming that file.
+- **AC-2** — Given a Contract containing tokens that are not repository paths
+  (`AC-1..AC`, `e.g.`, a version like `1.2`) and a directory prefix ending in
+  `/`, when `conflicts` runs, then none of them appears on a DRIFT line or as a
+  shared path on a CONFLICT row. *Control:* a real path in the same Contract
+  that the story writes and `touches:` omits is still reported.
+- **AC-3** — Given every story in this repository's backlog at the commit this
+  story starts from, when `bash scripts/plan.sh models <id>` runs before and
+  after the change, then the RED row is the same for every story, unless
+  `## Amendments` records a deliberate change to the RED model policy with the
+  stories it moves.
+- **AC-4** — Given a story with no `touches:` and a written Contract, when
+  `conflicts` runs, then the pair is still judged on the Contract's paths, so
+  the fallback HARNESS-006 kept does not regress. *Control:* the existing
+  `plan.test.sh` conflict and UNKNOWN assertions stay green unchanged.
 
-- **AC-4** — Given a `current-story.env` whose `PHASE` is a value
-  `phases.conf` does not list (`GREE`, `ZZZ`, empty), when the phase guard is
-  asked to allow a `Write` to a `source` path, then it is **refused**, and the
-  reason names the phase it could not recognise. Measured on the real hook
-  today: `PHASE=RED` denies, and `GREE`, `ZZZ` and empty all **allow** — so
-  `phase.sh`'s validation is the only thing between a typo and a silent lock,
-  and this AC is the second defence that does not currently exist. *Control:*
-  `PHASE=GREEN` must still allow the same write, or the fix has simply frozen
-  the tree.
 ## Contract
 
 <!-- Written by the Lead PO BEFORE RED, and AMENDABLE BY RED IN PLACE with a
@@ -129,17 +132,21 @@ Required gate that would fail if this story's artifact broke: `unit`
        * what it verifies, as a falsifiable condition - "with one field dropped
          from the encoder, AC-1's property test MUST fail"
        * why the phase that wants it cannot run it
-       * THE PHASE THAT OWNS IT, by name. check-boundaries.sh refuses a PR
+       * THE PHASE THAT OWNS IT, declared as `Owner: GATES` (or RED, GREEN,
+         REVIEW). check-boundaries.sh refuses a PR
          whose block names no phase
        * the RESULT, pasted, once that phase runs it: what was mutated, what
          failed, and that the file was restored - or the word WAIVED with the
          reason. check-boundaries.sh refuses a PR that has neither
      Schedule it into GATES rather than RED where you can: source is writable
      there, and a story that bounced back to RED mid-cycle gets its corrected
-     assertions earned by the same mutation, for free. Do THREE mutations rather
-     than one, and make one of them a wrong VALUE rather than a missing field: a
-     suite that catches an omission can be blind to a corruption, and a codec
-     that is uniformly wrong round-trips through itself perfectly. -->
+     assertions earned by the same mutation, for free. How many entries is the
+     budget in rules.md, `Mutation work per story`: by default ONE
+     "defect put back" entry for the story's central claim, run against the one
+     suite that holds its assertion. A format or codec story may add one wrong VALUE
+     mutation - a codec that is uniformly wrong round-trips through itself
+     perfectly. Exhaustive earning of assertions that passed on arrival is not
+     an entry here; it goes to `/audit-mutations`. -->
 
 ## Amendments
 
@@ -155,9 +162,19 @@ Required gate that would fail if this story's artifact broke: `unit`
 
 ## Model guidance
 
-<!-- Optional, written by the Lead PO BEFORE the phase it applies to. Use it
-     when a phase of this story is worth running on a different model from the
-     default, and make it falsifiable rather than folklore:
+<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
+     last step of PLANNED once the ## Contract exists. It renders the per-phase
+     plan from .claude/harness/models.conf with the reason for each row. Run it
+     again after amending the contract; it replaces the section rather than
+     appending to it.
+
+     Not at story creation: the plan depends on the contract, and the "no
+     contract, so RED stays on the stronger model" exception would be baked in
+     before anybody had a chance to write one.
+
+     What you add BY HAND is the other half - a departure from the plan, and
+     the model each dispatch RESOLVED to. Make a departure falsifiable rather
+     than folklore:
        * which phase, which model, and why that phase specifically
        * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
          "default". An agent definition's `model:` field, or the session's
@@ -180,6 +197,13 @@ Required gate that would fail if this story's artifact broke: `unit`
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
+
+- **Checking `touches:` or the Contract against the actual diff.** HARNESS-006
+  named this gap and did not schedule it. This story does not either.
+- **Glob-against-path overlap in `conflicts`.** Paths are still compared as
+  literal text, as HARNESS-006 pinned.
+- **Filling `touches:` for stories that lack it.** That is backlog upkeep, not
+  a behaviour.
 
 ## Design notes
 
@@ -263,3 +287,24 @@ Required gate that would fail if this story's artifact broke: `unit`
 
 ## Notes
 
+Filed 2026-09-30 at the user's request, from HARNESS-006's GATES result (its
+`## Deferred verifications`, "AC-4's drift case against the REAL backlog").
+
+**Open for PLANNED: how a Contract says what it writes.** The ACs fix the
+behaviour, not the mechanism. The PO decides the mechanism before RED:
+- **An explicit declaration inside `## Contract`**, such as a `**Writes:**` line
+  or a fenced list, read instead of the prose. It is precise, but it is a third
+  place a story names its files, next to `touches:` and the prose. The template
+  comment in `new-story.sh` and `story-authoring` would have to ask for it.
+- **A stricter extractor**, for example: only tokens containing a `/`, and none
+  ending in `/`; a bare basename counts as covered when `touches:` lists a path
+  ending in it. It needs no new convention, but it is still a guess about
+  prose, and a written file cited by its bare name would silently stop
+  drifting.
+
+Whichever is chosen, AC-3 decides whether `contract_unenforced` moves with it.
+Record which, and why, in the Contract.
+
+**This story is itself a candidate conflict.** It declares `scripts/plan.sh` and
+`.claude/tests/plan.test.sh`, as do HARNESS-007 and HARNESS-009. Run it before
+007, which builds on the signal it repairs.

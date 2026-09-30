@@ -8,6 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-001-gate-record-tree-stamp-is-verified-end-t
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
+touches: [.claude/tests/boundaries.test.sh, .claude/tests/gates.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
