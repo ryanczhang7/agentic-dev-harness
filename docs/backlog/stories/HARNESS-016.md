@@ -4,8 +4,8 @@ title: Drift reads the paths a Contract writes, not every path it mentions
 slug: drift-reads-the-paths-a-contract-writes
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-016-drift-reads-the-paths-a-contract-writes
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, CLAUDE.md]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -841,3 +841,11 @@ against the shipped reader:
 
 The count matched the prediction: one assertion. After the restore, `plan: 95 passed, 0 failed`.
 GREEN resolved model: `feature-developer`, **claude-opus-5-5** (dispatch passed `model: opus`; agent confirmed).
+
+**DONE, 2026-09-30.** Merged in #87 (merge commit 3081f3e), release 57. PR CI:
+`gates` job success in 1m26s, with the harness self-test step taking 69s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36730695020);
+`boundaries` success in 12s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36730694779).
+The release bump was missed on the branch and landed with this DONE commit on
+main; `VERSION` was not in `touches:`.
