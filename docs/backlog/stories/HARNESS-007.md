@@ -4,8 +4,8 @@ title: The planner cuts stories into waves that can be worked together
 slug: the-planner-cuts-stories-into-waves-that
 epic: 
 type: chore
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-007-the-planner-cuts-stories-into-waves-that
 depends_on: [HARNESS-006]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/plan-product.md, .claude/skills/story-authoring/SKILL.md, scripts/plan.sh, .claude/tests/plan.test.sh, .claude/harness/VERSION]  # files this story expects to write
@@ -276,7 +276,20 @@ in id order therefore gives:
 HARNESS-007 is still listed, because a story in GATES is not DONE. Anything
 else is an escalation to reproduce, not a fixture to adjust.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-30, lead-po):** the output matches the prediction
+exactly, and the stories are not all in wave 1. This is the real tree, at the
+shipped `cmd_waves`:
+
+    $ bash scripts/plan.sh waves; echo "rc=$?"
+    WAVE 1   HARNESS-001  HARNESS-004  HARNESS-007
+    WAVE 2   HARNESS-002  HARNESS-005  HARNESS-009
+    WAVE 3   HARNESS-003
+
+    3 wave(s), 0 blocked, 0 unplaceable.
+    rc=0
+
+No story in today's backlog is blocked or undeclared, so AC-3 and AC-4 are
+exercised here only by their fixtures. This run does not exercise them.
 
 **The defect put back: a wave checked as a chain. Owner: GATES.**
 
@@ -290,7 +303,30 @@ the control exists. RED cannot run this, because `cmd_waves` does not exist
 yet. The exact `sed` expression depends on the code GREEN writes, so GATES
 writes it, pastes the red, and confirms the restore.
 
-**Result:** <!-- filled at GATES -->
+**Result (GATES, 2026-09-30, lead-po):** the check held. The control went red,
+the literal AC-2 case stayed green, and the file was restored.
+
+    $ bash scripts/mutate.sh scripts/plan.sh 's/for m in \${waves\[\$w\]}; do$/for m in ${waves[$w]##* }; do/' -- bash .claude/tests/plan.test.sh
+    === mutate: scripts/plan.sh (1 line(s) changed by ...) ===
+      583 -       for m in ${waves[$w]}; do
+      583 +       for m in ${waves[$w]##* }; do
+    === mutate: running bash .claude/tests/plan.test.sh ===
+        FAIL AC-2 control: C collides with A, so it is NOT in wave 1 even though wave 1's last member B is clear of it
+             expected: A=1 B=1 C=2
+             actual:   A=1 B=1 C=1
+        FAIL AC-2 control: wave 1 is exactly A and B
+        FAIL AC-2 control: wave 2 is exactly C
+        FAIL AC-4: every WAVE line, then BLOCKED, then UNKNOWN, then a blank line and the summary
+        FAIL AC-4: with waves, blocked and unplaceable together, it exits 0
+    plan: 130 passed, 5 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/scripts_plan.sh.20260930T173648Z.356350.bak) ===
+      583:       for m in ${waves[$w]}; do
+
+This run is also the one row of RED's mutation table that I checked. RED
+predicted that mutant (b), chain / last-member, would turn tests 17–19, 38 and
+40 red, which is 5 assertions. The run turned 5 red: the three AC-2 control
+assertions and the two mixed-shape AC-4 assertions. No `AC-2:` assertion from
+the literal case failed. The rest of the table belongs to `/audit-mutations`.
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -324,6 +360,8 @@ name, below the table.
 
 - PLANNED: `lead-po` - the orchestrating session, **claude-opus-5-5**.
 - RED: `test-developer`, **claude-opus-5-5** (dispatch passed `model: opus`; agent reported opus, no override).
+- GREEN: `feature-developer`, **claude-opus-5-5** (dispatch passed `model: opus`; agent reported opus).
+- GATES: run by the orchestrator, lead-po, **claude-opus-5-5**. No dispatch: nothing failed that needed a fix.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -551,10 +589,21 @@ beside it.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-30T17:41:32Z
+    commit: 1c43aba (working tree had uncommitted changes)
+    tree:   45d70fad9c49fefe59a283992f98318a3f1f4550
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -632,3 +681,20 @@ Suite, run by me: `plan: 95 passed, 40 failed`, exit 1. All 40 failures are in
 the waves block, and each has `actual: plan: no story at
 docs/backlog/stories/waves.md` or the 0-line count that follows from it.
 `gates.sh --fast`: `All required gates passed (0 ran, 5 unconfigured, 0 known)`.
+
+**GREEN (feature-developer, claude-opus-5-5, 2026-09-30).** `cmd_waves` plus the
+`waves` arm, and a help line (the `sed` range moved from `3,6p` to `3,7p`). Three
+helpers now serve both commands: `story_walk` (the candidate walk, DONE decided
+before `cmd_next`, which is fixture Q), `shared_paths` (the `conflicts`
+intersection, verbatim), and `unmet_deps` (the non-DONE `depends_on` entries.
+`cmd_next` builds its `blocked` text from it, and `waves` builds its BLOCKED
+line from it). The `conflicts` output on the real backlog is byte-identical
+before and after (`cmp`), and so is the `cmd_next` text, which the existing
+assertions pin. Every RED control value was measured against the shipped
+module in a scratch fixture, and all of them match the handoff table.
+For GATES's "defect put back": the mutual check is the line
+`for m in ${waves[$w]}; do` in `cmd_waves`, which is unique in the file. A
+last-member mutant is `s/for m in \${waves\[\$w\]}; do$/for m in ${waves[$w]##* }; do/`.
+Tried on a scratch COPY only (not through `mutate.sh`, and not on the tree):
+the AC-2 mutual fixture gave `WAVE 1   A  B  C`, and the AC-2 literal fixture
+was unchanged. GATES still owns the real run.

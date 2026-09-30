@@ -4,6 +4,7 @@
 #   bash scripts/plan.sh <id>           both answers, for a human
 #   bash scripts/plan.sh models <id>    PHASE<TAB>agent<TAB>model<TAB>why
 #   bash scripts/plan.sh next <id>      the command to drive it with, and why
+#   bash scripts/plan.sh waves          startable stories grouped to run together
 #
 # Two questions that used to be asked of a person every time. A question asked
 # every time stops being answered and starts being habit, and the model question
@@ -233,6 +234,21 @@ next_phase() {
 
 AC_MANY=6   # the crudest signal, and the last one consulted
 
+# unmet_deps <file>   Each `depends_on` entry that is not DONE, in the order
+# listed: `dep<TAB>PHASE`, or `dep<TAB>missing` when it has no story file.
+# The one answer to "what is this story waiting on": `cmd_next` decides blocked
+# from it, and `waves` names it on the BLOCKED line.
+unmet_deps() { # <file>
+  local dep dfile dph
+  for dep in $(frontmatter_list "$1" depends_on); do
+    [ -n "$dep" ] || continue
+    dfile="$STORIES/$dep.md"
+    if [ ! -f "$dfile" ]; then printf '%s\tmissing\n' "$dep"; continue; fi
+    dph="$(frontmatter_value "$dfile" phase)"
+    [ "$dph" = "DONE" ] || printf '%s\t%s\n' "$dep" "${dph:-PLANNED}"
+  done
+}
+
 cmd_next() {
   local file id; id="$1"; file="$(story_file "$id")"
   local type phase acs deferred
@@ -242,13 +258,11 @@ cmd_next() {
   # A dependency that is not DONE. Recommending either command here sends
   # somebody into a refusal from `phase.sh set`, which is a worse answer than
   # naming the thing they are waiting on.
-  local dep blocked=""
-  for dep in $(frontmatter_list "$file" depends_on); do
+  local dep dph blocked=""
+  while IFS="$(printf '\t')" read -r dep dph; do
     [ -n "$dep" ] || continue
-    local dfile="$STORIES/$dep.md"
-    if [ ! -f "$dfile" ]; then blocked="$blocked $dep(missing)"; continue; fi
-    [ "$(frontmatter_value "$dfile" phase)" = "DONE" ] || blocked="$blocked $dep"
-  done
+    if [ "$dph" = missing ]; then blocked="$blocked $dep(missing)"; else blocked="$blocked $dep"; fi
+  done <<< "$(unmet_deps "$file")"
   if [ -n "$blocked" ]; then
     printf 'blocked\t%s is blocked: depends_on is not DONE —%s. Finish it first, or drop the dependency.\n' \
       "$id" "$blocked"
@@ -417,8 +431,17 @@ story_drift() { # <file>
   done <<< "$c"
 }
 
-cmd_conflicts() {
-  local files=() ids=() f id ph nxt
+# story_walk   Every story that is not DONE, one per line, in the order
+# `"$STORIES"/*.md` yields them: `blocked<TAB>id<TAB>file` when `cmd_next`
+# says blocked, `candidate<TAB>id<TAB>file` otherwise.
+#
+# ONE WALK FOR `conflicts` AND `waves`. Both answer "which stories could be
+# started now", and two walks would one day disagree about it. DONE is decided
+# FIRST, before `cmd_next` is asked: `cmd_next` checks depends_on before the
+# story's own phase, so a DONE story whose dependency is not DONE would read as
+# blocked, and a finished story is not waiting on anything.
+story_walk() {
+  local f id ph nxt
   for f in "$STORIES"/*.md; do
     [ -e "$f" ] || continue
     id="$(frontmatter_value "$f" id)"
@@ -426,9 +449,32 @@ cmd_conflicts() {
     ph="$(frontmatter_value "$f" phase)"
     [ "$ph" = DONE ] && continue
     nxt="$(cmd_next "$id" 2>/dev/null | cut -f1)"
-    [ "$nxt" = blocked ] && continue
-    ids+=("$id"); files+=("$f")
+    if [ "$nxt" = blocked ]; then
+      printf 'blocked\t%s\t%s\n' "$id" "$f"
+    else
+      printf 'candidate\t%s\t%s\n' "$id" "$f"
+    fi
   done
+}
+
+# shared_paths <paths-a> <paths-b>   The lines the two newline-separated lists
+# have in common, compared as whole strings, space-joined (a trailing space when
+# non-empty, nothing when they share none). This IS the collision test: `conflicts`
+# prints it and `waves` places by it, so there is one answer to "do these collide".
+# One awk over a here-string: no pipe into an early-exit reader, and nothing here
+# reads the status of one. WORLD-086's house rule.
+shared_paths() {
+  awk -v other="$2" '
+    BEGIN { n = split(other, o, "\n"); for (k = 1; k <= n; k++) if (o[k] != "") a[o[k]] = 1 }
+    ($0 in a) { print }' <<<"$1" | tr '\n' ' '
+}
+
+cmd_conflicts() {
+  local files=() ids=() kind id f
+  while IFS="$(printf '\t')" read -r kind id f; do
+    [ "$kind" = candidate ] || continue
+    ids+=("$id"); files+=("$f")
+  done <<< "$(story_walk)"
 
   # Drift first: it is per story, and the early return below must not skip it.
   local n=${#ids[@]} k p drift=0 drift_lines=""
@@ -463,11 +509,7 @@ cmd_conflicts() {
           "declares neither touches: nor Contract paths - cannot judge"
         unknowns=$((unknowns + 1))
       else
-        # One awk over a here-string: no pipe into an early-exit reader, and
-        # nothing here reads the status of one. WORLD-086's house rule.
-        shared="$(awk -v other="$pb" '
-          BEGIN { n = split(other, o, "\n"); for (k = 1; k <= n; k++) if (o[k] != "") a[o[k]] = 1 }
-          ($0 in a) { print }' <<<"$pa" | tr '\n' ' ')"
+        shared="$(shared_paths "$pa" "$pb")"
         if [ -n "${shared// /}" ]; then
           printf '%-9s %-25s %s\n' CONFLICT "${ids[$i]} + ${ids[$j]}" "$shared"
           conflicts=$((conflicts + 1))
@@ -486,11 +528,89 @@ cmd_conflicts() {
   [ "$unknowns" -gt 0 ] && printf 'UNKNOWN is not clear: a story that declares neither touches: nor Contract\npaths gives no basis to judge. Judge those pairs by hand, or fill touches:.\n'
   [ "$conflicts" -eq 0 ]
 }
+
+# cmd_waves   The startable stories grouped into waves that could run together.
+#
+# `conflicts` answers in pairs; a planner thinks in groups. This is the same
+# pairwise answer - story_walk for the candidates, story_paths for what each
+# declares, shared_paths for whether two collide - arranged as waves: within a
+# wave EVERY pair is clear. A wave is a set of mutually disjoint stories, so a
+# candidate is checked against every member already placed, not only the last.
+#
+# GREEDY FIRST FIT, AND NOT MINIMAL. Candidates are walked in id order; each
+# goes into the first wave where it collides with no member, else opens a new
+# one. That can use more waves than necessary - the fewest is minimal graph
+# colouring, which is NP-hard. The input is a backlog of tens, and a planner
+# wants a defensible, reproducible grouping rather than an optimal one, so this
+# does not search and does not claim the count is the least possible.
+#
+# Ordering is decided before collision: a blocked story is listed as BLOCKED
+# (naming each dependency that is not DONE) and never placed, even when it also
+# declares nothing. A candidate that declares nothing is UNKNOWN and never
+# compared, so it cannot land in wave 1 by default.
+#
+# Exit 0 when there is at least one wave, 1 when there are none - an empty,
+# all-DONE or all-undeclared backlog is not a success.
+cmd_waves() {
+  local kind id f dep dph deps
+  local ids=() paths=() blocked_lines=() unknown_lines=()
+  while IFS="$(printf '\t')" read -r kind id f; do
+    case "$kind" in
+      blocked)
+        deps=""
+        while IFS="$(printf '\t')" read -r dep dph; do
+          [ -n "$dep" ] || continue
+          deps="${deps:+$deps, }$dep ($dph)"
+        done <<< "$(unmet_deps "$f")"
+        blocked_lines+=("$(printf '%-9s%s' BLOCKED "$id  depends_on $deps")") ;;
+      candidate)
+        local p; p="$(story_paths "$f")"
+        if [ -z "$p" ]; then
+          unknown_lines+=("$(printf '%-9s%s' UNKNOWN "$id  declares no paths - cannot be placed")")
+        else
+          ids+=("$id"); paths+=("$p")
+        fi ;;
+    esac
+  done <<< "$(story_walk)"
+
+  # waves[w] holds the candidate indices placed in wave w, space-separated.
+  local waves=() i w m fits placed
+  i=0
+  while [ "$i" -lt "${#ids[@]}" ]; do
+    placed=0; w=0
+    while [ "$w" -lt "${#waves[@]}" ]; do
+      fits=1
+      for m in ${waves[$w]}; do
+        if [ -n "$(shared_paths "${paths[$i]}" "${paths[$m]}")" ]; then fits=0; break; fi
+      done
+      if [ "$fits" = 1 ]; then waves[$w]="${waves[$w]} $i"; placed=1; break; fi
+      w=$((w + 1))
+    done
+    [ "$placed" = 1 ] || waves+=("$i")
+    i=$((i + 1))
+  done
+
+  local line members
+  w=0
+  while [ "$w" -lt "${#waves[@]}" ]; do
+    members=""
+    for m in ${waves[$w]}; do members="${members:+$members  }${ids[$m]}"; done
+    printf '%-9s%s\n' "WAVE $((w + 1))" "$members"
+    w=$((w + 1))
+  done
+  for line in ${blocked_lines[@]+"${blocked_lines[@]}"}; do printf '%s\n' "$line"; done
+  for line in ${unknown_lines[@]+"${unknown_lines[@]}"}; do printf '%s\n' "$line"; done
+  printf '\n%d wave(s), %d blocked, %d unplaceable.\n' \
+    "${#waves[@]}" "${#blocked_lines[@]}" "${#unknown_lines[@]}"
+  [ "${#waves[@]}" -ge 1 ]
+}
+
 case "${1:-}" in
   models) [ -n "${2:-}" ] || die "usage: plan.sh models <story-id>"; cmd_models "$2" ;;
   write)  [ -n "${2:-}" ] || die "usage: plan.sh write <story-id>";  cmd_write "$2" ;;
   next)   [ -n "${2:-}" ] || die "usage: plan.sh next <story-id>";   cmd_next "$2" ;;
   conflicts) cmd_conflicts ;;
-  -h|--help|"") sed -n '3,6p' "$0" | sed 's/^# \{0,1\}//' ;;
+  waves)     cmd_waves ;;
+  -h|--help|"") sed -n '3,7p' "$0" | sed 's/^# \{0,1\}//' ;;
   *)      cmd_both "$1" ;;
 esac
