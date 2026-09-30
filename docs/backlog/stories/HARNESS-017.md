@@ -4,8 +4,8 @@ title: Declare Writes for 007 and 009 and decide their RED model
 slug: declare-writes-for-007-and-009-and-decid
 epic: 
 type: chore
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-017-declare-writes-for-007-and-009-and-decid
 depends_on: [HARNESS-016]     # story ids; phase.sh refuses to start this story until they are DONE
 touches: [docs/backlog/stories/HARNESS-007.md, docs/backlog/stories/HARNESS-009.md]        # files this story expects to write; `plan.sh conflicts` reads it
@@ -183,6 +183,22 @@ run it, because the line does not exist yet. Run it with `scripts/mutate.sh` on
 the story file, against the AC-2 command.
 Owner: GATES
 
+**Result (GATES, 2026-09-30, lead-po):** the check held. I removed HARNESS-007's
+`**Writes:**` line with `mutate.sh` and ran the AC-2a needle against it:
+
+    bash scripts/mutate.sh docs/backlog/stories/HARNESS-007.md '/^\*\*Writes:\*\* `scripts\/plan\.sh`/d' -- \
+      bash -c 'bash scripts/plan.sh models HARNESS-007 | grep "^RED" | cut -f1-3; bash scripts/plan.sh models HARNESS-007 | grep -cx "RED	test-developer	opus	.*"'
+    === mutate: running bash -c ... ===
+    RED	test-developer	fable
+    0
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/docs_backlog_stories_HARNESS-007.md.20260930T150841Z.25816.bak) ===
+      81: **Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh`, `.claude/commands/plan-product.md`, `.claude/skills/story-authoring/SKILL.md`
+
+After the restore, `plan.sh models HARNESS-007 | grep ^RED` gives
+`RED	test-developer	opus`. So the move to `opus` comes from the line this
+story added and from nothing else. This is also the one mutation from RED's
+table that I ran: RED predicted it as the converse of P2, and it matched.
+
 <!-- REQUIRED when a verification this story depends on provably cannot run in
      the phase that wants it; omit the section otherwise. Written by the Lead PO
      at PLANNED, and the phase that owns it pastes the result in.
@@ -251,6 +267,8 @@ name, below the table.
 
 - PLANNED: `lead-po` - this orchestrating session, **claude-opus-5-5**.
 - RED: `test-developer`, **claude-opus-5-5** (dispatch passed `model: opus`; agent reported opus, no override).
+- GREEN: `feature-developer`, **claude-opus-5-5** (dispatch passed `model: opus`; agent reported opus).
+- GATES: run by the orchestrator, lead-po, **claude-opus-5-5**. No dispatch: the gates configure nothing, and DV-1 is the orchestrator's.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -498,10 +516,21 @@ Owner: GATES.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-09-30T15:11:15Z
+    commit: 1c72216 (working tree had uncommitted changes)
+    tree:   ee0f14784792bcd27743aa5dc7f1268fc942d73b
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
