@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-006-a-story-declares-the-files-it-touches-so
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/plan.sh, scripts/new-story.sh, .claude/tests/plan.test.sh, .claude/skills/story-authoring/SKILL.md]  # files this story expects to write; `plan.sh conflicts` reads it
+touches: [scripts/plan.sh, scripts/new-story.sh, .claude/tests/plan.test.sh, .claude/tests/new-story.test.sh, .claude/tests/boundaries.test.sh, .claude/skills/story-authoring/SKILL.md, CLAUDE.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -86,40 +86,102 @@ they have to happen in.
   assertion* - see `## Deferred verifications`.
 ## Contract
 
+Written by the Lead PO at the end of PLANNED. RED may amend a block in place
+with a reason; GREEN builds what the amended block says.
+
 **`touches:` in story frontmatter.** A YAML list of repo-relative paths and
-globs the story expects to write. Empty list means "declared, and it is empty" -
-distinct from the key being absent, which means "not declared".
+globs the story expects to write, read by `frontmatter_list` in
+`.claude/hooks/lib.sh` - the reader `depends_on` uses. This story does not
+parse YAML itself and does not change that reader.
 
     touches: [scripts/plan.sh, .claude/tests/plan.test.sh]
 
-**`scripts/plan.sh`** gains `story_touches <file>`, returning the declared paths
-one per line, sorted and unique, empty when the key is absent or the list is
-empty. It reads frontmatter through `frontmatter_list` from `lib.sh` - the same
-reader `depends_on` uses - and does not parse YAML itself.
+**PO decision 1 - `touches: []` declares nothing.** An empty list is treated
+exactly like an absent key: the story falls through to its Contract paths, and
+with none it is UNKNOWN. AC-1's control says "judged as declaring nothing", and
+UNKNOWN is what `conflicts` has always called a story that declares nothing.
+The other reading - empty means "touches no file", so the story is `clear`
+against everything - was rejected because AC-5 makes `new-story.sh` emit
+`touches: []` into every new story: under that reading every fresh story would
+report `clear`, which is precisely the "UNKNOWN reported as clear" failure AC-3's
+control forbids. (This replaces the planning draft's sentence that an empty list
+is "distinct from the key being absent"; no AC changed.)
 
-`cmd_conflicts` changes its source of paths to, in order:
-  1. `story_touches` when the key is present
-  2. `contract_paths` otherwise
-  3. neither - UNKNOWN, exactly as today
+**`scripts/plan.sh`** gains
 
-`contract_paths()` and `contract_unenforced()` keep their current behaviour and
-signatures. The RED model policy is not in this story's scope and must not move.
+    story_touches <file>   the declared paths, one per line, sorted and unique;
+                           empty when the key is absent or the list is empty
 
-**Drift (AC-4)** is reported per story, not per pair, on its own line:
+`cmd_conflicts` takes each story's paths from, in order:
+
+  1. `story_touches`, when it is non-empty
+  2. `contract_paths`, otherwise
+  3. neither - UNKNOWN, as today
+
+Comparison is unchanged: exact string equality of paths, pairwise. A glob in
+`touches:` is compared as its literal text; glob-against-path overlap is NOT in
+scope (see `## Out of scope`).
+
+The UNKNOWN row's detail and the footer stop saying "no Contract paths" and say
+the story declares neither `touches:` nor Contract paths. The row's first column
+stays `UNKNOWN`, and UNKNOWN is never printed as `clear`.
+
+`contract_paths()` and `contract_unenforced()` keep their behaviour and
+signatures. The RED model policy (`cmd_models`) must not move: it still reads
+the Contract only.
+
+**Drift (AC-4)** is judged per story, only when `story_touches` is non-empty AND
+`contract_paths` is non-empty. A Contract path is drift when it neither equals a
+`touches:` entry nor matches one as a shell glob (`case "$path" in $glob`), so a
+story declaring `.claude/skills/stack-profiles/reference/*.md` does not drift on
+naming one of those files. One line per drifting path, printed after the pair
+table and before the summary:
 
     DRIFT     HARNESS-006   contract names scripts/new-story.sh, touches: does not
 
-**`scripts/new-story.sh`** emits `touches: []` into the frontmatter it writes,
-with a trailing comment in the same style as `depends_on`'s.
+- first column exactly `DRIFT`, second the story id, then the path;
+- drift is a WARNING: it does not change the exit status, which stays non-zero
+  on CONFLICT only;
+- the summary line gains a drift count:
+  `N conflict(s), M pair(s) that could not be judged, D drift warning(s).`
+- drift is reported for every startable story (not DONE, not blocked), even
+  when there are fewer than two of them to pair.
 
-**`.claude/tests/plan.test.sh`** carries the assertions. The existing 42 stay
-green: this adds a source of paths, it does not change how paths are compared.
+**`scripts/new-story.sh`** emits, between `depends_on` and `required_gates`:
+
+    touches: []         # files this story expects to write; `plan.sh conflicts` reads it
+
+**Tests.**
+- `.claude/tests/plan.test.sh` carries AC-1..AC-4. The existing 42 assertions
+  stay green unchanged: this adds a source of paths, it does not change how
+  paths are compared. Its `story_with` fixture helper gains a `TOUCHES:` line
+  (absent means no key; `TOUCHES:` with an empty value writes `touches: []`).
+- `.claude/tests/new-story.test.sh` carries AC-5's main case.
+- `.claude/tests/boundaries.test.sh` carries AC-5's control: a story whose
+  frontmatter has no `touches:` key raises no `problem` from
+  `check-boundaries.sh`. (It passes on arrival - no code refuses it today - so
+  RED earns it per the non-negotiables: see `## Deferred verifications`.)
+
+**Docs, written by the orchestrator, not by RED or GREEN.**
+`.claude/skills/story-authoring/SKILL.md` (AC-6) and `CLAUDE.md`'s "Two stories
+at once" section, which today states that `conflicts` does not read `touches:`
+at all - true until this story, false after it.
+`.claude/harness/VERSION` is bumped, as `check-boundaries.sh` requires of any
+harness change.
 
 **Test-only dependencies:** none. bash, awk and git, as ever.
 
-**Callers of anything whose signature changes:** none - `story_touches` is new,
-and `contract_paths` keeps its signature. `cmd_conflicts` is called only from
-the `conflicts` case in the dispatcher and from `plan.test.sh`.
+**Callers of anything whose signature changes:** none. `story_touches` is new;
+`contract_paths` and `contract_unenforced` keep their signatures. `cmd_conflicts`
+takes no arguments before or after, and is called only from the `conflicts` case
+of the dispatcher in `scripts/plan.sh` (the tests invoke it through that
+dispatcher). Checked with `rg -n 'cmd_conflicts|contract_paths|story_touches'`
+over the tree at PLANNED.
+
+**Gate.** `BOOTSTRAPPED=no`: every `gates.sh` gate is `unconfigured` here, so no
+`project.conf` gate can fail on this artifact. The binding check is the
+harness self-test, `bash scripts/selftest.sh` - the `plan`, `new-story` and
+`boundaries` suites - which is a required CI step (`selftest` job).
 ## Deferred verifications
 
 **AC-6, the documentation criterion. Owner: REVIEW.**
@@ -147,8 +209,38 @@ shown it.
 
 GATES runs `bash scripts/plan.sh conflicts` against `docs/backlog/stories/` with
 this story's own `touches:` filled in, and pastes the output. Expected: this
-story judged against its declared paths rather than UNKNOWN, and no DRIFT line,
-because its `touches:` and its Contract were written together.
+story judged against its declared paths rather than UNKNOWN.
+
+**The drift half of the prediction was revised at PLANNED, by measurement.** The
+draft predicted "no DRIFT line, because its `touches:` and its Contract were
+written together". Running `contract_paths`' own pattern by hand over the
+finished Contract says otherwise: it extracts every path the prose MENTIONS,
+including ones this story only reads - `.claude/hooks/lib.sh`, `gates.sh`,
+`check-boundaries.sh`, `project.conf`, `scripts/selftest.sh`, the bare
+`plan.sh` / `new-story.sh`, and the non-path `AC-1..AC`. So the expected result
+is DRIFT lines for those, and the question GATES answers is whether that noise
+is tolerable for a warning or means the Contract extractor needs its own story.
+Record which.
+
+**Result:** <!-- filled at GATES -->
+
+**AC-5's control earns its assertion. Owner: GATES.**
+
+The control ("a story with no `touches:` key raises no problem from
+`check-boundaries.sh`") passes on arrival: nothing refuses such a story today,
+so it has never been watched to fail. GATES earns it with ONE mutation through
+`scripts/mutate.sh`: add `touches` to `check-boundaries.sh`'s required-key loop
+(`for key in id title type status phase`), run
+`bash scripts/selftest.sh boundaries`, and paste the red naming that assertion.
+
+**Result:** <!-- filled at GATES -->
+
+**The central claim, defect put back. Owner: GATES.**
+
+Revert `cmd_conflicts`' source of paths to `contract_paths` alone, through
+`scripts/mutate.sh`, and run `bash scripts/selftest.sh plan`. AC-3's assertion
+("a story with `touches:` and an empty Contract is judged, not UNKNOWN") must go
+red. Paste it.
 
 **Result:** <!-- filled at GATES -->
 ## Amendments
@@ -165,38 +257,26 @@ because its `touches:` and its Contract were written together.
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-006` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `opus` | planning is the judgement phase: decomposition, the oracle partition, and what goes in the contract |
+| RED | `test-developer` | `fable` | the measured case. With a partitioned contract to work from, the brief carries the judgement and the weaker model writes sharper negative controls than the stronger one did without it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `opus` | reading review feedback against the contract is judgement, and a wrong call here ships |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation, with no failing test in front of any of it |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 Three follow-on behaviours, in the order they have to happen. Each is its own
