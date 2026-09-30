@@ -4,8 +4,8 @@ title: Declare Writes for 007 and 009 and decide their RED model
 slug: declare-writes-for-007-and-009-and-decid
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-017-declare-writes-for-007-and-009-and-decid
 depends_on: [HARNESS-016]     # story ids; phase.sh refuses to start this story until they are DONE
 touches: [docs/backlog/stories/HARNESS-007.md, docs/backlog/stories/HARNESS-009.md]        # files this story expects to write; `plan.sh conflicts` reads it
@@ -569,3 +569,11 @@ Owner: GATES.
    `.claude/harness/VERSION` needs no bump. HARNESS-016's missed bump does not
    apply here.
 4. Epic: none, so there is no done-when to check.
+
+**DONE, 2026-09-30.** Merged in #88 (merge commit 6410ce9). PR CI: the `gates`
+job passed in 1m26s, with the harness self-test step taking 72s against
+`timeout-minutes: 45`
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36739416532).
+`boundaries` passed in 6s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36739416449).
+The diff is docs only, so the harness VERSION was not bumped.
