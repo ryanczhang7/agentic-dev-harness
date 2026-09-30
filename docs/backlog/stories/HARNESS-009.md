@@ -5,7 +5,7 @@ slug: lead-po-dispatches-into-more-than-one-wo
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-009-lead-po-dispatches-into-more-than-one-wo
 depends_on: [HARNESS-008]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/agents/lead-po.md, scripts/plan.sh, .claude/tests/plan.test.sh]  # files this story expects to write
@@ -278,6 +278,7 @@ name, below the table.
 
 - PLANNED → RED, `lead-po` (this session): `claude-opus-5-5` (opus), as planned.
 - RED, `test-developer`: dispatched with `model: opus`; resolved `opus` per the agent file, no override (its own report). As planned.
+- GREEN, `feature-developer`: dispatched with `model: opus`; resolved `opus` per the agent file, no override (its own report). As planned.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -613,3 +614,40 @@ when asked with the measured fable → opus move in front of them.
    branch guard refuses. Recorded in the Contract rather than changing
    `phase.sh`, which the Contract forbids.
 5. **A defect-put-back mutation for AC-1** added, owner GATES, per `rules.md`.
+
+**GREEN, 2026-09-30 (`feature-developer`, `opus`, no override): negative
+controls measured against the shipped `--pairs`.** Measured by running the
+handoff's block (verbatim, in a scratch runner, with added measurement lines
+only) against the real `scripts/plan.sh`. All match RED's expected values, and
+none diverge:
+
+| Control | Expected | Measured |
+|---|---|---|
+| sibling `A<TAB>B` count (mixed) | 1 | 1 |
+| `A<TAB>C`/`C<TAB>A` (CONFLICT) | `0\|0` | `0\|0` |
+| lines naming D (UNKNOWN) | 0 | 0 |
+| lines naming E (blocked) | 0 | 0 |
+| H-1/H-10/H-11/H-110 | `0\|1\|2\|1` | `0\|1\|2\|1` |
+| `H-10<TAB>H-110` either way | 0 | `0\|0` |
+| lines naming H-2 (blocked) | 0 | 0 |
+| bad-arg sibling `--pairs` | `A<TAB>B\|0` | `A<TAB>B\|0` |
+
+Defective side, which RED measured only on hand-built stand-ins. This is a
+confirmation of the numbers, not the GATES defect-put-back, which is still
+owed against `plan.test.sh`. `scripts/mutate.sh scripts/plan.sh
+'s/\[ "$verdict" = clear \] \&\& printf/[ "$verdict" != CONFLICT ] \&\& printf/'`
+(this lets UNKNOWN in) gives D = **4** and H-1/H-10/H-11/H-110 = **3|2|3|2**,
+exactly as RED predicted. The block went from `32 passed, 0 failed` to
+`24 passed, 8 failed`, and the file was `restored (verified byte-for-byte ...)`.
+
+**Orchestrator's GREEN verification, 2026-09-30.** Own run: `plan: 167 passed,
+0 failed`; `git diff d7b3961 -- .claude/tests/` empty (tests frozen, though the
+lock could not enforce it - `harness`); real backlog `conflicts --pairs` 11
+lines, exit 0; `conflicts --pair` → `usage: plan.sh conflicts [--pairs]
+(got '--pair')`, exit 2; sigpipe and grep-count 0 findings. **For REVIEW to
+judge in the AC-4 position `lead-po.md` now takes:** "rebase the second branch
+... push" implies a force-push of a published branch, and the re-run
+`gates.sh` rewrites the story's `## Gate results` on a story already at
+REVIEW, so that commit is an exit from REVIEW with the ordering rule attached.
+Whether merging `main` into the branch (no force-push) is the better
+instruction is REVIEW's call.

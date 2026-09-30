@@ -146,6 +146,65 @@ When a story's acceptance criteria can only be checked by a gate marked
 `optional`, put `required_gates: [<id>]` in its frontmatter before it leaves
 PLANNED. Otherwise the gates go green with the story's central claims unrun.
 
+## More than one worktree
+
+**Parallelism is a capability, not the default.** With one worktree, which is
+every project until the user asks for or creates a second, nothing in this
+section applies: pick one story and dispatch it exactly as above. Never create
+a worktree to make work parallel on your own initiative.
+
+When the user has more than one worktree (`git worktree list`), each worktree
+runs one story under its own lock, gate record and harness copy. Holding them
+together is your job, and these rules cover it.
+
+**Choosing what runs together.** Candidates are the stories `plan.sh next` does
+not call `blocked`. Pairs are the lines of `bash scripts/plan.sh conflicts
+--pairs`, which prints `<id><TAB><id>` for each `clear` pair and nothing else.
+Blocked stories are already left out. Select only from those lines: a pair
+that is not printed is not selectable, whether the table calls it `CONFLICT` or
+`UNKNOWN`. **UNKNOWN is not permission.** Either get the story's `touches:`
+filled or run the stories one after another. For three or more worktrees, every
+pair within the chosen set must be a line of `--pairs`. Stories already in
+flight count as members of that set. Empty output means nothing may pair, so
+run one story at a time. Do not parse the human table; `--pairs` is there so
+you never have to.
+
+**Dispatching into a worktree.** The worktree is checked out on the story's
+`branch:`. Before dispatch, run `bash scripts/phase.sh show` *in that worktree*.
+If it names a different `STORY_ID`, refuse, and say which story you found
+there. `No active story` or the selected story itself means you may proceed.
+This check is yours to make, because `phase.sh set` overwrites an active story
+rather than refusing. Its branch guard names a branch, not a story, and is only
+a backstop. Give the subagent the worktree's absolute path and tell it to run
+every command from there: its shell starts elsewhere, and a `scripts/gates.sh`
+run from the wrong tree judges the wrong story.
+
+**When one fails a gate.** The failing story takes its usual route
+(`/advance-story`). Every other in-flight story finishes the phase it is in,
+stops at that boundary and is not advanced. A subagent is never cut off
+mid-phase. Write a line in each stopped story's `## Notes`: the phase it stopped
+at and which story failed which gate in which worktree. Then report every
+story: its worktree, the phase it stopped at, and why it stopped. Resume the
+stopped stories only once the failure is understood, because a gate failure can
+have a cause the stories share. Nothing may stop without a record, and one
+story's failure must not go unmentioned in the others.
+
+**Two PRs at REVIEW.** Report a merge order and the reason for it. Use a
+dependency or backlog order when one exists. If neither exists, say so, and
+put first the PR that has the smaller effect on the other branch. Say plainly
+that the second PR's gates ran against a tree without the first. Never say or
+imply that the two were verified together, because no gate here has seen them
+together. **The position this harness takes: the second PR waits for the
+first to merge.** After the user merges the first, rebase the second branch
+onto the updated `main` in its worktree. Run `bash scripts/gates.sh` there, push,
+and only then report the second PR ready. That rebased tree is the tree `main`
+will have after the second merge, so this one gate run is the joint
+verification, and it costs one run per extra PR. Nothing forces the run: the
+stamp is checked at the PR head, so an un-rebased second PR stays green. If the
+rebase conflicts, or the gates fail, the pair was jointly wrong even though its
+declarations were clear. Treat that as a gate failure in the second story, and
+say that is what it was. The user merges both PRs. You never merge.
+
 ## When you are blocked
 
 Ask the user. Do not guess at product decisions, invent acceptance criteria to

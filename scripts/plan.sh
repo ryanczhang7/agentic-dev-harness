@@ -469,7 +469,25 @@ shared_paths() {
     ($0 in a) { print }' <<<"$1" | tr '\n' ' '
 }
 
+# cmd_conflicts [table|pairs]   The table above, or with `pairs` the same
+# judgement as `<id>\t<id>` lines, one per `clear` pair and nothing else.
+#
+# `--pairs` IS FOR AN ORCHESTRATOR. lead-po picks which two stories may run in
+# two worktrees at once from the `clear` rows, and a table with padded columns,
+# a header, DRIFT lines and a footer is one reformat away from being misparsed
+# into the wrong pair. So the pairs mode prints only what may be selected: no
+# CONFLICT, no UNKNOWN - unknown is not permission - and no blocked story,
+# which story_walk never makes a candidate in the first place.
+#
+# ONE LOOP, TWO RENDERINGS. Each pair is judged exactly once, below, and the
+# mode decides only how that verdict is printed. A second loop that decided
+# `clear` for itself would one day disagree with the table about what clear is.
+#
+# `--pairs` EXITS 0 WHENEVER IT RAN. Empty stdout means "nothing may pair",
+# which is an answer, and `p="$(plan.sh conflicts --pairs)"` under `set -e`
+# must not die on the ordinary case. The table keeps its CONFLICT status.
 cmd_conflicts() {
+  local mode="${1:-table}"
   local files=() ids=() kind id f
   while IFS="$(printf '\t')" read -r kind id f; do
     [ "$kind" = candidate ] || continue
@@ -490,38 +508,48 @@ cmd_conflicts() {
   done
 
   if [ "$n" -lt 2 ]; then
+    [ "$mode" = pairs ] && return 0
     printf 'fewer than two startable stories; nothing to compare\n'
     [ "$drift" -gt 0 ] && printf '\n%s\n%d drift warning(s).\n' "$drift_lines" "$drift"
     return 0
   fi
 
-  local i j pa pb shared conflicts=0 unknowns=0
-  printf '%-9s %-25s %s\n' STATUS PAIR DETAIL
-  printf '%-9s %-25s %s\n' --------- ------------------------- ------------------------
+  local i j pa pb shared verdict detail conflicts=0 unknowns=0
+  if [ "$mode" = table ]; then
+    printf '%-9s %-25s %s\n' STATUS PAIR DETAIL
+    printf '%-9s %-25s %s\n' --------- ------------------------- ------------------------
+  fi
   i=0
   while [ "$i" -lt "$n" ]; do
     j=$((i + 1))
     while [ "$j" -lt "$n" ]; do
+      # The judgement: decided here, once, for both renderings.
       pa="$(story_paths "${files[$i]}")"
       pb="$(story_paths "${files[$j]}")"
       if [ -z "$pa" ] || [ -z "$pb" ]; then
-        printf '%-9s %-25s %s\n' UNKNOWN "${ids[$i]} + ${ids[$j]}" \
-          "declares neither touches: nor Contract paths - cannot judge"
+        verdict=UNKNOWN; detail="declares neither touches: nor Contract paths - cannot judge"
         unknowns=$((unknowns + 1))
       else
         shared="$(shared_paths "$pa" "$pb")"
         if [ -n "${shared// /}" ]; then
-          printf '%-9s %-25s %s\n' CONFLICT "${ids[$i]} + ${ids[$j]}" "$shared"
+          verdict=CONFLICT; detail="$shared"
           conflicts=$((conflicts + 1))
         else
-          printf '%-9s %-25s %s\n' clear "${ids[$i]} + ${ids[$j]}" "no shared path"
+          verdict=clear; detail="no shared path"
         fi
+      fi
+      # The rendering.
+      if [ "$mode" = pairs ]; then
+        [ "$verdict" = clear ] && printf '%s\t%s\n' "${ids[$i]}" "${ids[$j]}"
+      else
+        printf '%-9s %-25s %s\n' "$verdict" "${ids[$i]} + ${ids[$j]}" "$detail"
       fi
       j=$((j + 1))
     done
     i=$((i + 1))
   done
 
+  [ "$mode" = pairs ] && return 0
   [ "$drift" -gt 0 ] && printf '\n%s' "$drift_lines"
   printf '\n%d conflict(s), %d pair(s) that could not be judged, %d drift warning(s).\n' \
     "$conflicts" "$unknowns" "$drift"
@@ -609,7 +637,12 @@ case "${1:-}" in
   models) [ -n "${2:-}" ] || die "usage: plan.sh models <story-id>"; cmd_models "$2" ;;
   write)  [ -n "${2:-}" ] || die "usage: plan.sh write <story-id>";  cmd_write "$2" ;;
   next)   [ -n "${2:-}" ] || die "usage: plan.sh next <story-id>";   cmd_next "$2" ;;
-  conflicts) cmd_conflicts ;;
+  conflicts)
+    case "${2-}" in
+      "")      [ "$#" -lt 2 ] || die "usage: plan.sh conflicts [--pairs]"; cmd_conflicts table ;;
+      --pairs) cmd_conflicts pairs ;;
+      *)       die "usage: plan.sh conflicts [--pairs]  (got '$2')" ;;
+    esac ;;
   waves)     cmd_waves ;;
   -h|--help|"") sed -n '3,7p' "$0" | sed 's/^# \{0,1\}//' ;;
   *)      cmd_both "$1" ;;
