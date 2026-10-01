@@ -4,8 +4,8 @@ title: plan.sh write reports only what the file on disk says (port of WORLD-097)
 slug: plan-sh-write-reports-only-what-the-file
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-019-plan-sh-write-reports-only-what-the-file
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -391,3 +391,14 @@ Applied FWB's `scripts/plan.sh` diff with `git apply` (hunks at offset 70),
 with no edits. `plan: 242 passed, 0 failed`; that includes passes-on-arrival 15
 and 17, confirmed. `check-sigpipe`: 41 files, 0 findings. `check-grep-count`:
 41 files, 0 findings. `grep-count` 20/0 and `sigpipe` 82/0.
+
+**DONE, 2026-10-01.** Merged in #93 (merge commit 3f3eaad), release 62. The
+VERSION bump lands in this DONE commit, as for HARNESS-018. `phase.sh set DONE
+--force` was run on `main`, overriding the branch check. PR CI: the `gates` job
+passed in 1m48s, and its harness self-test step took 92s (72s on #92), with no
+`timeout-minutes` set
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36917356082).
+`boundaries` passed in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36917356091).
+Next: refresh fantasy-world-builder from this release, which is why the port
+was made. No epic, so no `/audit-mutations` recommendation.
