@@ -44,6 +44,19 @@
 #     to learn one number; if the named suite has no floor it warns loudly and
 #     exits 0. CI and scripts/ci-local.sh both invoke the full run, which is
 #     where the audit has to hold.
+#
+# --- a project's own floors (HARNESS-020) -----------------------------------
+#
+# floors.conf ships upstream and is REPLACED by every refresh, so a consuming
+# project cannot floor its own `project-*.test.sh` suites there without the
+# next refresh wiping the line. Those floors go in
+# .claude/tests/project-floors.conf instead: same grammar, same faults, read
+# after floors.conf and only if it exists. Upstream never ships it, so the
+# refresh keeps it. Its absence is never a fault. A suite floored in both files
+# is a fault against the project file's line - otherwise a project could lower
+# an upstream suite's floor from the one file the refresh never replaces. A
+# shortfall names the file its floor came from, so the reader edits the right
+# one.
 
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,9 +67,17 @@ ONLY="${1:-}"
 TESTS_DIR="$ROOT/.claude/tests"
 FLOORS_REL=".claude/tests/floors.conf"
 FLOORS_FILE="$ROOT/$FLOORS_REL"
+PROJECT_FLOORS_REL=".claude/tests/project-floors.conf"
+PROJECT_FLOORS_FILE="$ROOT/$PROJECT_FLOORS_REL"
 
 TAB=$(printf '\t')
 CR=$(printf '\r')
+# The FAULTS separator. Deliberately NOT whitespace: `read` strips a leading
+# IFS-whitespace delimiter, so with TAB a fault carrying no suite name
+# ("<TAB><message>") came back with the message in the name field and was
+# silently dropped - a malformed floors line passed the full run (HARNESS-020).
+# A non-whitespace IFS character yields an empty first field instead.
+US=$(printf '\037')
 
 # trim <string>   Result in $TRIMMED. Pure bash: no subshell, no process.
 TRIMMED=""
@@ -67,52 +88,15 @@ trim() {
 }
 
 # --- the floors table -------------------------------------------------------
-# "<suite><TAB><floor>" lines; no associative arrays, for bash 3.2 - as
-# gates.sh does for project.conf, and the grammar is deliberately the same:
-# `#` comments and blank lines ignored, `|`-separated, space trimmed.
+# "<suite><TAB><floor><TAB><source-rel-path>" lines; no associative arrays, for
+# bash 3.2 - as gates.sh does for project.conf, and the grammar is deliberately
+# the same: `#` comments and blank lines ignored, `|`-separated, space trimmed.
+# The source travels with the floor so that a shortfall names the file to edit.
 FLOORS=""
-# "<suite><TAB><message>" lines. The suite name is carried so that a single-
-# suite run can tell its own fault from somebody else's (C-4(b)).
+# "<suite><US><message>" lines. The suite name is carried so that a single-
+# suite run can tell its own fault from somebody else's (C-4(b)). A fault that
+# belongs to no suite has an EMPTY name, and a full run reports it.
 FAULTS=""
-
-if [ -f "$FLOORS_FILE" ]; then
-  lineno=0
-  while IFS= read -r line || [ -n "$line" ]; do
-    lineno=$((lineno+1))
-    line="${line%$CR}"
-    trim "$line"; line="$TRIMMED"
-    case "$line" in ''|'#'*) continue ;; esac
-    case "$line" in
-      *'|'*'|'*) ;;
-      *) FAULTS="$FAULTS$TAB$FLOORS_REL:$lineno  is not a floor line: '$line'
-"; continue ;;
-    esac
-    rest="$line"
-    kind="${rest%%|*}"; rest="${rest#*|}"
-    name="${rest%%|*}"; value="${rest#*|}"
-    trim "$kind";  kind="$TRIMMED"
-    trim "$name";  name="$TRIMMED"
-    trim "$value"; value="$TRIMMED"
-    if [ "$kind" != floor ]; then
-      FAULTS="$FAULTS$name$TAB$FLOORS_REL:$lineno  unknown kind '$kind'; the only kind is 'floor'
-"
-      continue
-    fi
-    if [ ! -f "$TESTS_DIR/$name.test.sh" ]; then
-      FAULTS="$FAULTS$name$TAB$FLOORS_REL:$lineno  floor names '$name', but .claude/tests/$name.test.sh does not exist
-"
-      continue
-    fi
-    case "$value" in
-      ''|*[!0-9]*)
-        FAULTS="$FAULTS$name$TAB$FLOORS_REL:$lineno  floor for '$name' is not a number: '$value'
-"
-        continue ;;
-    esac
-    FLOORS="$FLOORS$name$TAB$value
-"
-  done < "$FLOORS_FILE"
-fi
 
 # Both lookups below set a global rather than printing, and both are pure bash.
 # That is deliberate and it is DV-5: a command substitution is a fork, and on
@@ -122,17 +106,82 @@ fi
 # comparing an integer should be free, and this way it is: the floors mechanism
 # spawns no process at all.
 
-# floor_of <suite>   Sets $FLOOR to the declared floor, or empty. Last wins.
+# floor_of <suite>   Sets $FLOOR to the declared floor, or empty, and
+# $FLOOR_SRC to the file it was declared in. Last wins.
 FLOOR=""
+FLOOR_SRC=""
 floor_of() {
-  local n="$1" line
-  FLOOR=""
+  local n="$1" line rest
+  FLOOR=""; FLOOR_SRC=""
   while IFS= read -r line; do
-    case "$line" in "$n$TAB"*) FLOOR="${line#*"$TAB"}" ;; esac
+    case "$line" in
+      "$n$TAB"*)
+        rest="${line#"$n$TAB"}"
+        FLOOR="${rest%%"$TAB"*}"
+        FLOOR_SRC="${rest#*"$TAB"}" ;;
+    esac
   done <<FLOOR_LINES
 $FLOORS
 FLOOR_LINES
 }
+
+# load_floors <abs-path> <rel-path>   Appends the file's floors to $FLOORS and
+# its faults to $FAULTS, every fault located as <rel-path>:<lineno>. One more
+# `while read` per file, never a process (DV-5).
+load_floors() {
+  local file="$1" rel="$2" lineno=0 line rest kind name value
+  while IFS= read -r line || [ -n "$line" ]; do
+    lineno=$((lineno+1))
+    line="${line%$CR}"
+    trim "$line"; line="$TRIMMED"
+    case "$line" in ''|'#'*) continue ;; esac
+    case "$line" in
+      *'|'*'|'*) ;;
+      *) FAULTS="$FAULTS$US$rel:$lineno  is not a floor line: '$line'
+"; continue ;;
+    esac
+    rest="$line"
+    kind="${rest%%|*}"; rest="${rest#*|}"
+    name="${rest%%|*}"; value="${rest#*|}"
+    trim "$kind";  kind="$TRIMMED"
+    trim "$name";  name="$TRIMMED"
+    trim "$value"; value="$TRIMMED"
+    if [ "$kind" != floor ]; then
+      FAULTS="$FAULTS$name$US$rel:$lineno  unknown kind '$kind'; the only kind is 'floor'
+"
+      continue
+    fi
+    if [ ! -f "$TESTS_DIR/$name.test.sh" ]; then
+      FAULTS="$FAULTS$name$US$rel:$lineno  floor names '$name', but .claude/tests/$name.test.sh does not exist
+"
+      continue
+    fi
+    case "$value" in
+      ''|*[!0-9]*)
+        FAULTS="$FAULTS$name$US$rel:$lineno  floor for '$name' is not a number: '$value'
+"
+        continue ;;
+    esac
+    # A suite has one floor. Only the project file can collide with the other:
+    # floors.conf is loaded first, and a repeat inside one file is last-wins,
+    # as it always was.
+    if [ "$rel" != "$FLOORS_REL" ]; then
+      floor_of "$name"
+      if [ "$FLOOR_SRC" = "$FLOORS_REL" ]; then
+        FAULTS="$FAULTS$name$US$rel:$lineno  floor for '$name' is already declared in $FLOORS_REL; a suite has one floor
+"
+        continue
+      fi
+    fi
+    FLOORS="$FLOORS$name$TAB$value$TAB$rel
+"
+  done < "$file"
+}
+
+if [ -f "$FLOORS_FILE" ]; then load_floors "$FLOORS_FILE" "$FLOORS_REL"; fi
+if [ -f "$PROJECT_FLOORS_FILE" ]; then
+  load_floors "$PROJECT_FLOORS_FILE" "$PROJECT_FLOORS_REL"
+fi
 
 # executed_count <suite> <output>   Sets $COUNT to the N of
 # `<name>: N passed, M failed`, anchored at column one, keyed by name, LAST
@@ -176,13 +225,13 @@ done
 # worth knowing about in a second rather than after the whole suite has run.
 if [ -z "$ONLY" ]; then
   [ -f "$FLOORS_FILE" ] || [ -z "$SUITES" ] || \
-    FAULTS="$FAULTS$TAB$FLOORS_REL  does not exist; every suite must declare its assertion floor there
+    FAULTS="$FAULTS$US$FLOORS_REL  does not exist; every suite must declare its assertion floor there
 "
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     floor_of "$name"
     [ -n "$FLOOR" ] || \
-      FAULTS="$FAULTS$name$TAB$name  no floor line in $FLOORS_REL; every suite must declare one
+      FAULTS="$FAULTS$name$US$name  no floor line in $FLOORS_REL or $PROJECT_FLOORS_REL; every suite must declare one (a project's own suites go in project-floors.conf)
 "
   done <<SUITE_NAMES
 $SUITES
@@ -190,9 +239,11 @@ SUITE_NAMES
 fi
 
 # Report the faults this run is answerable for. A single-suite run answers for
-# its own suite's line and for nothing else (C-4(b)).
+# its own suite's line and for nothing else (C-4(b)) - so a fault that names no
+# suite (a line that is not a floor line, a missing floors.conf) is reported by
+# a full run and by no single-suite run, which audits nothing but its own floor.
 faulted=0
-while IFS="$TAB" read -r fname fmsg; do
+while IFS="$US" read -r fname fmsg; do
   [ -n "$fmsg" ] || continue
   [ -n "$ONLY" ] && [ "$ONLY" != "$fname" ] && continue
   printf 'FAIL %s\n' "$fmsg"
@@ -201,7 +252,9 @@ done <<FAULT_LINES
 $FAULTS
 FAULT_LINES
 if [ "$faulted" -gt 0 ]; then
-  printf '\n%d fault(s) in %s. Nothing was run.\n' "$faulted" "$FLOORS_REL"
+  where="$FLOORS_REL"
+  [ -f "$PROJECT_FLOORS_FILE" ] && where="$FLOORS_REL or $PROJECT_FLOORS_REL"
+  printf '\n%d fault(s) in %s. Nothing was run.\n' "$faulted" "$where"
   exit 1
 fi
 
@@ -223,11 +276,11 @@ for suite in "$TESTS_DIR"/*.test.sh; do
   [ "$rc" -eq 0 ] || bad=1
   ran=$((ran+1))
 
-  floor_of "$name"; floor="$FLOOR"
+  floor_of "$name"; floor="$FLOOR"   # and $FLOOR_SRC, the file it came from
   if [ -z "$floor" ]; then
     # Only reachable on a single-suite run; a full run has already failed above.
     printf 'WARNING: no floor line for %s in %s, so this run cannot tell\n' \
-      "$name" "$FLOORS_REL" >&2
+      "$name" "$FLOORS_REL or $PROJECT_FLOORS_REL" >&2
     printf 'WARNING: whether that suite did any work. Declare one before the full run.\n' >&2
   else
     floored=$((floored+1))
@@ -241,7 +294,7 @@ for suite in "$TESTS_DIR"/*.test.sh; do
       executed=$((executed+observed))
       if [ "$observed" -lt "$floor" ]; then
         printf 'FAIL %s  did %s units of work, below the floor of %s in %s\n' \
-          "$name" "$observed" "$floor" "$FLOORS_REL"
+          "$name" "$observed" "$floor" "$FLOOR_SRC"
         bad=1
       else
         met=$((met+1))

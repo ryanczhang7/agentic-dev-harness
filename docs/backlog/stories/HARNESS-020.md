@@ -4,8 +4,8 @@ title: A project declares its own suites' floors in a file the refresh keeps
 slug: a-project-declares-its-own-suites-floors
 epic: 
 type: chore
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-020-a-project-declares-its-own-suites-floors
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -248,6 +248,37 @@ LOCAL lines.
   exist yet. **Owner: GATES.** Run it with `scripts/mutate.sh` against
   `bash .claude/tests/selftest.test.sh`.
 
+  **Result (GATES, 2026-10-01, orchestrator):** run as planned; 18 red, exactly
+  the set RED predicted (AC-1 entire, the floors.conf shortfall control, AC-2's
+  only-the-unfloored, AC-3 (a)-(d), AC-4 except its at-floor exit). Restored.
+
+  ```
+  === mutate: scripts/selftest.sh (1 line(s) changed by s#^  load_floors "\$PROJECT_FLOORS_FILE" "\$PROJECT_FLOORS_REL"#  :#) ===
+    183 -   load_floors "$PROJECT_FLOORS_FILE" "$PROJECT_FLOORS_REL"
+    183 +   :
+  === mutate: running bash .claude/tests/selftest.test.sh ===
+      FAIL a full run with a project-floored suite exits 0
+      FAIL and says both suites passed
+      FAIL and counts both floors as met, the project's included
+      FAIL and the project suite is not reported as missing a floor
+      FAIL and no fault of any kind is printed
+      FAIL the shortfall names the suite, both numbers and project-floors.conf
+      FAIL and its shortfall line names floors.conf, byte for byte as before
+      FAIL and only the unfloored suite is named
+      FAIL named with project-floors.conf, line 4, and the fault
+      FAIL named with project-floors.conf, line 3, the suite, and the missing file
+      FAIL named against project-floors.conf's line 2, naming floors.conf
+      FAIL an unknown kind is named with project-floors.conf and its line
+      FAIL a non-number is named with project-floors.conf and its line
+      FAIL a project suite below its project floor fails its single-suite run
+      FAIL naming the suite, both numbers and project-floors.conf
+      FAIL and it is not waved through as having no floor
+      FAIL and the floor is counted as met
+      FAIL with no missing-floor warning
+  selftest: 77 passed, 18 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261001T220201Z.2955167.bak) ===
+  ```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -280,6 +311,7 @@ name, below the table.
 **Resolved:**
 
 - RED: `test-developer` resolved to `opus` (`claude-opus-5-5`, agent definition; no override). Verdict: 51 assertions (24 red for the right reason); it found a pre-existing defect (dropped unnamed faults), which the orchestrator reproduced independently.
+- GREEN: `feature-developer` resolved to `opus` (`claude-opus-5-5`, agent definition; no override). Verdict: suites green with no test touched; every RED control measured at its expected value.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -677,10 +709,21 @@ and `check-grep-count.sh` (41 files, 0 findings) are clean over the new code.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-01T22:03:41Z
+    commit: 065f55c (working tree had uncommitted changes)
+    tree:   b4238b4742719c0698db66e2d236c855448403dc
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
