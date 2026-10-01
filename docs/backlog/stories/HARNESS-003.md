@@ -116,6 +116,65 @@ Required gate that would fail if this story's artifact broke: `unit`
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
+**Scope, as of 2026-09-30.** AC-1 to AC-5 and the refusal half of AC-6 were
+delivered before this story started, by commits `9fbd39d` and the earlier
+exit-status work it builds on. The orchestrator verified that by putting each
+mutant back with `scripts/mutate.sh` against `bash .claude/tests/boundaries.test.sh`
+(the output is in ## Notes). The `boundaries()` helper the Context blames no
+longer exists: `run_boundaries` (`boundaries.test.sh:32`) sets `$out` and `$rc`,
+and `refused` (`:41`) fails any refusal that exits 0. **What remains is the pass
+half of AC-6**, and that is all RED writes.
+
+**Writes:** `.claude/tests/boundaries.test.sh`
+
+**Which invocations count as "expected to pass".** A whole run can exit 0 only
+when the fixture story carries a real `## Gate results` written by `gates.sh`.
+That means `story_blocked` (`:236`) or anything else that runs `gates.sh` into
+the fixture. Every other fixture (`story_on_branch`, `scaffold_story`,
+`manifest_story`, `story_claiming`, `harness_branch`) has no gate record and is
+refused by the gate-record rule *by design*, as the comment above
+`accepts_manifest` (`:52`) says. Those invocations assert that one rule accepts,
+not that the run does, and AC-6 does not reach them. Asserting rc there is out
+of scope.
+
+Of the gate-recorded invocations whose assertions are acceptances, four already
+assert `0 "$rc"`: "and it is not refused" (`:274`), "and the run is clean"
+(`:1045`), and the two AC-2 assertions (`:1245`, `:1249`). Two do not:
+
+| Line | Assertion | Owed |
+|---|---|---|
+| `:293` | "DONE with the CI run quoted is accepted" | `assert_eq "<name>" 0 "$rc"` |
+| `:1191` | "a record made against this tree matches it" | `assert_eq "<name>" 0 "$rc"` |
+
+RED **checks this enumeration against the tree** (every `story_blocked` use, and
+any other fixture that runs `gates.sh`) and amends this table in place with a
+reason if it finds another, or finds one of these is not actually expected clean.
+
+**If either run does not exit 0 today, that is a finding, not a test to
+soften.** Report what refused it. Do not change the fixture to make it pass
+without saying so in the handoff.
+
+**Earning (tests written against code that already exists).** Each new
+assertion passes on arrival, so it is earned by one mutation of the production
+behaviour it pins, via `scripts/mutate.sh`, with the output pasted into the
+handoff. The mutation must keep the message the existing `assert_contains`
+reads, so that **only** the new rc assertion goes red:
+
+- `:293`: in `check-boundaries.sh`, `ok "blocked gate '$g' was verified on CI"`
+  becomes `problem "blocked gate ...`. The output still contains "verified on
+  CI", and the run exits 1.
+- `:1191`: `ok "gate record matches $where (tree $rec)"` becomes
+  `problem "gate record matches ...`. The existing `assert_contains` anchors on
+  `ok    `, so it goes red too, as do the rc assertions at `:1245`/`:1249`.
+  That is expected; what must be shown is that the NEW rc assertion is among
+  the failures.
+
+**Oracle partition.** Everything here is mechanical: the exact value is 0.
+
+**No production code changes.** GREEN is expected to be a no-op, verified by the
+orchestrator (`rules.md`, the return-to-RED paragraph, applies by analogy: do
+not dispatch a feature developer with nothing to do).
+
 ## Deferred verifications
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
@@ -155,31 +214,34 @@ Required gate that would fail if this story's artifact broke: `unit`
 
 ## Model guidance
 
-<!-- Optional, written by the Lead PO BEFORE the phase it applies to. Use it
-     when a phase of this story is worth running on a different model from the
-     default, and make it falsifiable rather than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+Planned by `bash scripts/plan.sh write HARNESS-003` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `opus` | planning is the judgement phase: decomposition, the oracle partition, and what goes in the contract |
+| RED | `test-developer` | `opus` | the lock freezes none of the paths this story names, so the contract is not an aid to the model here - it is the only enforcement there is. A weaker model against a safety net and a weaker model against nothing are different propositions |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `opus` | reading review feedback against the contract is judgement, and a wrong call here ships |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation, with no failing test in front of any of it |
+
+**Resolved:**
+
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
+
+- Asserting an exit status on fixtures that have no gate record. Their whole
+  run is refused by design; see ## Contract.
+- Re-earning AC-1 to AC-5. Their mutants were re-run on 2026-09-30 and all were
+  caught (## Notes).
 
 ## Design notes
 
@@ -263,3 +325,45 @@ Required gate that would fail if this story's artifact broke: `unit`
 
 ## Notes
 
+
+### AC-1 to AC-5 already covered (orchestrator, 2026-09-30)
+
+Each mutant was put back with `scripts/mutate.sh` against
+`bash .claude/tests/boundaries.test.sh`, anchored on today's code because the
+Context's line numbers have drifted. All five were caught and all restores were
+verified byte for byte.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s#\[ "$fid" = "$base" \]#[ -n "$fid" ]#) ===
+    FAIL an id that disagrees with the filename
+boundaries: 79 passed, 1 failed
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s#^if git ls-files --error-unmatch#if ! git ls-files --error-unmatch#) ===
+    FAIL and it is not refused
+    FAIL and the run is clean
+    FAIL a committed current-story.env is refused
+    FAIL and does not also report it clean
+    FAIL AC-2: and the local run exits 0
+    FAIL AC-2: and CI's run exits 0
+boundaries: 74 passed, 6 failed
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s#problem "branch '$br' is claimed#note "branch '$br' is claimed#) ===
+    FAIL two claimants is a problem, not a coin flip
+boundaries: 79 passed, 1 failed
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by /PASS\[\[:space:\]\]+\$g/s#if awk#if ! awk#) ===
+    FAIL a required gate the record has no PASS for
+    FAIL one that did pass is reported as passing
+    FAIL and the run is clean
+boundaries: 77 passed, 3 failed
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s#^  feature|fix)#  nosuchtype)#) ===
+    FAIL a feature story with a template-only handoff
+    FAIL while a template-only one still is
+boundaries: 78 passed, 2 failed
+```
+
+| AC | Test (`boundaries.test.sh`) |
+|---|---|
+| AC-1 | "an id that disagrees with the filename" |
+| AC-2 | "a committed current-story.env is refused" |
+| AC-3 | "two claimants is a problem, not a coin flip" |
+| AC-4 | "a required gate the record has no PASS for", "one that did pass is reported as passing" |
+| AC-5 | "a feature story with a template-only handoff" |
+| AC-6 (refusals) | every refusal goes through `refused`, which fails on exit 0 |
