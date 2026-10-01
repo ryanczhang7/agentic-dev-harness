@@ -4,8 +4,8 @@ title: check-boundaries asserts its own verdict on the story checks
 slug: check-boundaries-asserts-its-own-verdict
 epic: 
 type: chore
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-003-check-boundaries-asserts-its-own-verdict
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, scripts/check-boundaries.sh]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -269,6 +269,7 @@ name, below the table.
 **Resolved:**
 
 - RED: `test-developer` resolved to `opus` (the agent definition's `model:`; no session override passed). Verdict: it found a production defect the contract had not predicted, and the orchestrator reproduced it on different inputs.
+- GREEN: `feature-developer` resolved to `opus` (agent definition; no override). Verdict: a one-line fix, no test touched, line count unchanged.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -490,10 +491,21 @@ was 81 passed, 1 failed. This 80/2 result is the current RED state GREEN starts 
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-01T00:55:51Z
+    commit: dcbf0a5 (working tree had uncommitted changes)
+    tree:   a00a0b4abe2a89ce89ecf1080f0fd0cb7c575a99
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -561,3 +573,36 @@ boundaries: 78 passed, 2 failed
 | AC-4 | "a required gate the record has no PASS for", "one that did pass is reported as passing" |
 | AC-5 | "a feature story with a template-only handoff" |
 | AC-6 (refusals) | every refusal goes through `refused`, which fails on exit 0 |
+
+### GREEN and GATES verification (orchestrator, 2026-09-30)
+
+GREEN changed one line, `scripts/check-boundaries.sh:356`, from
+`$g[^\n]*https?://|https?://[^\n]*$g` to `$g.*https?://|https?://.*$g`.
+grep is line-based, so `.*` still stops at the end of the line. Suite after
+GREEN: `boundaries: 82 passed, 0 failed`. The negative control
+"DONE needs more than pending: it needs the CI run" (a DONE story with no URL)
+is still refused, so the wider pattern does not accept a story with no URL.
+`check-sigpipe`: 41 files, 0 findings. `check-grep-count`: 41 files, 0 findings.
+
+**Defect put back** (the story's central claim, `rules.md` "Mutation work per
+story"), in GATES with `scripts/mutate.sh`:
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s#"\$g\.\*https#"$g[^\n]*https#) ===
+  356 -               if grep -qiE "$g.*https?://|https?://.*$g" "$sfile"; then
+  356 +               if grep -qiE "$g[^\n]*https?://|https?://.*$g" "$sfile"; then
+=== mutate: running bash .claude/tests/boundaries.test.sh ===
+    FAIL DONE with the CI run quoted is accepted
+    FAIL and DONE with the CI run quoted exits 0, so CI would merge it
+boundaries: 80 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+```
+
+A first attempt with a single `\n` in the replacement split line 356 in two,
+because sed read `\n` as a newline (mutate.sh reported 213 lines changed). It
+failed the same two assertions, but it was not the original defect, so it was
+discarded and the run above, which changed one line, is the record.
+
+Handoff mutation table, one entry checked: `:1195` was earned in RED by turning
+`ok "gate record matches` into `problem`. RED's output is in ## Handoff, and the
+new assertion was among the 9 failures.
