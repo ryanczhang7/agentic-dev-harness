@@ -49,8 +49,13 @@ cp "$REPO_ROOT/.claude/tests/_lib.sh" "$FIX/.claude/tests/_lib.sh"
 
 # --- fixture helpers ---------------------------------------------------------
 
-# reset_suites   Empties the fixture's test directory and its floors file.
-reset_suites() { rm -f "$FIX"/.claude/tests/*.test.sh "$FIX/.claude/tests/floors.conf"; }
+# reset_suites   Empties the fixture's test directory and BOTH floors files.
+# HARNESS-020 added project-floors.conf; a block that writes one and a later
+# block that assumes it absent would otherwise be coupled through the fixture.
+reset_suites() {
+  rm -f "$FIX"/.claude/tests/*.test.sh "$FIX/.claude/tests/floors.conf" \
+        "$FIX/.claude/tests/project-floors.conf"
+}
 
 # passing_suite <name> <n>   A suite with exactly ONE `assert_` call site,
 # executed <n> times. That shape is AC-7's subject, not an accident of writing.
@@ -466,5 +471,301 @@ assert_eq "profiles is floored at its 50 executed assertions, not its call-site 
   50 "$(floor_of profiles)"
 assert_eq "lib is floored at its 217 executed assertions, not its call-site count" \
   217 "$(floor_of lib)"
+
+# ===========================================================================
+# HARNESS-020: a project declares its own suites' floors in
+# .claude/tests/project-floors.conf, which upstream never ships and the refresh
+# keeps. Every needle below is a WHOLE LINE of selftest.sh's output, compared
+# with `grep -cxF`, because the fault strings are mechanical (the story's
+# Contract pins them byte for byte) and a floating substring is satisfied by
+# the wrong file's name in the right sentence.
+# ===========================================================================
+
+# project_floors   project-floors.conf body on stdin.
+project_floors() { cat > "$FIX/.claude/tests/project-floors.conf"; }
+
+# exact_lines <line>   How many lines of the last run's output are EXACTLY
+# <line>. A here-doc rather than a pipe, for check-sigpipe.sh; no `|| echo 0`
+# fallback, for check-grep-count.sh - grep -c already prints 0.
+exact_lines() {
+  grep -cxF -- "$1" <<EXACT_OUT
+$out
+EXACT_OUT
+}
+
+PF=".claude/tests/project-floors.conf"
+MISSING_TAIL="no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-020 AC-1  a suite floored only in project-floors.conf passes the full-run audit"
+
+# alpha is upstream's (floors.conf), project-mine is the project's own. The
+# full run is the one CI invokes, and the one FWB's refresh broke.
+reset_suites
+passing_suite alpha 3
+passing_suite project-mine 4
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+# a project's own suites
+floor | project-mine | 4
+FLOORS
+selftest
+assert_eq "a full run with a project-floored suite exits 0" 0 "$RC"
+assert_eq "and says both suites passed" 1 "$(exact_lines "2 harness suite(s) passed.")"
+assert_eq "and counts both floors as met, the project's included" 1 \
+  "$(exact_lines "assertion floors: all 2 suite(s) met their declared floor (7 assertions executed, 7 declared).")"
+# Prefix, not the new whole line: this must fail under the OLD wording too.
+assert_eq "and the project suite is not reported as missing a floor" 0 \
+  "$(printf '%s\n' "$out" | grep -c '^FAIL project-mine  no floor line')"
+assert_not_contains "and no fault of any kind is printed" "FAIL" "$out"
+
+describe "HARNESS-020 AC-1  and that floor is enforced, not merely accepted"
+
+# The same declaration with the suite one assertion short. An implementation
+# that satisfies the audit by treating project-floors.conf as "these suites
+# need no floor" passes the block above and dies here.
+reset_suites
+passing_suite alpha 3
+passing_suite project-mine 3
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+floor | project-mine | 4
+FLOORS
+selftest
+assert_eq "a project suite below its project floor fails the full run" 1 "$RC"
+# Contract amendment (RED): the shortfall names the file the floor came FROM.
+# Saying `in .claude/tests/floors.conf` here would send the reader to edit the
+# upstream file the refresh wipes - the very defect this story removes.
+assert_eq "the shortfall names the suite, both numbers and project-floors.conf" 1 \
+  "$(exact_lines "FAIL project-mine  did 3 units of work, below the floor of 4 in $PF")"
+assert_eq "while upstream's suite, which met its floor, is not blamed" 0 \
+  "$(printf '%s\n' "$out" | grep -c '^FAIL alpha ')"
+assert_not_contains "and the run does not also claim everything passed" \
+  "harness suite(s) passed." "$out"
+
+describe "HARNESS-020 AC-1  a floors.conf floor's shortfall still names floors.conf"
+
+# The control for the amendment above: the file a floor came from is reported
+# per floor, not swapped wholesale for the new name.
+reset_suites
+passing_suite alpha 2
+passing_suite project-mine 4
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+floor | project-mine | 4
+FLOORS
+selftest
+assert_eq "an upstream suite below its floor fails the full run" 1 "$RC"
+assert_eq "and its shortfall line names floors.conf, byte for byte as before" 1 \
+  "$(exact_lines "FAIL alpha  did 2 units of work, below the floor of 3 in .claude/tests/floors.conf")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-020 AC-2  a suite floored in neither file names both files"
+
+# No project-floors.conf at all: exactly the tree FWB had after the refresh,
+# and the case where the old message pointed only at the upstream file.
+reset_suites
+passing_suite alpha 3
+passing_suite project-orphan 5
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+selftest
+assert_eq "an unfloored suite fails the full run" 1 "$RC"
+assert_eq "the fault names both files and where a project's own floor belongs" 1 \
+  "$(exact_lines "FAIL project-orphan  $MISSING_TAIL")"
+assert_eq "the old one-file wording is gone" 0 \
+  "$(exact_lines "FAIL project-orphan  no floor line in .claude/tests/floors.conf; every suite must declare one")"
+
+# The same with a project-floors.conf present that floors something else: the
+# message does not depend on whether the project file exists.
+reset_suites
+passing_suite alpha 3
+passing_suite project-mine 2
+passing_suite project-orphan 5
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+floor | project-mine | 2
+FLOORS
+selftest
+assert_eq "with a project file present, an unfloored suite still fails" 1 "$RC"
+assert_eq "and the fault names both files, the same words" 1 \
+  "$(exact_lines "FAIL project-orphan  $MISSING_TAIL")"
+assert_eq "and only the unfloored suite is named" 1 \
+  "$(printf '%s\n' "$out" | grep -c '^FAIL ')"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-020 AC-3  a project-floors.conf fault is named, with its file, line and fault"
+
+# Each fault on a line number that a count of PARSED lines would get wrong: a
+# comment and a blank line come first.
+
+# (a) malformed line.
+reset_suites
+passing_suite alpha 3
+passing_suite project-mine 4
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+# a comment, and a blank line, before the fault
+
+floor | project-mine | 4
+this is not a floor
+FLOORS
+selftest
+assert_eq "a malformed project-floors.conf line fails the full run" 1 "$RC"
+assert_eq "named with project-floors.conf, line 4, and the fault" 1 \
+  "$(exact_lines "FAIL $PF:4  is not a floor line: 'this is not a floor'")"
+
+# (b) a floor naming a suite that does not exist.
+reset_suites
+passing_suite alpha 3
+passing_suite project-mine 4
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+# the fault is on line 3
+
+floor | project-ghost | 12
+floor | project-mine | 4
+FLOORS
+selftest
+assert_eq "a project floor naming a missing suite fails the full run" 1 "$RC"
+assert_eq "named with project-floors.conf, line 3, the suite, and the missing file" 1 \
+  "$(exact_lines "FAIL $PF:3  floor names 'project-ghost', but .claude/tests/project-ghost.test.sh does not exist")"
+
+# (c) a suite floored in BOTH files. Without this, a project could quietly
+# lower an upstream suite's floor from the file the refresh never replaces.
+reset_suites
+passing_suite alpha 3
+passing_suite project-mine 4
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+floor | project-mine | 4
+floor | alpha | 1
+FLOORS
+selftest
+assert_eq "a suite floored in both files fails the full run" 1 "$RC"
+assert_eq "named against project-floors.conf's line 2, naming floors.conf" 1 \
+  "$(exact_lines "FAIL $PF:2  floor for 'alpha' is already declared in .claude/tests/floors.conf; a suite has one floor")"
+assert_eq "and the floors.conf line is not the one blamed" 0 \
+  "$(printf '%s\n' "$out" | grep -c '^FAIL \.claude/tests/floors\.conf')"
+
+# (d) the remaining two faults of the shared grammar, against the project file.
+reset_suites
+passing_suite alpha 3
+passing_suite project-mine 4
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+# two faults
+flor | project-mine | 4
+floor | project-mine | lots
+FLOORS
+selftest
+assert_eq "a non-numeric or unknown-kind project floor fails the full run" 1 "$RC"
+assert_eq "an unknown kind is named with project-floors.conf and its line" 1 \
+  "$(exact_lines "FAIL $PF:2  unknown kind 'flor'; the only kind is 'floor'")"
+assert_eq "a non-number is named with project-floors.conf and its line" 1 \
+  "$(exact_lines "FAIL $PF:3  floor for 'project-mine' is not a number: 'lots'")"
+
+describe "HARNESS-020 AC-3  a fault that names no suite is reported, not dropped"
+
+# Found in RED, and the reason (a) above cannot pass by reuse alone. A fault
+# that carries no suite name - `is not a floor line`, `does not exist` - is
+# queued as "<TAB><message>", and the report loop reads it back with
+# IFS=<TAB>. TAB is an IFS WHITESPACE character, so read strips the leading
+# one, the message lands in the name field, the message field is empty, and
+# `[ -n "$fmsg" ] || continue` drops it. Measured on the shipped selftest.sh:
+# a floors.conf holding `this is not a floor` passes the full run, exit 0. So
+# the malformed-line fault has never been printed, for either file, and the
+# missing-floors.conf fault is printed only by accident - every suite then
+# also lacks a floor. These two pin the shared report path for floors.conf;
+# (a) pins it for project-floors.conf.
+reset_suites
+passing_suite alpha 3
+floors <<'FLOORS'
+floor | alpha | 3
+this is not a floor
+FLOORS
+selftest
+assert_eq "a malformed floors.conf line fails the full run" 1 "$RC"
+assert_eq "named with floors.conf, its line, and the fault" 1 \
+  "$(exact_lines "FAIL .claude/tests/floors.conf:2  is not a floor line: 'this is not a floor'")"
+
+reset_suites
+passing_suite alpha 3
+selftest
+assert_eq "a missing floors.conf fails the full run" 1 "$RC"
+assert_eq "and says so in its own words, not only through each suite's missing floor" 1 \
+  "$(exact_lines "FAIL .claude/tests/floors.conf  does not exist; every suite must declare its assertion floor there")"
+
+describe "HARNESS-020 AC-3  control: no project-floors.conf is not a fault"
+
+# An upstream tree - this repository - ships no project-floors.conf, and must
+# pass exactly as before. The needle is the file's NAME anywhere in the output:
+# every fault above prints it, so a mechanism that makes absence a fault (or so
+# much as mentions the file when it is absent) is caught here.
+reset_suites
+passing_suite alpha 3
+passing_suite beta  7
+floors <<'FLOORS'
+floor | alpha | 3
+floor | beta  | 7
+FLOORS
+selftest
+assert_eq "with no project-floors.conf the full run exits 0" 0 "$RC"
+assert_eq "and says both suites passed" 1 "$(exact_lines "2 harness suite(s) passed.")"
+assert_not_contains "and project-floors.conf is not mentioned at all" "project-floors.conf" "$out"
+assert_eq "and no line is a fault" 0 "$(printf '%s\n' "$out" | grep -c '^FAIL')"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-020 AC-4  a single-suite run enforces a project-floors.conf floor"
+
+reset_suites
+passing_suite alpha 3
+passing_suite project-mine 3
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+floor | project-mine | 4
+FLOORS
+selftest project-mine
+assert_eq "a project suite below its project floor fails its single-suite run" 1 "$RC"
+assert_eq "naming the suite, both numbers and project-floors.conf" 1 \
+  "$(exact_lines "FAIL project-mine  did 3 units of work, below the floor of 4 in $PF")"
+assert_not_contains "and it is not waved through as having no floor" \
+  "WARNING: no floor line for project-mine" "$out"
+
+# The passing half: at its floor, the single-suite run is clean and counts
+# the floor as met - not "passed, with a warning that no floor exists".
+reset_suites
+passing_suite alpha 3
+passing_suite project-mine 4
+floors <<'FLOORS'
+floor | alpha | 3
+FLOORS
+project_floors <<'FLOORS'
+floor | project-mine | 4
+FLOORS
+selftest project-mine
+assert_eq "at its project floor the single-suite run exits 0" 0 "$RC"
+assert_eq "and the floor is counted as met" 1 \
+  "$(exact_lines "assertion floors: all 1 suite(s) met their declared floor (4 assertions executed, 4 declared).")"
+assert_not_contains "with no missing-floor warning" "WARNING: no floor line" "$out"
 
 summary "selftest"
