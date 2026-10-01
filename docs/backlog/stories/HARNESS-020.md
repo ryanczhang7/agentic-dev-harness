@@ -4,8 +4,8 @@ title: A project declares its own suites' floors in a file the refresh keeps
 slug: a-project-declares-its-own-suites-floors
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-020-a-project-declares-its-own-suites-floors
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -148,6 +148,36 @@ amended block says.
 - The process budget stands: no new forks per suite (DV-5 in the file).
   Loading a second file is one more `while read` loop, not a subprocess.
 
+**Amended in RED (2026-10-01), two additions, both forced by AC-1/AC-3:**
+
+- **The shortfall names the file the floor came from.** Today it is
+  `FAIL <name>  did <n> units of work, below the floor of <f> in $FLOORS_REL`,
+  with `floors.conf` hard-coded. For a project-floored suite that sends the
+  reader to edit the upstream file the refresh wipes, which is the defect this
+  story removes. So: a floor loaded from `project-floors.conf` reports
+  `FAIL <name>  did <n> units of work, below the floor of <f> in .claude/tests/project-floors.conf`,
+  and a floor from `floors.conf` reports exactly what it reports today, byte for
+  byte. Pinned by selftest.test.sh on both the full and the single-suite run.
+  How the source travels with the floor (a third field in `$FLOORS`, a second
+  list) is GREEN's choice, inside DV-5: no fork.
+- **A fault that names no suite must be printed.** Found in RED and measured on
+  the shipped `selftest.sh`: a fault queued as `"<TAB><message>"` (both
+  `is not a floor line` and `does not exist` are) is read back by
+  `while IFS="$TAB" read -r fname fmsg`. TAB is an IFS *whitespace* character,
+  so `read` strips the leading TAB, the message lands in `fname`, `fmsg` is
+  empty, and `[ -n "$fmsg" ] || continue` drops it. A `floors.conf` containing
+  `this is not a floor` passes the full run today, exit 0; the missing-
+  `floors.conf` fault is printed only by accident, because every suite then
+  also lacks a floor. AC-3(a) needs a malformed `project-floors.conf` line to
+  fail, so reusing the loading code as-is cannot satisfy it. The report path
+  must carry an unnamed fault (a non-whitespace placeholder name, or a
+  separator that is not IFS whitespace - GREEN's choice) and print
+  `FAIL <message>` for it on a full run. The message strings themselves do not
+  change. Consequence: a malformed line in `floors.conf` now fails the full run,
+  as the file's header has always said it does. This tree has none, so the
+  upstream run is unaffected. On a single-suite run an unnamed fault belongs to
+  no suite and is not reported, as now (not pinned either way).
+
 ### `.claude/tests/floors.conf`
 
 Its header gains one paragraph saying that a consuming project's own suites
@@ -249,6 +279,8 @@ name, below the table.
 
 **Resolved:**
 
+- RED: `test-developer` resolved to `opus` (`claude-opus-5-5`, agent definition; no override). Verdict: 51 assertions (24 red for the right reason); it found a pre-existing defect (dropped unnamed faults), which the orchestrator reproduced independently.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -271,6 +303,45 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All mechanical. Integration level throughout: each case builds a throwaway
+tree, runs the real script (a fixture copy of `scripts/selftest.sh`, or
+`scripts/refresh-harness.sh` against a stand-in upstream repository) and reads
+its exit status and its output. Every fault needle is a **whole output line**,
+compared with `grep -cxF` (`exact_lines` / `exact_count`), because the Contract
+pins the strings byte for byte and a floating substring is satisfied by the
+wrong file name in the right sentence. Every exit-status assertion sits beside
+an exact-line assertion in the same block, because the current code also exits
+1 in most of these fixtures - for the wrong reason.
+
+`.claude/tests/selftest.test.sh` - 41 new assertions, appended after the
+real-tree block; `reset_suites` now also removes `project-floors.conf`.
+
+| Block | AC | What it pins |
+|---|---|---|
+| `AC-1 a suite floored only in project-floors.conf passes the full-run audit` | AC-1 | full run, `alpha` in floors.conf + `project-mine` (4 = floor 4) in project-floors.conf: exit 0, `2 harness suite(s) passed.`, floors line `all 2 ... (7 assertions executed, 7 declared)`, no `^FAIL project-mine  no floor line`, no `FAIL` anywhere |
+| `AC-1 and that floor is enforced, not merely accepted` | AC-1 | `project-mine` 3 against 4: exit 1, exact `FAIL project-mine  did 3 units of work, below the floor of 4 in .claude/tests/project-floors.conf` (Contract amendment) |
+| `AC-1 a floors.conf floor's shortfall still names floors.conf` | AC-1 (amendment control) | with a project file present, `alpha` 2 against 3: exact `FAIL alpha  did 2 units of work, below the floor of 3 in .claude/tests/floors.conf` |
+| `AC-2 a suite floored in neither file names both files` | AC-2 | with no project file, and again with one present: exit 1, exact `FAIL project-orphan  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)`; old one-file wording absent; only the orphan is named |
+| `AC-3 a project-floors.conf fault is named, with its file, line and fault` | AC-3 | malformed line 4, missing suite line 3, duplicate-with-floors.conf line 2, unknown kind line 2, non-number line 3 - each exit 1 and the exact `FAIL .claude/tests/project-floors.conf:<n>  <fault>` line from the Contract. A comment and a blank line precede the faults, so a parsed-line counter gets the number wrong |
+| `AC-3 a fault that names no suite is reported, not dropped` | AC-3 (amendment) | `floors.conf` line `this is not a floor` → exit 1 and `FAIL .claude/tests/floors.conf:2  is not a floor line: 'this is not a floor'`; no floors.conf → `FAIL .claude/tests/floors.conf  does not exist; ...` printed in its own words |
+| `AC-3 control: no project-floors.conf is not a fault` | AC-3 control | upstream-shaped tree: exit 0, `2 harness suite(s) passed.`, the string `project-floors.conf` nowhere in the output, no `^FAIL` line |
+| `AC-4 a single-suite run enforces a project-floors.conf floor` | AC-4 | `selftest.sh project-mine` at 3 against 4: exit 1, exact shortfall line naming project-floors.conf, no `WARNING: no floor line for project-mine`; at 4: exit 0, `all 1 suite(s) met ... (4 assertions executed, 4 declared)`, no warning |
+
+`.claude/tests/refresh.test.sh` - 10 new assertions, one block at the end
+(`AC-5 a project's project-floors.conf is KEPT, and floors.conf is replaced`).
+Upstream gains a committed `floors.conf`; the project holds a
+`project-floors.conf` with a trailing-space line, a blank line and no final
+newline, an `OLD floors` floors.conf and a `project-ci.test.sh`. Dry run and
+real run each: exit 0, exactly one line
+`  KEPT      .claude/tests/project-floors.conf  (upstream does not ship it - yours)`,
+zero lines `    LOCAL     .claude/tests/project-floors.conf`, and `cmp` against
+a saved copy. Control: after the real run `floors.conf` is `cmp`-equal to
+upstream's and is not reported KEPT.
+
+Not tested, deliberately: the single-suite run's `WARNING: no floor line for X
+in floors.conf` wording (not in any AC), the `N fault(s) in floors.conf. Nothing
+was run.` summary line, and the DV-5 no-fork budget.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -290,6 +361,298 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED dispatched as `test-developer`, model resolved to `claude-opus-5-5`; no
+override was passed to the agent.
+
+### Commands
+
+```
+bash .claude/tests/selftest.test.sh      # AC-1..AC-4, ~15 s locally
+bash .claude/tests/refresh.test.sh       # AC-5, ~3 min locally (pre-existing cost)
+bash scripts/selftest.sh selftest        # same suite through the floors runner
+```
+
+### Result at the end of RED (local run, Windows, Git Bash)
+
+```
+selftest: 71 passed, 24 failed      (54 pre-existing assertions: all pass; 41 new: 24 red, 17 green)
+refresh: 132 passed, 0 failed       (122 pre-existing; 10 new, all green on arrival - see below)
+```
+
+Verbatim, the AC-1 block (representative; every red has the same cause):
+
+```
+  HARNESS-020 AC-1  a suite floored only in project-floors.conf passes the full-run audit
+    FAIL a full run with a project-floored suite exits 0
+         expected: 0
+         actual:   1
+    FAIL and says both suites passed
+         expected: 1
+         actual:   0
+    FAIL and counts both floors as met, the project's included
+         expected: 1
+         actual:   0
+    FAIL and the project suite is not reported as missing a floor
+         expected: 0
+         actual:   1
+    FAIL and no fault of any kind is printed
+         expected NOT to contain: FAIL
+         actual:                   FAIL project-mine  no floor line in .claude/tests/floors.conf; every suite must declare one
+         
+         1 fault(s) in .claude/tests/floors.conf. Nothing was run.
+```
+
+The other 19 reds, by assertion name: `the shortfall names the suite, both numbers
+and project-floors.conf`; `and its shortfall line names floors.conf, byte for
+byte as before`; `the fault names both files and where a project's own floor
+belongs`; `the old one-file wording is gone`; `and the fault names both files,
+the same words`; `and only the unfloored suite is named` (actual 2); the five
+`named with project-floors.conf ...` / `named against project-floors.conf's line
+2 ...` / `an unknown kind ...` / `a non-number ...` lines (each expected 1,
+actual 0); `a malformed floors.conf line fails the full run` (actual 0);
+`named with floors.conf, its line, and the fault`; `and says so in its own
+words, not only through each suite's missing floor`; and in AC-4 `a project
+suite below its project floor fails its single-suite run` (actual 0), `naming
+the suite, both numbers and project-floors.conf`, `and it is not waved through
+as having no floor`, `and the floor is counted as met`, `with no missing-floor
+warning` (both showing `WARNING: no floor line for project-mine in
+.claude/tests/floors.conf`).
+
+**Why this is the right failure.** Two causes and only two, both the ones the
+story exists to remove: `selftest.sh` does not read `project-floors.conf` (so a
+project-floored suite is reported missing on a full run, warned about and waved
+through on a single-suite run, and none of the project-file faults are ever
+printed), and it still prints the one-file missing-floor wording. Plus the third,
+found here and added to the Contract: unnamed faults are dropped (see below).
+No red is an error in the test file: every pre-existing assertion passes.
+
+### Every file touched
+
+- `.claude/tests/selftest.test.sh` - `reset_suites` also removes
+  `project-floors.conf`; helpers `project_floors`, `exact_lines`; 8 new
+  `describe` blocks at the end.
+- `.claude/tests/refresh.test.sh` - helper `exact_count`; 1 new `describe`
+  block at the end (it commits a `floors.conf` into the stand-in upstream, and
+  is the last block to touch it).
+- `docs/backlog/stories/HARNESS-020.md` - `## Contract` (amended, see the
+  dated block under `scripts/selftest.sh`), `## Test plan`, this handoff.
+
+Not touched: `scripts/selftest.sh`, `scripts/refresh-harness.sh`,
+`.claude/tests/floors.conf`. No `project-floors.conf` exists in the real tree.
+
+### AC -> test
+
+The table in `## Test plan` is the per-block map. In one line each:
+AC-1 - three `HARNESS-020 AC-1` blocks (accepted, enforced, floors.conf's
+shortfall unchanged); AC-2 - one block, two fixtures (project file absent and
+present); AC-3 - the fault block (a)-(d), the unnamed-fault block, the control;
+AC-4 - one block, below and at the floor; AC-5 - the refresh block.
+
+### The interface the tests pin (bash, so no exports - the CLI and its output)
+
+- Invocation: `bash scripts/selftest.sh` (full) and `bash scripts/selftest.sh <name>`
+  (single), run from the fixture root; the fixture holds a copy of
+  `scripts/selftest.sh` taken when `selftest.test.sh` starts, so GREEN's
+  version is the one exercised.
+- The second file is `$ROOT/.claude/tests/project-floors.conf`, grammar
+  identical to floors.conf.
+- Exact output lines (each matched as a whole line):
+  - `FAIL <name>  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)`
+  - `FAIL .claude/tests/project-floors.conf:<n>  is not a floor line: '<line>'`
+  - `FAIL .claude/tests/project-floors.conf:<n>  unknown kind '<kind>'; the only kind is 'floor'`
+  - `FAIL .claude/tests/project-floors.conf:<n>  floor names '<name>', but .claude/tests/<name>.test.sh does not exist`
+  - `FAIL .claude/tests/project-floors.conf:<n>  floor for '<name>' is not a number: '<value>'`
+  - `FAIL .claude/tests/project-floors.conf:<n>  floor for '<name>' is already declared in .claude/tests/floors.conf; a suite has one floor`
+  - `FAIL <name>  did <n> units of work, below the floor of <f> in .claude/tests/project-floors.conf` (amended) and the same with `.claude/tests/floors.conf` for a floors.conf floor (unchanged)
+  - `FAIL .claude/tests/floors.conf:<n>  is not a floor line: '<line>'` and `FAIL .claude/tests/floors.conf  does not exist; every suite must declare its assertion floor there` - unchanged strings, now actually printed (amended)
+  - `<k> harness suite(s) passed.` and `assertion floors: all <k> suite(s) met their declared floor (<e> assertions executed, <d> declared).` - unchanged
+- With no project-floors.conf, the string `project-floors.conf` appears
+  nowhere in a passing run's output.
+
+**Not constrained** (implementer's choice): how the floor's source file is
+carried (third field, second list); whether the duplicate check reads the
+already-loaded floors.conf table or something else; the unnamed-fault carrier
+(placeholder name or a non-IFS-whitespace separator); the single-suite
+`WARNING:` text; the `N fault(s) in .claude/tests/floors.conf. Nothing was run.`
+summary (it now undercounts its own file name when the faults are the project
+file's - worth a tidy, not pinned); whether a single-suite run reports a
+duplicate fault for its own suite (it will, by the name field, and that is fine).
+
+### Passed on arrival, and what earns each
+
+**refresh.test.sh, AC-5 - all 10 green on arrival**, as the Contract predicted:
+`refresh-harness.sh` already keeps `project-floors.conf`. Earned with two
+mutations through `scripts/mutate.sh`, each against `refresh.test.sh` only:
+
+Mutation A - the refresh stops preserving unshipped files in `.claude/tests`
+(the file is deleted by the directory replace). Exactly the survival assertion
+went red, and nothing else in the 132:
+
+```
+=== mutate: scripts/refresh-harness.sh (1 line(s) changed by s|^      cp "\$dst/\$rel" "\$KEEP/\$d/\$rel"$|      [ "$d" = tests ] \|\| cp "$dst/$rel" "$KEEP/$d/$rel"|) ===
+  365 -       cp "$dst/$rel" "$KEEP/$d/$rel"
+  365 +       [ "$d" = tests ] || cp "$dst/$rel" "$KEEP/$d/$rel"
+...
+  HARNESS-020 AC-5  a project's project-floors.conf is KEPT, and floors.conf is replaced
+    FAIL real run: project-floors.conf survives byte-identical
+         it was deleted
+
+refresh: 131 passed, 1 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20261001T203237Z.2745432.bak) ===
+  365:       cp "$dst/$rel" "$KEEP/$d/$rel"
+```
+
+Worth knowing: before this block, **no assertion in `refresh.test.sh` caught a
+refresh that deletes a project's own files under `.claude/tests`** - which is
+where every consuming project keeps its `project-*.test.sh`.
+
+Mutation B - the LOCAL check stops skipping files upstream does not ship, so it
+reports them LOCAL. Both `NOT reported LOCAL` assertions went red (the third red
+is a pre-existing assertion in another block):
+
+```
+=== mutate: scripts/refresh-harness.sh (1 line(s) changed by s|^      \[ -e "\$UP/\.claude/\$d/\$rel" \] \|\| continue      # yours alone: that is KEPT, above$|      : # mutated: report every downstream file|) ===
+  280 -       [ -e "$UP/.claude/$d/$rel" ] || continue      # yours alone: that is KEPT, above
+  280 +       : # mutated: report every downstream file
+...
+  it names the files of yours it is about to overwrite ::     FAIL a project holding upstream's own files is told nothing
+  HARNESS-020 AC-5  a project's project-floors.conf is KEPT, and floors.conf is replaced
+    FAIL dry run: and is NOT reported LOCAL
+         expected: 0
+         actual:   1
+    FAIL real run: and is NOT reported LOCAL
+         expected: 0
+         actual:   1
+
+refresh: 129 passed, 3 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20261001T203738Z.2753441.bak) ===
+  280:       [ -e "$UP/.claude/$d/$rel" ] || continue      # yours alone: that is KEPT, above
+```
+
+Not earned by mutation (within the budget, left to `/audit-mutations`): the two
+`KEPT, once` lines, the dry-run `untouched` cmp, and the two floors.conf control
+assertions. The KEPT needle is a full anchored line, so a missing or reworded
+line cannot satisfy it.
+
+**selftest.test.sh, the AC-3 control - all 4 green on arrival** (current code
+never mentions project-floors.conf). Earned with one mutation that models the
+defect it guards - an absent file treated as a fault, named as the project file:
+
+```
+=== mutate: scripts/selftest.sh (2 line(s) changed by s|\[ -f "\$FLOORS_FILE" \] \|\||[ -f "$FLOORS_FILE.absent" ] \|\||; s|FAULTS="\$FAULTS\$TAB\$FLOORS_REL  does not exist|FAULTS="${FAULTS}x$TAB.claude/tests/project-floors.conf  does not exist|) ===
+  178 -   [ -f "$FLOORS_FILE" ] || [ -z "$SUITES" ] || \
+  178 +   [ -f "$FLOORS_FILE.absent" ] || [ -z "$SUITES" ] || \
+  179 -     FAULTS="$FAULTS$TAB$FLOORS_REL  does not exist; every suite must declare its assertion floor there
+  179 +     FAULTS="${FAULTS}x$TAB.claude/tests/project-floors.conf  does not exist; every suite must declare its assertion floor there
+...
+  HARNESS-020 AC-3  control: no project-floors.conf is not a fault
+    FAIL with no project-floors.conf the full run exits 0
+         expected: 0
+         actual:   1
+    FAIL and says both suites passed
+         expected: 1
+         actual:   0
+    FAIL and project-floors.conf is not mentioned at all
+         expected NOT to contain: project-floors.conf
+         actual:                   FAIL .claude/tests/project-floors.conf  does not exist; every suite must declare its assertion floor there
+         
+         1 fault(s) in .claude/tests/floors.conf. Nothing was run.
+    FAIL and no line is a fault
+         expected: 0
+         actual:   1
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261001T202512Z.2730345.bak) ===
+```
+
+The `x` name in that mutation is necessary, and it is how the unnamed-fault
+defect was found: the first attempt left the name empty, and the fault never
+printed.
+
+**The other 13 green-on-arrival assertions in selftest.test.sh** are exit-status
+and "not blamed" companions whose block also holds a red exact-line assertion
+(for example `a project suite below its project floor fails the full run` -
+today it exits 1 because the floor is missing, and the red shortfall line beside
+it is what tells the two apart). Each block is red as a whole; those companions
+are not claimed as independently earned.
+
+### Negative controls - expected values
+
+No thresholds in this story; every control is a mechanical count. The suite does
+NOT fail at import here - all assertions ran - so the "measured" column is real,
+taken against the current, unimplemented `selftest.sh`.
+
+| Control | Expected after GREEN | Measured in RED |
+|---|---|---|
+| no project-floors.conf: exit status | 0 | 0 |
+| no project-floors.conf: lines mentioning `project-floors.conf` | 0 | 0 |
+| no project-floors.conf: `^FAIL` lines | 0 | 0 |
+| floors.conf floor's shortfall names floors.conf (exact line count) | 1 | 0 (run aborts on project-mine's missing floor) |
+| AC-1 enforced: shortfall exact line count | 1 | 0 |
+| AC-5 control: floors.conf `cmp`-equal to upstream after real run | equal | equal |
+| AC-5 control: `KEPT .claude/tests/floors.conf` lines | 0 | 0 |
+
+### Discovered - changes the approach (Contract amended)
+
+1. **Unnamed faults are dropped by the report loop** (`IFS=<TAB>` read: TAB is
+   IFS whitespace, the leading TAB is stripped, `fmsg` comes back empty, the
+   fault is skipped). Measured: a floors.conf containing `this is not a floor`
+   passes the full run with exit 0 on the shipped script. AC-3(a) cannot pass by
+   reusing the loader unchanged; the report path must be fixed. This makes a
+   malformed floors.conf line fail too - which the file's own header already
+   promises, and which no tree has today.
+2. **The shortfall's file name** must follow the floor (see the Contract).
+
+### `grep -rn 'no floor line' .claude/tests/ scripts/` (re-run at end of RED)
+
+```
+.claude/tests/selftest.test.sh:233:describe "AC-6  a suite with no floor line fails the run"
+.claude/tests/selftest.test.sh:247:assert_contains "it says a floor is missing" "no floor line" "$out"
+.claude/tests/selftest.test.sh:248:miss="$(printf '%s\n' "$out" | grep -F 'no floor line' | head -1)"
+scripts/selftest.sh:41:#     not exist, a non-numeric value, or a suite with no floor line each fail
+scripts/selftest.sh:185:      FAULTS="$FAULTS$name$TAB$name  no floor line in $FLOORS_REL; every suite must declare one
+scripts/selftest.sh:229:    printf 'WARNING: no floor line for %s in %s, so this run cannot tell\n' \
+```
+
+plus this story's own new needles in selftest.test.sh (the HARNESS-020 blocks).
+Confirmed: the pre-existing AC-6 needle is the bare `no floor line`, which the
+new text still contains, so no pre-existing assertion needed changing.
+
+### Prediction for the GATES deferred verification
+
+Removing the call that loads `project-floors.conf` should turn red, in
+`selftest.test.sh`: all of the AC-1 "accepted" block (exit 0, 2 passed, floors
+met, `^FAIL project-mine  no floor line` count 1, `FAIL` present); the AC-1
+enforced shortfall line and the floors.conf-shortfall control (the run aborts
+on the missing floor); AC-2's `and only the unfloored suite is named` (2, not
+1); every AC-3 (a)-(d) exact line; and all of AC-4 except `at its project floor
+the single-suite run exits 0`. It should leave green: AC-2's first fixture (no
+project file there), the unnamed-fault block (floors.conf only), and the
+no-project-file control. The assertion named in the DV, AC-1's
+`and the project suite is not reported as missing a floor`, goes red with
+actual 1, and the run prints the NEW missing-floor wording naming both files.
+
+### Timing
+
+All timings local (Windows 11, Git Bash), none from CI. `selftest.test.sh` ran
+in 14.5 s (`real 0m14.524s`, via `bash scripts/selftest.sh selftest`); `refresh.test.sh` took 3m08s wall (`real 3m8.107s`), which is
+the existing suite's cost on this machine - the new block adds two refreshes to
+the dozens already there. Neither suite carries a per-test timeout.
+
+### `bash scripts/gates.sh --fast`
+
+Exit 0, and it judged nothing: this repository's `project.conf` is
+`BOOTSTRAPPED=no`, so `format`, `lint`, `typecheck`, `unit` and `coverage` are
+all `UNCONFIGURED` (`All required gates passed (0 ran, 5 unconfigured, 0
+known)`). The story's Context says the `unit` gate runs `bash
+scripts/selftest.sh`; in this tree it does not - what actually judges these
+suites is CI's `bash scripts/selftest.sh` step (and `ci-local.sh`). Through that
+runner the suite is admissible: `bash scripts/selftest.sh selftest` reads the
+summary line and reports `selftest: 71 passed, 24 failed`, floor met (71 vs 54),
+failing only on the red assertions. `check-sigpipe.sh` (41 files, 0 findings)
+and `check-grep-count.sh` (41 files, 0 findings) are clean over the new code.
 
 ## Regressions
 
@@ -343,3 +706,27 @@ name, below the table.
 
 ## Notes
 
+
+### Orchestrator's reproduction of RED's Contract amendment 1 (2026-10-01)
+
+RED claimed that a fault queued with an empty suite name is silently dropped.
+Reproduced on different inputs, with none of RED's fixtures: a throwaway tree
+containing only a copy of the shipped `scripts/selftest.sh`, one suite `alpha`
+printing `alpha: 3 passed, 0 failed`, and a `floors.conf` of
+`floor | alpha | 3` plus the line `garbage line with no pipes`:
+
+```
+=== alpha ===
+alpha: 3 passed, 0 failed
+
+assertion floors: all 1 suite(s) met their declared floor (3 assertions executed, 3 declared).
+1 harness suite(s) passed.
+exit=0
+```
+
+The mechanism, alone:
+`printf '\tthe message\n' | while IFS=$'\t' read -r a b; ...` gives
+`fname=[the message] fmsg=[]`. Tab is IFS whitespace, so a leading tab is
+stripped and the message lands in the name field. Accepted: AC-3(a) (a malformed
+`project-floors.conf` line fails the run) cannot pass without fixing the report
+loop, so the fix is inside this story.

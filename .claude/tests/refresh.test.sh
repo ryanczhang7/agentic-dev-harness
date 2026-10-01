@@ -863,4 +863,71 @@ assert_eq "and itself, with the new release" \
   "$(cat "$REPO_ROOT/scripts/refresh-harness.sh")" \
   "$(cat "$PROJ/scripts/refresh-harness.sh" 2>/dev/null)"
 
+# ---------------------------------------------------------------------------
+describe "HARNESS-020 AC-5  a project's project-floors.conf is KEPT, and floors.conf is replaced"
+
+# HARNESS-020. A consuming project's own suites declare their floors in
+# .claude/tests/project-floors.conf, which upstream never ships - so the
+# refresh has to keep it the way it keeps project-*.test.sh, and report it as
+# KEPT rather than LOCAL. The control is upstream's floors.conf in the same
+# directory, in the same run: it is upstream's, and it is replaced.
+#
+# Upstream gains a floors.conf here, committed so that it is SHIPPED. This
+# block is the last to touch $UP.
+printf 'floor | lib | 1\n' > "$UP/.claude/tests/floors.conf"
+( cd "$UP" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "upstream ships floors.conf" >/dev/null 2>&1 )
+
+new_project
+# Content a sloppy copy would not reproduce: a comment, trailing space, a blank
+# line, and no final newline. Compared with cmp, never via $(cat), which would
+# strip exactly the trailing bytes that make byte-identical mean anything.
+printf '# FWB own floors\nfloor | project-ci | 28   \n\nfloor | project-handoff | 12' \
+  > "$PROJ/.claude/tests/project-floors.conf"
+printf '# a project suite, also KEPT\n' > "$PROJ/.claude/tests/project-ci.test.sh"
+printf 'OLD floors\n' > "$PROJ/.claude/tests/floors.conf"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "a project with its own floors" >/dev/null 2>&1 )
+cp "$PROJ/.claude/tests/project-floors.conf" "$WORK/project-floors.expected"
+
+KEPT_PF="  KEPT      .claude/tests/project-floors.conf  (upstream does not ship it - yours)"
+LOCAL_PF="    LOCAL     .claude/tests/project-floors.conf"
+# exact_count <line> <haystack>   Whole-line matches; grep -c prints 0 itself.
+exact_count() { grep -cxF -- "$1" <<EXACT_HAY
+$2
+EXACT_HAY
+}
+
+out="$(refresh --dry-run "$UP")"; rc=$?
+assert_eq "dry run: it succeeds" 0 "$rc"
+assert_eq "dry run: project-floors.conf is reported KEPT, once" 1 "$(exact_count "$KEPT_PF" "$out")"
+assert_eq "dry run: and is NOT reported LOCAL" 0 "$(exact_count "$LOCAL_PF" "$out")"
+if cmp -s "$WORK/project-floors.expected" "$PROJ/.claude/tests/project-floors.conf"; then
+  _ok "dry run: project-floors.conf is untouched"
+else
+  _bad "dry run: project-floors.conf is untouched" "it changed"
+fi
+
+out="$(refresh "$UP")"; rc=$?
+assert_eq "real run: it succeeds" 0 "$rc"
+assert_eq "real run: project-floors.conf is reported KEPT, once" 1 "$(exact_count "$KEPT_PF" "$out")"
+assert_eq "real run: and is NOT reported LOCAL" 0 "$(exact_count "$LOCAL_PF" "$out")"
+if cmp -s "$WORK/project-floors.expected" "$PROJ/.claude/tests/project-floors.conf"; then
+  _ok "real run: project-floors.conf survives byte-identical"
+else
+  _bad "real run: project-floors.conf survives byte-identical" \
+    "$( [ -f "$PROJ/.claude/tests/project-floors.conf" ] && echo 'its bytes changed' || echo 'it was deleted' )"
+fi
+# The control, in the same run: the upstream-owned file beside it IS replaced.
+# Without it, a refresh that skipped .claude/tests altogether passes every
+# assertion above.
+if cmp -s "$UP/.claude/tests/floors.conf" "$PROJ/.claude/tests/floors.conf"; then
+  _ok "control: upstream's floors.conf, in the same refresh, is replaced"
+else
+  _bad "control: upstream's floors.conf, in the same refresh, is replaced" \
+    "it still holds: $(cat "$PROJ/.claude/tests/floors.conf" 2>/dev/null)"
+fi
+assert_eq "control: and floors.conf is not reported KEPT" 0 \
+  "$(exact_count "  KEPT      .claude/tests/floors.conf  (upstream does not ship it - yours)" "$out")"
+
 summary "refresh"
