@@ -4,8 +4,8 @@ title: A project declares its own suites' floors in a file the refresh keeps
 slug: a-project-declares-its-own-suites-floors
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-020-a-project-declares-its-own-suites-floors
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/refresh.test.sh, .claude/tests/floors.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -773,3 +773,13 @@ The mechanism, alone:
 stripped and the message lands in the name field. Accepted: AC-3(a) (a malformed
 `project-floors.conf` line fails the run) cannot pass without fixing the report
 loop, so the fix is inside this story.
+
+**DONE, 2026-10-01.** Merged in #94 (merge commit 389af40), release 63. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: the `gates` job passed in 1m48s,
+and its harness self-test step took 95s, with no `timeout-minutes` set
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36939450906).
+`boundaries` passed in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36939450919).
+Next: refresh fantasy-world-builder to this release, and declare its five
+project floors in its own `project-floors.conf`. No epic.
