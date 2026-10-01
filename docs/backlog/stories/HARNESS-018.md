@@ -4,8 +4,8 @@ title: Closing a story names what to run next, and what can run alongside it
 slug: closing-a-story-names-what-to-run-next-a
 epic: 
 type: chore
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-018-closing-a-story-names-what-to-run-next-a
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, scripts/phase.sh, .claude/tests/plan.test.sh, .claude/tests/phase.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, CLAUDE.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -341,6 +341,30 @@ None. The suites are bash. They use the existing `story_with` helper in
   yet. **Owner: GATES.** Run it with `scripts/mutate.sh` against
   `bash .claude/tests/plan.test.sh`.
 
+  **Result (GATES, 2026-10-01, orchestrator):** run as planned. All 11 failures
+  are collision assertions, matching RED's prediction exactly; the UNKNOWN control
+  and the DONE/blocked membership checks stayed green, as predicted. Restored.
+
+  ```
+  === mutate: scripts/plan.sh (1 line(s) changed by s#if \[ -n "\${s// /}" \]; then hit=#if false; then hit=#) ===
+    730 -             if [ -n "${s// /}" ]; then hit="${m_ids[$k]}"; break; fi
+    730 +             if false; then hit="${m_ids[$k]}"; break; fi
+  === mutate: running bash .claude/tests/plan.test.sh ===
+      FAIL AC-1..AC-4: after A prints exactly the Contract's report for this backlog
+      FAIL AC-2: and one worktree line per listed story, no more
+      FAIL AC-2 control: a story sharing a path with Next is not listed, and the shared path is named
+      FAIL AC-2 control: a story sharing a path with another LISTED story is not listed, and the path and story are named
+      FAIL AC-2 control: a story sharing paths with an in-flight story is not listed, and every shared path is named
+      FAIL AC-2 control: no worktree line for any story left out, while the listed ones have theirs
+      FAIL after with no id prints the same report without the header, exit 0
+      FAIL after with an id that names no story prints the report without a header, exit 0
+      FAIL AC-3: with nothing able to join, Alongside says run one at a time and still names why each was left out
+      FAIL AC-3 control: no worktree instructions when nothing joins, while the one-at-a-time line is there
+      FAIL AC-3 control: neither O nor P is listed
+  plan: 201 passed, 11 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_plan.sh.20261001T163153Z.2220454.bak) ===
+  ```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -382,6 +406,7 @@ name, below the table.
 **Resolved:**
 
 - RED: `test-developer` resolved to `opus` (`claude-opus-5-5`, from the agent definition; no override). Verdict: 55 assertions, every new one red for the right reason (orchestrator re-ran: phase 40/5, plan 168/44); it flagged the orchestrator's own placeholder-AC error.
+- GREEN: `feature-developer` resolved to `opus` (`claude-opus-5-5`, agent definition; no override). Verdict: every test passed with no test file touched (orchestrator confirmed `git diff HEAD -- .claude/tests` empty); every negative control matched RED's expected value.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -664,10 +689,21 @@ if it is to be removed.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-01T16:38:59Z
+    commit: 5374576 (working tree had uncommitted changes)
+    tree:   52a97a6f95ebfd266242ace7e21b0c3f8c0ff05b
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 

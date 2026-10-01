@@ -5,6 +5,7 @@
 #   bash scripts/plan.sh models <id>    PHASE<TAB>agent<TAB>model<TAB>why
 #   bash scripts/plan.sh next <id>      the command to drive it with, and why
 #   bash scripts/plan.sh waves          startable stories grouped to run together
+#   bash scripts/plan.sh after [<id>]   what to run next, and what can run alongside it
 #
 # Two questions that used to be asked of a person every time. A question asked
 # every time stops being answered and starts being habit, and the model question
@@ -633,7 +634,171 @@ cmd_waves() {
   [ "${#waves[@]}" -ge 1 ]
 }
 
+# cmd_after [<closed-id>]   What to run next, and what can run alongside it.
+#
+# THE CLOSING REPORT (HARNESS-018). Every time a story closed, the answer to
+# "what next" was rebuilt by hand from `next`, `waves`, `conflicts --pairs`,
+# the epic rule in advance-story.md and the worktree recipe in CLAUDE.md, and
+# came out different each time. This is that answer in one report, and
+# `phase.sh set <id> DONE` prints it.
+#
+# IT REUSES, IT DOES NOT REIMPLEMENT: story_walk decides candidate vs blocked,
+# cmd_next the command and reason, unmet_deps the blocked detail, story_paths
+# and shared_paths the collision. A second answer to any of those would one day
+# disagree with `waves` or `conflicts` about what is clear.
+#
+# ALONGSIDE IS GREEDY FIRST FIT, like `waves`. The members start as the Next
+# story plus every story in flight; each other startable story, in backlog
+# order, joins when it shares no path with any member. Neither DONE nor blocked
+# stories are members. A member that declares no paths makes every judgement
+# against it UNKNOWN, so then nothing is listed - UNKNOWN is not clear.
+#
+# ALWAYS EXITS 0, STDOUT ONLY. An empty backlog is an answer, and an id that
+# names no story still gets the report, without the header and the epic check.
+cmd_after() {
+  local closed="${1:-}" cfile=""
+  [ -n "$closed" ] && [ -f "$STORIES/$closed.md" ] && cfile="$STORIES/$closed.md"
+
+  local IND='           ' LST='             '
+  local kind id f ph dep dph deps
+  local start_ids=() start_files=() fly_ids=() fly_files=() fly_phases=() blocked_lines=()
+  while IFS="$(printf '\t')" read -r kind id f; do
+    case "$kind" in
+      blocked)
+        deps=""
+        while IFS="$(printf '\t')" read -r dep dph; do
+          [ -n "$dep" ] || continue
+          deps="${deps:+$deps, }$dep ($dph)"
+        done <<< "$(unmet_deps "$f")"
+        blocked_lines+=("$id  depends_on $deps") ;;
+      candidate)
+        ph="$(frontmatter_value "$f" phase)"; [ -n "$ph" ] || ph=PLANNED
+        if [ "$ph" = PLANNED ]; then
+          start_ids+=("$id"); start_files+=("$f")
+        else
+          fly_ids+=("$id"); fly_files+=("$f"); fly_phases+=("$ph")
+        fi ;;
+    esac
+  done <<< "$(story_walk)"
+
+  # Blocks are collected, then joined by one blank line: a block with nothing to
+  # say is simply never added, and there is no trailing blank line.
+  local blocks=() b nxt cmd why
+
+  # Next.
+  if [ "${#start_ids[@]}" -gt 0 ]; then
+    nxt="$(cmd_next "${start_ids[0]}")"
+    cmd="$(printf '%s' "$nxt" | cut -f1)"; why="$(printf '%s' "$nxt" | cut -f2-)"
+    blocks+=("$(printf '%-11s/%s %s\n%s%s' 'Next:' "$cmd" "${start_ids[0]}" "$IND" "$why")")
+  else
+    b="$(printf '%-11s%s' 'Next:' 'no new story is startable.')"
+    [ "${#fly_ids[@]}" -eq 0 ] && b="$b"$'\n'"${IND}Add work with /plan-story."
+    blocks+=("$b")
+  fi
+
+  # Alongside.
+  if [ "${#start_ids[@]}" -gt 0 ]; then
+    local m_ids=() m_paths=() k p s hit unjudged="" reasons="" listed="" trees=""
+    m_ids+=("${start_ids[0]}"); m_paths+=("$(story_paths "${start_files[0]}")")
+    k=0
+    while [ "$k" -lt "${#fly_ids[@]}" ]; do
+      m_ids+=("${fly_ids[$k]}"); m_paths+=("$(story_paths "${fly_files[$k]}")")
+      k=$((k + 1))
+    done
+    k=0
+    while [ "$k" -lt "${#m_ids[@]}" ]; do
+      [ -n "${m_paths[$k]}" ] || { unjudged="${m_ids[$k]}"; break; }
+      k=$((k + 1))
+    done
+
+    if [ -n "$unjudged" ]; then
+      blocks+=("$(printf '%-11snothing - %s declares no paths, so nothing can be judged against it.' \
+        'Alongside:' "$unjudged")")
+    else
+      local i repo; repo="$(basename "$ROOT")"
+      i=1
+      while [ "$i" -lt "${#start_ids[@]}" ]; do
+        id="${start_ids[$i]}"; f="${start_files[$i]}"
+        p="$(story_paths "$f")"
+        if [ -z "$p" ]; then
+          reasons="$reasons"$'\n'"${IND}$id declares no paths, so it cannot be judged - UNKNOWN is not clear"
+        else
+          hit=""
+          k=0
+          while [ "$k" -lt "${#m_ids[@]}" ]; do
+            s="$(shared_paths "$p" "${m_paths[$k]}")"
+            if [ -n "${s// /}" ]; then hit="${m_ids[$k]}"; break; fi
+            k=$((k + 1))
+          done
+          if [ -n "$hit" ]; then
+            reasons="$reasons"$'\n'"${IND}$id shares ${s% } with $hit"
+          else
+            m_ids+=("$id"); m_paths+=("$p")
+            cmd="$(cmd_next "$id" | cut -f1)"
+            listed="$listed"$'\n'"${LST}/$cmd $id"
+            trees="$trees"$'\n'"${LST}git worktree add ../$repo-$id -b $(frontmatter_value "$f" branch)"
+          fi
+        fi
+        i=$((i + 1))
+      done
+      if [ -n "$listed" ]; then
+        blocks+=("$(printf '%-11scan start now, in parallel with %s - no two of these, and no story in flight, declare a shared path:' \
+          'Alongside:' "${start_ids[0]}")$listed"$'\n'"${IND}To run them together, give each its own worktree (one worktree, one story):$trees"$'\n'"${IND}then run its command from inside that worktree.$reasons")
+      else
+        blocks+=("$(printf '%-11snothing - run one story at a time.' 'Alongside:')$reasons")
+      fi
+    fi
+  fi
+
+  # In flight.
+  if [ "${#fly_ids[@]}" -gt 0 ]; then
+    b=""; k=0
+    while [ "$k" -lt "${#fly_ids[@]}" ]; do
+      if [ "$k" = 0 ]; then b="$(printf '%-11s' 'In flight:')"; else b="$b"$'\n'"$IND"; fi
+      b="$b${fly_ids[$k]} (${fly_phases[$k]})  /advance-story ${fly_ids[$k]}"
+      k=$((k + 1))
+    done
+    blocks+=("$b")
+  fi
+
+  # Blocked.
+  if [ "${#blocked_lines[@]}" -gt 0 ]; then
+    b=""; k=0
+    while [ "$k" -lt "${#blocked_lines[@]}" ]; do
+      if [ "$k" = 0 ]; then b="$(printf '%-11s' 'Blocked:')"; else b="$b"$'\n'"$IND"; fi
+      b="$b${blocked_lines[$k]}"
+      k=$((k + 1))
+    done
+    blocks+=("$b")
+  fi
+
+  # Epic: whole-string equality, and every story in it DONE - the closed one too.
+  if [ -n "$cfile" ]; then
+    local epic open=0 g
+    epic="$(frontmatter_value "$cfile" epic)"
+    if [ -n "$epic" ]; then
+      for g in "$STORIES"/*.md; do
+        [ -e "$g" ] || continue
+        [ "$(frontmatter_value "$g" epic)" = "$epic" ] || continue
+        [ "$(frontmatter_value "$g" phase)" = DONE ] || { open=1; break; }
+      done
+      [ "$open" = 0 ] && blocks+=("$(printf '%-11s%s has no open story left - /audit-mutations %s is recommended; nothing runs it automatically.' \
+        'Epic:' "$epic" "$epic")")
+    fi
+  fi
+
+  [ -n "$cfile" ] && printf 'After %s:\n\n' "$closed"
+  k=0
+  while [ "$k" -lt "${#blocks[@]}" ]; do
+    [ "$k" = 0 ] || printf '\n'
+    printf '%s\n' "${blocks[$k]}"
+    k=$((k + 1))
+  done
+  return 0
+}
+
 case "${1:-}" in
+  after)  cmd_after "${2:-}" ;;
   models) [ -n "${2:-}" ] || die "usage: plan.sh models <story-id>"; cmd_models "$2" ;;
   write)  [ -n "${2:-}" ] || die "usage: plan.sh write <story-id>";  cmd_write "$2" ;;
   next)   [ -n "${2:-}" ] || die "usage: plan.sh next <story-id>";   cmd_next "$2" ;;
@@ -644,6 +809,6 @@ case "${1:-}" in
       *)       die "usage: plan.sh conflicts [--pairs]  (got '$2')" ;;
     esac ;;
   waves)     cmd_waves ;;
-  -h|--help|"") sed -n '3,7p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h|--help|"") sed -n '3,8p' "$0" | sed 's/^# \{0,1\}//' ;;
   *)      cmd_both "$1" ;;
 esac

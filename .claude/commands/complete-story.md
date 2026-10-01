@@ -87,5 +87,6 @@ previous one is genuinely complete — with the command output that proves it, n
 an assertion that it passed.
 
 At the end, report: the PR link, every acceptance criterion with the test that
-covers it, the full gate summary, anything you deliberately left out, and the
-next story you recommend.
+covers it, the full gate summary, anything you deliberately left out, and what
+to run next: the output of `bash scripts/plan.sh after $1`, relayed as printed.
+The story is at REVIEW by then, so it appears under `In flight:`.
