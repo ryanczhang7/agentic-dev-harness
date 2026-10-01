@@ -4,8 +4,8 @@ title: plan.sh write reports only what the file on disk says (port of WORLD-097)
 slug: plan-sh-write-reports-only-what-the-file
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-019-plan-sh-write-reports-only-what-the-file
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -219,6 +219,8 @@ name, below the table.
 
 **Resolved:**
 
+- RED: no dispatch; the orchestrator (`opus`, `claude-opus-5-5`) applied the ported test patch, since there was nothing to design.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -255,6 +257,44 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**RED done by the orchestrator, by applying the port.** The test-developer was
+not dispatched because there was nothing to design: the tests are FWB's
+WORLD-097 block, applied with `git apply` (hunk at offset 14), unchanged. The
+file's only other change is that hunk.
+
+**Command:** `bash .claude/tests/plan.test.sh`
+
+**Failure output, unfixed `plan.sh`, 2026-10-01:** `plan: 226 passed, 16 failed`.
+These are the same 16 that FWB recorded: every AC-1 assertion (no heading, so
+nothing is written), AC-2 (a) and (b), the AC-3 heading-less re-run, and AC-4
+(the `die` inside a command substitution does not reach the script). That is
+the right failure, because each is the defect described in ## Context. 212
+existing assertions plus 14 that pass on arrival make 226.
+
+**Passing on arrival, earned.** FWB earned 12 of the 14 with four mutations
+(WORLD-097 ## Regressions: M1, M2', M4, M5) against code that is byte-identical
+here. This tree re-ran M2' as the spot check:
+
+```
+=== mutate: scripts/plan.sh (1 line(s) changed by s|) print line; skip = 1; next }|) print line; print "## Model guidance"; skip = 1; next }|) ===
+  359 -     /^## Model guidance/ { while ((getline line < planfile) > 0) print line; skip = 1; next }
+  359 +     /^## Model guidance/ { while ((getline line < planfile) > 0) print line; print "## Model guidance"; skip = 1; next }
+    FAIL AC-2: exit / success lines / headings agree on a story that had one
+    FAIL AC-3: an existing section is replaced, leaving exactly one heading
+    FAIL AC-3: writing twice leaves the file identical to writing once
+    FAIL AC-3 control: a heading that is the last section still ends up as exactly one
+    FAIL AC-3 control: and the file ends with the plan's last line, not short of it
+plan: 221 passed, 21 failed        (the 16 baseline reds omitted above; 16 + 5 = 21)
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+```
+
+These are exactly the 5 new reds FWB recorded for M2'. The remaining two
+passes on arrival, 15 (`.new` absent) and 17 (temp leftovers), are GREEN's to
+confirm, as in FWB.
+
+**GREEN applies** FWB's `scripts/plan.sh` diff (`cmd_write` only), hunks at
+offset 70. Expected result: `plan: 242 passed, 0 failed`.
 
 ## Regressions
 
