@@ -4,11 +4,11 @@ title: check-boundaries asserts its own verdict on the story checks
 slug: check-boundaries-asserts-its-own-verdict
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-003-check-boundaries-asserts-its-own-verdict
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [.claude/tests/boundaries.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
+touches: [.claude/tests/boundaries.test.sh, scripts/check-boundaries.sh]  # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -175,6 +175,43 @@ reads, so that **only** the new rc assertion goes red:
 orchestrator (`rules.md`, the return-to-RED paragraph, applies by analogy: do
 not dispatch a feature developer with nothing to do).
 
+**RED amendment, 2026-09-30 (test-developer): the `:293` run does NOT exit 0,
+so GREEN is not a no-op.** The enumeration above is right: only `story_blocked`
+writes a gate record, and of its acceptance invocations exactly these two lacked
+an rc assertion. The table stands. What is wrong is the expectation that both
+pass on arrival. The DONE fixture at `:289` exits 1, with:
+
+```
+FAIL  story T-1: gate 'types' was BLOCKED locally and has not been verified on CI, so this story is not DONE. ...
+```
+
+The existing `assert_contains "DONE with the CI run quoted is accepted" "verified on CI"`
+has passed all along **because its needle is a substring of the refusal**
+("has not been **verified on CI**"). That is the `rules.md` needle case.
+
+Cause: `scripts/check-boundaries.sh:356`,
+`grep -qiE "$g[^\n]*https?://|https?://[^\n]*$g"`. In POSIX ERE, `[^\n]` is a
+bracket expression meaning "neither `\` nor `n`", not "not a newline". So the
+rule accepts a CI quote only when no letter `n` sits between the gate id and the
+URL. The fixture line `types passed on CI: https://...` has the `n` of "on" in
+between. Measured directly:
+
+```
+fixture line 'types passed on CI: https://...'  -> NO match
+'types: https://x/runs/412'                     -> match
+'types on https://x/runs/412'                   -> NO match
+same fixture line with .* in place of [^\n]*    -> match
+```
+
+**GREEN writes:** `scripts/check-boundaries.sh`. Make the DONE CI-quote check
+accept a line that carries the gate id and an `http(s)://` URL in either order,
+whatever characters lie between them. grep is line-based, so `.*` already stops
+at the end of the line. That is all the change. Do not touch the REVIEW-branch
+`pending CI` grep at `:350`. It has no bracket expression, and no test here
+covers a change to it. The fixture is unchanged and is not to be changed. The
+`touches:` frontmatter should gain `scripts/check-boundaries.sh`, which is the
+Lead PO's call.
+
 ## Deferred verifications
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
@@ -231,6 +268,8 @@ name, below the table.
 
 **Resolved:**
 
+- RED: `test-developer` resolved to `opus` (the agent definition's `model:`; no session override passed). Verdict: it found a production defect the contract had not predicted, and the orchestrator reproduced it on different inputs.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -253,6 +292,37 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Level: integration. The suite already runs `check-boundaries.sh` end to end
+against a real two-branch fixture with a gate record that `gates.sh` writes.
+That is the only level where the script's exit status exists to assert.
+
+Line numbers are as of this RED edit. The invocations that are expected to pass were enumerated against the tree. `story_blocked` (`:236`) is
+the only fixture that writes a `## Gate results`, and the one inline `gates.sh`
+re-run (`:307`) feeds a refusal. Its acceptance invocations are listed below:
+
+| `story_blocked` call | Assertion kind | rc asserted |
+|---|---|---|
+| `:261` REVIEW, blocked + pending CI | acceptance | yes, `:274` (already there) |
+| `:276` REVIEW, nothing written | refusal via `refused` | non-zero |
+| `:282` DONE, no CI run | refusal via `refused` | non-zero |
+| `:289` DONE, CI run quoted | acceptance | **added, `:295`** |
+| `:298` REVIEW, ordinary failure | refusal via `refused` | non-zero |
+| `:1027` required `[types]` | refusal via `refused` | non-zero |
+| `:1038` required `[unit]` | acceptance | yes, `:1046` (already there) |
+| `:1191` record matches tree | acceptance | **added, `:1195`** |
+| `:1220` test changed after run | refusal via `refused` | non-zero |
+| `:1241` untracked file (AC-2) | acceptance | yes, `:1247`/`:1251` (already there) |
+
+New tests (AC-6, pass half):
+
+- `and DONE with the CI run quoted exits 0, so CI would merge it`: a DONE
+  story whose blocked gate is quoted with its CI run URL is accepted by the
+  *exit status*, not only by a substring. It is **red today** because of a
+  production defect (see ## Contract, RED amendment).
+- `and a record matching this tree leaves the run clean`: a REVIEW story
+  whose gate record was made against the committed tree exits 0. It passes on
+  arrival and is earned by mutation (## Handoff).
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -272,6 +342,130 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**GREEN is NOT a no-op.** One of the two new assertions is red against today's
+code because of a real defect in `scripts/check-boundaries.sh:356`. See
+## Contract, "RED amendment", for the cause and the measurements.
+
+**Command:** `bash .claude/tests/boundaries.test.sh` (about 5 min locally). The
+whole harness suite is `bash scripts/selftest.sh`.
+
+**Run output (local, Windows, Git Bash, 2026-09-30), unmutated source:**
+
+```
+  a BLOCKED gate can reach REVIEW, but only with the decision written down
+    FAIL and DONE with the CI run quoted exits 0, so CI would merge it
+         expected: 0
+         actual:   1
+...
+boundaries: 81 passed, 1 failed
+```
+
+Why this is the RIGHT failure: running that fixture's `check-boundaries.sh`
+directly prints every check `ok` except one:
+
+```
+ok    recorded gate result: blocked (1 required gate(s) could not run; 2 ran, 0 unconfigured, 0 known)
+FAIL  story T-1: gate 'types' was BLOCKED locally and has not been verified on CI, so this story is not DONE. Quote the PR's CI run for it in the story - one line carrying the gate id and the run URL - or re-run the gates somewhere they are not blocked.
+ok    gate record matches the working tree (tree 103b26d9b50e75484f2986d2ed7de7a89c449cc6)
+```
+
+The story quotes `types passed on CI: https://github.com/o/r/actions/runs/412`
+and is refused anyway. So the rule refuses exactly the input it was written to
+accept. The only refusal is that rule, and nothing else is wrong with the
+fixture.
+
+**Tests, one line each (both AC-6, the pass half):**
+
+- `:295` `and DONE with the CI run quoted exits 0, so CI would merge it`:
+  `$rc` is 0 for a DONE story whose BLOCKED gate is quoted with a CI run URL.
+  Red now; GREEN makes it green.
+- `:1195` `and a record matching this tree leaves the run clean`: `$rc` is 0
+  for a REVIEW story whose gate record matches the committed tree. Passed on
+  arrival; earned below.
+
+**Files touched:** `.claude/tests/boundaries.test.sh` (two lines added, and the `:294` needle sharpened) and
+this story (## Contract amendment, ## Test plan, ## Handoff).
+
+**Export shape:** none. A bash suite runs the script as a process and reads
+`$out` and `$rc` from `run_boundaries`. What is pinned: the run exits 0, and it
+prints `ok    blocked gate 'types' was verified on CI` (`:294`, sharpened). What is NOT pinned: the
+exact regex. Any match that accepts the gate id and an `http(s)://` URL on one
+line, in either order, with arbitrary text between them, satisfies it. The
+refusal at `:282` (DONE with no URL) must stay red, and it guards over-acceptance.
+
+**Pass on arrival, and what earns it.**
+
+- `:1195` passed on arrival. It is earned by turning the matching `ok` into
+  `problem`. The new assertion is among the failures (the others are expected,
+  because they read the same line or the same status). Restore verified:
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s#ok "gate record matches \$where#problem "gate record matches $where#) ===
+=== mutate: running bash .claude/tests/boundaries.test.sh ===
+    FAIL and it is not refused
+    FAIL and DONE with the CI run quoted exits 0, so CI would merge it
+    FAIL and the run is clean
+    FAIL a record made against this tree matches it
+         FAIL  gate record matches the working tree (tree d1a079fe5d0f3f6f8bbd00b0a5107f435ecbeb23)
+    FAIL and a record matching this tree leaves the run clean
+    FAIL AC-2: an untracked gated file does not spoil the local verdict
+         FAIL  gate record matches the working tree (tree d1a079fe5d0f3f6f8bbd00b0a5107f435ecbeb23)
+    FAIL AC-2: and the local run exits 0
+    FAIL AC-2: CI's verdict on the same commit is the same
+         FAIL  gate record matches commit 3b54163 (tree d1a079fe5d0f3f6f8bbd00b0a5107f435ecbeb23)
+    FAIL AC-2: and CI's run exits 0
+boundaries: 73 passed, 9 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/scripts_check-boundaries.sh.20261001T001518Z.1296148.bak) ===
+```
+
+- `:295` did not pass on arrival. It was watched to fail against unmutated code,
+  for the reason above, so it needs no probe. The Contract's suggested mutation
+  for it (line 357 `ok` -> `problem`) was run before the defect was known. It
+  proves nothing, because the baseline is already red with the same single
+  failure. It is recorded here so nobody re-reads it as evidence:
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s#ok "blocked gate '$g' was verified on CI"#problem "blocked gate '$g' was verified on CI"#) ===
+  357 -                 ok "blocked gate '$g' was verified on CI"
+  357 +                 problem "blocked gate '$g' was verified on CI"
+    FAIL and DONE with the CI run quoted exits 0, so CI would merge it
+boundaries: 81 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .../scripts_check-boundaries.sh.20261001T001111Z.1284242.bak) ===
+```
+
+  After GREEN, the "defect put back" check for this story's central claim is to
+  restore `[^\n]*` in the line-356 grep with `scripts/mutate.sh` and watch
+  `:295` go red alone.
+
+**Negative controls:** none are numeric. The control against over-acceptance is
+the existing refusal `DONE needs more than pending: it needs the CI run` (`:282`),
+which is green today and must stay green after GREEN.
+
+**gates.sh --fast:** every gate is `UNCONFIGURED` in this repository's
+`project.conf` (`BOOTSTRAPPED=no`), so it ran nothing and says "All required
+gates passed (0 ran, 5 unconfigured)". It is admissible but carries no
+information. The suite that actually judges this story is `scripts/selftest.sh`.
+
+**Timings:** local only (Windows). No timeouts were added or changed.
+
+**Discovered, then fixed in RED:** the old `:294` needle, `verified on CI`, was
+satisfied by its own refusal ("has not been verified on CI"). On the
+orchestrator's instruction it is now sharpened to
+`ok    blocked gate 'types' was verified on CI` and keeps its name. The `ok    `
+prefix means the refusal text can no longer satisfy it. It is red today for the
+same `[^\n]` defect as `:295`, and the same GREEN fix turns both green. The
+whole suite was re-run once after the change:
+
+```
+    FAIL DONE with the CI run quoted is accepted
+         FAIL  story T-1: gate 'types' was BLOCKED locally and has not been verified on CI, so this story is not DONE. Quote the PR's CI run for it in the story - one line carrying the gate id and the run URL - or re-run the gates somewhere they are not blocked.
+    FAIL and DONE with the CI run quoted exits 0, so CI would merge it
+boundaries: 80 passed, 2 failed
+```
+
+The **Run output** block above dates from before this change, when the result
+was 81 passed, 1 failed. This 80/2 result is the current RED state GREEN starts from.
 
 ## Regressions
 
