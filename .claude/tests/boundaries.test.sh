@@ -291,7 +291,8 @@ story_blocked DONE <<'EOF'
 2. types passed on CI: https://github.com/o/r/actions/runs/412 - "Tests 47 passed".
 EOF
 run_boundaries
-assert_contains "DONE with the CI run quoted is accepted" "verified on CI" "$out"
+assert_contains "DONE with the CI run quoted is accepted" "ok    blocked gate 'types' was verified on CI" "$out"
+assert_eq "and DONE with the CI run quoted exits 0, so CI would merge it" 0 "$rc"
 
 # The distinction has to cut both ways: an ordinary failure is still refused.
 story_blocked REVIEW <<'EOF'
@@ -1191,6 +1192,7 @@ printf '%s\n' "$GATE_STORY_NOTE" | story_blocked REVIEW
 run_boundaries
 assert_contains "a record made against this tree matches it" \
   "ok    gate record matches the working tree" "$out"
+assert_eq "and a record matching this tree leaves the run clean" 0 "$rc"
 
 # End to end, and the direct form of "the stamp is a real hash": what gates.sh
 # wrote equals gate_tree_hash computed independently over the same tree. The

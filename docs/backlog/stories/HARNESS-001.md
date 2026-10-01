@@ -4,8 +4,8 @@ title: Gate record tree stamp is verified end to end
 slug: gate-record-tree-stamp-is-verified-end-t
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: done
+phase: DONE
 branch: story/HARNESS-001-gate-record-tree-stamp-is-verified-end-t
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, .claude/tests/gates.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -252,3 +252,57 @@ Required gate that would fail if this story's artifact broke: `unit`
 
 ## Notes
 
+
+### Closed as already delivered (2026-09-30)
+
+1. **PO decision, approved by the user:** closed without a RED→GREEN cycle.
+   The work was delivered on 2026-09-15 by commit `9fbd39d` ("Construct the
+   violating input for law 1 and law 3", closes #23) and this file was never
+   moved past PLANNED. A cycle would have re-written tests that already exist.
+   No source or test file changes in the closing commit.
+2. `phase.sh set HARNESS-001 DONE --force` was run on `main`, overriding the
+   branch check: there is no story branch because there is no code change.
+3. Line numbers in ## Context have drifted (`gates.sh:214`,
+   `check-boundaries.sh:371`) and `lib.sh`'s tree filter is now `gated_stdin`,
+   so AC-3's `Kills:` expression no longer applies literally. The equivalent
+   mutant below removes `test` from that filter. The criteria are unchanged.
+
+Criteria against the tests that cover them, all in `.claude/tests/boundaries.test.sh`
+(block "the gate record is a stamp on a tree, not a sentence about one"):
+
+| AC | Test |
+|---|---|
+| AC-1 | "a stamp describing a different tree is refused" |
+| AC-2 | "and the stamp gates.sh wrote IS that hash", "a record made against this tree matches it" |
+| AC-3 | "a test changing alone breaks the stamp too" |
+| AC-4 | `run_boundaries` sets `$rc`; `refused` fails any refusal that exits 0 |
+
+The three mutants, re-run on 2026-09-30 with `scripts/mutate.sh` against
+`bash .claude/tests/boundaries.test.sh`:
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s#\[ "$rec" = "$now" \]#true#) ===
+    FAIL a stamp describing a different tree is refused
+    FAIL a test changing alone breaks the stamp too
+    FAIL AC-2 control: a committed source change is refused locally
+    FAIL AC-2 control: and refused by CI's computation too
+boundaries: 76 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+=== mutate: scripts/gates.sh (1 line(s) changed by s#tree="$(gate_tree_hash)"#tree=0000000#) ===
+    FAIL and it is not refused
+    FAIL and the run is clean
+    FAIL a record made against this tree matches it
+         FAIL  story T-1: gates were recorded against tree '0000000' but the working tree is 'bfe08067af327107b0c43f4cf8edfde282efedc5'. ...
+    FAIL and the stamp gates.sh wrote IS that hash
+    FAIL AC-2: an untracked gated file does not spoil the local verdict
+    (more; output truncated by the filter)
+
+=== mutate: .claude/hooks/lib.sh (1 line(s) changed by s#($1 == "source" || $1 == "test" ||#($1 == "source" ||#) ===
+    FAIL a test changing alone breaks the stamp too
+boundaries: 79 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+```
+
+After the runs, `git status` showed no tracked file modified and no `.bak` was
+left under `.claude/state/mutations/`.

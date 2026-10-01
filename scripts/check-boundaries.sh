@@ -353,7 +353,7 @@ case "$ph:$story_type" in
                 problem "story $sid: gate '$g' was BLOCKED - the environment would not launch it - and nothing in the story says so. Record the PO decision on one line naming the gate and 'pending CI': which gate, the log line quoted, and what makes this the environment rather than the code. See /advance-story, GATES."
               fi
             else
-              if grep -qiE "$g[^\n]*https?://|https?://[^\n]*$g" "$sfile"; then
+              if grep -qiE "$g.*https?://|https?://.*$g" "$sfile"; then
                 ok "blocked gate '$g' was verified on CI"
               else
                 problem "story $sid: gate '$g' was BLOCKED locally and has not been verified on CI, so this story is not DONE. Quote the PR's CI run for it in the story - one line carrying the gate id and the run URL - or re-run the gates somewhere they are not blocked."

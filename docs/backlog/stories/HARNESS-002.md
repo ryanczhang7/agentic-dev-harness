@@ -4,8 +4,8 @@ title: Production code cannot arrive without tests or an inventory
 slug: production-code-cannot-arrive-without-te
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: done
+phase: DONE
 branch: story/HARNESS-002-production-code-cannot-arrive-without-te
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -252,3 +252,58 @@ Required gate that would fail if this story's artifact broke: `unit`
 
 ## Notes
 
+
+### Closed as already delivered (2026-09-30)
+
+1. **PO decision, approved by the user:** closed without a RED→GREEN cycle.
+   Delivered on 2026-09-15 by commit `9fbd39d` ("Construct the violating input
+   for law 1 and law 3", closes #24). No source or test file changes in the
+   closing commit. `phase.sh set HARNESS-002 DONE --force` was run on `main`,
+   overriding the branch check, because there is no story branch.
+2. **AC-4 reading, approved by the user:** "does not FAIL" is read as *the
+   inventory rule does not fail*, which is the purpose the criterion states
+   ("so AC-2 and AC-3 are not satisfied by a check that refuses everything").
+   The control fixture has no `## Gate results`, so the run as a whole still
+   FAILs on the gate-record rule; the control asserts the inventory rule's `ok`
+   line, and mutants 1 and 2 below turn that assertion red.
+3. Line numbers in ## Context have drifted (the rule now sits at
+   `check-boundaries.sh:223-239`) and the per-file check is now an `awk`, not
+   `grep -qF`. The mutants below are anchored on today's code. The criteria are
+   unchanged.
+
+Criteria against tests, all in `.claude/tests/boundaries.test.sh`:
+
+| AC | Test |
+|---|---|
+| AC-1 | "a feature story whose source moved alone" (`refused`, so exit status checked too) |
+| AC-2 | "a chore with a template-only inventory" |
+| AC-3 | "a source file missing from the inventory", "and the refusal names the file it missed" |
+| AC-4 | "an inventory naming every file is accepted" |
+
+Mutants re-run on 2026-09-30 with `scripts/mutate.sh` against
+`bash .claude/tests/boundaries.test.sh`:
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s#\[ "$src" -gt 0 \] \&\& \[ "$tst" -eq 0 \]#false#) ===
+    FAIL a feature story whose source moved alone
+    FAIL a chore with a template-only inventory
+    FAIL a source file missing from the inventory
+    FAIL and the refusal names the file it missed
+    FAIL an inventory naming every file is accepted
+boundaries: 75 passed, 5 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by /| has_content; then/s#if ! #if #) ===
+    FAIL a chore with a template-only inventory
+    FAIL a source file missing from the inventory
+    FAIL and the refusal names the file it missed
+    FAIL an inventory naming every file is accepted
+boundaries: 76 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by /|| missing="\$missing \$p"/s#awk .* ||#true ||#) ===
+    FAIL a source file missing from the inventory
+    FAIL and the refusal names the file it missed
+boundaries: 78 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+```
