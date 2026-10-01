@@ -309,6 +309,198 @@ assert_eq "writing it again replaces rather than appends" 1 \
 
 
 # ---------------------------------------------------------------------------
+describe "write says it wrote only when the file on disk says so (WORLD-097)"
+
+# THE DEFECT. `cmd_write` splices the plan in with an awk that matches
+# `^## Model guidance` and replaces the section - and then prints `wrote the
+# model plan into ...` and exits 0 whether or not anything matched. A story
+# that arrived without the heading (WORLD-072 was split out of WORLD-012 by
+# hand) passes through byte-identical and the tool says it wrote the plan.
+# plan.sh runs under `set -uo pipefail` with no `-e`, so the same line is
+# reached when the render itself fails.
+#
+# EVERY ASSERTION HERE READS THE FILE. The natural check - `output contains
+# "wrote the model plan"` - is satisfied by the defect, which is what hid it for
+# two stories. The heading is counted with `grep -cx`, whole line, so a
+# `## Model guidance` that is duplicated, missing or turned into
+# `### Model guidance` all read as "not 1". The success line, where it is
+# counted at all, is counted the same way: the exact line, `-cxF`, so a
+# differently worded message is not a match and neither is its absence.
+
+STORY_DIR="$FIX/docs/backlog/stories"
+mg_count()   { grep -cx '## Model guidance' "$1" || true; }
+mg_body()    { awk '/^## Model guidance$/ { on = 1; next } on && /^## / { exit } on { print }' "$1"; }
+without_mg() { awk '/^## Model guidance$/ { skip = 1; next } skip && /^## / { skip = 0 } !skip { print }' "$1"; }
+headings()   { grep '^## ' "$1"; }
+# success_lines <id> <output>   How many lines of <output> ARE the success line.
+success_lines() { grep -cxF "wrote the model plan into docs/backlog/stories/$1.md" <<<"$2" || true; }
+zero_or_not() { case "$1" in 0) printf 'zero' ;; *) printf 'non-zero' ;; esac; }
+present()    { if [ -e "$1" ]; then printf 'present'; else printf 'absent'; fi; }
+identical()  { if cmp -s "$1" "$2"; then printf 'identical'; else printf 'differs'; fi; }
+
+# write_fixture <id> <layout>   A story with a real contract, so RED plans to
+# `fable`, in one of three layouts:
+#   none    no `## Model guidance` heading anywhere - the WORLD-072 shape
+#   middle  the heading between two other sections, with a stale body
+#   last    the heading is the final section, stale body, nothing after it
+write_fixture() {
+  mkdir -p "$STORY_DIR"
+  {
+    printf -- '---\nid: %s\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: PLANNED\nbranch: story/%s-fixture\n---\n\n' "$1" "$1"
+    printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Contract\n\n`src/core/world.ts` exports `buildWorld(seed: number): World`.\n\n'
+    [ "$2" = middle ] && printf -- '## Model guidance\n\nstale plan from an earlier run\n\n'
+    printf -- '## Out of scope\n\n- nothing.\n\n## Notes\n\nhand-written notes.\n'
+    [ "$2" = last ] && printf -- '\n## Model guidance\n\nstale plan from an earlier run\n\n**Resolved:**\n\n- RED - written by hand, and replaced on purpose (see Out of scope)\n'
+  } > "$STORY_DIR/$1.md"
+}
+
+# rendered_plan <id>   The body the splice produces when the heading sits
+# mid-file - the one layout today's cmd_write already gets right (T-40 above,
+# and the story's own reproduction). It is the oracle for every OTHER layout:
+# whatever route the heading arrived by, the body it ends up with is this one,
+# byte for byte. The exact-text needles further down pin the lines that must
+# survive independently of this oracle, so a fix that rewords the block fails
+# both ways.
+rendered_plan() {
+  write_fixture "$1" middle
+  plan write "$1" >/dev/null
+  mg_body "$STORY_DIR/$1.md"
+}
+
+# --- AC-1: a story with no heading gains the section ------------------------
+reference="$(rendered_plan T-50)"
+write_fixture T-50 none
+cp "$STORY_DIR/T-50.md" "$FIX/T-50.before"
+out="$(plan write T-50)"; rc=$?
+assert_eq "AC-1: a story with no heading gains exactly one \`## Model guidance\`" \
+  1 "$(mg_count "$STORY_DIR/T-50.md")"
+assert_eq "AC-1: and the command exits 0" 0 "$rc"
+body="$(mg_body "$STORY_DIR/T-50.md")"
+assert_eq "AC-1: the section's body is the rendered plan, byte for byte" "$reference" "$body"
+# The lines the contract says must survive, pinned against literal text rather
+# than against the oracle above.
+assert_contains "AC-1: it says which command planned it, from which file" \
+  'Planned by `bash scripts/plan.sh write T-50` from `.claude/harness/models.conf`.' "$body"
+assert_contains "AC-1: it carries the table header" '| Phase | Agent | Planned | Why |' "$body"
+assert_contains "AC-1: and the RED row from models.conf" '| RED | `test-developer` | `fable` |' "$body"
+assert_contains "AC-1: and the Resolved marker" '**Resolved:**' "$body"
+assert_contains "AC-1: and the comment beneath it" \
+  'One line per dispatch, as it happened: phase, agent, the model that' "$body"
+# CONTROL: only `## Model guidance` was added. Every other heading is still
+# there, once, in the same order, and nothing outside the new section moved.
+assert_eq "AC-1 control: every other heading is where it was, once" \
+  "$(headings "$FIX/T-50.before")" \
+  "$(headings "$STORY_DIR/T-50.md" | grep -vx '## Model guidance')"
+assert_eq "AC-1 control: and the file minus the new section is the file it was" \
+  "$(cat "$FIX/T-50.before")" "$(without_mg "$STORY_DIR/T-50.md")"
+
+# --- AC-2: the success line is a claim about the file -----------------------
+# (a) The same heading-less run. Three numbers, read together: the exit status,
+# how many lines of output ARE the success line, and how many `## Model
+# guidance` headings the file holds afterwards. Today this reads `0/1/0`: exit
+# 0, success printed, no section - the lie in one string. Neither `0/0/0` (an
+# honest refusal) nor `0/1/1` (an honest success) is the defect, and only the
+# second is what AC-1 asks for.
+assert_eq "AC-2 (a): exit / success lines / headings agree on a story that had no heading" \
+  "0/1/1" "$rc/$(success_lines T-50 "$out")/$(mg_count "$STORY_DIR/T-50.md")"
+
+# The same reading on a story whose heading was already there. Green today, and
+# earned in ## Regressions: an awk that prints the heading a second time after
+# the plan makes this string read `0/1/2`, and one that never matches the
+# heading leaves it `0/1/1` - which is why the body is compared as well below.
+write_fixture T-51 middle
+out="$(plan write T-51)"; rc=$?
+assert_eq "AC-2: exit / success lines / headings agree on a story that had one" \
+  "0/1/1" "$rc/$(success_lines T-51 "$out")/$(mg_count "$STORY_DIR/T-51.md")"
+
+# (b) A render that cannot happen. The plan is rendered to
+# `$ROOT/.claude/state/plan-write.$$.md` (contract); with a regular FILE sitting
+# at `.claude/state`, `mkdir -p` fails and the redirect fails ("Not a
+# directory"), so there is no plan for the splice to read. Today the awk still
+# matches the heading, `getline` from the unreadable temp file returns nothing,
+# and the section is DELETED from the story - then `mv` runs, the success line
+# is printed and the exit is 0. Portable: no chmod, which a directory on Windows
+# ignores.
+#
+# The state directory is put back BEFORE the assertions, so an assertion
+# failing here cannot leave the fixture broken for the cases below.
+write_fixture T-52 middle
+cp "$STORY_DIR/T-52.md" "$FIX/T-52.before"
+rm -rf "$FIX/.claude/state"; : > "$FIX/.claude/state"
+out="$(plan write T-52)"; rc=$?
+leftovers="$(find "$FIX/.claude" -name 'plan-write.*.md' 2>/dev/null)"
+rm -f "$FIX/.claude/state"; mkdir -p "$FIX/.claude/state"
+assert_eq "AC-2 (b): a run whose plan cannot be rendered exits non-zero" \
+  non-zero "$(zero_or_not "$rc")"
+assert_eq "AC-2 (b): and prints no success line" 0 "$(success_lines T-52 "$out")"
+assert_eq "AC-2 (b): and leaves no T-52.md.new behind" absent "$(present "$STORY_DIR/T-52.md.new")"
+assert_eq "AC-2 (b): and leaves the story file byte-identical to what it was" \
+  identical "$(identical "$FIX/T-52.before" "$STORY_DIR/T-52.md")"
+# Vacuous under THIS mechanism - the temp file could never be created - and
+# said so in the handoff. It is here so that a mechanism that can create it
+# (GREEN's own probe of the failure path) has an assertion already waiting.
+assert_eq "AC-2 (b): and no plan-write temp file is left under .claude" "" "$leftovers"
+
+# --- AC-3: an existing section is replaced, and replacing is idempotent -----
+# T-51 was written once above. The stale body is gone, the plan is in its place.
+assert_eq "AC-3: an existing section is replaced, leaving exactly one heading" \
+  1 "$(mg_count "$STORY_DIR/T-51.md")"
+assert_eq "AC-3: and the stale body is gone, not appended to" \
+  0 "$(grep -c 'stale plan from an earlier run' "$STORY_DIR/T-51.md" || true)"
+cp "$STORY_DIR/T-51.md" "$FIX/T-51.once"
+plan write T-51 >/dev/null
+assert_eq "AC-3: writing twice leaves the file identical to writing once" \
+  identical "$(identical "$FIX/T-51.once" "$STORY_DIR/T-51.md")"
+# The section AC-1 appended is an existing section from then on: the second run
+# replaces it in place rather than appending a second copy.
+cp "$STORY_DIR/T-50.md" "$FIX/T-50.once"
+plan write T-50 >/dev/null
+assert_eq "AC-3: the section a heading-less story gained is replaced on the next run, not appended again" \
+  "1/identical" "$(mg_count "$STORY_DIR/T-50.md")/$(identical "$FIX/T-50.once" "$STORY_DIR/T-50.md")"
+
+# CONTROL: the heading is the LAST section, with nothing after it. The awk's
+# skip runs to end of file; the file must still end with exactly one heading,
+# with the whole plan beneath it - down to its last line - and everything before
+# the heading untouched. (The stale body's hand-written Resolved line is
+# discarded: that is the replacing behaviour AC-3 pins, and preserving it is
+# out of scope.)
+reference="$(rendered_plan T-53)"
+write_fixture T-53 last
+cp "$STORY_DIR/T-53.md" "$FIX/T-53.before"
+out="$(plan write T-53)"; rc=$?
+assert_eq "AC-3 control: a heading that is the last section still ends up as exactly one" \
+  1 "$(mg_count "$STORY_DIR/T-53.md")"
+assert_eq "AC-3 control: with the rendered plan as its body" "$reference" "$(mg_body "$STORY_DIR/T-53.md")"
+assert_eq "AC-3 control: and the file ends with the plan's last line, not short of it" \
+  '     another — what that changed. A choice with no verdict is folklore. -->' \
+  "$(tail -n 1 "$STORY_DIR/T-53.md")"
+assert_eq "AC-3 control: and everything before the heading is untouched" \
+  "$(without_mg "$FIX/T-53.before")" "$(without_mg "$STORY_DIR/T-53.md")"
+assert_eq "AC-3 control: and it exits 0" 0 "$rc"
+
+# --- AC-4: a missing story is refused, and names the path -------------------
+# The story calls this `story_file`'s existing die, and it is not: the die runs
+# inside `file="$(story_file "$id")"`, so it exits the SUBSHELL and cmd_write
+# carries on with an empty `$file` - two `plan: no story at ...` lines on
+# stderr, an awk with no input file, a `.new` dropped in the project root, and
+# then the success line and exit 0. Measured on this tree before these cases
+# were written. So this is red today for the same reason the others are, and
+# the fix must not lean on a die it cannot see.
+#
+# The path must appear in an ERROR line (die's `plan: ` prefix), because the
+# success line names the same path and would satisfy a bare "contains the
+# path". Exactly one such line: today there are two. stdin is /dev/null because
+# today's fall-through awk reads it when `$file` is empty, and a run from a
+# terminal would sit there waiting.
+out="$(plan write T-99 </dev/null)"; rc=$?
+assert_eq "AC-4: a story id with no file exits non-zero" non-zero "$(zero_or_not "$rc")"
+assert_eq "AC-4: and names the path it looked for, in one error line" \
+  1 "$(grep -c '^plan: .*docs/backlog/stories/T-99\.md$' <<<"$out" || true)"
+assert_eq "AC-4: and prints no success line" 0 "$(success_lines T-99 "$out")"
+assert_eq "AC-4: and creates neither the story nor any .new anywhere in the project" \
+  "absent/" "$(present "$STORY_DIR/T-99.md")/$(find "$FIX" -name '*.new' -not -path '*/.git/*' 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
 describe "conflicts: which startable stories would fight over the same file"
 
 # WHAT THIS IS FOR. Running two stories at once needs two things to be true:
