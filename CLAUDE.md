@@ -18,6 +18,8 @@ every turn, so it stays short.
 /complete-story ID → every phase, to done
                      `bash scripts/plan.sh ID` recommends which, and why —
                      ask it rather than asking the user every time
+                     closing a story prints `bash scripts/plan.sh after ID`:
+                     what to run next, and what can run alongside it
 /audit-mutations   → Mutation Tester (optional, above the bar)
 ```
 
@@ -158,6 +160,7 @@ bash scripts/ci-local.sh         # every step CI runs, in order, on this machine
 bash scripts/plan.sh ID          advance-story or complete-story, and why
 bash scripts/plan.sh write ID    put the per-phase model plan in the story
 bash scripts/plan.sh conflicts   which startable stories share a declared file
+bash scripts/plan.sh after ID    what to run next, and what can run alongside it
 bash scripts/classify.sh --list source src   # what the lock thinks a path is
 bash scripts/refresh-harness.sh ../agentic-dev-harness  # pull a newer harness in
 bash scripts/task.sh dev         # run the app

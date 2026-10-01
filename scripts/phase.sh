@@ -184,6 +184,14 @@ EOF
   printf '%s -> %s\n' "$id" "$phase"
   printf 'writes allowed: %s\n' \
     "$(grep -E "^[[:space:]]*$phase[[:space:]]*\|" "$PHASES" | awk -F'|' '{gsub(/^ +| +$/,"",$2); print $2}')"
+
+  # Closing a story is when the next one is chosen, so the report that answers
+  # "what next, and what alongside" is printed here (HARNESS-018). The phase is
+  # already written, so a failure in plan.sh must not fail the phase change.
+  if [ "$phase" = DONE ]; then
+    printf '\n'
+    bash "$ROOT/scripts/plan.sh" after "$id" || true
+  fi
 }
 
 cmd_clear() {

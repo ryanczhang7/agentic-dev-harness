@@ -204,12 +204,17 @@ job runs, which makes it fail intermittently rather than every time — the wors
 of the two. Do not reorder these to be helpful.
 
 **REVIEW → DONE.** Only once the PR is merged. Set the phase to DONE, clear the
-lock with `bash scripts/phase.sh clear`, and report what the next story is. If
-the closed story's `epic:` is non-empty and no other story in that epic is short
-of DONE, the report also recommends `/audit-mutations <epic>`, scoped to the
-paths the epic's stories touched — the exhaustive mutation work that `rules.md`,
+lock with `bash scripts/phase.sh clear`, and relay the report that
+`phase.sh set <id> DONE` printed — the output of `bash scripts/plan.sh after
+<id>` — to the user **as printed**: the `Next:` story and its command, any
+`Alongside:` set with its `git worktree add` lines, `In flight:` and
+`Blocked:`. Do not rebuild it from memory; run `bash scripts/plan.sh after
+<id>` again if the output scrolled away. When that report carries an `Epic:`
+line — the closed story's `epic:` is non-empty and no other story in that epic
+is short of DONE — it recommends `/audit-mutations <epic>`, scoped to the paths
+the epic's stories touched — the exhaustive mutation work that `rules.md`,
 "Mutation work per story", keeps out of every story. Recommend it; never run it.
-A story with an empty `epic:` gets no recommendation.
+A story with an empty `epic:` gets no `Epic:` line and no recommendation.
 
 Before you call the PR green, **read the timings out of its first CI log** — not
 just the pass/fail. A pass within 10 % of a limit is a pending failure, and a
