@@ -4,8 +4,8 @@ title: phase.sh refuses an invalid phase and keeps frontmatter in step
 slug: phase-sh-refuses-an-invalid-phase-and-ke
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: done
+phase: DONE
 branch: story/HARNESS-005-phase-sh-refuses-an-invalid-phase-and-ke
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/phase.sh, .claude/hooks/lib.sh, .claude/tests/phase.test.sh, .claude/tests/phase-guard.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -263,3 +263,56 @@ Required gate that would fail if this story's artifact broke: `unit`
 
 ## Notes
 
+
+### Closed as already delivered (2026-10-01)
+
+1. **PO decision, approved by the user:** closed without a RED→GREEN cycle.
+   Delivered by commit `a23abac` ("The lock opened on a typo, at two layers"),
+   which also built AC-4's fail-closed `phase_allows` in `.claude/hooks/lib.sh`.
+   No source or test file changes in the closing commit.
+   `phase.sh set HARNESS-005 DONE --force` was run on `main`, overriding the
+   branch check, because there is no story branch.
+2. Line numbers in ## Context have drifted: the `branch:` write is now at
+   `phase.sh:182`, and the fail-closed return at `lib.sh:1196`. The Context's
+   open question ("worth a test or worth deleting") was settled as worth a
+   test, because the write is load-bearing for a story file written by hand,
+   which is the fixture the test builds. The criteria are unchanged and every
+   one is met as written.
+
+| AC | Test |
+|---|---|
+| AC-1 | `phase.test.sh` "a phase name that is a prefix of a real one is refused: GREE" (and RE, D), "and after all of them the story is still RED", "and so is the state the hooks read"; the `'GREEN.'` control is kept at `:75` |
+| AC-2 | `phase.test.sh` "and the branch key is written into the frontmatter", "matching the branch the hooks were told about" |
+| AC-3 | `phase.test.sh` "so is a regex metacharacter matching any row" |
+| AC-4 | `phase-guard.test.sh` "PHASE=GREE/ZZZ/GREEN. refuses a source write" (each also checks that the reason names the phase), "an empty PHASE refuses a source write"; control "while a phase the table DOES list still allows it" |
+
+Mutants re-run on 2026-10-01 with `scripts/mutate.sh`, each against the suite
+that holds its assertion:
+
+```
+=== mutate: scripts/phase.sh (1 line(s) changed by s#if (t == p)#if (t ~ p)#) ===
+    FAIL a phase name that is a prefix of a real one is refused: GREE
+    FAIL a phase name that is a prefix of a real one is refused: RE
+    FAIL a phase name that is a prefix of a real one is refused: D
+    FAIL so is a regex metacharacter matching any row
+    FAIL and after all of them the story is still RED
+    FAIL and so is the state the hooks read
+phase: 27 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+=== mutate: scripts/phase.sh (1 line(s) changed by s#^  set_frontmatter "$file" branch "$branch"#  true#) ===
+    FAIL and the branch key is written into the frontmatter
+    FAIL matching the branch the hooks were told about
+phase: 31 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+=== mutate: .claude/hooks/lib.sh (1 line(s) changed by /An unrecognised phase is not an absent one\./,/^}/s#^  return 1$#  return 0#) ===
+  1196 -   return 1
+  1196 +   return 0
+    FAIL PHASE=GREE refuses a source write
+    FAIL PHASE=ZZZ refuses a source write
+    FAIL PHASE=GREEN. refuses a source write
+    FAIL an empty PHASE refuses a source write
+phase-guard: 296 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+```
