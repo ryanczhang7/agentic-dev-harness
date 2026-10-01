@@ -4,8 +4,8 @@ title: plan.sh write reports only what the file on disk says (port of WORLD-097)
 slug: plan-sh-write-reports-only-what-the-file
 epic: 
 type: chore
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-019-plan-sh-write-reports-only-what-the-file
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -188,6 +188,30 @@ its only callers are the `write` dispatch and the docs that name the command.
   fix does not exist yet. **Owner: GATES**, with `scripts/mutate.sh` against
   `bash .claude/tests/plan.test.sh`.
 
+  **Result (GATES, 2026-10-01, orchestrator):** run as planned. With the
+  END-append removed, the heading-less fixture fails, and "and the command exits 0"
+  fails with it: the post-condition now refuses rather than reporting a success it
+  did not achieve. Restored.
+
+  ```
+  === mutate: scripts/plan.sh (1 line(s) changed by /END { if (!matched)/s#END {.*#END { }#) ===
+    404 -     END { if (!matched) { print ""; while ((getline line < planfile) > 0) print line } }
+    404 +     END { }
+  === mutate: running bash .claude/tests/plan.test.sh ===
+      FAIL AC-1: a story with no heading gains exactly one `## Model guidance`
+      FAIL AC-1: and the command exits 0
+      FAIL AC-1: the section's body is the rendered plan, byte for byte
+      FAIL AC-1: it says which command planned it, from which file
+      FAIL AC-1: it carries the table header
+      FAIL AC-1: and the RED row from models.conf
+      FAIL AC-1: and the Resolved marker
+      FAIL AC-1: and the comment beneath it
+      FAIL AC-2 (a): exit / success lines / headings agree on a story that had no heading
+      FAIL AC-3: the section a heading-less story gained is replaced on the next run, not appended again
+  plan: 232 passed, 10 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_plan.sh.20261001T185037Z.2499803.bak) ===
+  ```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -220,6 +244,7 @@ name, below the table.
 **Resolved:**
 
 - RED: no dispatch; the orchestrator (`opus`, `claude-opus-5-5`) applied the ported test patch, since there was nothing to design.
+- GREEN: no dispatch; the orchestrator applied the ported source patch unchanged.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -319,10 +344,21 @@ offset 70. Expected result: `plan: 242 passed, 0 failed`.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-01T18:58:58Z
+    commit: 998c3a8 (working tree had uncommitted changes)
+    tree:   e84a12150bb2b1279ccc7b3202bd374e6f00b1cc
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -348,3 +384,10 @@ offset 70. Expected result: `plan: 242 passed, 0 failed`.
 
 ## Notes
 
+
+### GREEN (orchestrator, 2026-10-01)
+
+Applied FWB's `scripts/plan.sh` diff with `git apply` (hunks at offset 70),
+with no edits. `plan: 242 passed, 0 failed`; that includes passes-on-arrival 15
+and 17, confirmed. `check-sigpipe`: 41 files, 0 findings. `check-grep-count`:
+41 files, 0 findings. `grep-count` 20/0 and `sigpipe` 82/0.

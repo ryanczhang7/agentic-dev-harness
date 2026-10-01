@@ -333,8 +333,39 @@ cmd_both() {
 # It replaces the section rather than appending to it, because the orchestrator
 # re-runs this after amending the contract and a section that grew a copy each
 # time would be read as a history of decisions nobody made.
+#
+# THE SUCCESS LINE IS A CLAIM ABOUT THE FILE, so nothing prints it until the
+# file that is about to be written has been checked against the plan that was
+# rendered. WORLD-097: this used to splice and then report success
+# unconditionally, so a story that arrived WITHOUT the heading - WORLD-072 was
+# split out of WORLD-012 by hand, and `new-story.sh`'s template is not the only
+# route a story arrives by - passed through byte-identical while the tool said
+# it had written the plan. `rules.md` says a model choice with no recorded
+# verdict is folklore; this said the verdict was recorded when it was not.
+#
+# Three things follow from that, and none is decoration:
+#
+#   * THE STORY FILE IS TESTED HERE, not left to `story_file`'s `die`. That die
+#     runs inside `file="$(story_file "$id")"` - a command substitution - so it
+#     kills only the subshell, and `cmd_write` used to carry on with `$file`
+#     empty: the awk read STDIN, `> "$file.new"` dropped a `.new` in the project
+#     root, and the success line printed anyway. `|| exit $?` is what makes the
+#     die reach this script, and it keeps the message to one line.
+#   * THE SECTION IS APPENDED WHEN THE HEADING IS ABSENT rather than refused.
+#     Refusing would be honest and would leave the rule unsatisfied; appending
+#     satisfies it, and is idempotent because the appended section is an
+#     ordinary section on the next run. End of file is where it goes; nothing
+#     depends on that.
+#   * THE CANDIDATE IS CHECKED BEFORE IT REPLACES THE STORY. Checking after the
+#     `mv` would leave the damage behind an honest exit code, and the damage is
+#     real: with a regular file sitting at `.claude/state` the render produces
+#     nothing, `getline` from it returns nothing, and the splice DELETES the
+#     section. `set -uo pipefail` has no `-e`, so a failed command here does not
+#     stop the function - every failure path below is spelled out.
 cmd_write() {
-  local id="$1" file; file="$(story_file "$id")"
+  local id="$1" file
+  file="$(story_file "$id")" || exit $?
+
   local tmp="$ROOT/.claude/state/plan-write.$$.md"
   mkdir -p "$ROOT/.claude/state"
 
@@ -355,11 +386,44 @@ cmd_write() {
     printf -- '     another — what that changed. A choice with no verdict is folklore. -->\n'
   } > "$tmp"
 
+  # The render can fail with nothing to stop it: `mkdir` refused because a
+  # regular file sits at `.claude/state`, the redirect refused for the same
+  # reason, and there is no `-e`. ONE gate decides, below, and it is a
+  # statement about the FILE rather than about any tool's exit status - an
+  # early "the temp file is non-empty" check would be a proxy for that
+  # statement, and a second place to get the cleanup wrong.
+  local plan_body
+  plan_body="$(tail -n +2 "$tmp" 2>/dev/null)"
+
+  # Replace the section where the heading exists; append it where it does not.
+  local new="$file.new"
   awk -v planfile="$tmp" '
-    /^## Model guidance/ { while ((getline line < planfile) > 0) print line; skip = 1; next }
+    /^## Model guidance/ { while ((getline line < planfile) > 0) print line; skip = 1; matched = 1; next }
     skip && /^## / { skip = 0 }
     !skip { print }
-  ' "$file" > "$file.new" && mv "$file.new" "$file"
+    END { if (!matched) { print ""; while ((getline line < planfile) > 0) print line } }
+  ' "$file" > "$new"
+
+  # The post-condition, read off the CANDIDATE: exactly one `## Model guidance`
+  # line (whole line, so `### Model guidance` is not one and neither is a second
+  # copy), and the body beneath it is the plan just rendered, byte for byte.
+  #
+  # awk rather than `grep -cx`: that prints 0 AND exits 1 on no match, so it
+  # needs a status-swallowing fallback beside it - the idiom
+  # check-grep-count.sh exists to police, and whose live instances
+  # .claude/tests/grep-count.test.sh counts as a census over the real tree.
+  # (That census reads raw text, so it counts a mention in a COMMENT too: this
+  # paragraph deliberately does not spell the two halves on one line.) One awk
+  # needs neither the fallback nor a second process.
+  local found body
+  found="$(awk '$0 == "## Model guidance" { n++ } END { print n + 0 }' "$new" 2>/dev/null)"
+  body="$(awk '/^## Model guidance$/ { on = 1; next } on && /^## / { exit } on { print }' "$new" 2>/dev/null)"
+  if [ "$found" != 1 ] || [ "$body" != "$plan_body" ]; then
+    rm -f "$new" "$tmp"
+    die "refusing to report a write: docs/backlog/stories/$id.md would not hold the rendered plan"
+  fi
+
+  mv "$new" "$file" || { rm -f "$new" "$tmp"; die "could not write docs/backlog/stories/$id.md"; }
   rm -f "$tmp"
   printf 'wrote the model plan into %s\n' "docs/backlog/stories/$id.md"
 }
