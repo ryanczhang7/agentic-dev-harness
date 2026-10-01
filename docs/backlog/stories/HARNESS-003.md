@@ -4,8 +4,8 @@ title: check-boundaries asserts its own verdict on the story checks
 slug: check-boundaries-asserts-its-own-verdict
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-003-check-boundaries-asserts-its-own-verdict
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, scripts/check-boundaries.sh]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -606,3 +606,14 @@ discarded and the run above, which changed one line, is the record.
 Handoff mutation table, one entry checked: `:1195` was earned in RED by turning
 `ok "gate record matches` into `problem`. RED's output is in ## Handoff, and the
 new assertion was among the 9 failures.
+
+**DONE, 2026-10-01.** Merged in #91 (merge commit 8599da7), release 60. The
+VERSION bump lands in this DONE commit, as HARNESS-009's did, because the PR
+changed `scripts/check-boundaries.sh` without one. `phase.sh set DONE --force`
+was run on `main`, overriding the branch check, as for every post-merge close.
+PR CI: the `gates` job passed in 1m20s. Its harness self-test step took 72s,
+with no `timeout-minutes` set (GitHub's 6h default), against 89s on #90
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36800799813).
+`boundaries` passed in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36800799757).
+No epic, so no `/audit-mutations` recommendation.
