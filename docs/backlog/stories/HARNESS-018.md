@@ -4,8 +4,8 @@ title: Closing a story names what to run next, and what can run alongside it
 slug: closing-a-story-names-what-to-run-next-a
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-018-closing-a-story-names-what-to-run-next-a
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, scripts/phase.sh, .claude/tests/plan.test.sh, .claude/tests/phase.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, CLAUDE.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -729,3 +729,15 @@ if it is to be removed.
 
 ## Notes
 
+
+**DONE, 2026-10-01.** Merged in #92 (merge commit d528340), release 61. The
+VERSION bump lands in this DONE commit, as for HARNESS-003 and HARNESS-009,
+because the PR changed harness scripts without one. `phase.sh set DONE --force`
+was run on `main`, overriding the branch check, as for every post-merge close.
+That run printed the new report, the first close to do so. PR CI: the `gates`
+job passed in 1m25s, and its harness self-test step took 72s (the same as #91),
+with no `timeout-minutes` set
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36900141844).
+`boundaries` passed in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36900142083).
+No epic, so no `/audit-mutations` recommendation.
