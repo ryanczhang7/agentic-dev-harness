@@ -4,8 +4,8 @@ title: Closing a story names what to run next, and what can run alongside it
 slug: closing-a-story-names-what-to-run-next-a
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-018-closing-a-story-names-what-to-run-next-a
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, scripts/phase.sh, .claude/tests/plan.test.sh, .claude/tests/phase.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, CLAUDE.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -53,8 +53,6 @@ Required gate that would fail if this story's artifact broke: `unit`
      still be blind to the defect it exists to catch, and that is more
      dangerous than a vague one - it survives review and goes green. -->
 
-- **AC-1** — Given <state>, when <action>, then <observable outcome>.
-- **AC-2** — Given <state>, when <action>, then <observable outcome>.
 
 - **AC-1** — Given a backlog with at least one startable PLANNED story, when
   `bash scripts/plan.sh after <closed-id>` runs, then it prints a `Next:` line
@@ -219,6 +217,49 @@ Epic:      E1 has no open story left - /audit-mutations E1 is recommended; nothi
 - A block with nothing to say is left out entirely, except `Next:`, which always
   prints. Blocks are separated by one blank line.
 
+**Sharpened in RED (2026-10-01), in place.** Each point below is something the
+example above implies but does not say. The tests pin it, so GREEN has to know
+it as fact:
+
+- **Block order** is fixed: header (then one blank line), `Next:`,
+  `Alongside:`, `In flight:`, `Blocked:`, `Epic:`. The report has no trailing
+  blank line; `$(...)` captures it exactly.
+- **Header** is `After <closed-id>:` and prints only when `<closed-id>` names a
+  story file. An id that names none gives the report with no header and no
+  epic check, and still exits 0. (Reason: the tests compare the no-id and
+  unknown-id reports byte for byte against the same body.)
+- **Multi-line blocks.** In `In flight:` and `Blocked:`, the first entry follows
+  the label and each further entry is on its own line indented 11 spaces, in
+  backlog order: `           U (REVIEW)  /advance-story U`.
+- **Inside `Alongside:` when stories join**, the order is: the header line;
+  one `             /<cmd> <ID>` line per listed story (13 spaces, in the order
+  they joined, which is backlog order); the `To run them together…` line; one
+  `             git worktree add ../<repo>-<ID> -b <branch>` line per listed
+  story, same order; `           then run its command from inside that
+  worktree.`; then the reason lines.
+- **Reason lines** are indented 11 spaces and come in backlog order of the
+  story they are about, after everything else in the block. With nothing
+  joined they follow `Alongside: nothing - run one story at a time.` directly.
+  A lone startable story with no other candidate gets that line and nothing
+  after it.
+- **`<paths>` in a shares line** is the shared paths joined by single spaces,
+  with **no trailing space** - `H shares src/d.ts src/d2.ts with D`.
+  `shared_paths` leaves one trailing space on its output, so GREEN trims it.
+  (Reason: the tests match whole lines with `grep -cxF`; a trailing space
+  would make every shares line a different string.)
+- **Member order for "the first member it collides with"** is the `Next:`
+  story, then the in-flight stories in backlog order, then the joined stories
+  in the order they joined. The same order chooses the `<ID>` in
+  `nothing - <ID> declares no paths, so nothing can be judged against it.`
+  The tests do not pin whether reason lines follow that line; that is GREEN's
+  choice.
+- **Neither DONE nor blocked stories are members.** A path held only by a DONE
+  or a blocked story does not stop a candidate joining.
+- **`Add work with /plan-story.`** prints when nothing is startable and nothing
+  is in flight. A blocked story does not count as in flight.
+- **Epic equality is whole-string**: a story in `E10` does not hold `E1` open.
+  `epic:` with an empty value counts as empty.
+
 ### `phase.sh set <id> DONE`
 
 After its existing output (`<id> -> DONE`, then `writes allowed: …`),
@@ -312,6 +353,15 @@ None. The suites are bash. They use the existing `story_with` helper in
      inputs, not the subagent's code. That claim is also what an agent says
      when it wants to stop failing. -->
 
+- **2026-10-01, Lead PO (orchestrator).** Removed two template placeholder
+  lines, `- **AC-1** — Given <state>, when <action>, then <observable outcome>.`
+  and the same for AC-2, which the PLANNED assembly step had left above the six
+  real criteria. They gave the section duplicate AC ids and made `plan.sh next`
+  count 8 criteria. No real criterion's text changed and no test reads them. The
+  test-developer flagged it in RED, and the orchestrator confirmed against the
+  file (the lines sat at 56-57, directly under the template comment). The story
+  is not on `main`, so `check-boundaries.sh` has no base version to compare.
+
 ## Model guidance
 
 Planned by `bash scripts/plan.sh write HARNESS-018` from `.claude/harness/models.conf`.
@@ -330,6 +380,8 @@ name, below the table.
 | SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation, with no failing test in front of any of it |
 
 **Resolved:**
+
+- RED: `test-developer` resolved to `opus` (`claude-opus-5-5`, from the agent definition; no override). Verdict: 55 assertions, every new one red for the right reason (orchestrator re-ran: phase 40/5, plan 168/44); it flagged the orchestrator's own placeholder-AC error.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -357,6 +409,36 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Everything is mechanical (Contract, "Oracle partition"), so every test pins an
+exact string. Level: integration over the real script in `make_project_fixture`,
+the level both suites already use. No metric and no threshold.
+
+**`.claude/tests/plan.test.sh`**: new last block, `describe "after: …
+(HARNESS-018)"`, 45 assertions. It uses `fresh` like the blocks above it, so it
+cannot affect them. `story_with` gains one optional line, `EPIC:<name>`, which
+writes `epic: <name>`. No existing fixture contains `EPIC:`, so no earlier
+fixture changes.
+
+| Fixture | Stories | Pins |
+|---|---|---|
+| 1 | A DONE/E1 (closed); B blocked on C + missing Z; C next/E1; D RED; E deferred (advance) shares only with DONE A; F shares with C; G shares with E (listed); H shares two paths with D (in flight); I no paths; J paths via `**Writes:**` only, shares only with blocked B | AC-1, AC-2 and both of its controls, AC-4, the AC-5 "another story not DONE" control, the whole report byte for byte, no-id and unknown-id reports |
+| 2 | N; O shares with N; P no paths | AC-3 with reason lines |
+| 3 | N alone | AC-3 lone story |
+| 4 | R RED no paths; S next; T disjoint; U REVIEW | in-flight member with no paths; two In flight lines; in-flight never Next |
+| 5 | S next with no paths; T | Next member with no paths |
+| 6 | X1, X2 DONE/E1; V blocked, epic E10 | AC-5: nothing startable plus /plan-story, Epic line, E10 is not E1, blocked never Next, no Epic line without an id |
+| 6+W | plus W GREEN/E1 | AC-5 control: epic not closed; no /plan-story while in flight |
+| 7 | Q1, Q2 DONE, empty epic | AC-5 control: empty epic |
+| 8 | empty backlog | Next with /plan-story, exit 0 |
+| — | `--help` | lists `after` |
+
+**`.claude/tests/phase.test.sh`**: new last block, 10 assertions, AC-6.
+`phase.sh set K-1 DONE` must end with a blank line and then exactly what
+`plan.sh after K-1` prints, and that report must name
+`Next:      /complete-story K-2`, so an empty report cannot pass the suffix check.
+The control is `set K-2` to each of RED, GREEN, GATES, REVIEW and PLANNED. The
+prose checks read the three docs from `$REPO_ROOT`, the real tree.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -376,6 +458,188 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED was dispatched on `opus` (claude-opus-5-5), with no override.
+
+**Commands**
+
+    bash .claude/tests/plan.test.sh     # about 10 min locally on Windows; it was already the long suite
+    bash .claude/tests/phase.test.sh    # about 80 s locally
+
+Both timings are from a local Windows run. Neither suite carries a timeout, and
+`selftest.sh` sets none.
+
+**Result in RED**
+
+    plan: 168 passed, 44 failed     (167 before + 45 new; 1 new passes, see below)
+    phase: 40 passed, 5 failed      (33 before + 10 new; 7 new pass, see below)
+
+No assertion that existed before this story fails.
+
+**Why this is the right failure.** `after` is not a subcommand yet, so
+`plan.sh after A` falls through to the `*)` arm, `cmd_both "after"`. That
+prints a "Story after" report for a story named `after`, and stderr gets
+`plan: no story at docs/backlog/stories/after.md`. Verbatim from the run:
+
+    FAIL after exits 0 and writes nothing to stderr on an ordinary run
+         expected: 0||1
+         actual:   0|plan: no story at docs/backlog/stories/after.md
+         plan: no story at docs/backlog/stories/after.md|0
+    FAIL AC-1..AC-4: after A prints exactly the Contract's report for this backlog
+         expected: After A:
+         ...
+         actual:   Story after
+
+           Recommended:  /complete-story after
+           Because:      after is an ordinary cycle: a contract to work from, 0 criteria, ...
+    FAIL AC-2 control: a story sharing a path with Next is not listed, and the shared path is named
+         expected: 0|0|1
+         actual:   0|0|0
+    FAIL plan.sh --help lists the after subcommand
+         expected: 1
+         actual:   0
+
+    FAIL AC-6: phase.sh set K-1 DONE ends with a blank line and then exactly what plan.sh after K-1 prints, and that report names Next
+         expected: ends|1
+         actual:   does-not-end|0
+    FAIL AC-6: .claude/commands/advance-story.md names bash scripts/plan.sh after
+         expected: names
+         actual:   silent
+    (the same for complete-story.md and lead-po.md)
+
+Every "is not listed" control fails in RED on its presence half, the reason
+line (`0|0|0` against `0|0|1`). That is deliberate: none of them can pass on an
+empty report.
+
+`bash scripts/gates.sh --fast`: `All required gates passed (0 ran, 5
+unconfigured, 0 known)`, rc 0. This repository has `BOOTSTRAPPED=no`, so the
+gates are unconfigured, and `selftest.sh` (the `unit` gate the Context names)
+is where these suites are judged. The new tests contain no lint-shaped and no
+timeout-shaped failure.
+
+**Files touched**
+
+- `.claude/tests/plan.test.sh`: `story_with` gains `EPIC:`, and the `after`
+  block is added before `summary`.
+- `.claude/tests/phase.test.sh`: the AC-6 block is added before `summary`.
+- `docs/backlog/stories/HARNESS-018.md`: `## Contract` is sharpened in place
+  (see "Sharpened in RED"), and `## Test plan` and this section are filled.
+
+**What the tests pin, stated as fact.** These are not suggestions. Each one is
+an exact-string assertion, and a wrong guess fails it.
+
+- The `plan.sh after [<id>]` dispatch. Stdout carries the report and stderr is
+  empty on an ordinary run. Exit status is 0 in every fixture, including an
+  empty backlog and an unknown id.
+- Every label and indent in the Contract: 11-column labels, 11-space
+  continuations, 13-space listing and worktree lines. The exact sentences are
+  `Alongside: can start now, in parallel with <ID> - no two of these, and no
+  story in flight, declare a shared path:`, `To run them together, give each
+  its own worktree (one worktree, one story):`, `then run its command from
+  inside that worktree.`, `<ID> shares <p1 p2> with <M>`, `<ID> declares no
+  paths, so it cannot be judged - UNKNOWN is not clear`, `nothing - run one
+  story at a time.`, `nothing - <ID> declares no paths, so nothing can be
+  judged against it.`, `no new story is startable.`, `Add work with
+  /plan-story.`, `<ID> (<PHASE>)  /advance-story <ID>`, `<ID>  depends_on <d>
+  (<PH>), <d> (missing)` and `<E> has no open story left - /audit-mutations <E>
+  is recommended; nothing runs it automatically.`
+- The worktree dir is `../$(basename "$ROOT")-<ID>`. The test computes it as
+  `basename "$(cd "$FIX" && pwd)"`, which is the same `pwd` that `plan.sh`'s
+  ROOT line uses.
+- The `Next:` reason is verbatim `plan.sh next <id> | cut -f2-`.
+- Help: a line matching `^  bash scripts/plan\.sh after( |$)` appears in
+  `plan.sh --help`, after the `# ` strip. So the help line is
+  `#   bash scripts/plan.sh after [<id>]   …`, and the `sed -n` range must
+  include it.
+- `phase.sh set <id> DONE`: stdout is `<id> -> DONE`, then `writes allowed: …`,
+  then one blank line, then exactly the `plan.sh after <id>` stdout. Nothing
+  may follow it.
+- The three docs contain `bash scripts/plan.sh after`. CLAUDE.md is not tested.
+
+**Not constrained, so GREEN chooses.** The internal structure of `cmd_after`.
+Whether reason lines follow a `nothing - <ID> declares no paths…` line. The
+stderr content for an unknown id (the exit status and stdout are pinned; stderr
+is not). The wording of the help line beyond its prefix. Where in each prose
+doc the sentence goes.
+
+**Passing on arrival, and how each is earned**
+
+| Test | Why it passes in RED | Earned by |
+|---|---|---|
+| plan: `AC-1 fixture: the reason expected for C is what plan.sh next says` | It pins the *fixture* against the existing `next`, not `after` | Nothing needed. It is a precondition, and if it ever fails the fixture is wrong, not `after` |
+| phase: `the phase change itself is reported first, on the first line` | Existing behaviour | A regression guard so the report never lands *before* `-> DONE`. It is not probed, and the ordering assertion (`After` and `Next` after `-> DONE`, which fails in RED) carries the new claim |
+| phase: `and the phase change happened` | Existing behaviour | Same: it guards that printing the report does not break the write. Not probed |
+| phase: `AC-6 control: phase.sh set K-2 {RED,GREEN,GATES,REVIEW,PLANNED} prints no after report` (5) | Nothing prints a report yet | **Probe**, below: with a `Next:` line injected into every `set`, all five go red and nothing else changes |
+
+Probe for the five controls. It went through `scripts/mutate.sh`, and the file
+was restored and verified:
+
+    $ bash scripts/mutate.sh scripts/phase.sh 's/^  printf .%s -> %s.n. "\$id" "\$phase"$/&; printf "Next:      probe\\n"/' -- bash .claude/tests/phase.test.sh
+    FAIL AC-6 control: phase.sh set K-2 GREEN prints no after report
+         expected: 1|0|0
+         actual:   1|1|0
+    FAIL AC-6 control: phase.sh set K-2 GATES prints no after report
+         expected: 1|0|0
+         actual:   1|1|0
+    FAIL AC-6 control: phase.sh set K-2 REVIEW prints no after report
+         expected: 1|0|0
+         actual:   1|1|0
+    FAIL AC-6 control: phase.sh set K-2 PLANNED prints no after report
+         expected: 1|0|0
+         actual:   1|1|0
+    (and RED, scrolled off: 35 passed, 10 failed = the 5 RED failures + these 5)
+    phase: 35 passed, 10 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_phase.sh.20261001T150951Z.2007792.bak) ===
+
+(An earlier attempt with `\&` in the replacement broke the script's syntax: 32
+failed, restored and verified. It discriminates nothing and is not counted.)
+
+**Negative controls: expected values.** They are counts, not thresholds. In RED
+`after` does not exist, so every control that shares an assertion with a
+presence fails on the presence half. The expected values below are claims until
+GREEN runs them against the shipped `cmd_after`.
+
+| Control | Assertion shape | Expected in GREEN | Measured in RED |
+|---|---|---|---|
+| F shares with Next (C) | listing(complete)\|listing(advance)\|reason | `0\|0\|1` | `0\|0\|0` |
+| G shares with listed E | same | `0\|0\|1` | `0\|0\|0` |
+| H shares 2 paths with in-flight D | same | `0\|0\|1` | `0\|0\|0` |
+| I declares nothing | same | `0\|0\|1` | `0\|0\|0` |
+| no worktree for F/G/H/I | F\|G\|H\|I\|total | `0\|0\|0\|0\|2` | `0\|0\|0\|0\|0` |
+| blocked B never Next | B complete\|B advance\|C next | `0\|0\|1` | `0\|0\|0` |
+| closing A, C in E1 open | Epic\|audit-mutations\|Next C | `0\|0\|1` | `0\|0\|0` |
+| W (GREEN) holds E1 open | Epic\|audit\|In flight W | `0\|0\|1` | `0\|0\|0` |
+| empty epic | whole report equality, no Epic line | exact | `Story after…` |
+| member R/S with no paths | nothing-line\|listings\|worktrees | `1\|0\|0` / `1\|1\|0` | `0\|0\|0` / `0\|0\|0` |
+| phase.sh non-DONE | `-> PH`\|Next\|After | `1\|0\|0` | `1\|0\|0`; probed to `1\|1\|0` |
+
+**Prediction for the GATES deferred verification** (the collision check made
+never to fire, for example the `shared_paths` test inside the Alongside loop
+replaced by an empty string). Then F, G, H and O join as members. These
+assertions in `plan.test.sh` should fail:
+
+- `AC-1..AC-4: after A prints exactly the Contract's report…`
+- `after with no id prints the same report…` and `…an id that names no story…`
+  (the same body)
+- `AC-2: and one worktree line per listed story, no more` (2 becomes 5)
+- `AC-2 control: a story sharing a path with Next…` (F), `…with another LISTED
+  story…` (G), `…with an in-flight story…` (H)
+- `AC-2 control: no worktree line for any story left out…`
+- `AC-3: with nothing able to join…`, and `AC-3 control: no worktree
+  instructions…` and `AC-3 control: neither O nor P is listed`
+
+These should stay green: the I (UNKNOWN) control, every AC-4, AC-5 and AC-1
+line assertion, both member-with-no-paths cases, the lone-story case, `DONE is
+not a member` and `blocked is not a member`. Those two read `shares src/a.ts` /
+`shares src/j.ts` = 0, which a dead collision check also satisfies. They pin
+the *membership* rule, not the collision.
+
+**Found along the way, for the orchestrator.** `## Acceptance criteria` still
+carries the template's two placeholder lines (`- **AC-1** — Given <state>…`
+and `- **AC-2** — …`) above the real six. That makes `cmd_next` count 8 ACs for
+this story, and it puts two duplicate AC ids in the frozen section. RED has not
+touched it, because criteria are frozen. It needs an `## Amendments` decision
+if it is to be removed.
 
 ## Regressions
 

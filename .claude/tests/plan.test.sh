@@ -34,9 +34,12 @@ plan() { ( cd "$FIX" && bash scripts/plan.sh "$@" 2>&1 ); }
 # `touches: [a, b]`. The middle one exists so a test can say "empty list" and
 # "absent key" as two different fixtures, because PO decision 1 says they must
 # be judged the same and only two fixtures can show that.
+#
+# `EPIC:<name>` writes `epic: <name>` (HARNESS-018); no line writes no key.
 story_with() {
-  local id="$1" type="$2" phase="$3" acs="$4" extra contract="" deferred="" deps="" touches="" has_touches=0
+  local id="$1" type="$2" phase="$3" acs="$4" extra contract="" deferred="" deps="" touches="" has_touches=0 epic="" has_epic=0
   extra="$(cat)"
+  case "$extra" in *EPIC:*)     has_epic=1; epic="$(printf '%s\n' "$extra" | sed -n 's/^EPIC://p')" ;; esac
   case "$extra" in *CONTRACT:*) contract="$(printf '%s\n' "$extra" | sed -n 's/^CONTRACT://p')" ;; esac
   case "$extra" in *DEFERRED:*) deferred="$(printf '%s\n' "$extra" | sed -n 's/^DEFERRED://p')" ;; esac
   case "$extra" in *DEPENDS:*)  deps="$(printf '%s\n' "$extra" | sed -n 's/^DEPENDS://p')" ;; esac
@@ -47,6 +50,7 @@ story_with() {
       "$id" "$type" "$phase" "$id"
     [ -n "$deps" ] && printf -- 'depends_on: [%s]\n' "$deps"
     [ "$has_touches" = 1 ] && printf -- 'touches: [%s]\n' "$touches"
+    [ "$has_epic" = 1 ] && printf -- 'epic: %s\n' "$epic"
     printf -- '---\n\n## Acceptance criteria\n\n'
     local i=1
     while [ "$i" -le "$acs" ]; do printf -- '- **AC-%s** - it works.\n' "$i"; i=$((i+1)); done
@@ -1556,5 +1560,354 @@ done
 pairs_run --pairs
 assert_eq "AC-1 control: the same backlog's --pairs prints its one clear pair, so the refusals above are not an empty backlog" \
   "A	B|0" "$p_out|$p_rc"
+
+# ---------------------------------------------------------------------------
+describe "after: closing a story names what to run next, and what can run alongside it (HARNESS-018)"
+
+# WHY. Every closing report used to be reconstructed by hand from five commands
+# - `next`, `waves`, `conflicts --pairs`, the epic rule in advance-story.md and
+# the worktree recipe in CLAUDE.md - and came out different every time. `after`
+# is the whole answer in one report, and `phase.sh set <id> DONE` prints it.
+#
+# LAST IN THE FILE, like the blocks above it: every fixture starts from `fresh`.
+#
+# NEEDLES. Every label assertion is a WHOLE LINE (`grep -cxF`), so `Next:` can
+# never be satisfied by `Next:` on some other story, `C` cannot float inside
+# `CC`, and the padding the Contract fixes (`printf '%-11s'`) is part of what is
+# matched. Every "is NOT listed" assertion counts the exact listing line AND
+# travels in the same assert_eq with a presence from the same run - the reason
+# line that says why it was left out, or the Next line - so an output that is
+# merely empty, which is what RED prints, fails it rather than passing it.
+#
+# stdout and stderr are captured SEPARATELY: the Contract says `after` writes to
+# stdout only and always exits 0.
+
+AFTER_ERR="$FIX/.after.stderr"
+# after_run [args...]   Sets a_out (stdout), a_err (stderr), a_rc (status).
+after_run() {
+  a_out="$( cd "$FIX" && bash scripts/plan.sh after "$@" 2>"$AFTER_ERR" )"; a_rc=$?
+  a_err="$(cat "$AFTER_ERR")"
+}
+# aline <exact line>   How many lines of a_out are exactly this.
+aline() { grep -cxF -- "$1" <<<"$a_out"; }
+# alabel <prefix>   How many lines of a_out START with this prefix. Used only
+# for "this block is absent", and always paired with a presence.
+alabel() { awk -v l="$1" 'index($0, l) == 1 { n++ } END { print n + 0 }' <<<"$a_out"; }
+# acount <ere>   How many lines of a_out match an ERE anywhere.
+acount() { awk -v re="$1" '$0 ~ re { n++ } END { print n + 0 }' <<<"$a_out"; }
+# The directory name the worktree lines are built from: the basename of the
+# repository root, computed the way plan.sh computes its ROOT.
+REPO_BASE="$( cd "$FIX" && basename "$(pwd)" )"
+# cmd_next's reason for one story, verbatim - the Contract says the Next block
+# carries it unchanged, and `next` is the existing command that produces it.
+reason_of() { ( cd "$FIX" && bash scripts/plan.sh next "$1" 2>/dev/null | cut -f2- ); }
+IND='           '     # 11 spaces: a continuation line
+LST='             '   # 13 spaces: a listed command or worktree line
+
+# --- AC-1, AC-2, AC-4: one backlog holding every disposition ----------------
+#
+#   A  DONE,     epic E1, touches src/a.ts          <- the closed story
+#   B  PLANNED,  touches src/j.ts, depends on C (PLANNED) and Z (no file)
+#                -> Blocked, first non-DONE story in backlog order, never Next;
+#                   and it shares src/j.ts with J, so were a blocked story a
+#                   member, J would be refused
+#   C  PLANNED,  epic E1, touches src/c.ts          -> Next, /complete-story
+#   D  RED,      touches src/d.ts, src/d2.ts        -> In flight; a member
+#   E  PLANNED,  touches src/e.ts, src/a.ts, Deferred verification
+#                -> Alongside, with ITS OWN command /advance-story; src/a.ts
+#                   is A's, and A is DONE, so DONE stories are not members
+#   F  PLANNED,  touches src/c.ts                   -> shares with Next (C)
+#   G  PLANNED,  touches src/e.ts                   -> shares with E, a story
+#                   listed earlier in the same run
+#   H  PLANNED,  touches src/d.ts, src/d2.ts        -> shares two paths with
+#                   D, in flight
+#   I  PLANNED,  declares nothing                   -> UNKNOWN, not listed
+#   J  PLANNED,  declares src/j.ts on a Contract **Writes:** line only
+#                -> Alongside, /complete-story; read through story_paths
+#
+# C is in epic E1 and not DONE, so closing A must NOT recommend
+# /audit-mutations E1 (AC-5 control, the "another story not DONE" half).
+fresh
+story_with A feature DONE 1 <<'EOF'
+TOUCHES:src/a.ts
+EPIC:E1
+EOF
+story_with B feature PLANNED 1 <<'EOF'
+TOUCHES:src/j.ts
+DEPENDS:C, Z
+EOF
+story_with C feature PLANNED 1 <<'EOF'
+TOUCHES:src/c.ts
+EPIC:E1
+EOF
+story_with D feature RED 1 <<'EOF'
+TOUCHES:src/d.ts, src/d2.ts
+EOF
+story_with E feature PLANNED 1 <<'EOF'
+TOUCHES:src/e.ts, src/a.ts
+DEFERRED:- With the encoder broken, AC-1 MUST fail. Owner: GATES.
+EOF
+story_with F feature PLANNED 1 <<'EOF'
+TOUCHES:src/c.ts
+EOF
+story_with G feature PLANNED 1 <<'EOF'
+TOUCHES:src/e.ts
+EOF
+story_with H feature PLANNED 1 <<'EOF'
+TOUCHES:src/d.ts, src/d2.ts
+EOF
+story_with I feature PLANNED 1 </dev/null
+story_with J feature PLANNED 1 <<'EOF'
+CONTRACT:**Writes:** `src/j.ts`
+EOF
+
+C_REASON='C is an ordinary cycle: a contract to work from, 1 criteria, nothing deferred, no dependency waiting. Run it end to end.'
+assert_eq "AC-1 fixture: the reason expected for C is what plan.sh next says for it (pins the fixture, not after)" \
+  "$C_REASON" "$(reason_of C)"
+
+after_run A
+# The whole report, once, because the Contract fixes the format exactly: block
+# order, label padding, the 13-column indent of commands and worktree lines,
+# and reason lines in backlog order after the worktree instructions.
+AFTER_A_BODY="Next:      /complete-story C
+${IND}$C_REASON
+
+Alongside: can start now, in parallel with C - no two of these, and no story in flight, declare a shared path:
+${LST}/advance-story E
+${LST}/complete-story J
+${IND}To run them together, give each its own worktree (one worktree, one story):
+${LST}git worktree add ../$REPO_BASE-E -b story/E-fixture
+${LST}git worktree add ../$REPO_BASE-J -b story/J-fixture
+${IND}then run its command from inside that worktree.
+${IND}F shares src/c.ts with C
+${IND}G shares src/e.ts with E
+${IND}H shares src/d.ts src/d2.ts with D
+${IND}I declares no paths, so it cannot be judged - UNKNOWN is not clear
+
+In flight: D (RED)  /advance-story D
+
+Blocked:   B  depends_on C (PLANNED), Z (missing)"
+assert_eq "AC-1..AC-4: after A prints exactly the Contract's report for this backlog" \
+  "After A:
+
+$AFTER_A_BODY" "$a_out"
+assert_eq "after exits 0 and writes nothing to stderr on an ordinary run" "0||1" \
+  "$a_rc|$a_err|$(aline 'Next:      /complete-story C')"
+
+# The same properties line by line, so a failure names which one broke.
+assert_eq "AC-1: the header names the closed story" "1" "$(aline 'After A:')"
+assert_eq "AC-1: Next names the first startable PLANNED story with plan.sh next's command" \
+  "1" "$(aline 'Next:      /complete-story C')"
+assert_eq "AC-1: and carries plan.sh next's reason verbatim on the line after it" \
+  "${IND}$(reason_of C)" "$(awk 'p { print; exit } $0 == "Next:      /complete-story C" { p = 1 }' <<<"$a_out")"
+assert_eq "AC-1 control: the blocked story B, first in backlog order, is not named by Next while C is" \
+  "0|0|1" "$(alabel 'Next:      /complete-story B')|$(alabel 'Next:      /advance-story B')|$(aline 'Next:      /complete-story C')"
+assert_eq "AC-1: there is exactly one Next line" "1" "$(alabel 'Next:')"
+
+assert_eq "AC-2: a disjoint startable story is listed under Alongside with its own command (advance-story, from its Deferred verification)" \
+  "1" "$(aline "${LST}/advance-story E")"
+assert_eq "AC-2: a second disjoint story is listed too, its paths read from a Contract **Writes:** line" \
+  "1" "$(aline "${LST}/complete-story J")"
+assert_eq "AC-2: each listed story gets one git worktree add line, on its frontmatter branch" \
+  "1|1" "$(aline "${LST}git worktree add ../$REPO_BASE-E -b story/E-fixture")|$(aline "${LST}git worktree add ../$REPO_BASE-J -b story/J-fixture")"
+assert_eq "AC-2: and one worktree line per listed story, no more" \
+  "2" "$(acount 'git worktree add')"
+assert_eq "AC-2: the report says to run each command from inside its worktree" \
+  "1" "$(aline "${IND}then run its command from inside that worktree.")"
+assert_eq "AC-2: a story whose only overlap is with a DONE story is listed (DONE is not a member)" \
+  "1|0" "$(aline "${LST}/advance-story E")|$(acount 'shares src/a[.]ts')"
+assert_eq "AC-2: a story whose only overlap is with a BLOCKED story is listed (blocked is not a member)" \
+  "1|0|1" "$(aline "${LST}/complete-story J")|$(acount 'shares src/j[.]ts')|$(aline 'Blocked:   B  depends_on C (PLANNED), Z (missing)')"
+
+# THE CONTROLS. Absent listing line AND present reason line, in one assertion.
+assert_eq "AC-2 control: a story sharing a path with Next is not listed, and the shared path is named" \
+  "0|0|1" "$(aline "${LST}/complete-story F")|$(aline "${LST}/advance-story F")|$(aline "${IND}F shares src/c.ts with C")"
+assert_eq "AC-2 control: a story sharing a path with another LISTED story is not listed, and the path and story are named" \
+  "0|0|1" "$(aline "${LST}/complete-story G")|$(aline "${LST}/advance-story G")|$(aline "${IND}G shares src/e.ts with E")"
+assert_eq "AC-2 control: a story sharing paths with an in-flight story is not listed, and every shared path is named" \
+  "0|0|1" "$(aline "${LST}/complete-story H")|$(aline "${LST}/advance-story H")|$(aline "${IND}H shares src/d.ts src/d2.ts with D")"
+assert_eq "AC-2 control: a story declaring no paths is not listed, and is named as one that cannot be judged" \
+  "0|0|1" "$(aline "${LST}/complete-story I")|$(aline "${LST}/advance-story I")|$(aline "${IND}I declares no paths, so it cannot be judged - UNKNOWN is not clear")"
+assert_eq "AC-2 control: no worktree line for any story left out, while the listed ones have theirs" "0|0|0|0|2" \
+  "$(acount "$REPO_BASE-F ")|$(acount "$REPO_BASE-G ")|$(acount "$REPO_BASE-H ")|$(acount "$REPO_BASE-I ")|$(acount 'git worktree add')"
+
+assert_eq "AC-4: an in-flight story is named with its phase and /advance-story" \
+  "1" "$(aline 'In flight: D (RED)  /advance-story D')"
+assert_eq "AC-4: a blocked story is named with every dependency that is not DONE, missing ones as missing" \
+  "1" "$(aline 'Blocked:   B  depends_on C (PLANNED), Z (missing)')"
+assert_eq "AC-4: the in-flight story is offered neither as Next nor Alongside" "0|0|1" \
+  "$(alabel 'Next:      /advance-story D')|$(aline "${LST}/advance-story D")|$(aline 'In flight: D (RED)  /advance-story D')"
+
+assert_eq "AC-5 control: closing A, whose epic E1 still holds C (PLANNED), recommends no audit" \
+  "0|0|1" "$(alabel 'Epic:')|$(acount 'audit-mutations')|$(aline 'Next:      /complete-story C')"
+
+# Without a closed id, or with one that names no story: the same report minus
+# the header (and the epic check), still exit 0.
+after_run
+assert_eq "after with no id prints the same report without the header, exit 0" \
+  "$AFTER_A_BODY|0" "$a_out|$a_rc"
+after_run NOPE
+assert_eq "after with an id that names no story prints the report without a header, exit 0" \
+  "$AFTER_A_BODY|0" "$a_out|$a_rc"
+
+# --- AC-3: nothing can join -------------------------------------------------
+#
+#   N  PLANNED, touches src/n.ts  -> Next
+#   O  PLANNED, touches src/n.ts  -> shares with N
+#   P  PLANNED, declares nothing  -> UNKNOWN
+fresh
+story_with N feature PLANNED 1 <<'EOF'
+TOUCHES:src/n.ts
+EOF
+story_with O feature PLANNED 1 <<'EOF'
+TOUCHES:src/n.ts
+EOF
+story_with P feature PLANNED 1 </dev/null
+after_run
+assert_eq "AC-3: with nothing able to join, Alongside says run one at a time and still names why each was left out" \
+  "Next:      /complete-story N
+${IND}$(reason_of N)
+
+Alongside: nothing - run one story at a time.
+${IND}O shares src/n.ts with N
+${IND}P declares no paths, so it cannot be judged - UNKNOWN is not clear" "$a_out"
+assert_eq "AC-3 control: no worktree instructions when nothing joins, while the one-at-a-time line is there" \
+  "0|0|1" "$(acount 'git worktree add')|$(acount 'To run them together')|$(aline 'Alongside: nothing - run one story at a time.')"
+assert_eq "AC-3 control: neither O nor P is listed" "0|0|1|1" \
+  "$(alabel "${LST}/")|$(acount 'can start now')|$(aline "${IND}O shares src/n.ts with N")|$(aline "${IND}P declares no paths, so it cannot be judged - UNKNOWN is not clear")"
+
+# A single startable story and nothing else: still one at a time, no reasons.
+fresh
+story_with N feature PLANNED 1 <<'EOF'
+TOUCHES:src/n.ts
+EOF
+after_run
+assert_eq "AC-3: a lone startable story gets Next and run-one-at-a-time, and nothing else" \
+  "Next:      /complete-story N
+${IND}$(reason_of N)
+
+Alongside: nothing - run one story at a time." "$a_out"
+
+# --- Alongside when a member declares no paths ------------------------------
+#
+# Nothing can be judged against a member with no paths, so nothing is listed -
+# even a story that is disjoint from everything that DID declare.
+#   R  RED,     declares nothing      -> in flight, a member, unjudgeable
+#   S  PLANNED, touches src/s.ts      -> Next
+#   T  PLANNED, touches src/t.ts      -> disjoint from S, still not listed
+#   U  REVIEW,  touches src/u.ts      -> second in-flight line
+fresh
+story_with R feature RED 1 </dev/null
+story_with S feature PLANNED 1 <<'EOF'
+TOUCHES:src/s.ts
+EOF
+story_with T feature PLANNED 1 <<'EOF'
+TOUCHES:src/t.ts
+EOF
+story_with U feature REVIEW 1 <<'EOF'
+TOUCHES:src/u.ts
+EOF
+after_run
+assert_eq "AC-2: an in-flight story with no paths means nothing is listed alongside, and it is named" \
+  "1|0|0" "$(aline 'Alongside: nothing - R declares no paths, so nothing can be judged against it.')|$(alabel "${LST}/")|$(acount 'git worktree add')"
+assert_eq "AC-4: several in-flight stories are one line each, continuation lines indented 11" \
+  "1|1" "$(aline 'In flight: R (RED)  /advance-story R')|$(aline "${IND}U (REVIEW)  /advance-story U")"
+assert_eq "AC-1: in-flight stories earlier in backlog order are never Next" \
+  "1|1" "$(aline 'Next:      /complete-story S')|$(alabel 'Next:')"
+
+fresh
+story_with S feature PLANNED 1 </dev/null
+story_with T feature PLANNED 1 <<'EOF'
+TOUCHES:src/t.ts
+EOF
+after_run
+assert_eq "AC-2: a Next story with no paths means nothing is listed alongside, and it is named" \
+  "1|1|0" "$(aline 'Next:      /complete-story S')|$(aline 'Alongside: nothing - S declares no paths, so nothing can be judged against it.')|$(alabel "${LST}/")"
+
+# --- AC-5: nothing startable, and the epic check ----------------------------
+#
+#   X1, X2  DONE, epic E1   -> E1 is closed when X1 closes
+#   V       PLANNED, epic E10, blocked on missing W9
+#           -> not startable; its epic E10 is not E1 (a prefix), so it must
+#              not hold E1 open
+fresh
+story_with X1 feature DONE 1 <<'EOF'
+TOUCHES:src/x.ts
+EPIC:E1
+EOF
+story_with X2 feature DONE 1 <<'EOF'
+TOUCHES:src/x2.ts
+EPIC:E1
+EOF
+story_with V feature PLANNED 1 <<'EOF'
+TOUCHES:src/v.ts
+EPIC:E10
+DEPENDS:W9
+EOF
+after_run X1
+assert_eq "AC-5: no startable story - Next says so and names /plan-story; the closed epic is recommended for an audit" \
+  "After X1:
+
+Next:      no new story is startable.
+${IND}Add work with /plan-story.
+
+Blocked:   V  depends_on W9 (missing)
+
+Epic:      E1 has no open story left - /audit-mutations E1 is recommended; nothing runs it automatically." "$a_out"
+assert_eq "AC-5: with nothing startable, after still exits 0" "0|1" "$a_rc|$(aline 'Next:      no new story is startable.')"
+assert_eq "AC-5: the Epic line names E1, not E10, whose open story V is not in E1" \
+  "1" "$(aline 'Epic:      E1 has no open story left - /audit-mutations E1 is recommended; nothing runs it automatically.')"
+assert_eq "AC-1 control: a blocked story is never Next, even when it is the only open story" \
+  "0|1" "$(alabel 'Next:      /')|$(aline 'Blocked:   V  depends_on W9 (missing)')"
+
+# With no closed id there is no epic check at all.
+after_run
+assert_eq "AC-5: without a closed id there is no Epic line, while Next still prints" \
+  "0|1" "$(alabel 'Epic:')|$(aline 'Next:      no new story is startable.')"
+
+# CONTROL: another story in the epic not DONE. W is in flight in E1, so E1 is
+# open; and with something in flight, the /plan-story line is not printed.
+story_with W feature GREEN 1 <<'EOF'
+TOUCHES:src/w.ts
+EPIC:E1
+EOF
+after_run X1
+assert_eq "AC-5 control: with another story in E1 not DONE (W, GREEN), no audit is recommended" \
+  "0|0|1" "$(alabel 'Epic:')|$(acount 'audit-mutations')|$(aline 'In flight: W (GREEN)  /advance-story W')"
+assert_eq "AC-5: with nothing startable but a story in flight, Next says none is startable and does not send you to /plan-story" \
+  "1|0" "$(aline 'Next:      no new story is startable.')|$(acount 'plan-story')"
+
+# CONTROL: an empty epic. Every story is DONE and has `epic:` empty, so an
+# implementation that skipped the non-empty check would print an Epic line for
+# the empty name.
+fresh
+story_with Q1 feature DONE 1 <<'EOF'
+TOUCHES:src/q.ts
+EPIC:
+EOF
+story_with Q2 feature DONE 1 <<'EOF'
+TOUCHES:src/q2.ts
+EPIC:
+EOF
+after_run Q1
+assert_eq "AC-5 control: a closed story with an empty epic gets no Epic line, while the rest of the report prints" \
+  "After Q1:
+
+Next:      no new story is startable.
+${IND}Add work with /plan-story." "$a_out"
+assert_eq "AC-5 control: and nothing mentions /audit-mutations" "0|1" \
+  "$(acount 'audit-mutations')|$(aline 'After Q1:')"
+
+# An empty backlog is an answer, not an error.
+fresh
+after_run
+assert_eq "AC-5: an empty backlog prints Next with the /plan-story line and exits 0" \
+  "Next:      no new story is startable.
+${IND}Add work with /plan-story.|0" "$a_out|$a_rc"
+
+# --- help -------------------------------------------------------------------
+help_out="$( cd "$FIX" && bash scripts/plan.sh --help 2>&1 )"
+assert_eq "plan.sh --help lists the after subcommand" "1" \
+  "$(grep -cE '^  bash scripts/plan\.sh after( |$)' <<<"$help_out")"
 
 summary "plan"

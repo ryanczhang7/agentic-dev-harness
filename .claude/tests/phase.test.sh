@@ -144,4 +144,60 @@ assert_contains "with the dependency DONE it just moves" "T-12 -> GREEN" "$out"
 
 phase clear >/dev/null
 
+# ---------------------------------------------------------------------------
+describe "phase.sh set <id> DONE ends with the plan.sh after report (HARNESS-018 AC-6)"
+
+# Closing a story is the moment the next one is chosen, so the report that
+# answers "what next, with which command, and what can run alongside it" is
+# printed by the command that closes it, rather than reconstructed by hand.
+#
+# THE SUFFIX IS COMPARED WHOLE: the output must END with exactly what
+# `plan.sh after K-1` prints, after one blank line. That report is captured on
+# its own and must itself contain the Next line this backlog implies, so an
+# empty report - which a suffix check alone would accept - fails here.
+#
+# stdout only: the Contract sends plan.sh's stderr to stderr.
+#
+# The backlog the report reads is everything this file built above, plus:
+#   K-1  REVIEW, the story being closed
+#   K-2  PLANNED, ordinary - first startable in glob order (K-* sorts before T-*)
+story "$FIX" K-1 REVIEW </dev/null
+story "$FIX" K-2 PLANNED <<'EOF'
+touches: [src/k2.ts]
+EOF
+done_out="$( cd "$FIX" && bash scripts/phase.sh set K-1 DONE 2>/dev/null )"
+after_out="$( cd "$FIX" && bash scripts/plan.sh after K-1 2>/dev/null )"
+after_has_next="$(grep -cxF 'Next:      /complete-story K-2' <<<"$after_out")"
+case "$done_out" in
+  *$'\n\n'"$after_out") ends=ends ;;
+  *) ends=does-not-end ;;
+esac
+assert_eq "AC-6: phase.sh set K-1 DONE ends with a blank line and then exactly what plan.sh after K-1 prints, and that report names Next" \
+  "ends|1" "$ends|$after_has_next"
+assert_eq "AC-6: the phase change itself is reported first, on the first line" \
+  "K-1 -> DONE" "$(head -n 1 <<<"$done_out")"
+assert_eq "AC-6: the after report's header and Next line both come after the -> DONE line" \
+  "1|yes" "$(grep -cxF 'After K-1:' <<<"$done_out")|$(awk '
+    $0 == "K-1 -> DONE" { d = NR } $0 == "After K-1:" { h = NR } index($0, "Next:      ") == 1 { n = NR }
+    END { print ((d && h > d && n > h) ? "yes" : "no") }' <<<"$done_out")"
+assert_eq "AC-6: and the phase change happened" "DONE" "$(frontmatter_value "$(sfile K-1)" phase)"
+
+# CONTROL: any other phase prints no report. Each paired with the presence of
+# its own `-> PHASE` line, so a run that printed nothing cannot pass.
+git -C "$FIX" checkout -q -b story/K-2-fixture
+for ph in RED GREEN GATES REVIEW PLANNED; do
+  o="$( cd "$FIX" && bash scripts/phase.sh set K-2 "$ph" 2>/dev/null )"
+  assert_eq "AC-6 control: phase.sh set K-2 $ph prints no after report" "1|0|0" \
+    "$(grep -cxF "K-2 -> $ph" <<<"$o")|$(grep -c '^Next:' <<<"$o")|$(grep -c '^After K-2:' <<<"$o")"
+done
+phase clear >/dev/null
+
+# The prose sites. These are read from the REAL tree, not the fixture: they are
+# the instructions the orchestrator follows at the moment a story closes, and
+# each must tell it to relay the report by naming the command that prints it.
+for doc in .claude/commands/advance-story.md .claude/commands/complete-story.md .claude/agents/lead-po.md; do
+  if grep -qF 'bash scripts/plan.sh after' "$REPO_ROOT/$doc"; then got=names; else got=silent; fi
+  assert_eq "AC-6: $doc names bash scripts/plan.sh after" "names" "$got"
+done
+
 summary "phase"
