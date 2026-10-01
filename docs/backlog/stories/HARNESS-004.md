@@ -4,8 +4,8 @@ title: Phase lock covers MultiEdit and NotebookEdit
 slug: phase-lock-covers-multiedit-and-notebook
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: done
+phase: DONE
 branch: story/HARNESS-004-phase-lock-covers-multiedit-and-notebook
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/phase-guard.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -245,3 +245,49 @@ Required gate that would fail if this story's artifact broke: `unit`
 
 ## Notes
 
+
+### Closed as already delivered (2026-10-01)
+
+1. **PO decision, approved by the user:** closed without a RED→GREEN cycle.
+   Delivered by commit `cf7d958` ("The lock covers four tools; the suite tested
+   two"). No source or test file changes in the closing commit.
+   `phase.sh set HARNESS-004 DONE --force` was run on `main`, overriding the
+   branch check, because there is no story branch.
+2. Line numbers in ## Context have drifted: the tool case and the
+   `notebook_path` check are now at `phase-guard.sh:86` and `:88`. The criteria
+   are unchanged and every one is met as written.
+
+Criteria against the tests that cover them, all in `.claude/tests/phase-guard.test.sh`:
+
+| AC | Test |
+|---|---|
+| AC-1 | "MultiEdit is blocked in RED", "and names the path it refused" |
+| AC-2 | "NotebookEdit is blocked on notebook_path", "and names the notebook" |
+| AC-3 | "MultiEdit to a test is blocked in GREEN", "NotebookEdit to a test notebook is blocked in GREEN"; control "but MultiEdit to source is allowed in GREEN" |
+| AC-4 | "MultiEdit with no story", "NotebookEdit with no story" |
+
+Mutants re-run on 2026-10-01 with `scripts/mutate.sh` against
+`bash .claude/tests/phase-guard.test.sh`:
+
+```
+=== mutate: .claude/hooks/phase-guard.sh (1 line(s) changed by s#^  Write|Edit|MultiEdit|NotebookEdit)#  Write|Edit)#) ===
+  86 -   Write|Edit|MultiEdit|NotebookEdit)
+  86 +   Write|Edit)
+    FAIL MultiEdit is blocked in RED
+    FAIL and names the path it refused
+    FAIL NotebookEdit is blocked on notebook_path
+    FAIL and names the notebook
+    FAIL MultiEdit to a test is blocked in GREEN
+    FAIL NotebookEdit to a test notebook is blocked in GREEN
+phase-guard: 294 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+=== mutate: .claude/hooks/phase-guard.sh (1 line(s) changed by s#check_path "$(json_get_string notebook_path || true)"#true#) ===
+  88 -     check_path "$(json_get_string notebook_path || true)"
+  88 +     true
+    FAIL NotebookEdit is blocked on notebook_path
+    FAIL and names the notebook
+    FAIL NotebookEdit to a test notebook is blocked in GREEN
+phase-guard: 297 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte ...) ===
+```
