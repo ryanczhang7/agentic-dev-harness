@@ -4,8 +4,8 @@ title: Reports to the user lead with the outcome and end with one next action
 slug: reports-to-the-user-lead-with-the-outcom
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-023-reports-to-the-user-lead-with-the-outcom
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/plan-story.md, .claude/commands/status.md, .claude/commands/audit-mutations.md, .claude/commands/create-product.md, .claude/commands/plan-product.md, .claude/commands/setup-environment.md, .claude/agents/lead-po.md, .claude/tests/reporting.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
