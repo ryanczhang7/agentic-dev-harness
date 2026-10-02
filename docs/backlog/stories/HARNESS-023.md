@@ -4,8 +4,8 @@ title: Reports to the user lead with the outcome and end with one next action
 slug: reports-to-the-user-lead-with-the-outcom
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-023-reports-to-the-user-lead-with-the-outcom
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/plan-story.md, .claude/commands/status.md, .claude/commands/audit-mutations.md, .claude/commands/create-product.md, .claude/commands/plan-product.md, .claude/commands/setup-environment.md, .claude/agents/lead-po.md, .claude/tests/reporting.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -777,3 +777,17 @@ matters if a later story extends the guard: keep it fork-free.
   selftest left by GREEN's killed background batch; the 6135 s run had nothing
   competing. The new `reporting` suite is ~11 s of that, so the slowdown is the
   machine, not this story — but read the CI timings at REVIEW.
+
+**DONE, 2026-10-02.** Merged in #98 (merge commit 660f746), release 66. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: `gates` passed in 1m47s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37072655978),
+`boundaries` in 9s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37072655966).
+CI timing is in line with HARNESS-022's 1m56s, so the 102-min local selftest
+was this machine, not the suite. No epic.
+
+**Release note.** Existing consuming projects get the reporting rule through
+`rules.md` and the command files on their next `refresh-harness.sh`. The short
+`## Reporting to the user` section in `CLAUDE.md` reaches only new projects:
+refresh never overwrites `CLAUDE.md`, so an existing project merges it by hand.
