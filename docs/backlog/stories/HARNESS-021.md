@@ -4,8 +4,8 @@ title: The real-tree floor check counts project-floors.conf too
 slug: the-real-tree-floor-check-counts-project
 epic: 
 type: fix
-status: in-progress
-phase: RED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-021-the-real-tree-floor-check-counts-project
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -163,6 +163,20 @@ the release that ships this, and is recorded in FWB's refresh PR, not here.
   `suites_without_floor`, AC-1's fixture case MUST fail and AC-2/AC-3 stay
   green. **Owner: GATES**, with `scripts/mutate.sh` against
   `bash .claude/tests/selftest.test.sh`. RED's first run shows the same thing
+
+  **Result (GATES, 2026-10-01, orchestrator):** exactly the two AC-1
+  assertions red, AC-2/AC-3 and the real-tree check green. Restored.
+
+  ```
+  === mutate: .claude/tests/selftest.test.sh (1 line(s) changed by s/\[ -f "\$_swf_dir\/project-floors.conf" \]/false/) ===
+    439 -     if [ -f "$_swf_dir/project-floors.conf" ]; then
+    439 +     if false; then
+  === mutate: running bash .claude/tests/selftest.test.sh ===
+      FAIL a suite floored in project-floors.conf alone is not reported as missing a floor
+      FAIL beside an unfloored suite, only the unfloored one is reported
+  selftest: 98 passed, 2 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/.claude_tests_selftest.test.sh.20261002T015836Z.318206.bak) ===
+  ```
   before the helper was extended; GATES shows it against the committed code.
 
 ## Amendments
@@ -371,10 +385,21 @@ the same behaviour before the extension.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-02T02:00:26Z
+    commit: f08a385 (working tree had uncommitted changes)
+    tree:   d47151ad200eda2592c7eeee6fb9f99289641ea8
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
