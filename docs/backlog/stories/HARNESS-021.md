@@ -4,8 +4,8 @@ title: The real-tree floor check counts project-floors.conf too
 slug: the-real-tree-floor-check-counts-project
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-021-the-real-tree-floor-check-counts-project
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -425,3 +425,12 @@ the same behaviour before the extension.
 
 ## Notes
 
+
+**DONE, 2026-10-02.** Merged in #95 (merge commit be358c8), release 64. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: the `gates` job passed in 1m32s,
+and its harness self-test step took 79s, with no `timeout-minutes` set
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36960427027).
+`boundaries` passed in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/36960427021).
+Next: refresh fantasy-world-builder to this release. No epic.
