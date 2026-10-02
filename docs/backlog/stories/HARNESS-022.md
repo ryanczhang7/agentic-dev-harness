@@ -4,8 +4,8 @@ title: The selftest suite's floor is the 100 assertions it runs
 slug: the-selftest-suite-s-floor-is-the-100-as
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-022-the-selftest-suite-s-floor-is-the-100-as
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -174,6 +174,8 @@ name, below the table.
 
 **Resolved:**
 
+- RED, GREEN: no dispatch; the orchestrator (`opus`, `claude-opus-5-5`) made the two one-line edits and verified that GREEN is a no-op.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -213,6 +215,31 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**RED done by the orchestrator** (`opus`, `claude-opus-5-5`): two one-line edits
+with nothing to design. Done in the Contract's order, so that the twin was
+watched to fail.
+
+1. Added `selftest 100` to the `COUNTS` table in `selftest.test.sh` (between
+   `refresh` and `settings`), then ran `bash .claude/tests/selftest.test.sh`:
+
+```
+    FAIL and each records the executed count measured on this tree
+         expected:
+         actual:    selftest=54(want 100)
+
+selftest: 99 passed, 1 failed
+```
+
+2. Raised `floors.conf` to `floor | selftest | 100`, then ran
+   `bash scripts/selftest.sh selftest`:
+
+```
+selftest: 100 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (100 assertions executed, 100 declared).
+```
+
+**GREEN is a no-op:** both files are test-side, and no script changes.
 
 ## Regressions
 

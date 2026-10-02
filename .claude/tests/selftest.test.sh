@@ -533,6 +533,7 @@ plan 42
 policy 17
 profiles 50
 refresh 122
+selftest 100
 settings 20
 sigpipe 82
 worktree 73
