@@ -5,7 +5,7 @@ slug: reports-to-the-user-lead-with-the-outcom
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-023-reports-to-the-user-lead-with-the-outcom
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/plan-story.md, .claude/commands/status.md, .claude/commands/audit-mutations.md, .claude/commands/create-product.md, .claude/commands/plan-product.md, .claude/commands/setup-environment.md, .claude/agents/lead-po.md, .claude/tests/reporting.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -386,6 +386,25 @@ restores the file and verifies the restore. RED cannot run this: in RED
 **Owner: GATES.** Record it here, not in `## Gate probes`. The guard is a test
 suite, not a `project.conf` gate, so this section owns the result.
 
+**DV-1 result (GATES, 2026-10-02).** Ran as written:
+
+```
+$ bash scripts/mutate.sh .claude/commands/status.md 's/"Reporting to the user"/"Reporting"/' -- bash scripts/selftest.sh reporting
+=== mutate: .claude/commands/status.md (1 line(s) changed by s/"Reporting to the user"/"Reporting"/) ===
+  16 - Report as `rules.md`, "Reporting to the user" says.
+  16 + Report as `rules.md`, "Reporting" says.
+  the real tree
+    FAIL reporting_problems over the real tree prints nothing: every site that speaks to the user carries the reporting rule
+         expected: 
+         actual:   .claude/commands/status.md: its last paragraph does not carry the reference: `rules.md`, "Reporting to the user"
+reporting: 26 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .claude/state/mutations/.claude_commands_status.md.20261002T193606Z.1253995.bak) ===
+  16: Report as `rules.md`, "Reporting to the user" says.
+```
+
+Exactly one problem line, naming `.claude/commands/status.md`; the other 26
+assertions held; the file was restored and the restore verified.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -710,10 +729,21 @@ matters if a later story extends the guard: keep it fork-free.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-02T19:41:34Z
+    commit: bd843e4 (working tree had uncommitted changes)
+    tree:   1446873398de00e73d14dad5f9d761fbc2fcf111
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -739,3 +769,11 @@ matters if a later story extends the guard: keep it fork-free.
 
 ## Notes
 
+- GATES (2026-10-02): full `bash scripts/selftest.sh` passed on this machine —
+  `assertion floors: all 21 suite(s) met their declared floor (1785 assertions
+  executed, 1555 declared)`, `reporting: 27 passed, 0 failed`. It took 6135 s
+  (~102 min), far above the ~15 min previously seen here. A first attempt was
+  killed at its 60-min limit while `phase-guard` ran alongside an orphaned
+  selftest left by GREEN's killed background batch; the 6135 s run had nothing
+  competing. The new `reporting` suite is ~11 s of that, so the slowdown is the
+  machine, not this story — but read the CI timings at REVIEW.
