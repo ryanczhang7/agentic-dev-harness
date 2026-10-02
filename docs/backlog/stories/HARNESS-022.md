@@ -4,8 +4,8 @@ title: The selftest suite's floor is the 100 assertions it runs
 slug: the-selftest-suite-s-floor-is-the-100-as
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-022-the-selftest-suite-s-floor-is-the-100-as
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -320,3 +320,12 @@ assertion floors: 0 of 1 suite(s) met their declared floor.
 
 ## Notes
 
+
+**DONE, 2026-10-02.** Merged in #96 (merge commit 1716674), release 65. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: the `gates` job passed in 1m56s,
+and its harness self-test step took 103s, with no `timeout-minutes` set
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37032518546).
+`boundaries` passed in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37032518432).
+No epic.
