@@ -5,7 +5,7 @@ slug: reports-to-the-user-lead-with-the-outcom
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-023-reports-to-the-user-lead-with-the-outcom
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/plan-story.md, .claude/commands/status.md, .claude/commands/audit-mutations.md, .claude/commands/create-product.md, .claude/commands/plan-product.md, .claude/commands/setup-environment.md, .claude/agents/lead-po.md, .claude/tests/reporting.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -418,6 +418,8 @@ name, below the table.
 **Resolved:**
 
 - PLANNED: `lead-po`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5). No override was reported.
+- RED: `test-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
+- GREEN: `feature-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on

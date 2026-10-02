@@ -116,7 +116,8 @@ orderings in it exist because each was got wrong once.
 When a story closes, and at the end of every run, the report of what comes next
 is the output of `bash scripts/plan.sh after <id>` (which `phase.sh set <id>
 DONE` prints for you), relayed to the user as printed - never reconstructed
-from memory.
+from memory. Your messages to the user follow `rules.md`, "Reporting to the user";
+story files and handoffs do not, and stay complete.
 
 Verification is a ladder, and every rung is something you run, not something
 you are told:

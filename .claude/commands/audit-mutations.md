@@ -27,8 +27,7 @@ handoffs claimed. It should write `docs/wiki/audits/<scope>-<date>.md` and file
 a story per cluster of surviving mutants.
 
 Do not fix anything here. Findings become stories; stories go through the normal
-RED→GREEN cycle. Report the survivors ranked by production impact, and the
-stories filed.
+RED→GREEN cycle.
 
 Write the audit to the structure in `docs/wiki/audits/TEMPLATE.md`. The
 `## Decided` / `## Evidence` split is the part that matters: a later story is
@@ -38,3 +37,7 @@ measured, on exactly which inputs, and how it could be wrong — separately from
 the conclusion, so a story consuming it can verify the one while accepting the
 other. Fill in `## What was not checked` honestly; that section is the audit's
 only defence against being trusted further than it earned.
+
+Report as `rules.md`, "Reporting to the user" says: the survivors ranked by
+production impact, the stories filed, and last, what to run next from
+`bash scripts/plan.sh after`.

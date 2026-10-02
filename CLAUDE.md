@@ -205,3 +205,10 @@ memorising it — the next agent has a fresh context and will not know.
 Subagents start with empty context. Anything the next agent needs must be
 written into the story file before the current phase ends — especially the
 `## Handoff` section. "As discussed above" does not survive the boundary.
+
+## Reporting to the user
+
+Lead with what is now true and end with the one next action `plan.sh` gives.
+Keep your working notes in the story file, not in chat. On a failure, point at
+the evidence, and never state a cause it does not show. The full rule, and
+what is exempt, is `rules.md`, "Reporting to the user".

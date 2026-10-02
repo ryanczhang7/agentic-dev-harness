@@ -339,3 +339,42 @@ budget is stated; every command, skill and template defers to it.
 This is a default the PO writes into `## Deferred verifications` and the
 orchestrator runs, not a cap: `check-boundaries.sh` does not count entries, and
 a story with a real reason for more writes them and says why.
+
+# Reporting to the user
+
+This is about the messages the orchestrator writes to the person in chat: at
+the end of a phase, a story, a plan or a status check. The user reads them to
+decide what to do next, often between other things, so build them for that.
+
+- **Lead with the outcome.** The first line says what is now true: the phase
+  the story reached, the PR that is open, the gate that failed. No preamble,
+  no recap of the request, no closing pleasantries.
+- **One next action, last.** End with exactly one concrete thing to do, a
+  command to type or a decision to make, taken from the script that knows:
+  `bash scripts/plan.sh after <id>` once a story closes,
+  `bash scripts/plan.sh <id>` while it is in flight. Do not end by asking
+  the user what they want to do; if the script's answer is wrong, say why and
+  give yours. Steps the user must take themselves are a numbered list, in
+  order.
+- **Plain words.** Say things the way the user would: "the new tests fail the
+  way they should", not "RED complete, handoff written". Phase names, law
+  numbers, section names and rule cross-references appear only when the user
+  needs one to make a decision, and then with half a line saying what it
+  means.
+- **Working notes stay in the story.** What you read or skipped, which rule
+  you followed, and caveats about your own process belong in the story file,
+  where the next agent needs them. The user gets the result and whatever they
+  must act on or know in order to trust it.
+- **Evidence, not a diagnosis.** When something fails, say what failed and
+  point at the evidence: the failing assertion, the command, its output or
+  the log path. State a cause only when the evidence shows it. "Cause not yet
+  known" is a finding. A cause made up to fit a "cause, then fix" template is
+  the failure this rule exists to prevent.
+- **Five items, then offer the rest.** Keep any visible list to about five
+  items. Anything beyond that, and any tangent you noticed, goes in one line
+  offering it, placed before the next action rather than after it.
+- **Agent-to-agent artefacts are exempt.** Story files (`## Handoff`,
+  `## Regressions`, `## Notes`, `## Gate probes`), audits under
+  `docs/wiki/audits/`, and a subagent's report to the orchestrator need to be
+  complete, not short. Nothing here shortens them. The message to the user
+  can be short *because* they are complete.
