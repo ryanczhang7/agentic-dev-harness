@@ -101,4 +101,5 @@ Do not write any source or test files here. Planning only.
 
 Finally, tell the user to run `/setup-environment` before starting the bootstrap
 story. Planning chooses a toolchain; it does not install one, and the bootstrap
-story cannot pass its gates on a machine that does not have it.
+story cannot pass its gates on a machine that does not have it. Report as
+`rules.md`, "Reporting to the user" says.

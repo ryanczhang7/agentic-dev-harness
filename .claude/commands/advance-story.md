@@ -329,5 +329,7 @@ Rules for you as orchestrator:
   subagent that escalates a scope question instead of resolving it quietly has
   done the right thing; answer it rather than sending it back.
 
-Finish by reporting: the phase you moved from and to, what changed, the real
-command output that justifies it, and the exact command to run next.
+Finish by reporting, as `rules.md`, "Reporting to the user" says: the phase you
+moved from and to, what changed, the real command output that justifies it, and
+last, the command to run next. Take it from `bash scripts/plan.sh $1` while the
+story is still in flight, or relay `bash scripts/plan.sh after $1` once it closed.

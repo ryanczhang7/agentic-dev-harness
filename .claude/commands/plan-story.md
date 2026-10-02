@@ -36,4 +36,5 @@ are easy to leave empty by default:
 
 Finally, report the story id and what `bash scripts/plan.sh <id>` recommends —
 `advance-story` or `complete-story` — with its reason. Do not put that question
-to the user unless you disagree with the recommendation and can say why.
+to the user unless you disagree with the recommendation and can say why. Report
+as `rules.md`, "Reporting to the user" says.
