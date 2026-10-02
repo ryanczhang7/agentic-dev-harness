@@ -411,22 +411,99 @@ REAL="$REPO_ROOT/.claude/tests/floors.conf"
 
 # One awk over the file, for the same reason as shortfall() above: `sed | head -1`
 # is a pipeline into an early-exit reader, and check-sigpipe.sh flagged it.
-floor_of() { # <suite>   the value recorded for a suite, or empty
+floor_of() { # <suite> <file>   the value recorded for a suite in <file>, or empty
   awk -v want="$1" '
     { line = $0; sub(/#.*/, "", line) }
     { n = split(line, f, "|") }
     n < 3 { next }
     { for (i = 1; i <= n; i++) { gsub(/^[ \t]+|[ \t]+$/, "", f[i]) } }
     f[1] == "floor" && f[2] == want && f[3] ~ /^[0-9]+$/ { print f[3]; exit }
-  ' "$REAL" 2>/dev/null
+  ' "$2" 2>/dev/null
 }
 
-missing=""
-for s in "$REPO_ROOT"/.claude/tests/*.test.sh; do
-  n="$(basename "$s" .test.sh)"
-  [ -n "$(floor_of "$n")" ] || missing="$missing $n"
-done
-assert_eq "every suite in .claude/tests has a floor" "" "$missing"
+# suites_without_floor <root>   The space-joined names of the suites in
+# <root>/.claude/tests/*.test.sh that have a floor line in neither
+# <root>/.claude/tests/floors.conf nor, when it exists,
+# <root>/.claude/tests/project-floors.conf. Empty when every suite is floored.
+# HARNESS-021: this loop used to read floors.conf only, so every consuming
+# project that floors its project-*.test.sh suites in project-floors.conf (as
+# HARNESS-020 designed) failed the assertion below. Taking a root is what lets
+# the fixture cases further down point it at a tree that is not this one.
+suites_without_floor() {
+  _swf_dir="$1/.claude/tests"
+  _swf_missing=""
+  for _swf_s in "$_swf_dir"/*.test.sh; do
+    [ -e "$_swf_s" ] || continue
+    _swf_n="$(basename "$_swf_s" .test.sh)"
+    [ -n "$(floor_of "$_swf_n" "$_swf_dir/floors.conf")" ] && continue
+    if [ -f "$_swf_dir/project-floors.conf" ]; then
+      [ -n "$(floor_of "$_swf_n" "$_swf_dir/project-floors.conf")" ] && continue
+    fi
+    _swf_missing="$_swf_missing $_swf_n"
+  done
+  printf '%s' "${_swf_missing# }"
+}
+
+assert_eq "every suite in .claude/tests has a floor" "" "$(suites_without_floor "$REPO_ROOT")"
+
+# HARNESS-021 fixture cases for suites_without_floor. Each root is a throwaway
+# directory under $FIX holding only the .claude/tests files the helper reads:
+# empty suite files (it reads names, not contents) and the floors files. Every
+# needle is the helper's WHOLE output compared with assert_eq, so a helper that
+# reports nothing, or reports the right name among wrong ones, cannot pass.
+
+# floor_root <case> <suite>...   A fresh root with an empty <suite>.test.sh for
+# each name. Prints the root. floors.conf / project-floors.conf are written by
+# the caller, so "absent" is a case and not an accident.
+floor_root() {
+  _fr="$FIX/floor-roots/$1"; shift
+  rm -rf "$_fr"; mkdir -p "$_fr/.claude/tests"
+  for _fr_s in "$@"; do : > "$_fr/.claude/tests/$_fr_s.test.sh"; done
+  printf '%s' "$_fr"
+}
+
+describe "HARNESS-021 AC-1  a suite floored only in project-floors.conf is not reported missing"
+
+R="$(floor_root ac1 alpha project-mine)"
+printf 'floor | alpha | 3\n' > "$R/.claude/tests/floors.conf"
+printf '# a project'"'"'s own suites\nfloor | project-mine | 4\n' > "$R/.claude/tests/project-floors.conf"
+assert_eq "a suite floored in project-floors.conf alone is not reported as missing a floor" \
+  "" "$(suites_without_floor "$R")"
+# The same, beside an unfloored suite: the project floor excuses project-mine
+# and nothing else, so the output is exactly the orphan.
+R="$(floor_root ac1b alpha project-mine project-orphan)"
+printf 'floor | alpha | 3\n' > "$R/.claude/tests/floors.conf"
+printf 'floor | project-mine | 4\n' > "$R/.claude/tests/project-floors.conf"
+assert_eq "beside an unfloored suite, only the unfloored one is reported" \
+  "project-orphan" "$(suites_without_floor "$R")"
+
+describe "HARNESS-021 AC-2  control: a suite floored in neither file is reported, by name"
+
+# Without this, a helper that reports nothing satisfies AC-1. A project-floors.conf
+# EXISTS here (comment only), so this also refuses a helper that treats the
+# file's mere presence as excusing every suite. Green under the old and the new
+# helper alike - it is the control, not the change.
+R="$(floor_root ac2 alpha project-orphan)"
+printf 'floor | alpha | 3\n' > "$R/.claude/tests/floors.conf"
+printf '# a project file that floors nothing\n' > "$R/.claude/tests/project-floors.conf"
+assert_eq "a suite floored in neither file is reported, and only that suite" \
+  "project-orphan" "$(suites_without_floor "$R")"
+
+describe "HARNESS-021 AC-3  with no project-floors.conf the check behaves as before"
+
+R="$(floor_root ac3 alpha beta gamma)"
+printf 'floor | alpha | 3\nfloor | gamma | 1\n' > "$R/.claude/tests/floors.conf"
+assert_eq "with no project-floors.conf, a suite missing from floors.conf is reported" \
+  "beta" "$(suites_without_floor "$R")"
+# Two missing, to pin the space-joined shape the real-tree message prints.
+R="$(floor_root ac3b alpha beta gamma)"
+printf 'floor | alpha | 3\n' > "$R/.claude/tests/floors.conf"
+assert_eq "and several missing suites are reported space-joined, in name order" \
+  "beta gamma" "$(suites_without_floor "$R")"
+# AC-3's second half - this repository's real tree still passes - is the
+# real-tree assertion above. Deliberately NOT asserted: that the real tree has
+# no project-floors.conf. This file is copied into consuming projects, which
+# do ship one, and there that assertion would be the defect this story removes.
 
 # The counts measured from a full run of THIS repository, read out rather than
 # re-derived. MT's numbers were deliberately NOT inherited: its suite set is a
@@ -437,7 +514,7 @@ assert_eq "every suite in .claude/tests has a floor" "" "$missing"
 wrong=""
 while read -r n v; do
   [ -z "$n" ] && continue
-  got="$(floor_of "$n")"
+  got="$(floor_of "$n" "$REAL")"
   [ "$got" = "$v" ] || wrong="$wrong $n=${got:-<none>}(want $v)"
 done <<'COUNTS'
 boundaries 79
@@ -468,9 +545,9 @@ assert_eq "and each records the executed count measured on this tree" "" "$wrong
 # recorded in RED, so both suites sit BELOW them until the reconciled parser
 # lands. See the note at the foot of floors.conf.
 assert_eq "profiles is floored at its 50 executed assertions, not its call-site count" \
-  50 "$(floor_of profiles)"
+  50 "$(floor_of profiles "$REAL")"
 assert_eq "lib is floored at its 217 executed assertions, not its call-site count" \
-  217 "$(floor_of lib)"
+  217 "$(floor_of lib "$REAL")"
 
 # ===========================================================================
 # HARNESS-020: a project declares its own suites' floors in

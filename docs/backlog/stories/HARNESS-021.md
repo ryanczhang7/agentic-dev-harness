@@ -4,8 +4,8 @@ title: The real-tree floor check counts project-floors.conf too
 slug: the-real-tree-floor-check-counts-project
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-021-the-real-tree-floor-check-counts-project
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -196,6 +196,9 @@ name, below the table.
 
 **Resolved:**
 
+- RED: `test-developer` resolved to `opus` (`claude-opus-5-5`, agent definition; no override). Verdict: AC-1 red against the old helper, green once extended; the orchestrator confirmed `selftest 100/0` here and inside FWB's refreshed tree.
+- GREEN: no dispatch. A verified no-op, because every change is test code (`git diff --stat` touches only `.claude/tests/selftest.test.sh` and this story).
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -214,28 +217,136 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All in `.claude/tests/selftest.test.sh`, block "AC-6/AC-7 the shipped floors file
+covers every suite, at its count". Level: unit (a shell helper called directly on
+throwaway roots under `$FIX/floor-roots/<case>`; empty suite files and the floors
+files only). Every needle compares the helper's **whole output** with `assert_eq`,
+never a substring.
+
+| Assertion | AC | Red under old helper? |
+|---|---|---|
+| `every suite in .claude/tests has a floor` - real tree, now `suites_without_floor "$REPO_ROOT"` (same name, same message) | AC-3 (2nd half) | no - green, the regression guard |
+| `a suite floored in project-floors.conf alone is not reported as missing a floor` - root {alpha in floors.conf, project-mine in project-floors.conf} -> `""` | AC-1 | **yes** |
+| `beside an unfloored suite, only the unfloored one is reported` - root {alpha / project-mine / project-orphan floored nowhere} -> `"project-orphan"` | AC-1 (and AC-2's shape) | **yes** |
+| `a suite floored in neither file is reported, and only that suite` - root {alpha in floors.conf, project-orphan nowhere, project-floors.conf present but comment-only} -> `"project-orphan"` | AC-2 (control) | no - green under both, by design |
+| `with no project-floors.conf, a suite missing from floors.conf is reported` - {alpha, gamma floored; beta not} -> `"beta"` | AC-3 | no |
+| `and several missing suites are reported space-joined, in name order` - {alpha floored; beta, gamma not} -> `"beta gamma"` | AC-3 | no |
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+**GREEN is a verified no-op** (Contract): everything here is test code, and the
+helper was extended in RED after its red run was observed, as the Contract
+directs. No production file was touched; `scripts/selftest.sh` is unchanged.
+
+**Command:** `bash .claude/tests/selftest.test.sh` (about 65 s locally). Also
+`bash scripts/selftest.sh selftest` for the floor.
+
+**Files touched:** `.claude/tests/selftest.test.sh` and this story's `## Test plan` /
+`## Handoff`. Nothing else. No `project-floors.conf` was created in the real tree.
+
+**Shape pinned (test-local, no export):**
+- `floor_of <suite> <file>` - one awk, prints the recorded floor or nothing. Now
+  takes the file as `$2`; its three other callers (the COUNTS loop, the profiles
+  and lib assertions) pass `"$REAL"` (floors.conf) explicitly.
+- `suites_without_floor <root>` - prints the space-joined names (glob order, no
+  leading space, no trailing newline) of `<root>/.claude/tests/*.test.sh` suites
+  with a floor in neither `floors.conf` nor, if it is a file, `project-floors.conf`.
+- `floor_root <case> <suite>...` - fixture builder, prints the root.
+- Not constrained: whether a suite floored in BOTH files is reported (it is not;
+  that fault is `selftest.sh`'s, HARNESS-020 AC-3(c)).
+
+### Run 1 - helper with TODAY's logic (floors.conf only), fixture cases added
+
+Relevant section, verbatim (other blocks printed no FAIL lines):
+
+```
+  AC-6/AC-7  the shipped floors file covers every suite, at its count
+
+  HARNESS-021 AC-1  a suite floored only in project-floors.conf is not reported missing
+    FAIL a suite floored in project-floors.conf alone is not reported as missing a floor
+         expected: 
+         actual:   project-mine
+    FAIL beside an unfloored suite, only the unfloored one is reported
+         expected: project-orphan
+         actual:   project-mine project-orphan
+
+  HARNESS-021 AC-2  control: a suite floored in neither file is reported, by name
+
+  HARNESS-021 AC-3  with no project-floors.conf the check behaves as before
+
+  HARNESS-020 AC-1  a suite floored only in project-floors.conf passes the full-run audit
+selftest: 99 passed, 2 failed
+```
+
+That is the right failure: the actual value `project-mine` is exactly the FWB
+symptom in miniature (FWB printed `project-ci project-handoff ...`). Only the
+AC-1 assertions failed. The real-tree assertion, AC-2 and AC-3 were green.
+
+The run also carried one assertion that is no longer in the file:
+`this repository's real tree ships no project-floors.conf`. It passed there and
+was **removed after this run**, because this file ships to consuming projects
+that do have a project-floors.conf, and there it would be the defect this story
+removes. That accounts for 99+2 = 101 here against 100 below.
+
+An earlier draft of AC-2 also failed run 1, because its fixture floored a suite in
+project-floors.conf and so was really an AC-1 case. That mixed tree moved under
+AC-1 (the second assertion above), and AC-2 became a pure control: a
+project-floors.conf is present but floors nothing, which also refuses a helper
+that treats the file's mere presence as excusing everything.
+
+### Run 2 - helper extended to read project-floors.conf when present
+
+```
+  AC-6/AC-7  the shipped floors file covers every suite, at its count
+
+  HARNESS-021 AC-1  a suite floored only in project-floors.conf is not reported missing
+
+  HARNESS-021 AC-2  control: a suite floored in neither file is reported, by name
+
+  HARNESS-021 AC-3  with no project-floors.conf the check behaves as before
+
+  HARNESS-020 AC-1  a suite floored only in project-floors.conf passes the full-run audit
+selftest: 100 passed, 0 failed
+```
+
+### Guards
+
+```
+check-sigpipe: scanned 41 shell file(s), 39 with pipefail, 0 finding(s)
+check-grep-count: scanned 41 shell file(s), 0 finding(s)
+$ bash scripts/selftest.sh selftest
+assertion floors: all 1 suite(s) met their declared floor (100 assertions executed, 54 declared).
+1 harness suite(s) passed.
+```
+
+`bash scripts/gates.sh --fast`: exit 0, with every gate UNCONFIGURED
+(`BOOTSTRAPPED=no`, "0 ran, 5 unconfigured"). So in this repository the `unit`
+gate the Context names runs nothing. What actually judges this suite is CI's
+`selftest.sh` step.
+
+### Negative controls
+
+| Control | Expected | Measured (run 1, old helper) | Measured (run 2) |
+|---|---|---|---|
+| AC-2: project-orphan floored nowhere, comment-only project file | `project-orphan` | `project-orphan` (green) | `project-orphan` (green) |
+| Defect put back = run 1 itself (no project-floors.conf read) | AC-1 red, AC-2/AC-3 green | as expected | n/a |
+
+Both runs executed every assertion (no import failure here). Timings are local only.
+
+### Deferred verification (Owner: GATES)
+
+Not run in RED against the committed code, by design. Suggested probe:
+`bash scripts/mutate.sh .claude/tests/selftest.test.sh 's/\[ -f "\$_swf_dir\/project-floors.conf" \]/false/' -- bash .claude/tests/selftest.test.sh`
+Expected: the two AC-1 assertions red, everything else green. Run 1 above shows
+the same behaviour before the extension.
+
+### Discovered
+
+- The `selftest` floor in `floors.conf` is 54 while the suite executes 100.
+  This predates the story (HARNESS-020 left it). It is not raised here: that
+  belongs to floors.conf and is outside this Contract's `**Writes:**`. A floor
+  well below the count catches only a gutting, not a partial deletion. Worth a
+  follow-up.
 
 ## Regressions
 
