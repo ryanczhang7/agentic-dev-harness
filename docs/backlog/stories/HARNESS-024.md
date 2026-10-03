@@ -4,8 +4,8 @@ title: Parsing project.conf spawns no process per field
 slug: parsing-project-conf-spawns-no-process-p
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-024-parsing-project-conf-spawns-no-process-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/doctor.sh, scripts/task.sh, .claude/tests/gates.test.sh, .claude/tests/doctor.test.sh, .claude/tests/_lib.sh, .claude/tests/fixtures/manifest/*, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1153,3 +1153,11 @@ closes, because their Contracts depend on the `gates.sh` this story rewrites.
   restored (verified)`), and `git status` confirmed a clean tree before DV-1 and
   DV-2 were re-run detached. This is the stranded-mutation scenario a0b43a2
   guards against (group 4 of the port audit).
+
+**DONE, 2026-10-03.** Merged in #100 (merge commit 5a4dd53), release 67. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: `gates` passed in 1m16s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37149152820) -
+down from 1m47s on HARNESS-023 - and `boundaries` in 11s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37149152749).
+No epic. Next in the port audit: MT-041 (phase-guard spawns).
