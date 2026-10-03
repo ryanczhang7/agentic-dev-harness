@@ -4,8 +4,8 @@ title: Parsing project.conf spawns no process per field
 slug: parsing-project-conf-spawns-no-process-p
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-024-parsing-project-conf-spawns-no-process-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/doctor.sh, scripts/task.sh, .claude/tests/gates.test.sh, .claude/tests/doctor.test.sh, .claude/tests/_lib.sh, .claude/tests/fixtures/manifest/*, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -448,6 +448,23 @@ lines, 16 data lines):
   .claude/tests/gates.test.sh`.
   RED cannot run this: the builtin `trim` does not exist yet.
   **Owner: GATES.**
+
+  **DV-1 result (GATES, 2026-10-03).** AC-1 and AC-2 went red; AC-3 goldens stayed green (output unchanged); restored and verified:
+
+  ```
+    108 - trim() { local _t="$1"; _t="${_t#"${_t%%[![:space:]]*}"}"; _t="${_t%"${_t##*[![:space:]]}"}"; if [ $# -gt 1 ]; then printf -v "$2" '%s' "$_t"; else printf '%s' "$_t"; fi; }
+    108 + trim() { local _t; _t="$(printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"; if [ $# -gt 1 ]; then printf -v "$2" '%s' "$_t"; else printf '%s' "$_t"; fi; }
+  === mutate: running bash .claude/tests/gates.test.sh ===
+      FAIL AC-1: tracing --list over the synthetic manifest records zero sed processes
+      FAIL AC-1: tracing --list over the synthetic manifest records at most 20 external processes
+      FAIL AC-2: gates.sh --list spawns as many processes over the padded manifest as over the plain one
+      FAIL AC-2: gates.sh --audit spawns as many processes over the padded manifest as over the plain one
+      FAIL AC-2: a full gates.sh run spawns as many processes over the padded manifest as over the plain one
+      FAIL AC-6: no copy of the sed trim body in gates.sh, doctor.sh or task.sh
+      FAIL AC-6: trim() is defined in gates.sh, and doctor.sh and task.sh define it byte-identically
+  gates: 217 passed, 7 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261003T174951Z.601467.bak) ===
+  ```
 - **DV-2, a wrong value.** `rest`'s body in `gates.sh` changes to field
   semantics: `trim "$_v" "$3"` becomes `trim "${_v%%|*}" "$3"`. AC-4's `-f3-` and
   `-f5-` assertions and the `--list` golden for `project.conf` **must** go red.
@@ -456,6 +473,39 @@ lines, 16 data lines):
   and AC-1 and AC-2 are blind to it.
   RED cannot run this: `rest` does not exist yet.
   **Owner: GATES.**
+
+  **DV-2 result (GATES, 2026-10-03).** AC-4 (-f3-, -f5-, second level) and the AC-3 goldens went red, 31 failures; restored and verified (excerpt):
+
+  ```
+    130 - rest()  { local _v; from_field "$1" "$2" _v; trim "$_v" "$3"; }
+    130 + rest()  { local _v; from_field "$1" "$2" _v; trim "${_v%%|*}" "$3"; }
+  === mutate: running bash .claude/tests/gates.test.sh ===
+      FAIL AC-3: gates.sh --list over project.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-3: gates.sh --audit over project.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-3: gates.sh full run over project.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-3: gates.sh --list over broken.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-3: gates.sh full run over broken.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-3: gates.sh --list over crlf.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-3: gates.sh --audit over crlf.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-3: gates.sh full run over crlf.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-4 -f3-: an evidence regex keeps its alternation
+      FAIL AC-4 -f3-: a blocked-when regex keeps all three alternations
+      FAIL AC-4 -f3-: a slow reason containing | is kept whole
+      FAIL AC-4 -f3-: a waiver containing | is kept whole
+      FAIL AC-4 -f3-: an ondemand reason containing | is kept whole
+      FAIL AC-4 -f3-: a ci-factor whose source contains | is kept whole
+      FAIL AC-4 -f3-: a ci-factor with an empty second field is kept whole
+      FAIL AC-4 -f5-: a gate command with | and || is listed whole
+      FAIL AC-4 -f5-: and is echoed whole before it runs
+      FAIL AC-4 -f5-: and runs whole, so its evidence is observed and floored
+      FAIL AC-4 -f3-: a blocked-when regex matched on its THIRD alternation still names the launch failure
+      FAIL AC-4 second level: the audit accepts every ci-factor (number -f1, source -f2-), and exits 0
+      FAIL AC-4 second level: a source after an empty second field is still a source
+      FAIL rest <n> behaves as the trimmed cut -d'|' -f<n>- on every input, n = 1..5
+      FAIL AC-6: rest() is defined in gates.sh, and doctor.sh and task.sh define it byte-identically
+  gates: 193 passed, 31 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261003T180916Z.642210.bak) ===
+  ```
 - **DV-3, the real tree, before and after.** On the committed GREEN tree, with
   the real `.claude/harness/project.conf` unchanged since `ea0fba0`:
   - `bash scripts/gates.sh --list` must give md5
@@ -468,6 +518,15 @@ lines, 16 data lines):
   1m56s. This is deliberately not a test, because a test pinning the real
   manifest is exactly what the audit rules out (C-2).
   **Owner: GATES.**
+
+  **DV-3 result (GATES, 2026-10-03), on the committed GREEN tree (bbb3102):**
+
+  ```
+  $ bash scripts/gates.sh --list | md5sum                          -> 207fdc8709297d9a891ca22ac92001eb   real 0m3.493s  (C-8: 2m52s)
+  $ { bash scripts/gates.sh --audit; echo "rc=$?"; } 2>&1 | md5sum -> c700c2d2cd86c026cc7c6822872334e9   real 0m6.666s  (C-8: 1m56s)
+  $ bash -x scripts/gates.sh --list 2>&1 >/dev/null | grep -cE "^\++ (sed|cut) "   -> 0
+  ```
+  Both md5s match C-8. GREEN measured 6 externals in total for --list (was 735).
 
 ## Amendments
 
@@ -1026,8 +1085,8 @@ the three scripts with C-1's helpers spliced in (not in the repository).
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-03T16:51:01Z
-    commit: 13613cf (working tree had uncommitted changes)
+    run:    2026-10-03T18:13:19Z
+    commit: bbb3102 (working tree had uncommitted changes)
     tree:   03710d2ea725a4f0b6b7eca76ec83786e87475a1
     result: pass (0 ran, 7 unconfigured, 0 known)
 
@@ -1083,3 +1142,14 @@ one place:
 `depends_on` is empty on purpose. This is the first story of the audit's port
 order. The orchestrator cuts each later story just-in-time, once this one
 closes, because their Contracts depend on the `gates.sh` this story rewrites.
+- GATES (2026-10-03): full `bash scripts/selftest.sh` on this machine:
+  `assertion floors: all 21 suite(s) met their declared floor (1861 assertions
+  executed, 1631 declared)`, `21 harness suite(s) passed`. Wall time ~95 min
+  (13:13 start); `gates` 18m -> 6m and `doctor` 8m -> 2m against RED, while
+  `plan`, `sigpipe` and `phase-guard` - which do not parse the manifest - are
+  unchanged and now dominate.
+- GATES: a first DV-1 run was stopped by the tool's 40-min limit mid-mutation.
+  `mutate.sh`'s trap restored `scripts/gates.sh` on the kill (log: `exited 143
+  restored (verified)`), and `git status` confirmed a clean tree before DV-1 and
+  DV-2 were re-run detached. This is the stranded-mutation scenario a0b43a2
+  guards against (group 4 of the port audit).
