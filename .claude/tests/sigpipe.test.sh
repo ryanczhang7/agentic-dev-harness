@@ -562,10 +562,10 @@ DISCARDED='scripts/check-boundaries.sh:326:res=$(printf
 scripts/check-boundaries.sh:365:rec=$(printf
 scripts/check-boundaries.sh:540:ph_at="$(git show
 scripts/ci-local.sh:169:dirty="$(git status
-scripts/doctor.sh:41:v="$(grep
-scripts/doctor.sh:113:BOOTSTRAPPED="$(grep
+scripts/doctor.sh:68:v="$(grep
+scripts/doctor.sh:140:BOOTSTRAPPED="$(grep
 scripts/gates.sh:74:BOOTSTRAPPED="$(grep
-scripts/gates.sh:485:why="could not launch: $(
+scripts/gates.sh:526:why="could not launch: $(
 scripts/refresh-harness.sh:134:ph="$(sed
 scripts/refresh-harness.sh:135:sid="$(sed
 scripts/refresh-harness.sh:147:upstream_version="$(grep

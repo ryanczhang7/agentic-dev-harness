@@ -5,7 +5,7 @@ slug: parsing-project-conf-spawns-no-process-p
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-024-parsing-project-conf-spawns-no-process-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/doctor.sh, scripts/task.sh, .claude/tests/gates.test.sh, .claude/tests/doctor.test.sh, .claude/tests/_lib.sh, .claude/tests/fixtures/manifest/*, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -515,6 +515,7 @@ name, below the table.
 
 - PLANNED: `lead-po` resolved to `opus` (`claude-opus-5-5`); no override was given in the dispatch.
 - RED: `test-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
+- GREEN: `feature-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -1023,10 +1024,21 @@ the three scripts with C-1's helpers spliced in (not in the repository).
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-03T16:51:01Z
+    commit: 13613cf (working tree had uncommitted changes)
+    tree:   03710d2ea725a4f0b6b7eca76ec83786e87475a1
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
