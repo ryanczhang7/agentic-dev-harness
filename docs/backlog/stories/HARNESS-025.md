@@ -4,8 +4,8 @@ title: One phase-guard invocation spawns at most 27 processes
 slug: one-phase-guard-invocation-spawns-at-mos
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-025-one-phase-guard-invocation-spawns-at-mos
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/_spawns.sh, .claude/tests/spawns.test.sh, .claude/tests/fixtures/classify/*, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -351,12 +351,55 @@ an `## Amendments` entry put to the PO, not a silent change.
 
   RED cannot run this: the reduced `lib.sh` does not exist yet.
   **Owner: GATES.**
+
+  **DV-1 result (GATES, 2026-10-03).** AC-1 and AC-2 went red; AC-4 and AC-5 stayed green; restored and verified:
+
+  ```
+    876 -   git -C "$HARNESS_ROOT" check-ignore -- "$1" "$1/" >/dev/null 2>&1
+    876 +   git -C "$HARNESS_ROOT" check-ignore -q -- "$1"  2>/dev/null && return 0; git -C "$HARNESS_ROOT" check-ignore -q -- "$1/" 2>/dev/null
+    1205 -     ph=${line%%|*}; ph=${ph//[[:space:]]/}
+    1205 +     ph="$(printf '%s' "${line%%|*}" | tr -d '[:space:]')"
+  === mutate: running bash .claude/tests/spawns.test.sh ===
+      FAIL AC-1: echo hi > src/main.ts spawns at most 27 external processes
+      FAIL AC-1: no tr -d '[:space:]' is spawned
+      FAIL AC-2: echo hi > src/main.ts spawns at most one git check-ignore
+      FAIL AC-2: rm -rf .vitest spawns at most one git check-ignore
+      FAIL AC-2: three candidates spawn at most three git check-ignore
+      FAIL AC-2: three ignored candidates spawn at most three git check-ignore
+  spawns: 60 passed, 6 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261003T233025Z.12281.bak) ===
+           8	awk
+           1	cat
+           1	cut
+           1	dirname
+           2	git check-ignore
+           6	grep
+           3	sed
+           2	sort
+           3	tr:lower
+           1	tr:other '\001\002\003\004\005\006\007\010' '|&;>< \t\n'
+           3	tr:space
+           31	TOTAL
+  ```
+
+  The mutated call spawned 31 = the shipped count + 3 `tr:space` + 1 `check-ignore`, so the shipped `lib.sh` spawns **27** for `echo hi > src/main.ts` (was 46): the bound C-7 derived, met exactly.
 - **DV-2, a wrong value.** Change `_to_slashes` so it does not drop trailing
   newlines (delete its `while` line). AC-4's trailing-newline agreement case
   **must** go red; AC-1 stays green. This is the near-miss rewrite that a count
   cannot see. Run with `-- bash .claude/tests/spawns.test.sh`.
   RED cannot run this: `_to_slashes` does not exist yet.
   **Owner: GATES.**
+
+  **DV-2 result (GATES, 2026-10-03).** Only the trailing-newline case went red; AC-1 stayed green; restored and verified. (The "613 line(s) changed" header for a one-line delete is the port audit's finding E, reproduced live.)
+
+  ```
+  === mutate: .claude/hooks/lib.sh (613 line(s) changed by 661d) ===
+    661 -   while [[ "$__lib_fs" == *$'\n' ]]; do __lib_fs=${__lib_fs%$'\n'}; done
+  === mutate: running bash .claude/tests/spawns.test.sh ===
+      FAIL _to_slashes agrees with tr '\134' '/' on trailing newlines
+  spawns: 65 passed, 1 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261003T233057Z.15874.bak) ===
+  ```
 
 ## Amendments
 
@@ -886,10 +929,21 @@ in GREEN's notes even when it passes.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-03T23:32:17Z
+    commit: 8d2570a (working tree had uncommitted changes)
+    tree:   be388971e825cb202fb419c064ce30b09ccc2acb
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -934,3 +988,10 @@ in GREEN's notes even when it passes.
 
 `depends_on` is empty, as instructed. MT-034, the later story, touches the same
 region of `lib.sh`.
+- GATES (2026-10-03): full `bash scripts/selftest.sh` on this machine:
+  `assertion floors: all 22 suite(s) met their declared floor (1927 assertions
+  executed, 1697 declared)`, `22 harness suite(s) passed`, with `lib: 217
+  passed` and `phase-guard: 300 passed` at their floors (AC-6). Wall time 1186 s
+  (~20 min), against ~95 min after HARNESS-024 and 6,135 s before it.
+- GATES: DV-1 and DV-2 were run detached (`nohup`) so a tool time limit could
+  not kill `mutate.sh` mid-mutation, as happened once on HARNESS-024.
