@@ -5,7 +5,7 @@ slug: one-phase-guard-invocation-spawns-at-mos
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-025-one-phase-guard-invocation-spawns-at-mos
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/_spawns.sh, .claude/tests/spawns.test.sh, .claude/tests/fixtures/classify/*, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -410,6 +410,7 @@ name, below the table.
 
 - PLANNED: `lead-po` resolved to `opus` (`claude-opus-5-5`); no override given in the dispatch.
 - RED: `test-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
+- GREEN: `feature-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. Its session ended before it reported; the orchestrator verified its lib.sh change directly (spawns 66/0, lib 217/0, check-sigpipe and check-grep-count 0 findings) rather than re-dispatching.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
