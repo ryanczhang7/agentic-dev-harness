@@ -312,4 +312,119 @@ case "$out" in
   *) _ok "and is not mistaken for unstamped" ;;
 esac
 printf '%s\n' "$first" > "$FIX/.claude/harness/VERSION"
+
+# ============================================================================
+# HARNESS-024: doctor.sh and task.sh parse the manifest without a process per
+# field
+# ============================================================================
+#
+# gates.test.sh holds AC-1, the gates.sh halves of AC-2 to AC-5, and AC-6. This
+# half is the other two scripts: doctor.sh splits `discovery` lines at -f4-
+# and `gate`/`task` lines at -f5-, task.sh splits `task` lines at -f5-, and
+# neither strips a carriage return itself - trim()'s [:space:] is what keeps a
+# CRLF manifest working there. No suite tested task.sh before this one.
+#
+# Every manifest is the synthetic one in fixtures/manifest/ (see _lib.sh),
+# never the real .claude/harness/project.conf.
+
+_h24="$(mktemp -d 2>/dev/null || mktemp -d -t h024.XXXXXX)"
+MFX="$(manifest_fixture)"
+trap 'rm -rf "$FIX" "$MFX" "$_h24"' EXIT
+crlf_copy "$MANIFEST_FIXTURES/project.conf" "$_h24/crlf.conf"
+pad_manifest "$MANIFEST_FIXTURES/project.conf" "$_h24/padded.conf"
+
+describe "HARNESS-024 AC-3: doctor.sh and task.sh print what they printed before the rewrite"
+
+# Goldens captured from the unchanged scripts (ea0fba0) through the same
+# _lib.sh functions over the same fixture. doctor.sh: its `Project toolchain`
+# and `Test discovery` sections. task.sh: the no-argument listing, then
+# `task.sh <id> extra` for each fixture task and one it lacks, with each exit
+# status. For the well-formed manifest and its CRLF copy.
+for _c in project crlf; do
+  case "$_c" in crlf) _conf="$_h24/crlf.conf" ;; *) _conf="$MANIFEST_FIXTURES/project.conf" ;; esac
+  use_manifest "$MFX" "$_conf"
+  doctor_golden "$MFX" > "$_h24/$_c.doctor"
+  golden_check "AC-3: doctor.sh's toolchain and discovery sections over $_c.conf are byte-identical to the pre-rewrite golden" \
+    "$MANIFEST_FIXTURES/$_c.doctor.golden" "$_h24/$_c.doctor"
+  task_golden "$MFX" "$([ "$_c" = crlf ] && printf nolist)" > "$_h24/$_c.task"
+  golden_check "AC-3: task.sh, listing and every task with an extra argument, over $_c.conf is byte-identical to the pre-rewrite golden" \
+    "$MANIFEST_FIXTURES/$_c.task.golden" "$_h24/$_c.task"
+done
+
+describe "HARNESS-024 AC-4: doctor.sh and task.sh keep a value containing | whole"
+
+# Read out of the AC-3 runs over the well-formed manifest. `cpu` succeeds only
+# if the WHOLE command reaches eval: cut at its first pipe it is an unterminated
+# quote. `gpu` fails whole, and its MISSING line quotes the command - three
+# embedded pipes, all of which must survive (-f4-).
+_d="$(cat "$_h24/project.doctor")"; _t="$(cat "$_h24/project.task")"
+assert_contains "AC-4 -f4-: a discovery command with three embedded pipes runs whole" \
+  "  ok       cpu          discovered" "$_d"
+assert_contains "AC-4 -f4-: and a failing one is quoted whole, every pipe intact" \
+  "  MISSING  gpu          nothing discovered by: printf 'CUDA|Dml\n' | { IFS= read -r l; case \"\$l\" in *'|CPU') true ;; *) false ;; esac; }" "$_d"
+assert_contains "AC-4 -f5-: doctor.sh names the executable of a gate command (field 5 onwards)" \
+  "  MISSING  no-such-tool-h024 needed for: gate 'mutation'" "$_d"
+assert_contains "AC-4 -f5-: a task command with embedded pipes runs whole, extra argument appended" \
+  "\$ task.sh pipes extra
+[a|b]
+args:extra
+rc=0" "$_t"
+assert_contains "AC-4: a tab-padded task runs in its own cwd (field 4) with the extra argument" \
+  "\$ task.sh where extra
+in src
+arg=extra
+rc=0" "$_t"
+assert_contains "an unconfigured task says so and exits 1" \
+  "\$ task.sh idle extra
+task 'idle' is not configured in project.conf
+rc=1" "$_t"
+assert_contains "AC-4 over CRLF: the same task runs without a carriage return in its command" \
+  "\$ task.sh where extra
+in src
+arg=extra
+rc=0" "$(cat "$_h24/crlf.task")"
+
+describe "HARNESS-024 AC-2: doctor.sh and task.sh spawn no more processes for a longer manifest"
+
+# Traced over the manifest and over its padded copy; the counts must be EQUAL.
+# doctor.sh's git, grep and awk calls are a constant per run and per data line,
+# so they do not break the equality; the shipped trim()'s `sed` per padding
+# line does.
+use_manifest "$MFX" "$MANIFEST_FIXTURES/project.conf"
+_doc_plain="$(trace_script "$MFX" "$_h24/t.doctor.plain" doctor.sh)"
+_task_plain="$(trace_script "$MFX" "$_h24/t.task.plain" task.sh where extra)"
+use_manifest "$MFX" "$_h24/padded.conf"
+_doc_pad="$(trace_script "$MFX" "$_h24/t.doctor.pad" doctor.sh)"
+_task_pad="$(trace_script "$MFX" "$_h24/t.task.pad" task.sh where extra)"
+same_count "AC-2: doctor.sh spawns as many processes over the padded manifest as over the plain one" \
+  "$_doc_plain" "$_doc_pad"
+same_count "AC-2: task.sh <id> spawns as many processes over the padded manifest as over the plain one" \
+  "$_task_plain" "$_task_pad"
+# And the padding means nothing to either script, so the equality above is
+# about cost and not about a manifest that was read differently.
+awk '/^[^ ]/ { on = ($0 ~ /^Project toolchain/ || $0 ~ /^Test discovery$/) } on' \
+  "$_h24/t.doctor.pad.out" > "$_h24/t.doctor.pad.sections"
+golden_check "and doctor.sh reports the padded copy exactly as the plain one" \
+  "$MANIFEST_FIXTURES/project.doctor.golden" "$_h24/t.doctor.pad.sections"
+assert_eq "and task.sh runs the same task from it" \
+  "in src
+arg=extra
+rc=0" "$(cat "$_h24/t.task.pad.out"; printf 'rc=%s' "$(cat "$_h24/t.task.pad.rc")")"
+
+describe "HARNESS-024 AC-5: doctor.sh's and task.sh's trim() agree with the shipped sed form"
+
+# The same input set and oracle as gates.test.sh's AC-5 block (_lib.sh),
+# applied to the trim() each of these two scripts defines, in both forms.
+trim_inputs "$_h24/trim.in"
+trim_oracle "$_h24/trim.in" "$_h24/trim.oracle"
+for _s in doctor task; do
+  assert_contains "$_s.sh defines trim()" "trim()" "$(extract_fn "$REPO_ROOT/scripts/$_s.sh" trim)"
+  apply_trim "$REPO_ROOT/scripts/$_s.sh" "$_h24/trim.in" "$_h24/trim.$_s"
+  assert_eq "AC-5: $_s.sh trim, printing form, agrees with the sed form on every input" \
+    "0" "$(disagreements "$_h24/trim.oracle" "$_h24/trim.$_s")"
+  apply_trim "$REPO_ROOT/scripts/$_s.sh" "$_h24/trim.in" "$_h24/trim.$_s.assign" assign
+  assert_eq "C-1: $_s.sh trim, assigning form (trim \"\$x\" var), agrees with the sed form on every input" \
+    "0" "$(disagreements "$_h24/trim.oracle" "$_h24/trim.$_s.assign")"
+done
+
 summary "doctor"

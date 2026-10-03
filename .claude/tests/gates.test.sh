@@ -926,5 +926,263 @@ rm -f "$MARKER"
 git -C "$FIX" checkout -q -- . 2>/dev/null
 set_phase "$FIX" ""
 
+# ============================================================================
+# HARNESS-024: parsing project.conf spawns no process per field
+# ============================================================================
+#
+# gates.sh parsed project.conf with a `sed` trim() and a `cut -d'|'` per field:
+# 735 external processes for one `--list` of upstream's own 283-line manifest
+# (ea0fba0), 647 of them the same `sed`. The rewrite is pure bash, and it can go
+# wrong in four ways, each of which a block below exists to catch:
+#
+#   * still fork per line, or per padding line        -> AC-1, AC-2 (traces)
+#   * parse LESS (skip a table, a kind, a line)       -> AC-3, byte-identity
+#   * lose everything after an embedded `|`           -> AC-4, whole values
+#   * trim a different character class than [:space:]  -> AC-5, equivalence
+#
+# Every manifest here is the SYNTHETIC one in fixtures/manifest/ (see _lib.sh),
+# never the real .claude/harness/project.conf: this suite ships to consuming
+# projects, where an assertion about upstream's manifest values would fail.
+# doctor.test.sh holds the doctor.sh and task.sh halves.
+
+_h24="$(mktemp -d 2>/dev/null || mktemp -d -t h024.XXXXXX)"
+MFX="$(manifest_fixture)"
+trap 'rm -rf "$FIX" "$MFX" "$_h24"' EXIT
+crlf_copy "$MANIFEST_FIXTURES/project.conf" "$_h24/crlf.conf"
+pad_manifest "$MANIFEST_FIXTURES/project.conf" "$_h24/padded.conf"
+
+describe "HARNESS-024 C-3 instrument: the trace counter counts processes, and only processes"
+
+# The negative control for AC-1's two zeros. A counter that counts nothing
+# satisfies "zero sed" and "at most 20" against any implementation, so it is
+# first shown counting a trace whose answer is known: three externals (sed, cut,
+# tr), a builtin (printf) that must not be counted, and a function (f) that must
+# not be counted even though bash -x traces it like a command.
+cat > "$_h24/ctl.sh" <<'CTL'
+f() { :; }
+f
+printf 'x\n' | sed 's/x/y/' | cut -c1 >/dev/null
+v="$(printf 'ab' | tr a b)"
+f
+CTL
+bash -x "$_h24/ctl.sh" 2> "$_h24/ctl.trace" >/dev/null
+_ctl="$(trace_externals "$_h24/ctl.trace" "$_h24/ctl.sh")"
+assert_eq "the counter sees the one sed in a trace with one sed" "1" "$(ext_count "$_ctl" sed)"
+assert_eq "the counter sees the one cut in a trace with one cut" "1" "$(ext_count "$_ctl" cut)"
+assert_eq "a builtin (printf) is not counted as a process"       "0" "$(ext_count "$_ctl" printf)"
+assert_eq "a function the script defines is not counted"         "0" "$(ext_count "$_ctl" f)"
+assert_eq "and the total is exactly the three externals"         "3" "$(ext_count "$_ctl" TOTAL)"
+
+describe "HARNESS-024 fixtures: the padded copy is the same manifest, 100 lines longer"
+
+# AC-2 compares a manifest with its padded copy. That comparison means nothing
+# unless the copy really is 100 lines longer, really carries the tab-indented
+# comments AC-2 names, and really means the same thing - checked here by its
+# --list output being the golden's, below, in the traced run.
+assert_eq "the padded copy is exactly 100 lines longer" \
+  "$(( $(awk 'END { print NR }' "$MANIFEST_FIXTURES/project.conf") + 100 ))" \
+  "$(awk 'END { print NR }' "$_h24/padded.conf")"
+assert_eq "and 20 of the added lines are TAB-indented comments" \
+  "$(( $(awk '/^\t#/ { n++ } END { print n + 0 }' "$MANIFEST_FIXTURES/project.conf") + 20 ))" \
+  "$(awk '/^\t#/ { n++ } END { print n + 0 }' "$_h24/padded.conf")"
+assert_eq "and padding precedes the manifest's last line" \
+  "#	gate | pad99 | required | . | exit 1" \
+  "$(awk '{ prev = cur; cur = $0 } END { print prev }' "$_h24/padded.conf")"
+
+describe "HARNESS-024 AC-1: --list over the synthetic manifest spawns no sed, no cut, and at most 20 processes"
+
+use_manifest "$MFX" "$MANIFEST_FIXTURES/project.conf"
+_list_plain="$(trace_script "$MFX" "$_h24/t.list.plain" gates.sh --list)"
+assert_eq "the traced --list exits 0" "0" "$(cat "$_h24/t.list.plain.rc")"
+assert_eq "AC-1: tracing --list over the synthetic manifest records zero sed processes" \
+  "0" "$(ext_count "$_list_plain" sed)"
+assert_eq "AC-1: tracing --list over the synthetic manifest records zero cut processes" \
+  "0" "$(ext_count "$_list_plain" cut)"
+_total="$(ext_count "$_list_plain" TOTAL)"
+if [ "$_total" -le 20 ]; then
+  _ok "AC-1: tracing --list over the synthetic manifest records at most 20 external processes"
+else
+  _bad "AC-1: tracing --list over the synthetic manifest records at most 20 external processes" \
+    "counted $_total; by command:
+$_list_plain"
+fi
+
+describe "HARNESS-024 AC-2: gates.sh spawns no more processes for a longer manifest"
+
+# Each invocation traced over the manifest and over its padded copy. The counts
+# must be EQUAL: a parser that still forks per line pays for every padding line.
+# The shipped parser fails all three, because each padding line costs a `sed`.
+use_manifest "$MFX" "$_h24/padded.conf"
+_list_pad="$(trace_script "$MFX" "$_h24/t.list.pad" gates.sh --list)"
+same_count "AC-2: gates.sh --list spawns as many processes over the padded manifest as over the plain one" \
+  "$_list_plain" "$_list_pad"
+printf '%s\nrc=%s\n' "$(cat "$_h24/t.list.pad.out")" "$(cat "$_h24/t.list.pad.rc")" > "$_h24/t.list.pad.golden"
+golden_check "and the padded copy lists exactly what the plain one does (the padding means nothing)" \
+  "$MANIFEST_FIXTURES/project.list.golden" "$_h24/t.list.pad.golden"
+
+use_manifest "$MFX" "$MANIFEST_FIXTURES/project.conf"
+_audit_plain="$(trace_script "$MFX" "$_h24/t.audit.plain" gates.sh --audit)"
+use_manifest "$MFX" "$_h24/padded.conf"
+_audit_pad="$(trace_script "$MFX" "$_h24/t.audit.pad" gates.sh --audit)"
+same_count "AC-2: gates.sh --audit spawns as many processes over the padded manifest as over the plain one" \
+  "$_audit_plain" "$_audit_pad"
+printf '%s\nrc=%s\n' "$(cat "$_h24/t.audit.pad.out")" "$(cat "$_h24/t.audit.pad.rc")" > "$_h24/t.audit.pad.golden"
+golden_check "and the padded copy audits exactly as the plain one does" \
+  "$MANIFEST_FIXTURES/project.audit.golden" "$_h24/t.audit.pad.golden"
+
+use_manifest "$MFX" "$MANIFEST_FIXTURES/project.conf"
+_run_plain="$(trace_script "$MFX" "$_h24/t.run.plain" gates.sh)"
+use_manifest "$MFX" "$_h24/padded.conf"
+_run_pad="$(trace_script "$MFX" "$_h24/t.run.pad" gates.sh)"
+same_count "AC-2: a full gates.sh run spawns as many processes over the padded manifest as over the plain one" \
+  "$_run_plain" "$_run_pad"
+
+describe "HARNESS-024 AC-3: gates.sh prints what it printed before the rewrite, byte for byte"
+
+# Goldens captured from the unchanged gates.sh (ea0fba0) through the same
+# _lib.sh functions, over the same fixture: the well-formed manifest, the
+# broken one (every --audit failure path), and a CRLF copy of the well-formed
+# one. Output and exit status; the full run's `(<N>s` is the only thing
+# normalised. This is what stops "parse faster" being done by "parse less".
+for _c in project broken crlf; do
+  case "$_c" in crlf) _conf="$_h24/crlf.conf" ;; *) _conf="$MANIFEST_FIXTURES/$_c.conf" ;; esac
+  use_manifest "$MFX" "$_conf"
+  for _m in list audit run; do
+    gates_golden "$MFX" "$_m" > "$_h24/$_c.$_m"
+    golden_check "AC-3: gates.sh $([ "$_m" = run ] && printf 'full run' || printf -- '--%s' "$_m") over $_c.conf is byte-identical to the pre-rewrite golden" \
+      "$MANIFEST_FIXTURES/$_c.$_m.golden" "$_h24/$_c.$_m"
+  done
+done
+
+describe "HARNESS-024 AC-4: a value containing | is the whole remainder of its line"
+
+# Read out of the AC-3 runs over the well-formed manifest. Each needle is the
+# WHOLE value, so a split that stops at the first embedded pipe (`field` where
+# `rest` belongs, or `IFS='|' read`) leaves a prefix and fails the match.
+_l="$(cat "$_h24/project.list")"; _a="$(cat "$_h24/project.audit")"; _r="$(cat "$_h24/project.run")"
+assert_contains "AC-4 -f3-: an evidence regex keeps its alternation" \
+  "evidence: Tests +[1-9][0-9]* passed|Checks [0-9]+ ok" "$_l"
+assert_contains "AC-4 -f3-: a blocked-when regex keeps all three alternations" \
+  "blocked-when: alpha launch failed|beta refused to start|no device here" "$_l"
+assert_contains "AC-4 -f3-: a slow reason containing | is kept whole" \
+  "slow:     instrumented | about 3x the plain run (left out of --fast)" "$_l"
+assert_contains "AC-4 -f3-: a waiver containing | is kept whole" \
+  "waiver:   docs build needs a renderer this machine lacks | issue 12" "$_l"
+assert_contains "AC-4 -f3-: an ondemand reason containing | is kept whole" \
+  "on-request: minutes per mutant | run with --gate mutation (run with --gate mutation)" "$_l"
+assert_contains "AC-4 -f3-: a ci-factor whose source contains | is kept whole" \
+  "ci-factor: 1.5 | actions run 412 | lint job | step 3" "$_l"
+assert_contains "AC-4 -f3-: a ci-factor with an empty second field is kept whole" \
+  "ci-factor: 2.5 |  | measured in actions run 413" "$_l"
+assert_contains "AC-4 -f5-: a gate command with | and || is listed whole" \
+  "lint         required  .      printf 'Checked 5 files|ok\n' | while IFS= read -r l; do printf '%s\n' \"\$l\"; done || exit 1" "$_l"
+assert_contains "AC-4 -f5-: and is echoed whole before it runs" \
+  "=== gate: lint (required) ===
+printf 'Checked 5 files|ok\n' | while IFS= read -r l; do printf '%s\n' \"\$l\"; done || exit 1" "$_r"
+assert_contains "AC-4 -f5-: and runs whole, so its evidence is observed and floored" \
+  "PASS         lint (Ns, observed 5, floor 3)" "$_r"
+assert_contains "AC-4 -f3-: a blocked-when regex matched on its THIRD alternation still names the launch failure" \
+  "WARN         e2e (Ns, could not launch: no device here, optional)" "$_r"
+# The second level: a ci-factor value re-split into its number (-f1) and its
+# source (-f2-). A number taken with `rest` is `1.5 | actions run ...`, not a
+# number; a source taken with `field` after an empty second field is empty.
+assert_eq "AC-4 second level: the audit accepts every ci-factor (number -f1, source -f2-), and exits 0" \
+  "not-a-number:0 no-source:0 rc=0:1" \
+  "not-a-number:$(count_re 'is not a number' "$_a") no-source:$(count_re 'has no source' "$_a") rc=0:$(count_re '^rc=0$' "$_a")"
+assert_contains "AC-4 second level: a source after an empty second field is still a source" \
+  "ci-factor: 2.5 |  | measured in actions run 413" "$_a"
+
+describe "HARNESS-024 C-1: gates.sh's from_field, rest and field are cut's -fN-, trimmed -fN- and trimmed -fN"
+
+# The helpers gates.sh ships, lifted out of it, against `cut -d'|'` itself as
+# the oracle, for n = 1..5 over every data line of the manifest and a handful
+# of shapes the manifest does not have: no pipe at all (cut returns the line
+# whole), fewer fields than n (empty), empty fields, a leading and a trailing
+# pipe. AC-6 then holds doctor.sh and task.sh to the same definitions.
+{ awk '/\|/ && !/^[[:space:]]*#/' "$MANIFEST_FIXTURES/project.conf"
+  printf '%s\n' 'no pipe here' 'a|b' 'a||c' ' x | | y |' '|lead' 'trail|' '  |  '
+} > "$_h24/split.in"
+: > "$_h24/split.from.oracle"; : > "$_h24/split.rest.oracle"; : > "$_h24/split.field.oracle"
+for _n in 1 2 3 4 5; do
+  cut -d'|' -f"$_n"- "$_h24/split.in" >> "$_h24/split.from.oracle"
+  cut -d'|' -f"$_n"- "$_h24/split.in" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' >> "$_h24/split.rest.oracle"
+  cut -d'|' -f"$_n"  "$_h24/split.in" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' >> "$_h24/split.field.oracle"
+done
+# The result variable is `_got`, not `_v`: bash scopes `local` dynamically, so a
+# caller passing the name of one of the helpers' own locals (`_v`, `_t`, `_r`,
+# `_i`) has its result assigned to the helper's local and lost. No call site in
+# the three scripts uses those names; neither may this test.
+_helpers="$(for _f in trim from_field rest field; do extract_fn "$REPO_ROOT/scripts/gates.sh" "$_f"; done)"
+for _k in from rest field; do
+  ( eval "$_helpers"
+    for _n in 1 2 3 4 5; do
+      while IFS= read -r _line || [ -n "$_line" ]; do
+        _got="<unassigned>"
+        case "$_k" in
+          from)  from_field "$_n" "$_line" _got ;;
+          rest)  rest "$_n" "$_line" _got ;;
+          field) field "$_n" "$_line" _got ;;
+        esac
+        printf '%s\n' "$_got"
+      done < "$_h24/split.in"
+    done
+  ) > "$_h24/split.$_k" 2>/dev/null
+done
+assert_eq "from_field <n> behaves as cut -d'|' -f<n>- on every input, n = 1..5" \
+  "0" "$(disagreements "$_h24/split.from.oracle" "$_h24/split.from")"
+assert_eq "rest <n> behaves as the trimmed cut -d'|' -f<n>- on every input, n = 1..5" \
+  "0" "$(disagreements "$_h24/split.rest.oracle" "$_h24/split.rest")"
+assert_eq "field <n> behaves as the trimmed cut -d'|' -f<n> on every input, n = 1..5" \
+  "0" "$(disagreements "$_h24/split.field.oracle" "$_h24/split.field")"
+
+describe "HARNESS-024 AC-5: gates.sh's trim() agrees with the shipped sed form"
+
+trim_inputs "$_h24/trim.in"
+trim_oracle "$_h24/trim.in" "$_h24/trim.oracle"
+assert_eq "the input set is every manifest line and the six edge cases" \
+  "$((TRIM_EDGE + 6))" "$(awk 'END { print NR }' "$_h24/trim.in")"
+# Read with bash, not awk or sed: MSYS awk and sed read in text mode and drop
+# a carriage return before any pattern sees it, so they cannot tell.
+_cr=0; while IFS= read -r _line; do case "$_line" in *$'\r') _cr=$((_cr+1)) ;; esac; done < "$_h24/trim.in"
+assert_eq "and exactly one input, the last edge case, ends in a carriage return" "1" "$_cr"
+assert_contains "gates.sh defines trim()" "trim()" "$(extract_fn "$REPO_ROOT/scripts/gates.sh" trim)"
+apply_trim "$REPO_ROOT/scripts/gates.sh" "$_h24/trim.in" "$_h24/trim.gates"
+_d="$(disagreements "$_h24/trim.oracle" "$_h24/trim.gates")"
+assert_eq "AC-5: gates.sh trim, printing form, agrees with the sed form on every input" "0" "$_d"
+apply_trim "$REPO_ROOT/scripts/gates.sh" "$_h24/trim.in" "$_h24/trim.gates.assign" assign
+_d="$(disagreements "$_h24/trim.oracle" "$_h24/trim.gates.assign")"
+assert_eq "C-1: gates.sh trim, assigning form (trim \"\$x\" var), agrees with the sed form on every input" "0" "$_d"
+
+# The control that makes the input set mean something: a space-only trim must
+# DISAGREE with the oracle on the tab case and the multi-space case. If it did
+# not, these inputs could not tell `[:space:]` from a literal space.
+( naive() { local s="$1"; s="${s## }"; printf '%s' "${s%% }"; }
+  while IFS= read -r l || [ -n "$l" ]; do printf '%s\n' "$(naive "$l")"; done < "$_h24/trim.in"
+) > "$_h24/trim.naive"
+_differs() { [ "$(line_of "$1" "$2")" != "$(line_of "$1" "$3")" ] && echo differs || echo agrees; }
+assert_eq "control: the space-only trim disagrees on the tab-padded input" \
+  "differs" "$(_differs "$((TRIM_EDGE + 4))" "$_h24/trim.oracle" "$_h24/trim.naive")"
+assert_eq "control: the space-only trim disagrees on the multi-space input" \
+  "differs" "$(_differs "$((TRIM_EDGE + 3))" "$_h24/trim.oracle" "$_h24/trim.naive")"
+
+describe "HARNESS-024 AC-6: one parser, in three identical copies, and no sed trim or cut -d'|' left"
+
+# Scoped to the three scripts AC-6 names: lib.sh's own copy of the sed trim is
+# the next story's (MT-041), and selftest.sh's trim is already pure bash.
+assert_eq "AC-6: no copy of the sed trim body in gates.sh, doctor.sh or task.sh" \
+  "gates.sh:0 doctor.sh:0 task.sh:0" \
+  "$(for _s in gates doctor task; do printf '%s.sh:%s ' "$_s" "$(grep -cF -- "$TRIM_SED_BODY" "$REPO_ROOT/scripts/$_s.sh")"; done | awk '{ sub(/ $/, ""); print }')"
+assert_eq "AC-6: no cut -d'|' in gates.sh, doctor.sh or task.sh" \
+  "gates.sh:0 doctor.sh:0 task.sh:0" \
+  "$(for _s in gates doctor task; do printf '%s.sh:%s ' "$_s" "$(grep -cF -- "cut -d'|'" "$REPO_ROOT/scripts/$_s.sh")"; done | awk '{ sub(/ $/, ""); print }')"
+for _f in trim from_field field rest; do
+  _g="$(extract_fn "$REPO_ROOT/scripts/gates.sh" "$_f")"
+  _verdict="$([ -n "$_g" ] && printf defined || printf missing)"
+  for _s in doctor task; do
+    if [ "$(extract_fn "$REPO_ROOT/scripts/$_s.sh" "$_f")" = "$_g" ]; then _verdict="$_verdict same"; else _verdict="$_verdict differs"; fi
+  done
+  assert_eq "AC-6: $_f() is defined in gates.sh, and doctor.sh and task.sh define it byte-identically" \
+    "defined same same" "$_verdict"
+done
 
 summary "gates"
