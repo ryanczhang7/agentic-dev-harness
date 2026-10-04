@@ -5,7 +5,7 @@ slug: a-failing-gate-s-log-survives-the-passin
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-027-a-failing-gate-s-log-survives-the-passin
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/state/README.md, .claude/tests/gates.test.sh, .claude/tests/settings.test.sh, .claude/tests/fixtures/manifest/project.run.golden, .claude/tests/fixtures/manifest/crlf.run.golden, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -339,6 +339,7 @@ name, below the table.
 
 - PLANNED: `lead-po` resolved to `opus` (`claude-opus-5-5`); no override given in the dispatch.
 - RED: `test-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
+- GREEN: `feature-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->

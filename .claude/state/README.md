@@ -8,6 +8,7 @@ in here is ever committed; only this file and `.gitkeep` are tracked.
 | `current-story.env` | `scripts/phase.sh` | the phase guard, the status line | no |
 | `last-gate-run` | `scripts/gates.sh` | the stop hook | no |
 | `gate-logs/*.log` | `scripts/gates.sh` | you, when a gate fails | yes |
+| `gate-logs/*.failed.log` | `scripts/gates.sh` | you, when a failure did not reproduce | yes |
 | `mutations/*.bak` | `scripts/mutate.sh` | `scripts/mutate.sh`, to restore the file | yes |
 | `mutations/log` | `scripts/mutate.sh` | you, and the story that quotes it | yes |
 | `phase-guard-declined.log` | `.claude/hooks/phase-guard.sh` | you, when the guard looks noisy | yes |
@@ -54,6 +55,14 @@ law 3 exists to prevent. `bash scripts/gates.sh` is what writes it.
 
 The `yes` rows are all written by a tool and safe to delete; the next run
 recreates what it needs.
+
+`gate-logs/<id>.failed.log` is the last run of that gate that did not pass:
+a six-line header (the gate, its outcome, when it started, the commit and the
+gate tree hash) followed by that run's log, byte for byte. `<id>.log` is
+overwritten by every run, so this is the copy the flake-checking re-run cannot
+destroy. The next run that does not pass replaces it whole; a pass never
+removes it, and neither does a run that skips the gate. Delete it by hand once
+the cause is understood.
 
 `mutations/` is `scripts/mutate.sh`'s working area, and the backup path is
 explicit rather than `$TMPDIR` because that variable is unset in some of the
