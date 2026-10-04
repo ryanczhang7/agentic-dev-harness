@@ -4,8 +4,8 @@ title: The audit counts only required gates, and a run from another branch is no
 slug: the-audit-counts-only-required-gates-and
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-026-the-audit-counts-only-required-gates-and
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -844,3 +844,13 @@ themselves are unchanged (C-3). `depends_on` is empty, as instructed.
   declared)`, `22 harness suite(s) passed`, 1280 s. DV-1 and DV-2 were run
   detached. Left out on purpose: the CRLF `\r` in `frontmatter_value` that RED
   noted, which no criterion covers (this repo pins `*.md eol=lf`).
+
+**DONE, 2026-10-04.** Merged in #102 (merge commit 7c647b8), release 69. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check - which, from release 69, is also the case
+the new branch refusal covers for `gates.sh`, so no full gate run was made here.
+PR CI: `gates` passed in 1m46s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37171853679),
+`boundaries` in 11s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37171853592).
+No epic. Next in the port audit: MT-046 (a failing gate's log survives).
