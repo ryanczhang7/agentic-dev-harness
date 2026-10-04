@@ -1599,4 +1599,263 @@ git -C "$FIX" checkout -q -- . 2>/dev/null
 git -C "$FIX" checkout -q main 2>/dev/null
 set_phase "$FIX" ""
 
+# ============================================================================
+# HARNESS-028: a floor shortfall the environment caused is classified
+# ============================================================================
+#
+# A gate below its floor is `noevidence` today: FAIL when required, WARN when
+# optional. That conflates a suite that SHRANK with a checkout that does not
+# carry the suite's inputs (gitignored data: `Tests  1 passed, 25 skipped`).
+# `skipped-when | <id> | <regex>` classifies the second: BLOCKED (exit 3) when
+# the gate is required, KNOWN (exit 0) when optional. A shortfall the pattern
+# does not match stays byte-for-byte what it is today (AC-4), and that is the
+# half a pattern that EXCUSED every shortfall would break.
+#
+# Ported from manga-translator MT-037 (5a51681), fixture cases only: nothing
+# here reads this repository's real project.conf.
+#
+# One manifest, one marker file. `itest` cats .claude/state/h28/itest.out and
+# exits with .claude/state/h28/itest.rc (default 0), so each case is one write.
+# The markers live under .claude/state/, never the fixture root: an untracked
+# root file classifies as source and a full run would refuse to record
+# (HARNESS-014), and AC-1/AC-2 read the record.
+#
+# Every summary line is compared WHOLE (count_line, grep -cxF) after the `(Ns`
+# normalisation the HARNESS-024 goldens use. Regexes (count_re, awk) are only
+# anchored prefixes using [...], *, +, ( ), | and literals: no intervals, no
+# \d, no backreferences (HARNESS-025: Ubuntu's awk is mawk).
+
+describe "HARNESS-028 AC-1..AC-8  a shortfall the environment caused is classified, not excused"
+
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+git -C "$FIX" checkout -q -B story/T-1-fixture 2>/dev/null
+SM="$FIX/.claude/state/h28"
+rm -rf "$SM"; mkdir -p "$SM"
+rm -f "$FIX/.claude/state/gate-logs/itest.failed.log"
+
+SKIPPAT='[1-9][0-9]* (skipped|deselected)'
+# it_conf <optional|required>   The C-3 manifest; extra lines on stdin.
+it_conf() {
+  local extra; extra="$(cat)"
+  write_conf "$FIX" <<EOF
+gate         | itest | $1 | . | cat .claude/state/h28/itest.out; exit \$(cat .claude/state/h28/itest.rc 2>/dev/null || printf 0)
+evidence     | itest | Tests +[1-9][0-9]* passed
+floor        | itest | 26
+skipped-when | itest | $SKIPPAT
+$extra
+EOF
+}
+# it_log <log line> [exit status]
+it_log() {
+  printf '%s\n' "$1" > "$SM/itest.out"
+  rm -f "$SM/itest.rc"
+  [ -z "${2:-}" ] || printf '%s\n' "$2" > "$SM/itest.rc"
+}
+# gates.sh's stdout+stderr, CR-stripped, with `(<N>s` normalised to `(Ns`
+# exactly as gates_golden does for the HARNESS-024 goldens. Exit status is
+# gates.sh's own.
+it_gates() {
+  local o r
+  o="$( cd "$FIX" && bash scripts/gates.sh "$@" 2>&1 )"; r=$?
+  printf '%s\n' "$o" | tr -d '\r' | sed -E 's/\(([0-9]+)s([,)])/(Ns\2/g'
+  return "$r"
+}
+it_rec() { tr -d '\r' < "$FIX/docs/backlog/stories/T-1.md"; }
+it_hdr() { sed -n "$1p" "$FIX/.claude/state/gate-logs/itest.failed.log" 2>/dev/null | tr -d '\r'; }
+
+ILOG='-> .claude/state/gate-logs/itest.log'
+WHY1='did 1 units of work, below the floor of 26 in project.conf; the log says 25 skipped, so the work was skipped rather than lost: the environment did not supply it'
+WHYD='did 1 units of work, below the floor of 26 in project.conf; the log says 25 deselected, so the work was skipped rather than lost: the environment did not supply it'
+KNOWN1="KNOWN        itest (Ns, $WHY1) $ILOG"
+BLOCK1="BLOCKED      itest (Ns, $WHY1) $ILOG"
+BLOCK1E="BLOCKED      itest (required by story T-1) (Ns, $WHY1) $ILOG"
+PASS26='PASS         itest (Ns, observed 26, floor 26)'
+KEPT='failing log kept: .claude/state/gate-logs/itest.failed.log'
+# AC-4's expected lines, captured in RED (2026-10-04) from gates.sh at 91eed2c -
+# today's script - over this manifest WITHOUT the skipped-when line, log
+# `Tests  3 passed`, exit 0. Byte for byte after the (Ns normalisation.
+TODAY_WARN3='WARN         itest (Ns, did 3 units of work, below the floor of 26 in project.conf, optional)'
+TODAY_FAIL3="FAIL         itest (Ns, did 3 units of work, below the floor of 26 in project.conf) $ILOG"
+# And, from the same capture, a non-zero exit whose log carries the skip line.
+TODAY_WARNRC="WARN         itest (Ns, exit 2, optional) $ILOG"
+TODAY_FAILRC="FAIL         itest (Ns, exit 2) $ILOG"
+
+# --- AC-1 / AC-7: optional, 1 passed of 26, 25 skipped ----------------------
+story "$FIX" T-1 GATES </dev/null
+set_phase "$FIX" GATES
+it_conf optional </dev/null
+it_log 'Tests  1 passed, 25 skipped'
+rm -f "$FIX/.claude/state/last-gate-run"
+out="$(it_gates)"; rc=$?
+assert_eq "AC-1: an optional gate whose shortfall the log says was skipped is one KNOWN line, naming the shortfall and the matched text" \
+  1 "$(count_line "$KNOWN1" "$out")"
+assert_eq "AC-1: and it is the only line for itest beginning KNOWN" 1 "$(count_re '^KNOWN +itest \(' "$out")"
+assert_eq "AC-1: a skipped shortfall is not reported as a PASS" 0 "$(count_re '^PASS +itest' "$out")"
+assert_eq "AC-1: nor as the WARN today's gates.sh prints" 0 "$(count_re '^WARN +itest' "$out")"
+assert_eq "AC-1: the run exits 0" 0 "$rc"
+assert_eq "AC-1 control: the run recorded into T-1" 1 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-1: ## Gate results records result: pass" 1 "$(count_re '^    result: pass \(' "$(it_rec)")"
+assert_eq "AC-1: and the stamp says RESULT=pass" 1 \
+  "$(count_line 'RESULT=pass' "$(tr -d '\r' < "$FIX/.claude/state/last-gate-run")")"
+assert_eq "AC-7: a skip-classified run keeps itest.failed.log, header naming the gate" \
+  "# gates.sh: last failing run of gate 'itest'" "$(it_hdr 1)"
+assert_eq "AC-7: whose outcome header says environment, not a code failure" "# outcome: environment" "$(it_hdr 2)"
+assert_eq "AC-7: and the kept log carries the skip line" 1 \
+  "$(count_line 'Tests  1 passed, 25 skipped' "$(tr -d '\r' < "$FIX/.claude/state/gate-logs/itest.failed.log" 2>/dev/null)")"
+assert_eq "AC-7: the failing-log-kept line is printed once" 1 "$(count_line "$KEPT" "$out")"
+
+# C-1: the stored pattern is the WHOLE remainder of its line (rest 3), so the
+# second alternation branch reaches the classifier: `deselected` only matches
+# if `(skipped|deselected)` survived the split on `|`.
+it_log 'Tests  1 passed, 25 deselected'
+out="$(it_gates)"; rc=$?
+assert_eq "AC-1 (C-1): the pattern's second alternation branch classifies too, quoting what matched" \
+  1 "$(count_line "KNOWN        itest (Ns, $WHYD) $ILOG" "$out")"
+assert_eq "AC-1 (C-1): and exits 0" 0 "$rc"
+
+# C-1: an optional gate with a waiver keeps the waiver beside the reason.
+it_conf optional <<'EOF'
+waiver       | itest | fixture data is not redistributable
+EOF
+it_log 'Tests  1 passed, 25 skipped'
+out="$(it_gates)"
+assert_eq "C-1: an optional waived gate names the waiver after the skip reason" \
+  1 "$(count_line "KNOWN        itest (Ns, $WHY1; fixture data is not redistributable) $ILOG" "$out")"
+
+# --- AC-2: required, by the manifest and by the story -----------------------
+it_conf required </dev/null
+it_log 'Tests  1 passed, 25 skipped'
+rm -f "$FIX/.claude/state/last-gate-run"
+out="$(it_gates)"; rc=$?
+assert_eq "AC-2 manifest-required: a skipped shortfall is BLOCKED, whole line" 1 "$(count_line "$BLOCK1" "$out")"
+assert_eq "AC-2 manifest-required: the run exits 3" 3 "$rc"
+assert_eq "AC-2 manifest-required: ## Gate results records result: blocked" 1 "$(count_re '^    result: blocked \(' "$(it_rec)")"
+assert_eq "AC-2 manifest-required: no PASS line for itest" 0 "$(count_re '^PASS +itest' "$out")"
+assert_eq "AC-2 manifest-required: and no PASS line for it in the record check-boundaries.sh reads" 0 \
+  "$(count_re '^ *PASS +itest' "$(it_rec)")"
+assert_eq "AC-2 manifest-required: and the stamp says RESULT=blocked" 1 \
+  "$(count_line 'RESULT=blocked' "$(tr -d '\r' < "$FIX/.claude/state/last-gate-run")")"
+
+story "$FIX" T-1 GATES <<'EOF'
+required_gates: [itest]
+EOF
+it_conf optional </dev/null
+out="$(it_gates)"; rc=$?
+assert_eq "AC-2 story-escalated: an optional gate the story requires is BLOCKED, naming the story" 1 "$(count_line "$BLOCK1E" "$out")"
+assert_eq "AC-2 story-escalated: the run exits 3" 3 "$rc"
+assert_eq "AC-2 story-escalated: ## Gate results records result: blocked" 1 "$(count_re '^    result: blocked \(' "$(it_rec)")"
+assert_eq "AC-2 story-escalated: no PASS line for itest" 0 "$(count_re '^PASS +itest' "$out")"
+assert_eq "AC-2 story-escalated: and it is not the KNOWN an unescalated optional gate gets" 0 "$(count_re '^KNOWN +itest' "$out")"
+story "$FIX" T-1 GATES </dev/null
+
+# --- AC-3 (control): a full run passes, the pattern unconsulted --------------
+for _req in optional required; do
+  it_conf "$_req" </dev/null
+  it_log 'Tests  26 passed'
+  out="$(it_gates)"; rc=$?
+  assert_eq "AC-3 control ($_req): 26 of 26 is a PASS, whole line" 1 "$(count_line "$PASS26" "$out")"
+  assert_eq "AC-3 control ($_req): and exits 0" 0 "$rc"
+done
+# At the floor with some tests skipped: still a pass. The pattern is consulted
+# only below the floor.
+it_conf optional </dev/null
+it_log 'Tests  26 passed, 3 skipped'
+out="$(it_gates)"
+assert_eq "AC-3 control: at the floor, a log that also says skipped is still a PASS" 1 "$(count_line "$PASS26" "$out")"
+assert_eq "AC-3 control: and not a KNOWN" 0 "$(count_re '^KNOWN +itest' "$out")"
+
+# --- AC-4 (control): an unmatched shortfall is exactly today's ---------------
+it_conf optional </dev/null
+it_log 'Tests  3 passed'
+out="$(it_gates)"; rc=$?
+assert_eq "AC-4 control optional: a shortfall the pattern does not match prints today's WARN line" 1 "$(count_line "$TODAY_WARN3" "$out")"
+assert_eq "AC-4 control optional: and is not excused as KNOWN" 0 "$(count_re '^KNOWN +itest' "$out")"
+assert_eq "AC-4 control optional: exits 0, as today" 0 "$rc"
+it_log 'Tests  3 passed, 0 skipped'
+out="$(it_gates)"
+assert_eq "AC-4 control optional: '0 skipped' does not match [1-9][0-9]*, so it is today's WARN" 1 "$(count_line "$TODAY_WARN3" "$out")"
+
+it_conf required </dev/null
+it_log 'Tests  3 passed'
+out="$(it_gates)"; rc=$?
+assert_eq "AC-4 control required: a shortfall the pattern does not match prints today's FAIL line" 1 "$(count_line "$TODAY_FAIL3" "$out")"
+assert_eq "AC-4 control required: and is not reported BLOCKED" 0 "$(count_re '^BLOCKED +itest' "$out")"
+assert_eq "AC-4 control required: exits 1, as today" 1 "$rc"
+
+# Out of scope, pinned because it is cheap: a non-zero exit is never consulted
+# against the skip pattern, whatever its log says.
+it_conf optional </dev/null
+it_log 'Tests  1 passed, 25 skipped' 2
+out="$(it_gates)"
+assert_eq "scope optional: a non-zero exit whose log says skipped is today's WARN, not KNOWN" 1 "$(count_line "$TODAY_WARNRC" "$out")"
+it_conf required </dev/null
+out="$(it_gates)"; rc=$?
+assert_eq "scope required: a non-zero exit whose log says skipped is today's FAIL, not BLOCKED" 1 "$(count_line "$TODAY_FAILRC" "$out")"
+assert_eq "scope required: and exits 1" 1 "$rc"
+
+# --- AC-5: --audit ----------------------------------------------------------
+set_phase "$FIX" ""
+write_conf "$FIX" <<EOF
+gate         | itest | optional | . | printf 'Tests  26 passed\n'
+evidence     | itest | Tests +[1-9][0-9]* passed
+floor        | itest | 26
+skipped-when | itset | $SKIPPAT
+EOF
+out="$(it_gates --audit)"; rc=$?
+assert_eq "AC-5: --audit fails a skipped-when that names no configured gate, naming it" 1 \
+  "$(count_line "$(printf 'FAIL %-12s a `skipped-when` line names no configured gate' itset)" "$out")"
+assert_eq "AC-5: and exits 1" 1 "$rc"
+
+write_conf "$FIX" <<'EOF'
+gate         | itest | optional | . | printf 'Tests  26 passed\n'
+evidence     | itest | Tests +[1-9][0-9]* passed
+floor        | itest | 26
+skipped-when | itest |
+EOF
+out="$(it_gates --audit)"; rc=$?
+assert_eq "AC-5: --audit fails a skipped-when with no pattern" 1 \
+  "$(count_line "$(printf 'FAIL %-12s a `skipped-when` line has no pattern' itest)" "$out")"
+assert_eq "AC-5: and exits 1" 1 "$rc"
+
+write_conf "$FIX" <<EOF
+gate         | itest | optional | . | printf 'Tests  26 passed\n'
+evidence     | itest | Tests +[1-9][0-9]* passed
+skipped-when | itest | $SKIPPAT
+EOF
+out="$(it_gates --audit)"; rc=$?
+assert_eq "AC-5: --audit fails a skipped-when on a gate with no floor" 1 \
+  "$(count_line "$(printf 'FAIL %-12s a `skipped-when` line names a gate with no `floor` line: there is nothing to measure the shortfall it would classify' itest)" "$out")"
+assert_eq "AC-5: and exits 1" 1 "$rc"
+assert_eq "AC-5: one manifest problem, not more" 1 "$(count_line '1 manifest problem(s).' "$out")"
+
+it_conf optional </dev/null
+out="$(it_gates --audit)"; rc=$?
+assert_eq "AC-5 control: a well-formed skipped-when on a floored gate passes the audit" 1 "$(count_line 'Manifest audit passed.' "$out")"
+assert_eq "AC-5 control: and exits 0" 0 "$rc"
+assert_eq "AC-5 control: no FAIL line names a skipped-when" 0 "$(count_re '^FAIL .*skipped-when' "$out")"
+assert_eq "AC-5 control: the audit prints the pattern under the gate" 1 \
+  "$(count_line "$(printf '     %-12s skipped-when: %s' '' "$SKIPPAT")" "$out")"
+
+# --- AC-6: --list -----------------------------------------------------------
+it_conf optional <<'EOF'
+blocked-when | itest | no fixture device
+EOF
+out="$(it_gates --list)"
+assert_eq "AC-6: --list prints skipped-when with its | alternation whole" 1 \
+  "$(count_line "$(printf '%-12s %-9s %-6s skipped-when: %s' '' '' '' "$SKIPPAT")" "$out")"
+assert_eq "AC-6 control: in the same column style as the blocked-when line beside it" 1 \
+  "$(count_line "$(printf '%-12s %-9s %-6s blocked-when: %s' '' '' '' 'no fixture device')" "$out")"
+
+# --- AC-8 -------------------------------------------------------------------
+# No new assertion: the HARNESS-024 AC-3 golden comparisons above are the check.
+# RED confirmed (2026-10-04) that no fixtures/manifest/*.conf carries
+# skipped-when and no golden run is below its floor (unit 47 vs 40, lint 5 vs 3).
+
+rm -rf "$SM"
+rm -f "$FIX/.claude/state/gate-logs/itest.failed.log"
+git -C "$FIX" checkout -q -- . 2>/dev/null
+git -C "$FIX" checkout -q main 2>/dev/null
+set_phase "$FIX" ""
+
 summary "gates"
