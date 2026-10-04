@@ -4,8 +4,8 @@ title: mutate.sh counts what changed, cleans up on every path, and survives an e
 slug: mutate-sh-counts-what-changed-cleans-up
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-029-mutate-sh-counts-what-changed-cleans-up
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -884,3 +884,12 @@ committed `trap ':' PIPE` line; DV-3's `5d` case must go red with header
   three stdout `printf`s (hides only `write error: Broken pipe` after a reader
   leaves), and downstream's `RESTORED` guard ahead of `put_back`'s content
   check.
+
+**DONE, 2026-10-05.** Merged in #106 (merge commit be57c08), release 72. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: `gates` passed in 1m47s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37243241446),
+`boundaries` in 8s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37243241365).
+No epic. Next in the port audit: group 4's second half, the `.active` sentinel,
+`mutate.sh --check` and gates refusing behind a stranded mutation.
