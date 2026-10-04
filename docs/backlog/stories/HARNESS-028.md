@@ -5,7 +5,7 @@ slug: a-floor-shortfall-the-environment-caused
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-028-a-floor-shortfall-the-environment-caused
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/project.conf, .claude/skills/quality-gates/SKILL.md, .claude/skills/quality-gates/reference/configuring.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -375,6 +375,7 @@ name, below the table.
 
 - PLANNED: `lead-po` resolved to `opus` (`claude-opus-5-5`); no override given in the dispatch.
 - RED: `test-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
+- GREEN: `feature-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -735,3 +736,49 @@ nothing to read for shape; the `gates` suite is judged by CI's `selftest.sh`.
   byte-identity check.
 - **Patterns.** All of them avoid awk intervals (C-2).
 - **Frontmatter.** `depends_on` is empty, as instructed.
+
+**GREEN, 2026-10-04 (Feature Developer, `claude-opus-5-5`, no override).**
+
+- `scripts/gates.sh` built as C-1 says: `SKIPPEDWHEN=""` on line 139 and
+  `skipped-when` in the kind list on line 154 (same-line edits; `:74` did not
+  move), a `skipped-when)` table branch (value via `rest 3`), `skippat` lookup
+  beside `floor=`, the `--list` loop and `--audit` detail line, the floor-branch
+  classification with awk detection and awk `match()` extraction (C-1 verbatim),
+  the `environment)` outcome branch, and the `--audit` loop with downstream's
+  three messages. `blocked-when`'s extraction is untouched.
+- C-5: `blocked-when`'s `why="could not launch: $(` is now `gates.sh:542`;
+  `sigpipe.test.sh:568` updated from 535 to 542 (the one test edit the
+  Contract assigns to GREEN). `:74` unchanged.
+- C-4 docs: `configuring.md` (kinds list - "Six" became "Seven more kinds" -
+  and one paragraph after `blocked-when`'s), quality-gates `SKILL.md`
+  subsection "A shortfall the environment caused" at the end of the BLOCKED
+  section, and a comment-only `skipped-when` block in the `project.conf`
+  template after `blocked-when`'s. No live line.
+- Results: `gates: 389 passed, 0 failed`; `sigpipe: 82 passed, 0 failed`;
+  `profiles: 50 passed, 0 failed`; `doctor: 50 passed, 0 failed` (after the
+  template edit); `check-sigpipe: scanned 44 shell file(s), 41 with pipefail, 0
+  finding(s)`; `check-grep-count: scanned 44 shell file(s), 0 finding(s)`;
+  `gates.sh --audit`: `Manifest audit passed.`; `gates.sh --fast`: `All required
+  gates passed (0 ran, 5 unconfigured, 0 known).` - every gate UNCONFIGURED, so
+  it judges nothing here.
+- **Controls, measured against the shipped code** (scratch fixture, the C-3
+  manifest with `skipped-when`, `gates.sh --gate itest`, `(Ns` normalised):
+
+  | Case | rc | Line |
+  |---|---|---|
+  | optional, `Tests  26 passed` | 0 | `PASS         itest (Ns, observed 26, floor 26)` |
+  | required, `Tests  26 passed` | 0 | same |
+  | optional, `Tests  26 passed, 3 skipped` | 0 | same (no KNOWN) |
+  | optional, `Tests  3 passed` | 0 | TODAY_WARN3, byte-identical |
+  | optional, `Tests  3 passed, 0 skipped` | 0 | TODAY_WARN3 |
+  | required, `Tests  3 passed` | 1 | TODAY_FAIL3 |
+  | optional, skip log + exit 2 | **0** | `WARN         itest (Ns, exit 2, optional) -> .claude/state/gate-logs/itest.log` |
+  | required, skip log + exit 2 | 1 | `FAIL         itest (Ns, exit 2) -> .claude/state/gate-logs/itest.log` |
+  | optional, `1 passed, 25 skipped` | 0 | KNOWN1 |
+  | required, `1 passed, 25 skipped` | 3 | BLOCK1 |
+
+  One divergence from the handoff's control table, benign: it gives "rc 1" for
+  *both* scope exit-2 rows, but an optional WARN exits 0, today and now. The
+  test asserts the exit only for the required row (`scope required: and exits
+  1`), so nothing pinned is affected; the table row was imprecise.
+- DV-1 and DV-2 are GATES's, not run here.

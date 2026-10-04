@@ -462,6 +462,37 @@ The path, when a required gate is BLOCKED:
 Never reach for a waiver here: waivers are for optional gates, and an
 environment-blocked required gate has not been verified by anything yet.
 
+### A shortfall the environment caused
+
+A `floor` catches a suite that does much less work than it used to. Two very
+different things produce that shortfall. A suite that **shrank** - tests
+deleted, a glob that stopped matching, a filter left on - is a code problem. A
+suite whose **inputs this checkout does not carry** - gitignored data, a fixture
+nobody may redistribute, a device only some machines have - skips that work, and
+the log says so: `1 passed, 25 skipped`. That second case is not a failure of
+the code, and it is not a pass either: this machine simply cannot answer the
+question.
+
+A `skipped-when | <gate id> | <regex>` line tells the two apart. When a gate
+exits 0, matches its evidence and falls below its floor, and its log matches
+the pattern, the shortfall is reported as:
+
+- **BLOCKED** (exit 3) when the gate is required, by the manifest or by the
+  story's `required_gates` - the story has no verdict until a machine that has
+  the inputs runs it, and the BLOCKED path above applies;
+- **KNOWN** when it is optional - a declared non-result, not a WARN, because
+  nothing changed.
+
+It is never PASS, because the work was not done, and never WARN, because a WARN
+on every run on every machine teaches people to stop reading WARN. The failing
+run's log is kept, with `# outcome: environment` in its header.
+
+The pattern **classifies a shortfall; it never excuses one.** It is consulted
+only below a floor, after a zero exit with evidence; a shortfall it does not
+match stays the FAIL or WARN it always was, and a non-zero exit is never
+reclassified by it. Write the pattern for the runner's skip line and nothing
+broader: `[1-9][0-9]* skipped`, not `skipped`.
+
 ## The gate record is written by the tool
 
 A full run of `gates.sh` writes its own summary into the active story's
