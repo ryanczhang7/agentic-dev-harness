@@ -4,8 +4,8 @@ title: A floor shortfall the environment caused reports BLOCKED or KNOWN, not FA
 slug: a-floor-shortfall-the-environment-caused
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-028-a-floor-shortfall-the-environment-caused
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/project.conf, .claude/skills/quality-gates/SKILL.md, .claude/skills/quality-gates/reference/configuring.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -842,3 +842,12 @@ nothing to read for shape; the `gates` suite is judged by CI's `selftest.sh`.
   downstream's `REAL_CONF` block (pins manga-translator's own project.conf
   values), its `assert_not_contains` hunk (already upstream) and its
   `environment.md` notes.
+
+**DONE, 2026-10-04.** Merged in #105 (merge commit 889ca42), release 71. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: `gates` passed in 1m22s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37235179674),
+`boundaries` in 9s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37235179644).
+No epic. Group 3 (gate correctness) of the port audit is complete; next is
+group 4, mutation safety.
