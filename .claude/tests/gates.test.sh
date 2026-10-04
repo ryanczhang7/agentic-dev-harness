@@ -1414,4 +1414,189 @@ rm -f "$FIX/.claude/state/T-1.before"
 git -C "$FIX" checkout -q -- . 2>/dev/null
 set_phase "$FIX" ""
 
+# ============================================================================
+# HARNESS-027: a failing gate's log survives the passing re-run
+# ============================================================================
+#
+# gates.sh tees each gate into gate-logs/<id>.log and every run truncates it, so
+# the re-run that checks whether a failure was a flake destroys the only copy of
+# the failure (issue #97, ported from manga-translator MT-046). A gate that ran
+# and did not pass - outcome fail, noevidence or blocked, whatever word is
+# printed - now leaves <id>.failed.log: six header lines, then that run's log
+# byte for byte. A pass never writes it, a later pass never touches it, a later
+# non-pass replaces it whole, a gate that did not run leaves it alone.
+#
+# One manifest throughout. `flaky` reads a marker file, so the same manifest
+# fails, passes and fails differently; `steady` always passes, with NO evidence
+# line, so it is the "PASS annotated for a missing evidence line" of AC-4;
+# `broke` always fails, optional, so it is WARNed rather than FAILed - a non-pass
+# whose printed word is not FAIL. The markers live under .claude/state/h27/, not
+# at the fixture root: an untracked file there would classify as source and make
+# a full run refuse to record (HARNESS-014), and AC-1 compares against the
+# record. Never inside gate-logs/, which is the directory under test.
+#
+# Byte comparisons are `tail -n +7 | cmp` and `cmp`; text needles are whole
+# lines through count_line or anchored count_re. No awk of our own (HARNESS-025).
+
+describe "HARNESS-027 AC-1..AC-6  a failing gate's log survives the passing re-run"
+
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+# T-1 records only from its own branch (HARNESS-026); AC-1 compares with the record.
+git -C "$FIX" checkout -q -B story/T-1-fixture 2>/dev/null
+set_phase "$FIX" GATES
+KLOG="$FIX/.claude/state/gate-logs"
+KM="$FIX/.claude/state/h27"
+rm -rf "$KLOG" "$KM"; mkdir -p "$KM"
+write_conf "$FIX" <<'EOF'
+gate     | flaky  | required | . | if [ -f .claude/state/h27/fail-a ]; then printf 'boom A\n'; exit 1; elif [ -f .claude/state/h27/fail-b ]; then printf 'boom B\n'; exit 1; else printf 'Tests  3 passed (3)\n'; fi
+evidence | flaky  | Tests +[1-9][0-9]* passed
+gate     | steady | required | . | printf 'all good\n'
+gate     | broke  | optional | . | printf 'nope\n'; exit 1
+EOF
+
+# stdout only: AC-6 is a statement about stdout.
+kgates() { ( cd "$FIX" && bash scripts/gates.sh "$@" 2>/dev/null ); }
+kept_line() { printf 'failing log kept: .claude/state/gate-logs/%s.failed.log' "$1"; }
+kexists()   { [ -f "$KLOG/$1.failed.log" ] && printf yes || printf no; }
+hdr()       { sed -n "$2p" "$KLOG/$1.failed.log" 2>/dev/null | tr -d '\r'; }
+# body_vs_log <id>   AC-1's "byte-identical": everything after the six header lines.
+body_vs_log() {
+  [ -f "$KLOG/$1.failed.log" ] || { printf 'no %s.failed.log was written' "$1"; return; }
+  if tail -n +7 "$KLOG/$1.failed.log" | cmp -s - "$KLOG/$1.log"; then printf identical; else printf differs; fi
+}
+# same <before> <after>   Byte-identity of two files, naming which is missing.
+same() {
+  [ -f "$1" ] || { printf 'missing: %s' "$1"; return; }
+  [ -f "$2" ] || { printf 'missing: %s' "$2"; return; }
+  cmp -s "$1" "$2" && printf identical || printf differs
+}
+# in_kept <id> <exact line>   How many whole lines of <id>.failed.log equal it.
+# An absent file is reported as such, not as 0: a missing file is not evidence
+# that the old run is gone.
+in_kept() {
+  [ -f "$KLOG/$1.failed.log" ] || { printf 'no %s.failed.log' "$1"; return; }
+  count_line "$2" "$(tr -d '\r' < "$KLOG/$1.failed.log")"
+}
+# entries <prefix>   gate-logs/ entries starting with <prefix>, sorted, space-separated.
+entries() { ( cd "$KLOG" 2>/dev/null && ls -1 | grep -F -- "$1" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//' ); }
+# lineno <exact line> <text>   1-based line of the first whole-line match, or empty.
+lineno() { printf '%s\n' "$2" | grep -m1 -nxF -- "$1" | cut -d: -f1; }
+k_tree()   { ( cd "$FIX" && CLAUDE_PROJECT_DIR="$FIX" bash -c '. .claude/hooks/lib.sh; gate_tree_hash' 2>/dev/null ); }
+# k_commit   The commit line the contract specifies, computed here independently.
+k_commit() {
+  local c; c="$(git -C "$FIX" rev-parse --short HEAD)"
+  [ -z "$(git -C "$FIX" status --porcelain -- . ':!docs' 2>/dev/null)" ] \
+    || c="$c (working tree had uncommitted changes)"
+  printf '%s' "$c"
+}
+T1="$FIX/docs/backlog/stories/T-1.md"
+# grep -E, not count_re: awk interval expressions ({4}) are not in every mawk.
+RUN_RE='^# run:     [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+
+# --- AC-4: a pass never creates the file, the annotated pass included --------
+out="$(kgates)"
+assert_eq "AC-4 control: flaky passes plainly" 1 "$(count_re '^PASS +flaky \(' "$out")"
+assert_eq "AC-4 control: steady is a PASS annotated for its missing evidence line" 1 \
+  "$(count_re '^PASS +steady \(.*-- no evidence line: a vacuous pass would go unnoticed$' "$out")"
+assert_eq "AC-4: a plain pass leaves no flaky.failed.log" no "$(kexists flaky)"
+assert_eq "AC-4: a pass annotated for no evidence line leaves no steady.failed.log" no "$(kexists steady)"
+assert_eq "AC-6: no kept line for the gate that passed plainly" 0 "$(count_line "$(kept_line flaky)" "$out")"
+assert_eq "AC-6: no kept line for the annotated pass" 0 "$(count_line "$(kept_line steady)" "$out")"
+# The same run's control that the keep fires at all: an optional gate, printed
+# WARN, outcome fail, did not pass.
+assert_eq "control: the optional gate that fails is printed WARN, not FAIL" 1 "$(count_re '^WARN +broke \(' "$out")"
+assert_eq "AC-1: an optional gate printed WARN still did not pass, and keeps broke.failed.log" yes "$(kexists broke)"
+assert_eq "AC-6: and the kept line is printed for it, once" 1 "$(count_line "$(kept_line broke)" "$out")"
+
+# --- AC-1 / AC-6: a required gate fails; the full run records into T-1 -------
+: > "$KM/fail-a"
+before="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+out="$(kgates)"
+assert_eq "AC-1 control: flaky failed" 1 "$(count_re '^FAIL +flaky \(' "$out")"
+assert_eq "AC-1 control: the failing full run recorded into T-1" 1 \
+  "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+rec_commit="$(tr -d '\r' < "$T1" | sed -n '/^    commit: /{s///p;q;}')"
+rec_tree="$(tr -d '\r' < "$T1" | sed -n '/^    tree:   /{s///p;q;}')"
+assert_eq "AC-1: a failing gate leaves flaky.failed.log" yes "$(kexists flaky)"
+assert_eq "AC-1 header 1 names the gate" "# gates.sh: last failing run of gate 'flaky'" "$(hdr flaky 1)"
+assert_eq "AC-1 header 2 is the outcome" "# outcome: fail" "$(hdr flaky 2)"
+assert_eq "AC-1 header 3 is a UTC time, YYYY-MM-DDTHH:MM:SSZ" 1 "$(hdr flaky 3 | grep -cE -- "$RUN_RE")"
+_run="$(hdr flaky 3)"; _run="${_run#'# run:     '}"
+assert_eq "AC-1 header 3 is no earlier than the run was started" yes \
+  "$([[ -n "$_run" && ! "$_run" < "$before" ]] && printf yes || printf "no ([$_run] before [$before])")"
+assert_eq "control: the record has a commit line to compare against" 1 "$([ -n "$rec_commit" ] && printf 1 || printf 0)"
+assert_eq "AC-1 header 4 is the commit line the same run recorded in ## Gate results" \
+  "# commit:  $rec_commit" "$(hdr flaky 4)"
+assert_eq "AC-1 header 4 is the short HEAD with the uncommitted-changes note" \
+  "# commit:  $(k_commit)" "$(hdr flaky 4)"
+assert_eq "AC-1 header 5 is gate_tree_hash, computed independently" "# tree:    $(k_tree)" "$(hdr flaky 5)"
+assert_eq "AC-1 header 5 is the tree the same run recorded" "# tree:    $rec_tree" "$(hdr flaky 5)"
+assert_eq "AC-1 header 6 closes the header" "# ----" "$(hdr flaky 6)"
+assert_eq "AC-1: after six header lines, the run's log byte for byte" identical "$(body_vs_log flaky)"
+assert_eq "AC-1: and it is this run's log" 1 "$(in_kept flaky 'boom A')"
+assert_eq "AC-6: the kept line is printed once" 1 "$(count_line "$(kept_line flaky)" "$out")"
+_out_l="$(lineno 'boom A' "$out")"; _kept_l="$(lineno "$(kept_line flaky)" "$out")"
+_next_l="$(printf '%s\n' "$out" | grep -m1 -n '^=== gate: steady ' | cut -d: -f1)"
+assert_eq "AC-6: the kept line comes right after flaky's output" yes \
+  "$([ -n "$_out_l" ] && [ -n "$_kept_l" ] && [ "$_kept_l" -eq $((_out_l + 1)) ] && printf yes || printf "no (output at ${_out_l:-?}, kept line at ${_kept_l:-absent})")"
+assert_eq "AC-6: and before the next gate's header" yes \
+  "$([ -n "$_kept_l" ] && [ -n "$_next_l" ] && [ "$_kept_l" -lt "$_next_l" ] && printf yes || printf "no (kept line at ${_kept_l:-absent}, next header at ${_next_l:-?})")"
+assert_eq "AC-6: ## Gate results does not carry the kept line" 0 "$(count_re '^ *failing log kept:' "$(tr -d '\r' < "$T1")")"
+cp "$KLOG/flaky.failed.log" "$KM/flaky.first" 2>/dev/null
+
+# --- AC-2: a later pass leaves it byte-identical -----------------------------
+rm -f "$KM/fail-a"
+out="$(kgates)"
+assert_eq "AC-2 control: the re-run passed" 1 "$(count_re '^PASS +flaky \(' "$out")"
+assert_eq "AC-2: after the pass, flaky.failed.log is byte-identical" identical \
+  "$(same "$KM/flaky.first" "$KLOG/flaky.failed.log")"
+assert_eq "AC-2: while flaky.log holds the passing run" 1 "$(count_line 'Tests  3 passed (3)' "$(tr -d '\r' < "$KLOG/flaky.log")")"
+assert_eq "AC-2: and not the failure" 0 "$(count_line 'boom A' "$(tr -d '\r' < "$KLOG/flaky.log")")"
+assert_eq "AC-6: the pass printed no kept line for flaky" 0 "$(count_line "$(kept_line flaky)" "$out")"
+
+# --- AC-3: a different failure replaces it whole -----------------------------
+: > "$KM/fail-b"
+out="$(kgates)"
+assert_eq "AC-3: the newer failure is kept" 1 "$(in_kept flaky 'boom B')"
+assert_eq "AC-3: none of the older output remains" 0 "$(in_kept flaky 'boom A')"
+assert_eq "AC-3: one header, replaced rather than appended" 1 \
+  "$(in_kept flaky "# gates.sh: last failing run of gate 'flaky'")"
+assert_eq "AC-3: header then the newer log, byte for byte" identical "$(body_vs_log flaky)"
+assert_eq "AC-3: gate-logs/ holds flaky.failed.log and flaky.log, nothing else for flaky" \
+  "flaky.failed.log flaky.log" "$(entries flaky.)"
+
+# --- AC-5: --fast and --gate <id> -------------------------------------------
+rm -f "$KM/fail-b" "$KLOG/flaky.failed.log"; : > "$KM/fail-a"
+out="$(kgates --fast)"
+assert_eq "AC-5 --fast: a failing gate leaves flaky.failed.log" yes "$(kexists flaky)"
+assert_eq "AC-5 --fast: header 1"  "# gates.sh: last failing run of gate 'flaky'" "$(hdr flaky 1)"
+assert_eq "AC-5 --fast: header 2"  "# outcome: fail" "$(hdr flaky 2)"
+assert_eq "AC-5 --fast: header 4"  "# commit:  $(k_commit)" "$(hdr flaky 4)"
+assert_eq "AC-5 --fast: log byte for byte" identical "$(body_vs_log flaky)"
+assert_eq "AC-5 --fast: kept line, once" 1 "$(count_line "$(kept_line flaky)" "$out")"
+
+rm -f "$KM/fail-a" "$KLOG/flaky.failed.log"; : > "$KM/fail-b"
+out="$(kgates --gate flaky)"
+assert_eq "AC-5 --gate flaky: a failing gate leaves flaky.failed.log" yes "$(kexists flaky)"
+assert_eq "AC-5 --gate flaky: header 2" "# outcome: fail" "$(hdr flaky 2)"
+assert_eq "AC-5 --gate flaky: this run's log, byte for byte" identical "$(body_vs_log flaky)"
+assert_eq "AC-5 --gate flaky: and it is this run's" 1 "$(in_kept flaky 'boom B')"
+assert_eq "AC-5 --gate flaky: kept line, once" 1 "$(count_line "$(kept_line flaky)" "$out")"
+
+# A gate the run does not execute leaves its kept file alone, even when the
+# gate that does run also fails.
+cp "$KLOG/flaky.failed.log" "$KM/flaky.before-broke" 2>/dev/null
+out="$(kgates --gate broke)"
+assert_eq "AC-5 control: --gate broke runs broke" 1 "$(count_re '^=== gate: broke ' "$out")"
+assert_eq "AC-5 control: and not flaky" 0 "$(count_re '^=== gate: flaky ' "$out")"
+assert_eq "AC-5: --gate broke leaves flaky.failed.log byte-identical" identical \
+  "$(same "$KM/flaky.before-broke" "$KLOG/flaky.failed.log")"
+assert_eq "AC-5: and prints no kept line for flaky" 0 "$(count_line "$(kept_line flaky)" "$out")"
+
+rm -rf "$KM"
+git -C "$FIX" checkout -q -- . 2>/dev/null
+git -C "$FIX" checkout -q main 2>/dev/null
+set_phase "$FIX" ""
+
 summary "gates"

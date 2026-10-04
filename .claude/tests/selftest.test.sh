@@ -522,7 +522,7 @@ ci-local 28
 classify 42
 doctor 50
 gate-reminder 32
-gates 281
+gates 334
 grep-count 20
 lib 217
 mutate 44
@@ -535,7 +535,7 @@ profiles 50
 refresh 122
 reporting 27
 selftest 100
-settings 20
+settings 22
 sigpipe 82
 spawns 66
 worktree 73
