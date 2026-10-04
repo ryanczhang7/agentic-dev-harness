@@ -4,8 +4,8 @@ title: The audit counts only required gates, and a run from another branch is no
 slug: the-audit-counts-only-required-gates-and
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-026-the-audit-counts-only-required-gates-and
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -361,6 +361,43 @@ gawk and mawk. Do not add awk-specific constructs to the new tests.
   Run it with `-- bash .claude/tests/gates.test.sh`. AC-1's "no summary" and
   AC-4's "not recorded / exit 1 / FULL=no" assertions **must** go red. AC-5's
   controls stay green.
+
+  RED cannot run this, because neither fix exists yet. **Owner: GATES.**
+
+  **DV-1 result (GATES, 2026-10-04).** Restored and verified:
+
+  ```
+    477 -       [ "$req" = "required" ] && noevidence=$((noevidence+1)); continue
+    477 +       noevidence=$((noevidence+1)); continue
+    808 -   if [ -n "$checkout_branch" ] && [ -n "$story_branch" ] && [ "$checkout_branch" != "$story_branch" ]; then
+    808 +   if [ -n "$checkout_branch" ] && [ -n "$story_branch" ] && false; then
+  === mutate: running bash .claude/tests/gates.test.sh ===
+      FAIL AC-1: an optional gate without evidence produces no 'required gate(s) have no evidence line' summary
+      FAIL AC-2: one required and one optional gate without evidence: the summary says 1, not 2
+      FAIL AC-3: an active story that does not escalate the optional gate: no summary
+      FAIL AC-4: a passing full run on main prints the branch refusal, naming both branches, once
+      FAIL AC-4: and it is the only line beginning '(not recorded:'
+      FAIL AC-4: ## Gate results is byte-for-byte unchanged
+      FAIL AC-4: no line claims to have recorded
+      FAIL AC-4: the run exits 1 although every gate passed
+      FAIL AC-4: the stamp says FULL=no
+      FAIL AC-4 (--story T-1): a passing full run on main prints the branch refusal, naming both branches, once
+      FAIL AC-4 (--story T-1): and it is the only line beginning '(not recorded:'
+      FAIL AC-4 (--story T-1): ## Gate results is byte-for-byte unchanged
+      FAIL AC-4 (--story T-1): no line claims to have recorded
+      FAIL AC-4 (--story T-1): the run exits 1 although every gate passed
+      FAIL AC-4 (--story T-1): the stamp says FULL=no
+      FAIL AC-6: and it is the branch refusal
+      FAIL AC-6: not the untracked-file one
+      FAIL AC-6: a BLOCKED run refused for its branch alone prints the branch refusal
+      FAIL AC-6: a BLOCKED run refused for its branch alone exits 1, not 3
+      FAIL AC-6: and leaves ## Gate results unchanged
+      FAIL AC-6: a failing run refused for its branch prints the branch refusal
+      FAIL AC-6: and records nothing
+      FAIL AC-6: ## Gate results unchanged after a refused failing run
+  gates: 258 passed, 23 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261004T021640Z.1564.bak) ===
+  ```
 - **DV-2: AC-3's escalated half, which RED could not watch fail.** It passed
   on arrival, because today's code counts every gate. Mutate the fixed `:477`
   so the condition reads the manifest's own requirement (`$confreq`) and
@@ -369,7 +406,16 @@ gawk and mawk. Do not add awk-specific constructs to the new tests.
   as required" assertion **must** go red. Added at the end of RED on the
   test-developer's report. **Owner: GATES.**
 
-  RED cannot run this, because neither fix exists yet. **Owner: GATES.**
+  **DV-2 result (GATES, 2026-10-04).** Restored and verified:
+
+  ```
+    477 -       [ "$req" = "required" ] && noevidence=$((noevidence+1)); continue
+    477 +       [ "$confreq" = "required" ] && noevidence=$((noevidence+1)); continue
+  === mutate: running bash .claude/tests/gates.test.sh ===
+      FAIL AC-3: an optional gate the story's required_gates escalates, without evidence, is counted: 1
+  gates: 280 passed, 1 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /c/Users/ryanc/Projects/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261004T021804Z.8445.bak) ===
+  ```
 
 ## Amendments
 
@@ -743,10 +789,21 @@ shipped fix.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-04T02:19:42Z
+    commit: 3ef3c2d (working tree had uncommitted changes)
+    tree:   2ddcdb3d0d5882eafb87b559933751c3f8f2d837
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -782,3 +839,8 @@ matching HARNESS-014. Downstream's exit 0 and `FULL=yes` are rejected, because
 refusal. Four existing record-expecting assertions (`gates.test.sh:197`, `:705`,
 `:721`, `:750`) have their setup moved onto the story branch; the assertions
 themselves are unchanged (C-3). `depends_on` is empty, as instructed.
+- GATES (2026-10-04): full `bash scripts/selftest.sh`: `assertion floors: all
+  22 suite(s) met their declared floor (1984 assertions executed, 1754
+  declared)`, `22 harness suite(s) passed`, 1280 s. DV-1 and DV-2 were run
+  detached. Left out on purpose: the CRLF `\r` in `frontmatter_value` that RED
+  noted, which no criterion covers (this repo pins `*.md eol=lf`).
