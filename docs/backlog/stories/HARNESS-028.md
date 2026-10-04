@@ -4,8 +4,8 @@ title: A floor shortfall the environment caused reports BLOCKED or KNOWN, not FA
 slug: a-floor-shortfall-the-environment-caused
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-028-a-floor-shortfall-the-environment-caused
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/project.conf, .claude/skills/quality-gates/SKILL.md, .claude/skills/quality-gates/reference/configuring.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -341,6 +341,49 @@ cannot run either, because the classification does not exist yet.
   adapted. AC-4's "unchanged FAIL/WARN" **must** go red. This is the bug the
   criterion "never excuses" exists for, and AC-1 and AC-2 are blind to it.
   **Owner: GATES.**
+
+
+**DV-1 result (GATES, 2026-10-04).** Restored and verified:
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 562s/if \[ -n "\$skippat" \] &&/if false \&\&/) ===
+  562 -         if [ -n "$skippat" ] && clean_log "$log" | awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "$skippat"; then
+  562 +         if false && clean_log "$log" | awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "$skippat"; then
+    FAIL AC-1: an optional gate whose shortfall the log says was skipped is one KNOWN line, naming the shortfall and the matched text
+    FAIL AC-1: and it is the only line for itest beginning KNOWN
+    FAIL AC-1: nor as the WARN today's gates.sh prints
+    FAIL AC-7: whose outcome header says environment, not a code failure
+    FAIL AC-1 (C-1): the pattern's second alternation branch classifies too, quoting what matched
+    FAIL C-1: an optional waived gate names the waiver after the skip reason
+    FAIL AC-2 manifest-required: a skipped shortfall is BLOCKED, whole line
+    FAIL AC-2 manifest-required: the run exits 3
+    FAIL AC-2 manifest-required: ## Gate results records result: blocked
+    FAIL AC-2 manifest-required: and the stamp says RESULT=blocked
+    FAIL AC-2 story-escalated: an optional gate the story requires is BLOCKED, naming the story
+    FAIL AC-2 story-escalated: the run exits 3
+    FAIL AC-2 story-escalated: ## Gate results records result: blocked
+gates: 376 passed, 13 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against its .bak) ===
+```
+
+**DV-2 result (GATES, 2026-10-04).** Restored and verified:
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 562s/if \[ -n "\$skippat" \] &&/if true ||/) ===
+  562 -         if [ -n "$skippat" ] && clean_log "$log" | awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "$skippat"; then
+  562 +         if true || clean_log "$log" | awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "$skippat"; then
+    FAIL an optional gate below its floor warns
+    FAIL AC-4 control optional: a shortfall the pattern does not match prints today's WARN line
+    FAIL AC-4 control optional: and is not excused as KNOWN
+    FAIL AC-4 control optional: '0 skipped' does not match [1-9][0-9]*, so it is today's WARN
+    FAIL AC-4 control required: a shortfall the pattern does not match prints today's FAIL line
+    FAIL AC-4 control required: and is not reported BLOCKED
+    FAIL AC-4 control required: exits 1, as today
+gates: 382 passed, 7 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against its .bak) ===
+```
+
+Both run detached (`nohup`) against the committed GREEN line 562.
 
 ## Amendments
 
@@ -689,10 +732,21 @@ nothing to read for shape; the `gates` suite is judged by CI's `selftest.sh`.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-04T20:41:39Z
+    commit: 856ff8a (working tree had uncommitted changes)
+    tree:   e551315c84ddcb452b9e45b25d3f23518f58c4f9
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -782,3 +836,9 @@ nothing to read for shape; the `gates` suite is judged by CI's `selftest.sh`.
   test asserts the exit only for the required row (`scope required: and exits
   1`), so nothing pinned is affected; the table row was imprecise.
 - DV-1 and DV-2 are GATES's, not run here.
+- GATES (2026-10-04): full `bash scripts/selftest.sh`: `assertion floors: all
+  22 suite(s) met their declared floor (2094 assertions executed, 1864
+  declared)`, `22 harness suite(s) passed`, 1811 s. Not ported, as planned:
+  downstream's `REAL_CONF` block (pins manga-translator's own project.conf
+  values), its `assert_not_contains` hunk (already upstream) and its
+  `environment.md` notes.
