@@ -537,6 +537,7 @@ reporting 27
 selftest 100
 settings 20
 sigpipe 82
+spawns 66
 worktree 73
 COUNTS
 assert_eq "and each records the executed count measured on this tree" "" "$wrong"
