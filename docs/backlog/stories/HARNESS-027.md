@@ -4,8 +4,8 @@ title: A failing gate's log survives the passing re-run
 slug: a-failing-gate-s-log-survives-the-passin
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-027-a-failing-gate-s-log-survives-the-passin
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/state/README.md, .claude/tests/gates.test.sh, .claude/tests/settings.test.sh, .claude/tests/fixtures/manifest/project.run.golden, .claude/tests/fixtures/manifest/crlf.run.golden, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -884,3 +884,11 @@ expression. `depends_on` is empty, as instructed.
   left to `/audit-mutations`.
 - GREEN changed `sigpipe.test.sh`'s one pin with `sed -i` on a harness-classified
   file the lock permits, as C-6 assigned; `git diff` showed the one line.
+
+**DONE, 2026-10-04.** Merged in #103 (merge commit 5b627fc), release 70. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: `gates` passed in 1m38s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37227649575),
+`boundaries` in 8s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37227649661).
+No epic. Next in the port audit: MT-037 (`skipped-when`).
