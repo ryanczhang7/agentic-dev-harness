@@ -4,8 +4,8 @@ title: One phase-guard invocation spawns at most 27 processes
 slug: one-phase-guard-invocation-spawns-at-mos
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-025-one-phase-guard-invocation-spawns-at-mos
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/_spawns.sh, .claude/tests/spawns.test.sh, .claude/tests/fixtures/classify/*, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1025,3 +1025,14 @@ region of `lib.sh`.
   process. After the fix: `spawns: 66 passed, 0 failed`, `lib: 217 passed, 0
   failed`.
 - After the fix: full selftest green again - all 22 suites met their floors (1927 assertions), 1185 s.
+
+**DONE, 2026-10-04.** Merged in #101 (merge commit 22ad0bb), release 68. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: the first `gates` run failed on
+json_escape input 5 (Linux-only; see the REVIEW -> GREEN note)
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37163170022);
+after the fix, `gates` passed in 2m12s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37168273103)
+and `boundaries` in 10s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37168273178).
+No epic. Next in the port audit: group 3, gate correctness (MT-043 first).
