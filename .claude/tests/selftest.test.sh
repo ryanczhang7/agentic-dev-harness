@@ -525,7 +525,7 @@ gate-reminder 32
 gates 389
 grep-count 20
 lib 217
-mutate 44
+mutate 93
 new-story 29
 phase 33
 phase-guard 300
@@ -535,7 +535,7 @@ profiles 50
 refresh 122
 reporting 27
 selftest 100
-settings 22
+settings 27
 sigpipe 82
 spawns 66
 worktree 73
