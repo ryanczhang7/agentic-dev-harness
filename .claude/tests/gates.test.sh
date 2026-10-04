@@ -188,6 +188,10 @@ assert_contains "and is named"        "--fast skipped: build" "$out"
 assert_contains "with the caveat"     "This is a subset, not a verdict" "$out"
 
 # A subset is not evidence, for the same reason --gate and --required are not.
+# Run from the story's own branch: HARNESS-026 refuses to record a run made from
+# any other, so a full run that is meant to record has to be made from there.
+# The branch is deleted again below, because the covers block creates it afresh.
+git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
 story "$FIX" T-1 GATES <<'EOF'
 EOF
 set_phase "$FIX" GATES
@@ -197,6 +201,8 @@ out="$(gates)"
 assert_contains "a full run still is"          "recorded in docs/backlog/stories/T-1.md" "$out"
 assert_contains "and points at CI's other script" "check-boundaries.sh" "$out"
 set_phase "$FIX" ""
+git -C "$FIX" checkout -q - 2>/dev/null
+git -C "$FIX" branch -q -D story/T-1-fixture 2>/dev/null
 
 # With nothing marked slow, --fast is a full run in everything but the record,
 # and says so rather than letting anyone believe they bought speed.
@@ -615,6 +621,12 @@ fix_commit() { git -C "$FIX" add -A -- . ':!.claude/state' >/dev/null 2>&1
 
 set_phase "$FIX" ""
 git -C "$FIX" checkout -q -- . 2>/dev/null
+# Everything from here to the end of the HARNESS-015 blocks records into T-1, so
+# it runs on T-1's own branch (HARNESS-026 refuses a record made from another).
+# -B resets the branch the covers block left behind to main's HEAD, so the state
+# is main's, and the commits below land on the story branch. Back to main after
+# the HARNESS-015 blocks.
+git -C "$FIX" checkout -q -B story/T-1-fixture 2>/dev/null
 write_conf "$FIX" <<'EOF'
 gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
 evidence | unit | Tests +[1-9][0-9]* passed
@@ -925,6 +937,7 @@ story "$FIX" T-1 GATES </dev/null
 rm -f "$MARKER"
 git -C "$FIX" checkout -q -- . 2>/dev/null
 set_phase "$FIX" ""
+git -C "$FIX" checkout -q main 2>/dev/null   # off T-1's branch again (see HARNESS-014 above)
 
 # ============================================================================
 # HARNESS-024: parsing project.conf spawns no process per field
@@ -1184,5 +1197,221 @@ for _f in trim from_field field rest; do
   assert_eq "AC-6: $_f() is defined in gates.sh, and doctor.sh and task.sh define it byte-identically" \
     "defined same same" "$_verdict"
 done
+
+
+# ============================================================================
+# HARNESS-026: the audit counts only required gates, and a run from another
+# branch is not recorded (ports MT-043 and MT-032 F-2)
+# ============================================================================
+#
+# FIX is on `main` here: the HARNESS-014/015 blocks above returned it there.
+# Every needle is a whole line, or a prefix anchored at ^, through count_re /
+# count_line; nothing here is awk-dialect-specific (HARNESS-025's lesson).
+
+describe "HARNESS-026 AC-1..AC-3  --audit counts only required gates without evidence"
+
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+NOEV_UNIT="$(printf 'WARN %-12s no evidence line; a vacuous pass would go unnoticed' unit)"
+NOEV_MUT="$(printf 'WARN %-12s no evidence line; a vacuous pass would go unnoticed' mutation)"
+NOEV_ONE='^1 required gate\(s\) have no evidence line\. Add one per gate:$'
+NOEV_ANY='required gate\(s\) have no evidence line'
+
+# AC-1: the audit's own reproduction. Required `unit` has evidence, optional
+# `mutation` has none. Upstream printed `1 required gate(s) ...` for it.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-1: an optional gate without evidence produces no 'required gate(s) have no evidence line' summary" \
+  0 "$(count_re "$NOEV_ANY" "$out")"
+assert_eq "AC-1: the optional gate's own no-evidence WARN line is still printed, whole" \
+  1 "$(count_line "$NOEV_MUT" "$out")"
+assert_eq "AC-1: and the audit exits 0" 0 "$rc"
+
+# AC-2: both gates lack evidence. Exactly one summary line, and it says 1.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
+EOF
+out="$(gates --audit)"
+assert_eq "AC-2: one required and one optional gate without evidence: the summary says 1, not 2" \
+  1 "$(count_re "$NOEV_ONE" "$out")"
+assert_eq "AC-2: and there is exactly one summary line" 1 "$(count_re "^[0-9]+ $NOEV_ANY" "$out")"
+assert_eq "AC-2: the required gate's WARN line is printed" 1 "$(count_line "$NOEV_UNIT" "$out")"
+assert_eq "AC-2: and so is the optional gate's" 1 "$(count_line "$NOEV_MUT" "$out")"
+
+# AC-2 control: the required gate is the ONLY one without evidence. The count is
+# 1, not 0 - this is what stops "count nothing" from satisfying AC-1.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
+evidence | mutation | Killed [0-9]+ of
+EOF
+out="$(gates --audit)"
+assert_eq "AC-2 control: a required gate alone without evidence is still counted: 1, not 0" \
+  1 "$(count_re "$NOEV_ONE" "$out")"
+assert_eq "AC-2 control: with its WARN line" 1 "$(count_line "$NOEV_UNIT" "$out")"
+# ... and with BOOTSTRAPPED=no, which the run path's counter conditions on and
+# the audit's must not.
+printf '%s\n' 'BOOTSTRAPPED=no' \
+  "gate     | unit     | required | . | printf 'Tests  47 passed (47)\\n'" \
+  "gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\\n'" \
+  'evidence | mutation | Killed [0-9]+ of' > "$FIX/.claude/harness/project.conf"
+out="$(gates --audit)"
+assert_eq "AC-2 control: with BOOTSTRAPPED=no the required gate without evidence is still counted: 1" \
+  1 "$(count_re "$NOEV_ONE" "$out")"
+
+# AC-3: the count follows the gate's requirement AFTER story escalation. The
+# pair is the discriminator: the same manifest counts 0 while the story leaves
+# `mutation` optional, and 1 once the story's required_gates names it.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+EOF
+story "$FIX" T-1 GATES </dev/null
+set_phase "$FIX" GATES
+out="$(gates --audit)"
+assert_eq "AC-3: an active story that does not escalate the optional gate: no summary" \
+  0 "$(count_re "$NOEV_ANY" "$out")"
+story "$FIX" T-1 GATES <<'EOF'
+required_gates: [mutation]
+EOF
+out="$(gates --audit)"
+assert_eq "AC-3: an optional gate the story's required_gates escalates, without evidence, is counted: 1" \
+  1 "$(count_re "$NOEV_ONE" "$out")"
+assert_eq "AC-3: and its WARN line is printed" 1 "$(count_line "$NOEV_MUT" "$out")"
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+
+describe "HARNESS-026 AC-4..AC-6  a run from another branch is not recorded"
+
+# The audit's reproduction: an active story whose frontmatter says
+# `branch: story/T-1-fixture`, a passing full run, the checkout on `main`.
+# Upstream recorded and exited 0.
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+story "$FIX" T-1 GATES </dev/null
+fix_commit "HARNESS-026 fixture: T-1 committed on main"
+set_phase "$FIX" GATES
+T1="$FIX/docs/backlog/stories/T-1.md"
+BRANCH_REFUSAL="^\\(not recorded: the checkout is on 'main' but story T-1 belongs on 'story/T-1-fixture'"
+stamp_val()   { sed -n "s/^$1=//p" "$FIX/.claude/state/last-gate-run" | tr -d '\r'; }
+same_record() { cmp -s "$FIX/.claude/state/T-1.before" "$T1" && printf yes || printf no; }
+
+assert_eq "fixture precondition: the checkout is on main" main "$(git -C "$FIX" branch --show-current)"
+assert_eq "fixture precondition: the story belongs on story/T-1-fixture" 1 \
+  "$(count_line 'branch: story/T-1-fixture' "$(tr -d '\r' < "$T1")")"
+
+# AC-4, twice: with T-1 the active story, and with no active story and
+# `--story T-1` naming it explicitly.
+for _mode in active explicit; do
+  if [ "$_mode" = active ]; then
+    set_phase "$FIX" GATES; _label="AC-4"
+    cp "$T1" "$FIX/.claude/state/T-1.before"
+    out="$(gates)"; rc=$?
+  else
+    set_phase "$FIX" ""; _label="AC-4 (--story T-1)"
+    cp "$T1" "$FIX/.claude/state/T-1.before"
+    out="$(gates --story T-1)"; rc=$?
+  fi
+  assert_eq "$_label: a passing full run on main prints the branch refusal, naming both branches, once" \
+    1 "$(count_re "$BRANCH_REFUSAL" "$out")"
+  assert_eq "$_label: and it is the only line beginning '(not recorded:'" 1 "$(count_re '^\(not recorded:' "$out")"
+  assert_eq "$_label: ## Gate results is byte-for-byte unchanged" yes "$(same_record)"
+  assert_eq "$_label: no line claims to have recorded" 0 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+  assert_eq "$_label: the run exits 1 although every gate passed" 1 "$rc"
+  assert_eq "$_label: the stamp says FULL=no" no "$(stamp_val FULL)"
+  assert_eq "$_label: while RESULT= is still the verdict on the code" pass "$(stamp_val RESULT)"
+  git -C "$FIX" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null
+done
+set_phase "$FIX" GATES
+
+# AC-5: the controls. The refusal fires only where it can tell; these keep it
+# from being satisfied by "never record".
+git -C "$FIX" checkout -q -B story/T-1-fixture 2>/dev/null
+out="$(gates)"; rc=$?
+assert_eq "AC-5 control: on story/T-1-fixture the run records" 1 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-5 control: on story/T-1-fixture it is not refused" 0 "$(count_re '^\(not recorded:' "$out")"
+assert_eq "AC-5 control: on story/T-1-fixture it exits 0" 0 "$rc"
+assert_eq "AC-5 control: on story/T-1-fixture the stamp says FULL=yes" yes "$(stamp_val FULL)"
+git -C "$FIX" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null
+git -C "$FIX" checkout -q main 2>/dev/null
+
+git -C "$FIX" checkout -q --detach 2>/dev/null
+assert_eq "fixture precondition: HEAD is detached" "" "$(git -C "$FIX" branch --show-current)"
+out="$(gates)"; rc=$?
+assert_eq "AC-5 control: with HEAD detached the run records" 1 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-5 control: with HEAD detached it is not refused" 0 "$(count_re '^\(not recorded:' "$out")"
+assert_eq "AC-5 control: with HEAD detached it exits 0" 0 "$rc"
+git -C "$FIX" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null
+git -C "$FIX" checkout -q main 2>/dev/null
+
+# A story with no `branch:` line, written directly (story() always writes one).
+printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: GATES\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Gate results\n\n## Notes\n' > "$T1"
+out="$(gates)"; rc=$?
+assert_eq "AC-5 control: a story with no branch: line records from main" 1 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-5 control: a story with no branch: line is not refused" 0 "$(count_re '^\(not recorded:' "$out")"
+assert_eq "AC-5 control: a story with no branch: line exits 0" 0 "$rc"
+git -C "$FIX" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null
+
+set_phase "$FIX" ""
+out="$(gates)"; rc=$?
+assert_eq "AC-5 control: no active story prints the no-story line, as before" 1 \
+  "$(count_re '^\(not recorded: no active story' "$out")"
+assert_eq "AC-5 control: no active story: no branch refusal" 0 "$(count_re '^\(not recorded: the checkout is on ' "$out")"
+assert_eq "AC-5 control: no active story: exit is the gates' own, 0" 0 "$rc"
+set_phase "$FIX" GATES
+
+# AC-6: the branch refusal and HARNESS-014's untracked refusal both apply. One
+# '(not recorded:' line, and it is the branch one (PO decision 2).
+mkdir -p "$FIX/handoff"
+printf 'diff --git a/x b/x\n' > "$FIX/handoff/x.patch"          # an untracked gated file
+cp "$T1" "$FIX/.claude/state/T-1.before"
+out="$(gates)"; rc=$?
+assert_eq "AC-6: both refusals apply: exactly one line begins '(not recorded:'" 1 "$(count_re '^\(not recorded:' "$out")"
+assert_eq "AC-6: and it is the branch refusal" 1 "$(count_re "$BRANCH_REFUSAL" "$out")"
+assert_eq "AC-6: not the untracked-file one" 0 "$(count_re '^\(not recorded: .*untracked gated file' "$out")"
+assert_eq "AC-6: both refusals: exit 1" 1 "$rc"
+assert_eq "AC-6: both refusals: ## Gate results unchanged" yes "$(same_record)"
+
+# A BLOCKED run refused by both exits 1, not 3.
+write_conf "$FIX" <<'EOF'
+gate     | unit  | required | . | printf 'Tests  47 passed (47)\n'
+gate     | types | required | . | printf 'error: could not execute process (never executed)\n'; exit 101
+evidence | unit  | Tests +[1-9][0-9]* passed
+evidence | types | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates)"; rc=$?
+assert_eq "AC-6: a BLOCKED run under both refusals is still reported BLOCKED" 1 "$(count_re '^BLOCKED +types' "$out")"
+assert_eq "AC-6: a BLOCKED run under both refusals exits 1, not 3" 1 "$rc"
+rm -rf "$FIX/handoff"
+
+# The branch refusal alone, on a BLOCKED run: exits 1, not 3, and records nothing.
+out="$(gates)"; rc=$?
+assert_eq "AC-6: a BLOCKED run refused for its branch alone prints the branch refusal" 1 "$(count_re "$BRANCH_REFUSAL" "$out")"
+assert_eq "AC-6: a BLOCKED run refused for its branch alone exits 1, not 3" 1 "$rc"
+assert_eq "AC-6: and leaves ## Gate results unchanged" yes "$(same_record)"
+git -C "$FIX" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null   # so the next comparison is its own
+
+# The branch refusal alone, on a FAILING run: still exits 1, and records nothing.
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'boom\n'; exit 1
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates)"; rc=$?
+assert_eq "AC-6: a failing run refused for its branch prints the branch refusal" 1 "$(count_re "$BRANCH_REFUSAL" "$out")"
+assert_eq "AC-6: a failing run refused for its branch exits 1" 1 "$rc"
+assert_eq "AC-6: and records nothing" 0 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-6: ## Gate results unchanged after a refused failing run" yes "$(same_record)"
+
+rm -f "$FIX/.claude/state/T-1.before"
+git -C "$FIX" checkout -q -- . 2>/dev/null
+set_phase "$FIX" ""
 
 summary "gates"
