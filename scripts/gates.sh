@@ -474,7 +474,7 @@ while IFS= read -r line; do
     fi
     if [ "$exp" = "<none>" ]; then
       printf 'WARN %-12s no evidence line; a vacuous pass would go unnoticed\n' "$id"
-      noevidence=$((noevidence+1)); continue
+      [ "$req" = "required" ] && noevidence=$((noevidence+1)); continue
     fi
     if [ "$exp" = "-" ]; then
       printf 'ok   %-12s (liveness declared unassertable)\n' "$id"
@@ -794,10 +794,27 @@ FULLRUN=yes
 # committed. With no active story (CI, ci-local.sh) there is nothing to refuse,
 # and the exit status stays the gates' own. A refused run did not discharge the
 # full run, so its stamp says FULL=no.
-REFUSED=0
+REFUSED=0; REFUSED_WHY=""
+# Refuse to record into a story from a checkout on another branch: the record
+# would stamp another branch's tree into this story, which gate-reminder.sh
+# tells the agent cannot happen. The branch is the story file's own `branch:`,
+# not current-story.env's, because the story file is what is written to. A
+# story with no `branch:`, or a detached HEAD, cannot be judged, so it fails
+# open, as gate-reminder.sh does. Checked first: an untracked-file count means
+# nothing for a tree that belongs to another story.
+if [ "$FULLRUN" = yes ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
+  checkout_branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || printf '')"
+  story_branch="$(frontmatter_value "$STORY_FILE" branch)"
+  if [ -n "$checkout_branch" ] && [ -n "$story_branch" ] && [ "$checkout_branch" != "$story_branch" ]; then
+    REFUSED=1
+    FULLRUN=no
+    REFUSED_WHY="the checkout is on '$checkout_branch' but story $STORY belongs on '$story_branch'; check out '$story_branch' and run again"
+  fi
+fi
 if [ "$FULLRUN" = yes ] && [ "$untracked_n" -gt 0 ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
   REFUSED=1
   FULLRUN=no
+  REFUSED_WHY="$untracked_n untracked gated file(s) are not in the tree this run would stamp; stage them (git add) or exclude them (.git/info/exclude) or move them, then run again"
 fi
 
 if [ "$fails" -gt 0 ]; then
@@ -837,7 +854,7 @@ else
   elif [ ! -f "$STORY_FILE" ]; then
     printf '\n(not recorded: no story file at docs/backlog/stories/%s.md)\n' "$STORY"
   elif [ "$REFUSED" = 1 ]; then
-    printf '\n(not recorded: %d untracked gated file(s) are not in the tree this run would stamp; stage them (git add) or exclude them (.git/info/exclude) or move them, then run again)\n' "$untracked_n"
+    printf '\n(not recorded: %s)\n' "$REFUSED_WHY"
   else
     record_in_story "$STORY_FILE" "$result" "$(printf '%b' "$results")"
     printf '\nrecorded in docs/backlog/stories/%s.md (## Gate results)\n' "$STORY"
