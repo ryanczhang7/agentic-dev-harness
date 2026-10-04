@@ -4,8 +4,8 @@ title: A failing gate's log survives the passing re-run
 slug: a-failing-gate-s-log-survives-the-passin
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-027-a-failing-gate-s-log-survives-the-passin
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/state/README.md, .claude/tests/gates.test.sh, .claude/tests/settings.test.sh, .claude/tests/fixtures/manifest/project.run.golden, .claude/tests/fixtures/manifest/crlf.run.golden, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -305,6 +305,97 @@ three.
   leaves `flaky.failed.log` byte-identical" **must** go red. The scenario is a
   kept `flaky.failed.log` followed by `--gate broke`, where the other
   gate fails.
+
+
+**DV-1 result (GATES, 2026-10-04).** Restored and verified:
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 602s/if \[ "\$outcome" != pass \]; then/if false; then/) ===
+  602 -   if [ "$outcome" != pass ]; then
+  602 +   if false; then
+    FAIL AC-3: gates.sh full run over project.conf is byte-identical to the pre-rewrite golden
+    FAIL AC-3: gates.sh full run over crlf.conf is byte-identical to the pre-rewrite golden
+    FAIL AC-1: an optional gate printed WARN still did not pass, and keeps broke.failed.log
+    FAIL AC-6: and the kept line is printed for it, once
+    FAIL AC-1: a failing gate leaves flaky.failed.log
+    FAIL AC-1 header 1 names the gate
+    FAIL AC-1 header 2 is the outcome
+    FAIL AC-1 header 3 is a UTC time, YYYY-MM-DDTHH:MM:SSZ
+    FAIL AC-1 header 3 is no earlier than the run was started
+    FAIL AC-1 header 4 is the commit line the same run recorded in ## Gate results
+    FAIL AC-1 header 4 is the short HEAD with the uncommitted-changes note
+    FAIL AC-1 header 5 is gate_tree_hash, computed independently
+    FAIL AC-1 header 5 is the tree the same run recorded
+    FAIL AC-1 header 6 closes the header
+    FAIL AC-1: after six header lines, the run's log byte for byte
+    FAIL AC-1: and it is this run's log
+    FAIL AC-6: the kept line is printed once
+    FAIL AC-6: the kept line comes right after flaky's output
+    FAIL AC-6: and before the next gate's header
+    FAIL AC-2: after the pass, flaky.failed.log is byte-identical
+    FAIL AC-3: the newer failure is kept
+    FAIL AC-3: none of the older output remains
+    FAIL AC-3: one header, replaced rather than appended
+    FAIL AC-3: header then the newer log, byte for byte
+    FAIL AC-3: gate-logs/ holds flaky.failed.log and flaky.log, nothing else for flaky
+    FAIL AC-5 --fast: a failing gate leaves flaky.failed.log
+    FAIL AC-5 --fast: header 1
+    FAIL AC-5 --fast: header 2
+    FAIL AC-5 --fast: header 4
+    FAIL AC-5 --fast: log byte for byte
+    FAIL AC-5 --fast: kept line, once
+    FAIL AC-5 --gate flaky: a failing gate leaves flaky.failed.log
+    FAIL AC-5 --gate flaky: header 2
+    FAIL AC-5 --gate flaky: this run's log, byte for byte
+    FAIL AC-5 --gate flaky: and it is this run's
+    FAIL AC-5 --gate flaky: kept line, once
+    FAIL AC-5: --gate broke leaves flaky.failed.log byte-identical
+gates: 297 passed, 37 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against its .bak) ===
+```
+
+**DV-2 result (GATES, 2026-10-04).** Restored and verified:
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 602s/if \[ "\$outcome" != pass \]; then/if true; then/) ===
+  602 -   if [ "$outcome" != pass ]; then
+  602 +   if true; then
+    FAIL AC-3: gates.sh full run over project.conf is byte-identical to the pre-rewrite golden
+    FAIL AC-3: gates.sh full run over broken.conf is byte-identical to the pre-rewrite golden
+    FAIL AC-3: gates.sh full run over crlf.conf is byte-identical to the pre-rewrite golden
+    FAIL AC-4: a plain pass leaves no flaky.failed.log
+    FAIL AC-4: a pass annotated for no evidence line leaves no steady.failed.log
+    FAIL AC-6: no kept line for the gate that passed plainly
+    FAIL AC-6: no kept line for the annotated pass
+    FAIL AC-2: after the pass, flaky.failed.log is byte-identical
+    FAIL AC-6: the pass printed no kept line for flaky
+gates: 325 passed, 9 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against its .bak) ===
+```
+
+**DV-3 result (GATES, 2026-10-04).** Restored and verified:
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 611s|> "\$LOGDIR/\$id.failed.log"|> "$LOGDIR/flaky.failed.log"|) ===
+  611 -     } > "$LOGDIR/$id.failed.log"
+  611 +     } > "$LOGDIR/flaky.failed.log"
+    FAIL AC-4: a plain pass leaves no flaky.failed.log
+    FAIL AC-1: an optional gate printed WARN still did not pass, and keeps broke.failed.log
+    FAIL AC-1 header 1 names the gate
+    FAIL AC-1: after six header lines, the run's log byte for byte
+    FAIL AC-1: and it is this run's log
+    FAIL AC-2: after the pass, flaky.failed.log is byte-identical
+    FAIL AC-3: the newer failure is kept
+    FAIL AC-3: one header, replaced rather than appended
+    FAIL AC-3: header then the newer log, byte for byte
+    FAIL AC-5 --fast: header 1
+    FAIL AC-5 --fast: log byte for byte
+    FAIL AC-5: --gate broke leaves flaky.failed.log byte-identical
+gates: 322 passed, 12 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against its .bak) ===
+```
+
+DV-1 reproduces RED's 37 failures exactly; DV-2 earns AC-4 and AC-6's "nothing for a pass"; DV-3 earns AC-5's "`--gate broke` leaves `flaky.failed.log` byte-identical". All three were run detached (`nohup`).
 
 ## Amendments
 
@@ -736,10 +827,21 @@ against a keep implementation; these are claims until GREEN confirms them.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-04T18:54:55Z
+    commit: 03280f4 (working tree had uncommitted changes)
+    tree:   543faf9df0576a801bb1750788eeb38fceab1f42
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -774,3 +876,11 @@ normalisation is not widened (C-2). Downstream's tests are trimmed to about 25
 assertions in `gates.test.sh` and 2 in `settings.test.sh` (C-3). `:526`'s pin
 moves, and GREEN updates that one number (C-5). Every DV is a single `mutate.sh`
 expression. `depends_on` is empty, as instructed.
+- GATES (2026-10-04): full `bash scripts/selftest.sh`: `assertion floors: all
+  22 suite(s) met their declared floor (2039 assertions executed, 1809
+  declared)`, `22 harness suite(s) passed`, 1255 s. Not added: RED's two
+  optional GATES probes (the kept line never reaching `## Gate results`, and no
+  kept line for `flaky` under `--gate broke`) - beyond the mutation budget, and
+  left to `/audit-mutations`.
+- GREEN changed `sigpipe.test.sh`'s one pin with `sed -i` on a harness-classified
+  file the lock permits, as C-6 assigned; `git diff` showed the one line.
