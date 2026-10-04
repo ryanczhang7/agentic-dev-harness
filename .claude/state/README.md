@@ -10,6 +10,7 @@ in here is ever committed; only this file and `.gitkeep` are tracked.
 | `gate-logs/*.log` | `scripts/gates.sh` | you, when a gate fails | yes |
 | `gate-logs/*.failed.log` | `scripts/gates.sh` | you, when a failure did not reproduce | yes |
 | `mutations/*.bak` | `scripts/mutate.sh` | `scripts/mutate.sh`, to restore the file | yes |
+| `mutations/*.new` | `scripts/mutate.sh` | nothing; scratch for the mutated text | yes |
 | `mutations/log` | `scripts/mutate.sh` | you, and the story that quotes it | yes |
 | `phase-guard-declined.log` | `.claude/hooks/phase-guard.sh` | you, when the guard looks noisy | yes |
 | `refresh-self.<pid>.sh` | `scripts/refresh-harness.sh` | `bash`, as the script it is running | yes |
@@ -71,7 +72,13 @@ restore depending on the `sed` expression happening to be an exact inverse of a
 single-occurrence match. **A `.bak` left behind means a restore failed.**
 `mutate.sh` exits 90 and says so when that happens; on every other path it cleans
 up after itself. Put the file back from the backup, check it with `cmp`, then
-delete the backup.
+delete the backup. The mutated text is built in a `.new` beside the backup (sed
+cannot read and write one path) and an `EXIT` trap removes it, with the `.diff`
+the count is read from, on every path the script can still run code on. **A
+`.new` left behind means the run was killed outright** - `SIGKILL`, or the machine
+going away - which no trap can catch. It arrives with its `.bak`, and there is no
+log line for that run: the source file may still be mutated, so check it against
+the `.bak` with `cmp` before deleting either.
 
 `plan-write.<pid>.md` holds the rendered `## Model guidance` block for the moment
 it takes `awk` to splice it into the story, and is removed straight after. Same

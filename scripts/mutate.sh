@@ -25,13 +25,20 @@
 # the shell had no $TMPDIR, and the restore came down to the substitution
 # happening to be an exact inverse of a single-occurrence match.
 #
-# Hence the two properties that matter more than convenience:
+# Hence the three properties that matter more than convenience:
 #
 #   * The backup is at an explicit path under .claude/state/mutations/, never
 #     $TMPDIR, which is not set in every shell this harness runs in.
 #   * The restore is CHECKED with cmp and said out loud. A restore that cannot
 #     be verified exits 90 and shouts, because the alternative is a mutation
 #     left in the tree with a green suite ahead of it.
+#   * The directory it works in holds exactly one signal, so a `.bak` left
+#     behind means a restore failed and nothing else does. The mutated text
+#     is built in a `.new` beside the backup - sed cannot read and write one
+#     path - and that file is scratch: its content is the backup put through
+#     the expression, and the log records both. A single trap removes it on
+#     every path this script can still run code on, so a `.new` that survives
+#     means the run was killed outright, and it arrives with its `.bak`.
 #
 # A mutation that changes nothing is refused before the command runs (exit 3):
 # an expression that matches nothing leaves the command green and hands the
@@ -40,7 +47,9 @@
 # Exit status is the COMMAND's, because a non-zero exit is usually the point —
 # the red is the evidence. The exceptions all come with a message: 2 for usage,
 # 3 for a mutation that changed nothing (neither reaches the command), and 90
-# for a restore that could not be verified, which overrides everything.
+# for a file that is not the original afterwards - a restore that could not be
+# verified, or a mutation that could not be written AND could not be undone -
+# which overrides everything.
 #
 # What runs is executed directly, not through a shell, so a redirect or a pipe
 # in the payload needs its own `sh -c`. The command runs from the repository
@@ -100,8 +109,105 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 SAFE="$(printf '%s' "$REL" | tr '/\\ ' '___')"
 BAK="$MUTDIR/$SAFE.$STAMP.$$.bak"
 NEW="$MUTDIR/$SAFE.$STAMP.$$.new"
+DIFF="$MUTDIR/$SAFE.$STAMP.$$.diff"
+
+# $NEW is scratch and nothing else. sed cannot read and write one path, so the
+# mutated text is built here and copied over the original. It is not evidence:
+# its content is $BAK put through $EXPR, and the log records both. $DIFF is
+# scratch too: the diff of the two, read once to count, preview and list. $BAK is
+# the only copy of the original, which is why the directory has exactly one
+# signal in it and rules.md states it - a `.bak` left behind means a restore
+# failed.
+#
+# That sentence ends "everything else it cleans up", and it was not true. Each
+# exit path removed the scratch file separately, so the paths that write no log
+# line - `cannot write` below, and being killed outright - removed nothing. Two
+# `.new` files from different weeks sat in a consuming project's
+# .claude/state/mutations/ with no log entry to explain either. One trap,
+# installed before the file exists, is what makes the sentence true: the scratch
+# files go on every path this script can still run code on, and the backup
+# survives exactly when the restore could not be verified. A `.new` that
+# outlives a run now means the run was killed outright, which is the one case
+# nothing here can catch - and it arrives with its `.bak`, so the source file is
+# still checkable against the original.
+MUTATED=0
+RESTORED=0
+
+# Putting the file back is its own function because two traps want it and the
+# ordinary path wants it a third time; every call is idempotent, and every call
+# decides by CONTENT rather than by $MUTATED. A signal can land between the `cp`
+# that mutates the file and the assignment that records it, and a handler that
+# trusts the flag in that window deletes the only copy of the original while the
+# mutation is still in the tree. Asking `cmp` costs one process and cannot lag.
+put_back() {
+  [ "$RESTORED" = 1 ] && return 0
+  [ -f "$BAK" ] || return 0
+  cmp -s "$BAK" "$FILE" 2>/dev/null && return 0
+  cp "$BAK" "$FILE" 2>/dev/null
+  return 0
+}
+on_exit() { put_back; rm -f "$NEW" "$NEW.err" "$DIFF" 2>/dev/null; return 0; }
+
+# A signal that arrives once the file is mutated is handled the way it always
+# was: put the file back, then RETURN, so that the restore-and-verify block
+# below still runs and still writes its log line. A signal that arrives before
+# the mutation is a different thing - returning would resume a script whose
+# scratch file the EXIT trap had just deleted - so that one cleans up and goes.
+# $MUTATED decides only WHICH of those two it is, and getting that wrong is
+# survivable: put_back has already run either way. The backup goes only when the
+# file is verifiably the original, because left behind it would read, under the
+# only rule this directory has, as a restore that failed.
+on_signal() {
+  put_back
+  [ "$MUTATED" = 1 ] && return 0
+  [ -f "$BAK" ] && cmp -s "$BAK" "$FILE" 2>/dev/null && rm -f "$BAK" 2>/dev/null
+  rm -f "$NEW" "$NEW.err" "$DIFF" 2>/dev/null
+  exit 130
+}
 
 cp "$FILE" "$BAK" || die "cannot back up $REL to $BAK"
+
+# Armed only once the backup is a complete copy. Earlier than this, a `cp` that
+# failed halfway would leave put_back holding a truncated original and willing
+# to write it over the real one; and there is no scratch file to clean up yet.
+# PIPE is armed here too, before the first printf to stdout, not after the
+# mutation: every one of them can meet a reader that has already gone.
+trap on_exit EXIT
+trap on_signal INT TERM
+
+# PIPE IS TRAPPED, AND ITS HANDLER DOES NOTHING. Both halves matter.
+#
+# Why trapped (b38f5b3). This script prints a header, a preview, a restore
+# confirmation and a listing, then appends to the log - and it is routinely read
+# through `| head`, because the command under it is chatty. `head` leaves after
+# its count, the next printf takes SIGPIPE, and with PIPE untrapped bash kills
+# the script THERE: after the restore, before the backup is removed, before the
+# log append. What that left was the worst possible artefact: the file fine, but
+# a `.bak` with no log line beside it - and rules.md tells the reader that a
+# `.bak` under `mutations/` means a restore FAILED. Three of them sat in this
+# repository when it was found, all benign, all from `| head`. A trapped signal
+# makes bash resume after the failed write instead, and the trap is reset to the
+# default in children at exec, so the command under test still sees an ordinary
+# SIGPIPE.
+#
+# Why it restores nothing (HARNESS-029). b38f5b3 put PIPE in the same list as
+# EXIT, INT and TERM, so its handler RESTORED THE FILE, and the comment here said
+# nothing else was needed. Something else was. A reader that left before the
+# command started made the first printf after the mutation take SIGPIPE; the
+# handler put the original back, execution resumed, and the command then ran
+# against the ORIGINAL - while the log recorded `exited 0  restored (verified)`.
+# The probe was void and said it ran (reproduced 3 of 3 on Git Bash). Restoring
+# is the EXIT trap's job. Folding PIPE into on_signal instead would turn an early
+# reader into `exit 130` before the command runs, so a piped probe would never
+# run at all.
+#
+# One more rule rides on this, and it is containment, not a diagnosis: NOTHING
+# BELOW WRITES TO THIS SCRIPT'S OWN STDOUT THROUGH A PIPELINE. Every pipeline's
+# output is captured first and printed with one printf. With `| head -1` as the
+# reader the run hung every time on Git Bash, and both places it was seen to
+# hang were such pipelines (the preview's `awk | head -20`, the listing's
+# `printf | while read`). Why they hung is not known.
+trap ':' PIPE
 
 # Read from the backup rather than the live file: a `sed` that reads and writes
 # the same path truncates it, and this script's whole claim is that it does not
@@ -109,7 +215,7 @@ cp "$FILE" "$BAK" || die "cannot back up $REL to $BAK"
 if ! sed -e "$EXPR" "$BAK" > "$NEW" 2>"$NEW.err"; then
   printf 'mutate: sed rejected the expression:\n' >&2
   sed -e 's/^/  /' "$NEW.err" >&2
-  rm -f "$NEW" "$NEW.err" "$BAK"
+  rm -f "$BAK"
   exit 2
 fi
 rm -f "$NEW.err"
@@ -122,52 +228,99 @@ if cmp -s "$BAK" "$NEW"; then
   printf '  the command would have passed for the same reason it passes now. Check the\n' >&2
   printf '  expression against the file and try again.\n' >&2
   printf '%s\t%s\t%s\tCHANGED NOTHING - command not run\n' "$STAMP" "$REL" "$EXPR" >> "$LOG" 2>/dev/null || true
-  rm -f "$NEW" "$BAK"
+  rm -f "$BAK"
   exit 3
 fi
 
-# Which lines moved, and how many. One line is the useful case - a probe aimed
+# Which lines changed, and how many. One line is the useful case - a probe aimed
 # at a single behaviour, whose predicted catch is a single assertion - so the
 # count is printed rather than left to be counted by eye.
-CHANGED="$(awk 'NR == FNR { a[FNR] = $0; next } { if ($0 != a[FNR]) c++ } END { print c + 0 }' "$BAK" "$NEW")"
-LINES="$(awk 'NR == FNR { a[FNR] = $0; next } $0 != a[FNR] { print FNR }' "$BAK" "$NEW")"
-
-printf '=== mutate: %s (%s line(s) changed by %s) ===\n' "$REL" "$CHANGED" "$EXPR"
-awk 'NR == FNR { a[FNR] = $0; next }
-     $0 != a[FNR] { printf "  %d - %s\n  %d + %s\n", FNR, a[FNR], FNR, $0 }' "$BAK" "$NEW" | head -20
-
-cp "$NEW" "$FILE" || { cp "$BAK" "$FILE"; die "cannot write $REL"; }
-
-# From here on the file is mutated, so every exit path restores. The trap covers
-# the abnormal ones - an interrupt, a signal - where nothing below runs.
-RESTORED=0
-# on_exit   Put the file back if the normal path has not already.
 #
-# PIPE IS IN THE TRAP LIST, and that one word is the whole fix. This script
-# prints a restore confirmation, then a line per changed line, then appends to
-# the log - and it is routinely read through `| head`, because the command
-# under it is chatty. `head` leaves after its count, the next printf takes
-# SIGPIPE, and with PIPE untrapped bash kills the script THERE: after the
-# restore, before `rm -f $NEW $BAK`, before the log append.
-#
-# What that leaves is the worst possible artefact. The file is fine, but a
-# `.bak` survives with no log line beside it - and `rules.md` tells the reader,
-# in as many words, that a `.bak` under `mutations/` means a restore FAILED and
-# this script exited 90 saying so. The signal reserved for "something went
-# wrong" was being produced routinely by something that went right, with the
-# log that would have contradicted it missing for the same reason. Three of
-# them sat in this repository when it was found, all benign, all from `| head`.
-#
-# NOTHING ELSE WAS NEEDED, and that was established by probe rather than
-# assumed. A first attempt also cleaned up inside this function, for the INT
-# and TERM paths. Removing that line again leaves the suite green: once the
-# signal is trapped instead of fatal, execution RESUMES and the script reaches
-# its own `rm -f $NEW $BAK` on the normal path. The extra line was dead code
-# that looked prudent.
-on_exit() { [ "$RESTORED" = 1 ] && return 0; cp "$BAK" "$FILE" 2>/dev/null || true; }
-trap on_exit EXIT INT TERM PIPE
+# Counted from a real diff, not by line number. Comparing line N with line N
+# made one insertion "change" every line after it: 661d once reported 613 lines,
+# and the listing then started one awk for each. `git diff --no-index` rather
+# than `diff`, because git is already a hard dependency and diffutils is not;
+# every config that could change its output is pinned off - core.autocrlf in
+# particular, which otherwise prints CRLF warnings on Windows. It exits 1 when
+# the files differ, which is the expected case, so its status is not used.
+git -c core.autocrlf=false -c core.quotepath=off -c diff.noprefix=false \
+  diff --no-index --no-color --no-ext-diff --no-textconv -U0 -- "$BAK" "$NEW" > "$DIFF" 2>/dev/null
 
-printf '\n=== mutate: running %s ===\n' "${CMD[*]}"
+# One pass over the diff. The count is, per hunk `@@ -a[,b] +c[,d] @@`, the
+# larger of b and d (a missing count is 1), summed over hunks: every line
+# removed, added or replaced counts once, and nothing between hunks counts.
+# Printed: line 1 the count, line 2 `binary` or `text`, line 3 the old-side
+# numbers of the removed lines (for the restore listing), then the preview -
+# removed lines numbered from a, added lines from c, at most 20. mawk-safe:
+# match/substr/split and plain comparisons only (CI's awk is mawk).
+SUMMARY="$(awk '
+  function count(s,   p, f) { p = split(s, f, ","); return (p > 1) ? f[2] + 0 : 1 }
+  function first(s,   f) { split(s, f, ","); return f[1] + 0 }
+  /^Binary files / && !hunk { binary = 1; next }
+  /^@@ / {
+    hunk = 1
+    split($0, h, " ")
+    o = substr(h[2], 2); n = substr(h[3], 2)
+    b = count(o); d = count(n)
+    old = first(o); new = first(n)
+    total += (b > d) ? b : d
+    next
+  }
+  !hunk { next }
+  /^\\/ { next }
+  /^-/ {
+    lines = lines (lines == "" ? "" : " ") old
+    if (shown < 20) preview[++shown] = "  " old " - " substr($0, 2)
+    old++; next
+  }
+  /^\+/ {
+    if (shown < 20) preview[++shown] = "  " new " + " substr($0, 2)
+    new++; next
+  }
+  END {
+    print total + 0
+    print (binary ? "binary" : "text")
+    print lines
+    for (i = 1; i <= shown; i++) print preview[i]
+  }' "$DIFF" 2>/dev/null)"
+mapfile -t SUMMARY_LINES <<< "$SUMMARY"
+CHANGED="${SUMMARY_LINES[0]:-0}"
+KIND=""; [ "${SUMMARY_LINES[1]:-}" = binary ] && KIND=" (binary)"
+LINES="${SUMMARY_LINES[2]:-}"
+PREVIEW=""
+[ "${#SUMMARY_LINES[@]}" -gt 3 ] && printf -v PREVIEW '%s\n' "${SUMMARY_LINES[@]:3}"
+
+# The 2>/dev/null on this and the two other stdout printfs below: once a reader
+# has gone, the PIPE trap above lets bash carry on, and bash then reports the
+# failed write on stderr - a "write error: Broken pipe" per printf, about a
+# reader that left on purpose. Only these printfs' own complaints are dropped.
+printf '=== mutate: %s (%s line(s) changed%s by %s) ===\n%s' "$REL" "$CHANGED" "$KIND" "$EXPR" "$PREVIEW" 2>/dev/null
+
+# From here the file is mutated, and the traps installed above restore it on the
+# abnormal exits - an interrupt, a signal - where nothing below runs.
+if cp "$NEW" "$FILE"; then
+  MUTATED=1
+else
+  # The write failed, so nothing was mutated and there is nothing to go and look
+  # at. Say that with the same check the restore below uses rather than assuming
+  # it: a `.bak` left here would read, under the only rule this directory has, as
+  # a mutation stranded in the tree, and this path writes no log line to correct
+  # the impression. If the file genuinely does not match, it is the same failure
+  # as a failed restore and gets the same exit code and the same backup.
+  cp "$BAK" "$FILE" 2>/dev/null
+  if cmp -s "$BAK" "$FILE" 2>/dev/null; then
+    rm -f "$BAK"
+    die "cannot write $REL; it is unchanged, verified against the backup"
+  fi
+  printf '\n=== mutate: COULD NOT RESTORE %s ===\n' "$REL" >&2
+  printf '%s could not be written, and does not match the backup afterwards.\n' "$REL" >&2
+  printf 'The original is still at:\n  %s\nPut it back by hand and check nothing else moved.\n' "$BAK" >&2
+  printf '%s\t%s\t%s\t%s line(s)\tcommand: not run\tCOULD NOT RESTORE\n' \
+    "$STAMP" "$REL" "$EXPR" "$CHANGED" >> "$LOG" 2>/dev/null || true
+  exit 90
+fi
+
+printf '\n=== mutate: running %s ===\n' "${CMD[*]}" 2>/dev/null
 ( cd "$ROOT" && "${CMD[@]}" )
 rc=$?
 
@@ -176,14 +329,23 @@ cp "$BAK" "$FILE" 2>/dev/null
 RESTORED=1
 if cmp -s "$BAK" "$FILE" 2>/dev/null; then
   verdict="restored (verified byte-for-byte against $BAK)"
-  printf '\n=== mutate: command exited %d; %s ===\n' "$rc" "$verdict"
-  printf '%s\n' "$LINES" | while IFS= read -r n; do
-    [ -n "$n" ] || continue
-    printf '  %s: %s\n' "$n" "$(awk -v n="$n" 'FNR == n { print; exit }' "$FILE")"
-  done
+  # What the restore put back: the first ten removed lines, read from the
+  # restored file in ONE pass, then how many more. A pure insertion removed
+  # nothing, so it lists nothing. The awk runs whatever the count, so what this
+  # costs does not depend on how much changed.
+  LISTING="$(awk -v want="$LINES" '
+    BEGIN {
+      n = split(want, w, " ")
+      for (i = 1; i <= n && i <= 10; i++) { pick[w[i] + 0] = 1; last = w[i] + 0 }
+      if (n == 0) exit
+    }
+    (FNR in pick) { printf "  %d: %s\n", FNR, $0 }
+    FNR >= last { exit }
+    END { if (n > 10) printf "  ... and %d more\n", n - 10 }' "$FILE" 2>/dev/null)"
+  printf '\n=== mutate: command exited %d; %s ===\n%s%s' "$rc" "$verdict" "$LISTING" "${LISTING:+$'\n'}" 2>/dev/null
   printf '%s\t%s\t%s\t%s line(s)\tcommand: %s\texited %d\t%s\n' \
     "$STAMP" "$REL" "$EXPR" "$CHANGED" "${CMD[*]}" "$rc" "restored (verified)" >> "$LOG" 2>/dev/null || true
-  rm -f "$NEW" "$BAK"
+  rm -f "$BAK"
   exit "$rc"
 fi
 
@@ -198,5 +360,4 @@ else
 fi
 printf '%s\t%s\t%s\t%s line(s)\tcommand: %s\texited %d\tCOULD NOT RESTORE\n' \
   "$STAMP" "$REL" "$EXPR" "$CHANGED" "${CMD[*]}" "$rc" >> "$LOG" 2>/dev/null || true
-rm -f "$NEW"
 exit 90
