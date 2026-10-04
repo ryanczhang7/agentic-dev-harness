@@ -931,9 +931,9 @@ in GREEN's notes even when it passes.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-03T23:32:17Z
-    commit: 8d2570a (working tree had uncommitted changes)
-    tree:   be388971e825cb202fb419c064ce30b09ccc2acb
+    run:    2026-10-04T01:10:54Z
+    commit: aeb7f74 (working tree had uncommitted changes)
+    tree:   db57ddab1d2ab425494a816e87ab12ff3789018a
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -995,3 +995,33 @@ region of `lib.sh`.
   (~20 min), against ~95 min after HARNESS-024 and 6,135 s before it.
 - GATES: DV-1 and DV-2 were run detached (`nohup`) so a tool time limit could
   not kill `mutate.sh` mid-mutation, as happened once on HARNESS-024.
+- REVIEW -> GREEN (2026-10-03): PR #101's CI `gates` job failed one assertion
+  that passed on every local run:
+
+  ```
+  FAIL json_escape: input 5, carrying \r, matches the tr | awk form byte for byte
+  spawns: 65 passed, 1 failed
+  FAIL spawns  did 65 units of work, below the floor of 66 in .claude/tests/floors.conf
+  ```
+
+  Input 5 is `$'\r\r\n\r'`. GREEN had moved the `\r` deletion into the awk as
+  `gsub(/\r/, "")`, which runs after awk splits records. A lone `\r` after the
+  last newline is a second record to Linux awk, so the new form emitted one
+  extra `\n`. MSYS awk drops it, so no local run could see the difference.
+  Measured here:
+
+  ```
+  $ printf '\r\r\n\r'  | awk 'END{print NR}'
+  1
+  $ printf '\r\r\n\rX' | awk 'END{print NR}'
+  2
+  ```
+
+  The test was right, so this was a GREEN fix, not a return to RED. The
+  deletion now happens by parameter expansion, `"${1//$'\r'/}"`, before the
+  awk. For all seven of the test's inputs, the bytes awk receives are
+  `cmp`-identical to the old `tr -d '\r'` output (7, 9, 4, 0, 1, 18 and 25
+  bytes), so the output cannot depend on the platform's awk. Still no extra
+  process. After the fix: `spawns: 66 passed, 0 failed`, `lib: 217 passed, 0
+  failed`.
+- After the fix: full selftest green again - all 22 suites met their floors (1927 assertions), 1185 s.

@@ -1264,11 +1264,14 @@ json_escape() {
   # awk, not `${s//\\/\\\\}`: doubling a backslash by parameter expansion is
   # not reliable across bash versions, and this used to emit the backslash
   # unchanged - so a deny reason quoting a Windows path was not JSON.
-  # The carriage-return deletion is the awk's first action rather than a
-  # `tr -d` stage in front of it: one process fewer on every denial
-  # (HARNESS-025).
-  printf '%s' "$1" | awk 'BEGIN { ORS = "" }
-    { gsub(/\r/, ""); gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); gsub(/\t/, "\\t")
+  # Carriage returns are deleted by parameter expansion rather than a `tr -d`
+  # stage in front of the awk: one process fewer on every denial (HARNESS-025).
+  # It has to happen BEFORE awk splits records, not as a gsub inside it: a
+  # value ending in a lone `\r` after its last newline is a second record to
+  # Linux awk (one extra `\n` in the JSON), while MSYS awk drops it - so the
+  # in-awk form passed every local run and failed only on CI.
+  printf '%s' "${1//$'\r'/}" | awk 'BEGIN { ORS = "" }
+    { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); gsub(/\t/, "\\t")
       if (NR > 1) printf "\\n"
       printf "%s", $0 }'
 }
