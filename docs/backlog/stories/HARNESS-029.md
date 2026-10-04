@@ -4,8 +4,8 @@ title: mutate.sh counts what changed, cleans up on every path, and survives an e
 slug: mutate-sh-counts-what-changed-cleans-up
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-029-mutate-sh-counts-what-changed-cleans-up
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -384,6 +384,56 @@ three.
   added lines only, replacing `max(b, d)` with `d` in the awk. AC-4's `5d` case
   **must** go red (it reports 0), and its `s/90/-90/` case stays green. Insertion
   and substitution counts cannot see this, which is why the delete case exists.
+
+
+**DV-1 result (GATES, 2026-10-04).** Run through a runner copy of `mutate.sh` in `mktemp -d` (C-6); restored and verified, then `git diff --quiet -- scripts/mutate.sh` printed `clean`:
+
+```
+=== mutate: /c/Users/ryanc/Projects/agentic-dev-harness/scripts/mutate.sh (1 line(s) changed by 210s/trap ':' PIPE/trap 'cp "$BAK" "$FILE"' PIPE/) ===
+  210 - trap ':' PIPE
+  210 + trap 'cp "$BAK" "$FILE"' PIPE
+    FAIL AC-2: the command saw the MUTATED file, not the original
+         actual:   export const clamp = (v) => Math.min(90, v)
+mutate: 92 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against the runner's .bak) ===
+clean
+```
+
+**DV-2 result (GATES, 2026-10-04).** Run through a runner copy of `mutate.sh` in `mktemp -d` (C-6); restored and verified, then `git diff --quiet -- scripts/mutate.sh` printed `clean`:
+
+```
+=== mutate: /c/Users/ryanc/Projects/agentic-dev-harness/scripts/mutate.sh (1 line(s) changed by 312s/rm -f "\$BAK"/:/) ===
+  312 -     rm -f "$BAK"
+  312 +     :
+    FAIL AC-1: no .bak is left behind by a run that wrote nothing
+         actual:   1
+mutate: 92 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against the runner's .bak) ===
+clean
+```
+
+**DV-3 result (GATES, 2026-10-04).** Run through a runner copy of `mutate.sh` in `mktemp -d` (C-6); restored and verified, then `git diff --quiet -- scripts/mutate.sh` printed `clean`:
+
+```
+=== mutate: /c/Users/ryanc/Projects/agentic-dev-harness/scripts/mutate.sh (1 line(s) changed by 266s/total += (b > d) ? b : d/total += d/) ===
+  266 -     total += (b > d) ? b : d
+  266 +     total += d
+    FAIL AC-4: 5d reports 1 line(s) changed, as a whole header line
+         actual:   0
+    FAIL AC-4: 5d logs the same count
+         actual:               20261004T223744Z	src/forty.txt	5d	0 line(s)	command: true	exited 0	restored (verified)
+    FAIL AC-4: $d reports 1 line(s) changed, as a whole header line
+         actual:   0
+    FAIL AC-4: $d logs the same count
+         actual:               20261004T223746Z	src/forty.txt	$d	0 line(s)	command: true	exited 0	restored (verified)
+    FAIL AC-4: 5{N;s/\n/+/} reports 2 line(s) changed, as a whole header line
+         actual:   0
+    FAIL AC-4: 5{N;s/\n/+/} logs the same count
+         actual:               20261004T223749Z	src/forty.txt	5{N;s/\n/+/}	1 line(s)	command: true	exited 0	restored (verified)
+mutate: 87 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against the runner's .bak) ===
+clean
+```
 
 ## Amendments
 
@@ -768,10 +818,21 @@ committed `trap ':' PIPE` line; DV-3's `5d` case must go red with header
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-04T22:38:30Z
+    commit: 47c66e3 (working tree had uncommitted changes)
+    tree:   373d54c3dbda29cd974d1d511534a8859e24cfab
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -816,3 +877,10 @@ committed `trap ':' PIPE` line; DV-3's `5d` case must go red with header
   itself: an out-of-tree runner copy.
 - **Timing.** `mutate.test.sh` takes 1m12s here.
 - **Dependencies.** `depends_on` is empty, as instructed.
+- GATES (2026-10-04): full `bash scripts/selftest.sh`: `assertion floors: all
+  22 suite(s) met their declared floor (2148 assertions executed, 1918
+  declared)`, `22 harness suite(s) passed` (phase-guard included, which exempts
+  `mutate.sh`), 2269 s. GREEN's two own choices, kept: `2>/dev/null` on the
+  three stdout `printf`s (hides only `write error: Broken pipe` after a reader
+  leaves), and downstream's `RESTORED` guard ahead of `put_back`'s content
+  check.
