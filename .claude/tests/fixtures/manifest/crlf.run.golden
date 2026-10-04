@@ -17,6 +17,7 @@ Coverage 91% of 12 files
 === gate: e2e (optional) ===
 printf 'RuntimeError: no device here\n'; exit 1
 RuntimeError: no device here
+failing log kept: .claude/state/gate-logs/e2e.failed.log
 
 --- gate summary ---
 UNCONFIGURED short

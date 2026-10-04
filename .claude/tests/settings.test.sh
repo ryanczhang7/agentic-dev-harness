@@ -136,6 +136,27 @@ describe "the shipped pair agrees with itself"
 assert_eq "no disagreements" "" "$(problems "$SETTINGS" "$README")"
 
 # ---------------------------------------------------------------------------
+describe "HARNESS-027 AC-7: the kept failing log has its own row"
+
+# `gate-logs/*.log` already matches `*.failed.log` as a glob, so the check above
+# is satisfied without a row. The row says what the file is and who writes it,
+# so it is asserted by its own first two cells and its last, as a whole line.
+# grep -E rather than downstream's awk reader: no gsub/field-splitting dialect
+# to differ between gawk and mawk (HARNESS-025), and no interval expressions.
+# failed_row <readme> <path cell>   How many table rows have that path, written
+# by scripts/gates.sh, hand-editable yes.
+failed_row() {
+  local p; p="$(printf '%s' "$2" | sed 's/[.*]/\\&/g')"
+  tr -d '\r' < "$1" | grep -cE -- "^\\| \`$p\` +\\| \`scripts/gates\\.sh\` +\\|.*\\| yes +\\|\$"
+}
+assert_eq "AC-7: README has one gate-logs/*.failed.log row, written by scripts/gates.sh, hand-editable yes" \
+  1 "$(failed_row "$README" 'gate-logs/*.failed.log')"
+# Control: the same reader finds the row it knows is there, so a miss above is
+# the README's and not the reader's.
+assert_eq "AC-7 control: the same reader finds the existing gate-logs/*.log row" \
+  1 "$(failed_row "$README" 'gate-logs/*.log')"
+
+# ---------------------------------------------------------------------------
 describe "the two files that carry evidence stay denied"
 
 # Stated independently of the README, so that widening the column and the rules
