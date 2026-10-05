@@ -11,7 +11,7 @@
 # uses it to judge a write by the lock of another worktree and then to restore
 # its own, so all four always move together.
 #
-# The root is kept in FORWARD SLASHES (HARNESS-034). The host spells
+# The root is kept in FORWARD SLASHES (HARNESS-035). The host spells
 # CLAUDE_PROJECT_DIR with backslashes on Windows. Every comparison already
 # slashed both sides, but a glob over the root reads a backslash as an escape,
 # and on every platform but Windows a backslashed path is no path at all. Git
@@ -26,7 +26,7 @@ set_harness_root() {
 
 # The tree whose lock, confs and state the hooks read. This is a DEFAULT: a hook
 # input carrying `cwd` moves it to the harness tree the session is actually in,
-# at the bottom of this file (HARNESS-034, see _session_root).
+# at the bottom of this file (HARNESS-035, see _session_root).
 set_harness_root "${CLAUDE_PROJECT_DIR:-$PWD}"
 # The session's working directory, slashed, from the hook input's `cwd`; empty
 # when there is none (every script that sources this file outside a hook).
@@ -720,7 +720,7 @@ abs_norm() {
   return 0
 }
 
-# --- Worktrees (HARNESS-034) ------------------------------------------------
+# --- Worktrees (HARNESS-035) ------------------------------------------------
 #
 # "One worktree, one story, one lock" (CLAUDE.md) held only while a session
 # never left the tree it started in. The host runs these hooks with
@@ -841,7 +841,7 @@ any_active_worktree() {
 # whether the path contained `/<root's folder name>/`, which judged an unrelated
 # `C:/elsewhere/<same name>/src` as this repository and missed a linked worktree
 # named anything else - every absolute write into `D:/fwb-WORLD-113` from a
-# session rooted at `D:/fantasy-world-builder` went unjudged (HARNESS-034).
+# session rooted at `D:/fantasy-world-builder` went unjudged (HARNESS-035).
 to_rel() {
   local p root lp lr
   _drive_form "$1"; p=$__lib_fs
@@ -974,7 +974,7 @@ normalize_rel() {
 # Fail open, as ever: returning 1 means relative candidates are skipped, not
 # that they are blocked.
 #
-# HARNESS-034: <start>, when given, is the absolute directory the shell starts
+# HARNESS-035: <start>, when given, is the absolute directory the shell starts
 # in - the session's `cwd` - rather than the root. And a directory OUTSIDE the
 # root that the guard can name is no longer a dead end: it is printed as an
 # absolute path, so `cd <linked worktree> && echo x > src/a.ts` reaches the
@@ -1505,7 +1505,7 @@ json_escape() {
       printf "%s", $0 }'
 }
 
-# --- Which tree this session is in (HARNESS-034) ----------------------------
+# --- Which tree this session is in (HARNESS-035) ----------------------------
 
 # _session_root   When the hook input carries `cwd`, sets SESSION_CWD to it and
 # moves HARNESS_ROOT to the harness tree that holds it - the tree the session is

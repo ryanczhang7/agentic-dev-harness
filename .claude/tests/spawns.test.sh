@@ -160,19 +160,19 @@ assert_eq "AC-1: no tr '\\134' '/' is spawned"                     "0" "$(spawn_
 assert_eq "AC-1: no tr -d of the two quote characters is spawned" "0" "$(spawn_count "$_ac1" tr:quotes)"
 assert_eq "AC-1: no tr -d '\\r' is spawned"                        "0" "$(spawn_count "$_ac1" 'tr:other -d*')"
 
-# HARNESS-034 AC-6. The host sends `cwd` in every hook input, so the bound has
+# HARNESS-035 AC-6. The host sends `cwd` in every hook input, so the bound has
 # to hold with it present, not only in the suite's cwd-less input. Reading it
 # and walking to its tree are pure bash; so is the ownership walk for a target.
-GUARD_CWD="$FIX" spawn_trace "$FIX" Bash command 'echo hi > src/main.ts' "$WORK/h034"
-_h034="$(spawn_tally "$WORK/h034")"
-assert_contains "HARNESS-034 AC-6: with cwd, the traced invocation still denies src/main.ts (instrument control)" \
-  '"permissionDecision":"deny"' "$(cat "$WORK/h034.out")"
-_n="$(spawn_count "$_h034" TOTAL)"
+GUARD_CWD="$FIX" spawn_trace "$FIX" Bash command 'echo hi > src/main.ts' "$WORK/h035"
+_h035="$(spawn_tally "$WORK/h035")"
+assert_contains "HARNESS-035 AC-6: with cwd, the traced invocation still denies src/main.ts (instrument control)" \
+  '"permissionDecision":"deny"' "$(cat "$WORK/h035.out")"
+_n="$(spawn_count "$_h035" TOTAL)"
 _n0="$(spawn_count "$_ac1" TOTAL)"
-if [ "$_n" -le 27 ]; then _ok "HARNESS-034 AC-6: with cwd in the input, echo hi > src/main.ts spawns at most 27"
-else _bad "HARNESS-034 AC-6: with cwd in the input, echo hi > src/main.ts spawns at most 27" "spawned $_n
-$(tally_detail "$_h034")"; fi
-assert_eq "HARNESS-034 AC-6: and exactly as many as without it" "$_n0" "$_n"
+if [ "$_n" -le 27 ]; then _ok "HARNESS-035 AC-6: with cwd in the input, echo hi > src/main.ts spawns at most 27"
+else _bad "HARNESS-035 AC-6: with cwd in the input, echo hi > src/main.ts spawns at most 27" "spawned $_n
+$(tally_detail "$_h035")"; fi
+assert_eq "HARNESS-035 AC-6: and exactly as many as without it" "$_n0" "$_n"
 
 # ===========================================================================
 describe "HARNESS-025 AC-2  at most one git check-ignore per classified candidate"

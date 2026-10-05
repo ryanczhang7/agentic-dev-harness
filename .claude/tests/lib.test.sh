@@ -89,7 +89,7 @@ assert_eq "an absolute path"       "src/main.ts" "$(to_rel "$FIX/src/main.ts")"
 assert_eq "a backslash path"       "src/main.ts" "$(to_rel "$(printf '%s' "$FIX" | tr '/' '\134')\\src\\main.ts")"
 assert_eq "somewhere else on disk" ""            "$(to_rel "/somewhere/else/main.ts")"
 
-# HARNESS-034 AC-5. One root, three drive spellings: MSYS `/d/p`, Windows `D:/p`
+# HARNESS-035 AC-5. One root, three drive spellings: MSYS `/d/p`, Windows `D:/p`
 # and `D:\p`. to_rel used to tolerate the difference by asking whether the path
 # contained `/<root's folder name>/`, which also took `/e/p` and
 # `C:/elsewhere/p` for this repository and missed a worktree named anything

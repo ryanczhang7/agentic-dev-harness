@@ -175,7 +175,7 @@ json_str() {
 
 # hook_cwd_field   `"cwd":"<GUARD_CWD>",` when GUARD_CWD is set, else nothing.
 # The host sends the session's working directory in every hook input. It is
-# placed ahead of tool_name, as the host places it (HARNESS-034).
+# placed ahead of tool_name, as the host places it (HARNESS-035).
 hook_cwd_field() {
   [ -n "${GUARD_CWD:-}" ] && printf '"cwd":"%s",' "$(json_str "$GUARD_CWD")"
   return 0
@@ -183,7 +183,7 @@ hook_cwd_field() {
 
 # guard <fixture> <tool> <key> <value>   Runs the real phase-guard hook and
 # echoes the denial reason, or nothing when the write was allowed. With
-# GUARD_CWD set, the input carries that `cwd` (HARNESS-034).
+# GUARD_CWD set, the input carries that `cwd` (HARNESS-035).
 guard() {
   local out r BS
   out="$(printf '{%s"tool_name":"%s","tool_input":{"%s":"%s"}}' "$(hook_cwd_field)" "$2" "$3" "$(json_str "$4")" \

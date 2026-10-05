@@ -1,12 +1,12 @@
 ---
-id: HARNESS-034
+id: HARNESS-035
 title: The lock follows the session into a worktree and judges a write by the worktree that owns it
 slug: the-lock-follows-the-session-into-a-work
 epic: 
 type: fix
 status: in-review
 phase: REVIEW
-branch: story/HARNESS-034-the-lock-follows-the-session-into-a-work
+branch: story/HARNESS-035-the-lock-follows-the-session-into-a-work
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/hooks/phase-guard.sh, .claude/tests/_lib.sh, .claude/tests/_spawns.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/spawns.test.sh, .claude/tests/fixtures/classify/classify.golden, CLAUDE.md]         # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
@@ -237,7 +237,7 @@ read out and not re-tuned.
 
 ## Model guidance
 
-Planned by `bash scripts/plan.sh write HARNESS-034` from `.claude/harness/models.conf`.
+Planned by `bash scripts/plan.sh write HARNESS-035` from `.claude/harness/models.conf`.
 A PLAN, not a record: a session setting or an explicit override can beat both
 this and the agent's own `model:` field, and nothing here can see which won.
 The orchestrator still writes down the model each dispatch **resolved** to, by
@@ -293,11 +293,11 @@ All are shell suites run through the real hooks against throwaway fixtures.
 
 | AC | Suite: block | What it drives |
 |---|---|---|
-| premise | `phase-guard.test.sh`: `HARNESS-034 premise` | B and W share A's `.git` (checked with `git rev-parse --git-common-dir`); C does not; B's folder name differs from A's |
-| AC-1 | `phase-guard.test.sh`: `HARNESS-034 AC-1` | `GUARD_CWD=<B>`: relative source write allowed (B is GREEN, A is RED); test write refused naming T-B/GREEN; `inject-state.sh` reports T-B; A IDLE; backslash-spelled `cwd` (added on return to RED); control with no `cwd` |
-| AC-2 | `phase-guard.test.sh`: `HARNESS-034 AC-2` | Write, Edit, `>`, `: >>`, `cd <B> &&` into B from A; A IDLE; A spelled with backslashes and IDLE (added on return to RED); controls B IDLE / B GREEN / A's own path with no `worktree:` line |
-| AC-3 | `phase-guard.test.sh`: `HARNESS-034 AC-3` | `<A>/.claude/worktrees/w`, by absolute path and by `cd .claude/worktrees/w &&`; control W GREEN |
-| AC-4 | `phase-guard.test.sh`: `HARNESS-034 AC-4`; `spawns.test.sh` AC-5 golden | separate repo C allowed; `C:\elsewhere\<A's name>\src\main.ts` allowed; golden lines 36-37 now `outside` |
+| premise | `phase-guard.test.sh`: `HARNESS-035 premise` | B and W share A's `.git` (checked with `git rev-parse --git-common-dir`); C does not; B's folder name differs from A's |
+| AC-1 | `phase-guard.test.sh`: `HARNESS-035 AC-1` | `GUARD_CWD=<B>`: relative source write allowed (B is GREEN, A is RED); test write refused naming T-B/GREEN; `inject-state.sh` reports T-B; A IDLE; backslash-spelled `cwd` (added on return to RED); control with no `cwd` |
+| AC-2 | `phase-guard.test.sh`: `HARNESS-035 AC-2` | Write, Edit, `>`, `: >>`, `cd <B> &&` into B from A; A IDLE; A spelled with backslashes and IDLE (added on return to RED); controls B IDLE / B GREEN / A's own path with no `worktree:` line |
+| AC-3 | `phase-guard.test.sh`: `HARNESS-035 AC-3` | `<A>/.claude/worktrees/w`, by absolute path and by `cd .claude/worktrees/w &&`; control W GREEN |
+| AC-4 | `phase-guard.test.sh`: `HARNESS-035 AC-4`; `spawns.test.sh` AC-5 golden | separate repo C allowed; `C:\elsewhere\<A's name>\src\main.ts` allowed; golden lines 36-37 now `outside` |
 | AC-5 | `lib.test.sh`: `to_rel` | 4 root spellings x 4 path spellings, plus 3 controls per root and `/cygdrive/d` |
 | AC-6 | `spawns.test.sh`: after HARNESS-025 AC-1 | `GUARD_CWD=<root>`: still at most 27, and exactly the cwd-less count |
 
@@ -372,7 +372,7 @@ denial text, the `worktree:` line, and process counts.
   this repository's real worktrees, using the host's spellings. The calls are
   read-only, because the hook only judges.
   ```
-  --- 1. session rooted at IDLE main checkout, Write into the HARNESS-034 worktree (GREEN) by Windows path
+  --- 1. session rooted at IDLE main checkout, Write into the HARNESS-035 worktree (GREEN) by Windows path
   (empty: allowed, unjudged)
   --- 2. same, into the nested HARNESS-033 worktree (GATES)
   (empty: allowed, unjudged)
@@ -459,6 +459,21 @@ denial text, the `worktree:` line, and process counts.
      named here. -->
 
 ## Notes
+
+### Renumbered from HARNESS-034 (in REVIEW, 2026-10-05)
+
+This story was cut as HARNESS-034. While its PR (#112) was open, a different
+story, "a run lock stops the self-test and the gates running on top of each
+other", was also cut as HARNESS-034 from another session and merged first (#111,
+release 77). The two story files collided on merge, and check-boundaries reads
+the story id from the branch name, so this story became HARNESS-035 and its
+branch was renamed to match. The criteria did not change. Pasted output below
+and in `## Regressions` keeps the id and the worktree path
+(`D:/adh-HARNESS-034`) it was measured with, verbatim.
+
+`new-story.sh` checks only the local `docs/backlog/stories`, so two worktrees
+cut from the same base will both choose the next free number. Nothing
+currently catches the collision before merge. That is worth a story of its own.
 
 ### Field probe (GREEN, after the return), against this repository's real worktrees
 
