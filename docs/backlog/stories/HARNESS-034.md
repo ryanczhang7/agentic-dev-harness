@@ -4,8 +4,8 @@ title: A run lock stops the self-test and gates overlapping
 slug: a-run-lock-stops-the-self-test-and-gates
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-034-a-run-lock-stops-the-self-test-and-gates
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-lock.sh, scripts/gates.sh, scripts/selftest.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/sigpipe.test.sh, .claude/state/README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -577,6 +577,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 
 - PLANNED, `lead-po`, resolved to Opus 5.5 (`claude-opus-5-5`), dispatched without a model override.
+- RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran run-lock (71/69) and selftest (100/0), and confirmed ## Acceptance criteria byte-identical to the PLANNED commit.
 
 **Oracle partition for the RED brief:** `## Contract` C-6. In short: the lock's
 existence, per-tree keying and pid reclaim are settled (audit `## Decided`
@@ -641,6 +642,55 @@ exact statuses; nothing is oracle-free.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+**RED, 2026-10-05 (test-developer, Opus 5.5 `claude-opus-5-5`, no override).**
+
+One new suite, `.claude/tests/run-lock.test.sh`, 140 executed assertions, all
+at the integration level: every behaviour is a property of what `gates.sh` and
+`selftest.sh` do as processes in a tree (exit status, stderr, files under
+`.claude/state`, what the child command observed), so the cheapest level that
+can falsify any criterion is running the real scripts in a
+`make_project_fixture` copy. There is no unit level: `run-lock.sh` is a
+sourced library whose only contract is the CLI behaviour of its two callers,
+plus C-3's one pinned line.
+
+**The fixture.** Two `make_project_fixture` trees, `FIX` (A) and `FIXB` (B).
+Each gets the real `_lib.sh`, a `floors.conf` and three suites in its own
+`.claude/tests`: `tiny` (marks `m/tiny-ran`, notes whether it saw the lock,
+copies the lock to `m/tiny-lock`), `slow` (the selftest holder: touches
+`m/started`, waits on `m/release`), `failing` (one pass, one fail). Gate `unit`
+runs `bash m/unit.sh`, which marks `m/unit-ran`, notes the lock
+(`m/unit-saw-lock`, copy `m/unit-lock`), records both markers as inherited
+(`m/unit-env`), holds while `m/hold` exists, writes `m/unit-finished` last, and
+fails when `m/fail` exists. Holders are backgrounded as the script itself
+(`cd`, then `bash scripts/... &`), so `$!` is the script's pid (measured on
+MSYS: `bash -c 'echo $$' & echo $!` print the same number). Every wait is
+bounded: 60 s for `started`, 120 s for a hold. An `EXIT` trap releases every
+hold, kills the two owned `sleep`s and waits every background pid.
+
+| Block | Assertions | AC |
+|---|---|---|
+| gates.sh holder in progress: lock present, pid = `$!`, command `scripts/gates.sh --gate unit`, started is UTC-to-the-second, exactly 3 TAB lines; gate command inherits `HARNESS_RUN_LOCK`=abs path and `_PID`=holder pid; `selftest.sh tiny` beside it exits 2, no suite runs, three C-2 lines whole on stderr, none on stdout, lock byte-identical; holder exits 0, no leftovers; rerun exits 0 and runs | 19 | AC-1, C-1, C-2, C-4 |
+| selftest.sh holder in progress: lock present, pid, command `scripts/selftest.sh slow`, the suite runs under it; `gates.sh --gate unit` beside it exits 2, gate never runs, preset `last-gate-run` unchanged, a refused run does not create one, three lines on stderr, none on stdout, lock byte-identical; holder exits 0, no leftovers; rerun exits 0 and runs | 18 | AC-1 |
+| gates.sh exit 0 / exit 1: lock seen by the gate command while running, nothing left, no `run-lock:` line; TERM while blocked: still alive after 1 s, lock still held, exits 143, gate command finished before exit, nothing left | 14 | AC-2, C-3 |
+| selftest.sh exit 0 / exit 1: lock seen by the suite, nothing left, no `run-lock:` line | 8 | AC-2 |
+| preconditions: the dead pid is dead, the live pid is live | 2 | AC-3 |
+| reclaim: gates.sh over dead pid / no pid line / `pid<TAB>not-a-pid`; selftest.sh over dead pid / no pid line - the line exactly once, no refusal (dead-pid gates case), the work runs, under its OWN lock (the copy names this run's command), exit 0, nothing left | 23 | AC-3 |
+| control: live-pid lock refused by gates.sh and by selftest.sh - exit 2, three lines, no reclaim line, no work, lock byte-identical | 13 | AC-3 |
+| `--list`, `--audit`, `--help` under a live lock: output + exit identical to no lock, lock byte-identical (loop of 3 x 2) | 6 | AC-4 |
+| tree B beside locked A: exit 0, ran, no line; with A's markers exported: exit 0, B's own lock seen, B's gate inherits B's path, nothing left in B, no line, A byte-identical | 9 | AC-5, C-4 |
+| nested `bash scripts/selftest.sh tiny` gate: PASS, exit 0, suite ran under the lock, the lock it saw is the parent's, nothing left | 5 | AC-6 |
+| control: `env -u ... selftest.sh tiny` gate: FAIL, exit 1, log carries refusal line 1 (self `scripts/selftest.sh tiny`) and line 2 naming `scripts/gates.sh --gate unit`, suite never ran, nothing left | 6 | AC-6 |
+| wrong-pid marker: exit 2, three lines naming the recorded pid, no suite, lock byte-identical; right path + recorded live pid: exit 0, suite runs, nothing printed, parent's lock byte-identical (not released by the child) | 10 | AC-6, C-4 |
+| real tree: README rows `run.lock` and `run.lock.<pid>` with `yes`, reader control on `mutations/*.active`; `check-ignore` on `run.lock`, `run.lock.12345`, control on `README.md` (exit 1); C-3's `run_lock_alive` line exactly once in `scripts/run-lock.sh` | 7 | AC-7, C-3 |
+
+Covered elsewhere, not here: AC-2's "gates.test.sh goldens stay green" is the
+`gates` suite itself; AC-7's sigpipe pin is GREEN's line edit in
+`sigpipe.test.sh` (its freshness assertion is what fails if GREEN forgets);
+AC-7's `selftest.sh settings`, `check-sigpipe.sh`, `check-grep-count.sh` and
+the full selftest are commands GATES runs. The fail-closed cannot-create line
+(C-2's fourth message) is deliberately untested: it needs an unwritable state
+directory, and `chmod` does not make one on Windows.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -660,6 +710,288 @@ exact statuses; nothing is oracle-free.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**RED, 2026-10-05 (test-developer, Opus 5.5 `claude-opus-5-5`, dispatched
+without a model override).**
+
+**Commands.**
+
+```
+bash .claude/tests/run-lock.test.sh      # the suite alone
+bash scripts/selftest.sh run-lock        # under the real selftest, with its floor
+```
+
+Expected after GREEN: `run-lock: 140 passed, 0 failed`, and
+`bash scripts/selftest.sh run-lock` exits 0 with the floor of 140 met.
+
+**Files touched in RED.**
+
+- `.claude/tests/run-lock.test.sh` - new.
+- `.claude/tests/floors.conf` - `floor | run-lock | 140`, plus a HARNESS-034
+  note at the foot.
+- `.claude/tests/selftest.test.sh` - `run-lock 140` in `COUNTS`, between
+  `reporting` and `selftest`.
+- this story: `## Test plan`, this section.
+
+Not touched, per the Contract: `scripts/run-lock.sh`, `scripts/gates.sh`,
+`scripts/selftest.sh`, `.claude/state/README.md`, `.gitignore`, and the
+`sigpipe.test.sh` C-5 line pin - all GREEN's.
+
+**The failure, verbatim** (describe headers and FAIL lines of
+`bash .claude/tests/run-lock.test.sh`, local MSYS, 2026-10-05; each FAIL's
+expected/actual detail is omitted, the summary line is the real one):
+
+```
+  AC-1  gates.sh in progress: selftest.sh refuses, runs no suite, and runs once it is gone
+    FAIL while it runs, the tree holds .claude/state/run.lock
+    FAIL the lock records the holder's pid
+    FAIL the lock records the holder's command, as a literal script path and its arguments
+    FAIL the lock records when it started, as UTC to the second
+    FAIL the lock is exactly three TAB-separated lines: pid, started, command
+    FAIL C-4: the gate command inherits HARNESS_RUN_LOCK, the absolute path of this tree's lock
+    FAIL C-4: and HARNESS_RUN_LOCK_PID, the pid the lock records
+    FAIL selftest.sh tiny, started beside it, exits 2
+    FAIL and runs no suite: tiny's own marker is absent
+    FAIL AC-1 selftest beside gates: refusal line 1 names this run (scripts/selftest.sh tiny)
+    FAIL AC-1 selftest beside gates: refusal line 2 names the holder (pid 156594, scripts/gates.sh --gate unit)
+    FAIL AC-1 selftest beside gates: refusal line 3 gives the remedy for pid 156594
+  AC-1  selftest.sh in progress: gates.sh refuses, runs no gate, records nothing
+    FAIL while it runs, the tree holds .claude/state/run.lock
+    FAIL the lock records the holder's pid
+    FAIL the lock records the holder's command
+    FAIL the suite itself runs while the lock is held
+    FAIL gates.sh --gate unit, started beside it, exits 2
+    FAIL and the gate command never runs: its marker is absent
+    FAIL and .claude/state/last-gate-run is not changed
+    FAIL AC-1 gates beside selftest: refusal line 1 names this run (scripts/gates.sh --gate unit)
+    FAIL AC-1 gates beside selftest: refusal line 2 names the holder (pid 156953, scripts/selftest.sh slow)
+    FAIL AC-1 gates beside selftest: refusal line 3 gives the remedy for pid 156953
+    FAIL with no last-gate-run before it, a refused gates.sh does not create one
+  AC-2  every way out of gates.sh releases the lock, and an uncontended run says nothing
+    FAIL the lock was held while the gate command ran
+    FAIL the lock was held while the gate command ran
+    FAIL sent TERM, gates.sh waits for its gate command rather than exiting under it
+    FAIL and the lock is still held while the gate command runs
+    FAIL and the gate command had finished before gates.sh exited
+  AC-2  every way out of selftest.sh releases the lock
+    FAIL the lock was held while the suite ran
+    FAIL the lock was held while the suite ran
+  AC-3  a lock whose holder is gone is reclaimed, once, and the run proceeds
+    FAIL gates.sh over a dead holder's lock prints the reclaim line exactly once
+    FAIL under its own lock, not the dead holder's: the lock it ran under names gates.sh --gate unit
+    FAIL and leaves no lock
+    FAIL gates.sh over a lock with no pid line prints the unreadable-lock line exactly once
+    FAIL and leaves no lock
+    FAIL gates.sh over a lock whose pid is not all digits prints the unreadable-lock line exactly once
+    FAIL and leaves no lock
+    FAIL selftest.sh over a dead holder's lock prints the reclaim line exactly once
+    FAIL under its own lock, not the dead holder's: the lock it ran under names selftest.sh tiny
+    FAIL and leaves no lock
+    FAIL selftest.sh over a lock with no pid line prints the unreadable-lock line exactly once
+    FAIL and leaves no lock
+  AC-3  control: the same lock with a LIVE pid is refused, not reclaimed
+    FAIL gates.sh over a live holder's lock exits 2
+    FAIL AC-3 control, gates: refusal line 1 names this run (scripts/gates.sh --gate unit)
+    FAIL AC-3 control, gates: refusal line 2 names the holder (pid 156576, scripts/selftest.sh ghost)
+    FAIL AC-3 control, gates: refusal line 3 gives the remedy for pid 156576
+    FAIL the gate command never runs
+    FAIL selftest.sh over a live holder's lock exits 2
+    FAIL AC-3 control, selftest: refusal line 1 names this run (scripts/selftest.sh tiny)
+    FAIL AC-3 control, selftest: refusal line 2 names the holder (pid 156576, scripts/selftest.sh ghost)
+    FAIL AC-3 control, selftest: refusal line 3 gives the remedy for pid 156576
+    FAIL no suite runs
+  AC-4  --list, --audit and --help read the manifest and are not gated
+  AC-5  the lock is keyed to the tree, and another tree's markers are not adopted
+    FAIL B takes its OWN lock: its gate command sees B/.claude/state/run.lock
+    FAIL and the markers B's gate command inherits name B's lock, not A's
+  AC-6  a run nested in the same tree, under the holder, is let through
+    FAIL the nested suite ran while the parent's lock was held
+    FAIL and it is the parent's lock: the nested run took none of its own
+  AC-6  control: without the markers the nested run is refused by its own parent
+    FAIL the same gate with the markers removed is reported FAIL
+    FAIL gates.sh exits 1
+    FAIL its gate log carries refusal line 1, naming the nested selftest.sh tiny
+    FAIL and refusal line 2, naming the holder: scripts/gates.sh --gate unit
+    FAIL the suite never ran
+  AC-6  the markers are not a bypass: the pid must be the one the lock records
+    FAIL right lock path, another live pid: selftest.sh exits 2
+    FAIL AC-6 wrong-pid marker: refusal line 1 names this run (scripts/selftest.sh tiny)
+    FAIL AC-6 wrong-pid marker: refusal line 2 names the holder (pid 156576, scripts/gates.sh --gate unit)
+    FAIL AC-6 wrong-pid marker: refusal line 3 gives the remedy for pid 156576
+    FAIL no suite runs
+  AC-7  state and suite hygiene, in this repository
+    FAIL README has one run.lock row, hand-editable yes
+    FAIL README has one run.lock.<pid> row, hand-editable yes
+    FAIL scripts/run-lock.sh defines run_lock_alive on exactly the one line DV-1 mutates
+run-lock: 71 passed, 69 failed
+```
+
+`bash scripts/selftest.sh run-lock`, same tree:
+
+```
+run-lock: 71 passed, 69 failed
+FAIL run-lock  did 71 units of work, below the floor of 140 in .claude/tests/floors.conf
+
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+```
+
+**Why this is the right failure.** The suite does not fail at import: nothing
+in it sources the missing library, so all 140 assertions EXECUTE in RED. Every
+red one fails on its own assertion against today's behaviour - the second run
+runs (exit 0, marker present), no lock file is ever written, no `run-lock:`
+line is ever printed, `last-gate-run` is overwritten, TERM kills `gates.sh` at
+once and orphans its gate command (alive `no`, `unit-finished` absent when
+`wait` returns), a planted lock is never removed, the markers are `<unset>`
+(or, in AC-5, still A's path, because nothing overwrites them). The three
+AC-7 reds are the missing README rows and the missing `scripts/run-lock.sh`.
+No red is a timeout, a crash or a fixture error: every precondition (holder in
+progress x3, dead pid dead, live pid live) passed.
+
+**Run both ways, same result.** Directly, and with
+`HARNESS_RUN_LOCK=<this checkout>/.claude/state/run.lock
+HARNESS_RUN_LOCK_PID=$$` exported (what the real selftest will export once
+GREEN lands): both `71 passed, 69 failed`, the same 69 FAIL names (only the
+pids inside some names differ). The suite does NOT unset the markers - C-4
+says no case may depend on their absence, and inheriting a foreign tree's
+markers is AC-5's situation, which every fixture run then exercises under the
+real selftest. Cases about the markers set them explicitly with `env`.
+
+**Other runs.** `bash scripts/selftest.sh selftest` exit 0 (100/100; the new
+COUNTS row agrees with floors.conf); `bash scripts/selftest.sh settings` exit
+0 (27/27); `bash scripts/check-sigpipe.sh` 0 findings over 46 files;
+`bash scripts/check-grep-count.sh` 0 findings. `bash scripts/gates.sh --fast`
+exits 0 with `0 ran, 5 unconfigured`: upstream's `project.conf` is
+`BOOTSTRAPPED=no`, so `--fast` judges nothing here - the judging instrument
+for this repository is the `selftest` CI step, and that is red as it should
+be. It also lists `run-lock.test.sh` as UNTRACKED, expected for an
+uncommitted RED.
+
+**What the tests already pin - stated as fact.**
+
+- No module is imported or sourced by the suite. It pins the CLI behaviour of
+  `scripts/gates.sh` and `scripts/selftest.sh` run as `bash scripts/<name> ...`
+  from the tree root, and one source line.
+- `scripts/run-lock.sh` must contain, as a whole line, exactly once:
+  `run_lock_alive() { kill -0 "$1" 2>/dev/null; }` (C-3, for DV-1).
+- The lock is `<root>/.claude/state/run.lock`: exactly three lines, each with
+  exactly one TAB, keys `pid`, `started`, `command` in that order; `pid` is the
+  script's `$$` (= the `$!` of `bash scripts/x.sh &`, measured equal on MSYS);
+  `started` matches `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`;
+  `command` is e.g. `scripts/gates.sh --gate unit`, `scripts/selftest.sh slow`,
+  `scripts/selftest.sh tiny` - literal relative script path, space, `"$*"`.
+- It exists while the work runs (a gate command and a suite each see it and
+  copy it), and no `run.lock` or `run.lock.*` exists after any exit: 0, 1,
+  143 (TERM), reclaim-then-run, nested.
+- The gate command sees `HARNESS_RUN_LOCK` = `$(cd <root> && pwd)/.claude/state/run.lock`
+  (the string `ROOT` gives today; `/tmp/tmp.XXXX/...` on MSYS) and
+  `HARNESS_RUN_LOCK_PID` = the lock's pid. Inherited values from another tree
+  are overwritten.
+- C-2's messages as whole lines on **stderr** (a refusal line on stdout fails
+  `the refusal is on stderr, not stdout`). The refusal's `<pid>`, `<started>`,
+  `<command>` are read verbatim from the lock - including a hand-planted lock
+  (`started` `2026-01-02T03:04:05Z`, command `scripts/selftest.sh ghost`). The
+  reclaim line names the dead pid and the planted command. The unreadable line
+  covers both "no `pid` line" and `pid<TAB>not-a-pid`. After a reclaim the
+  work runs under a NEW lock naming this run's command.
+- Exit 2 on refusal from both scripts; a refused `gates.sh` neither runs a gate
+  nor creates nor rewrites `last-gate-run`; a refused `selftest.sh` runs no
+  suite; the lock is byte-identical after a refusal.
+- TERM to `gates.sh` while its gate command runs: still alive 1 s later, lock
+  still present, exits 143 only after the gate command finished.
+- `--list`, `--audit`, `--help`: identical output and status with a live lock
+  present, and the lock untouched.
+- Nested: right path + recorded live pid proceeds, prints nothing, and does
+  NOT release (the parent's lock is byte-identical after the child exits).
+  Right path + another live pid is refused normally.
+
+**Not constrained** (the implementer's choice): the internal structure of
+acquire beyond the one pinned line; variable names; whether `run.lock.$$`
+exists momentarily (only its absence after exit is checked); the
+cannot-create path (C-2's fourth message, untested - see Test plan); the
+wording of the `. run-lock.sh || {...}` fallback; the exact insertion point in
+`selftest.sh`, so long as single-suite runs take the lock (floors-fault-first
+ordering is Contract, not pinned here).
+
+**Green on arrival - 71 assertions, and what earns them.** Because nothing
+fails at import, these ran in RED and passed against today's code:
+
+- Preconditions (5: three holders in progress, dead pid dead, live pid live) -
+  fixture checks, meant to pass.
+- "No leftovers" / "no `run-lock:` line" / "lock byte-identical" in the
+  uncontended, reclaim and refused paths. Trivially true today because no lock
+  is ever made. Each sits beside a red assertion in the same block that the
+  lock DID exist (`saw-lock`, `the lock it ran under`, `while it runs, the tree
+  holds`), so in GREEN "no leftover" means "taken and released", not "never
+  taken".
+- Exit 0/1/143, "the holder finishes 0", "rerun exits 0 and runs", "runs the
+  gate/suite", AC-5's plain tree-B run, AC-6's PASS/exit 0. These are the
+  "the lock does not break the normal path" half; the red half beside each
+  shows the lock is actually in the path.
+- AC-4's six - regression guards against taking the lock before the
+  `--list`/`--audit`/`--help` dispatch. Earned in GREEN, not here: a take
+  placed above the argument loop or before `LIST`/`AUDIT` are read turns them
+  red. Nothing exists in RED to mutate.
+- C-4's positive half (4: right path + recorded pid proceeds, prints nothing,
+  parent's lock byte-identical). Earned by DV-1: with `run_lock_alive` false
+  the nested check fails, acquire reclaims the "dead" parent lock, prints the
+  reclaim line and removes its own lock on exit, so `nothing is printed by the
+  lock` and `the parent's lock is byte-identical` must go red.
+- AC-7's controls (`mutations/*.active` row found; `run.lock` and
+  `run.lock.12345` already ignored via `.claude/state/*`; `README.md` not
+  ignored, exit 1).
+
+**Negative controls - expected values.** Measured in RED because the suite
+executes; GREEN confirms the "expected" column against the shipped library.
+
+| Control | Instrument | Expected after GREEN | Measured in RED |
+|---|---|---|---|
+| AC-3 live pid (`sleep 600 &`, owned) | `kill -0 $LIVE1` in the test shell | 0 (live) | 0 (precondition `yes` passed) |
+| AC-3 dead pid (`bash -c 'exit 0' &`, waited) | `kill -0 $DEAD` | 1 (dead) | 1 (precondition `no` passed) |
+| AC-3 live-pid lock, gates.sh | rc / refusal lines / gate marker | 2 / 1,1,1 / absent | 0 / 0,0,0 / present |
+| AC-3 live-pid lock, selftest.sh | rc / refusal lines / suite marker | 2 / 1,1,1 / absent | 0 / 0,0,0 / present |
+| AC-6 `env -u` gate | FAIL line / rc / log line 1 / log line 2 | 1 / 1 / 1 / 1 | 0 / 0 / 0 / 0 |
+| AC-6 wrong-pid marker | rc / refusal lines / suite marker | 2 / 1,1,1 / absent | 0 / 0,0,0 / present |
+| AC-7 README reader control | `mutations/*.active` rows with `yes` | 1 | 1 |
+| AC-7 check-ignore control | `check-ignore -q --no-index .claude/state/README.md` | 1 | 1 |
+| TERM, untrapped vs trapped | `kill -0 $HP` 1 s after TERM | alive (`yes`) | `no` - bash exited at once; no zombie false positive on MSYS |
+
+**DV-1 predictions** (GATES runs it; RED cannot - there is no `run-lock.sh`).
+With `run_lock_alive() { false; }`, MUST go red: AC-1's exit-2,
+marker-absent and three-line assertions in both directions; the AC-3 control
+block (a live pid now reads dead, so it is reclaimed: rc 0, the reclaim line
+printed, work runs, lock changed); AC-6's wrong-pid five; and C-4's positive
+half (above). MUST stay green: the whole AC-3 reclaim block (dead pid, no pid
+line, non-digit pid; 23 assertions). Other assertions may move; record the
+counts.
+
+**Timings.** Local only (MSYS, Git Bash, Windows 11): the whole suite takes
+about 33 s wall (`real 0m32.5s`). No CI measurement exists. This harness has
+no framework timeouts; the suite's own bounds are 60 s polling for a holder to
+start and 120 s for a hold, both far above anything observed (a holder starts
+in about a second).
+
+**Discovered, for GREEN and the orchestrator.**
+
+- **AC-6's wording vs C-2's format.** AC-6's control says the gate log
+  "carries C-2's first refusal line naming `scripts/gates.sh --gate unit`".
+  C-2's first line names `<self>` - the refused nested run,
+  `scripts/selftest.sh tiny` - and the holder appears on line 2. The suite
+  asserts both: line 1 whole with `<self>` = `scripts/selftest.sh tiny`, and
+  line 2 as an anchored regex ending `: scripts/gates.sh --gate unit` (the
+  holder's pid and start time are not knowable from outside a foreground
+  `gates.sh`). That satisfies either reading, so I did not stop for it. No AC
+  or Contract text was changed.
+- **The TERM case asserts C-3's wait, not only the 143.** Today's untrapped
+  `gates.sh` also exits 143 on TERM, so the exit code alone cannot show the
+  trap is there; "still alive 1 s after TERM" and "gate command finished
+  before exit" are what do.
+- `gates.sh` writes `last-gate-run` on EVERY run, `--gate` included
+  (`gates.sh:925-937`), so the refusal has to sit above those lines; the
+  Contract's placement after `:233` does.
+- The markers inherited from an outer run must be **overwritten** on taking
+  the lock (AC-5's `the markers B's gate command inherits name B's lock, not
+  A's` is red today precisely because nothing overwrites them).
 
 ## Regressions
 
@@ -739,3 +1071,13 @@ contract and to the user overruling:
 - **A new sourced `scripts/run-lock.sh`** rather than `lib.sh` or two copies.
   `refresh-harness.sh` ships `scripts/*.sh`, and `selftest.sh` stays free of
   the hook library's fail-open contract.
+
+**RED (2026-10-05), orchestrator note.** RED reported one reading question,
+not an amendment: AC-6's control says the gate log carries "C-2's first refusal
+line naming `scripts/gates.sh --gate unit`", but C-2's line 1 names the
+*refused* run (`scripts/selftest.sh tiny`) and the holder appears only on
+line 2. The test asserts both lines (line 1 whole, line 2 anchored on
+`: scripts/gates.sh --gate unit`), which satisfies either reading, so the
+criterion stands as written. C-2's fourth message ("cannot create") is not
+tested: it needs an unwritable state directory, which `chmod` cannot make on
+Windows.
