@@ -4,8 +4,8 @@ title: A run lock stops the self-test and gates overlapping
 slug: a-run-lock-stops-the-self-test-and-gates
 epic: 
 type: feature
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-034-a-run-lock-stops-the-self-test-and-gates
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-lock.sh, scripts/gates.sh, scripts/selftest.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/sigpipe.test.sh, .claude/state/README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -540,6 +540,88 @@ and refuses beside the real self-test - which is finding C's exact situation -
 and it costs one command that exits in seconds, beside a run step 1 makes
 anyway. RED cannot run it: nothing exists to refuse.
 
+### Results, run at GATES (2026-10-05) by the orchestrator
+
+**DV-1, the defect put back (every holder looks dead): red as required.** `run-lock: 99 passed, 41 failed`. Every AC-1 refusal in both directions, both AC-3 live-pid controls and the AC-6 wrong-pid refusal are among the failures (so are the AC-6 nested-marker cases and the C-3 one-line pin, which also depend on liveness). AC-3's two dead-pid reclaim cases do not appear: they stayed green, so the mutation hit liveness and not the lock as a whole. Passing lines elided; restore verified; the green re-run follows.
+
+```
+=== mutate: scripts/run-lock.sh (1 line(s) changed by s|kill -0 "\$1" 2>/dev/null|false|) ===
+  48 - run_lock_alive() { kill -0 "$1" 2>/dev/null; }
+  48 + run_lock_alive() { false; }
+=== mutate: running bash scripts/selftest.sh run-lock ===
+    FAIL selftest.sh tiny, started beside it, exits 2
+    FAIL and runs no suite: tiny's own marker is absent
+    FAIL AC-1 selftest beside gates: refusal line 1 names this run (scripts/selftest.sh tiny)
+    FAIL AC-1 selftest beside gates: refusal line 2 names the holder (pid 1774, scripts/gates.sh --gate unit)
+    FAIL AC-1 selftest beside gates: refusal line 3 gives the remedy for pid 1774
+    FAIL the lock is byte-identical after the refused attempt
+    FAIL gates.sh --gate unit, started beside it, exits 2
+    FAIL and the gate command never runs: its marker is absent
+    FAIL and .claude/state/last-gate-run is not changed
+    FAIL AC-1 gates beside selftest: refusal line 1 names this run (scripts/gates.sh --gate unit)
+    FAIL AC-1 gates beside selftest: refusal line 2 names the holder (pid 1965, scripts/selftest.sh slow)
+    FAIL AC-1 gates beside selftest: refusal line 3 gives the remedy for pid 1965
+    FAIL the lock is byte-identical after the refused attempt
+    FAIL with no last-gate-run before it, a refused gates.sh does not create one
+    FAIL gates.sh over a live holder's lock exits 2
+    FAIL AC-3 control, gates: refusal line 1 names this run (scripts/gates.sh --gate unit)
+    FAIL AC-3 control, gates: refusal line 2 names the holder (pid 1768, scripts/selftest.sh ghost)
+    FAIL AC-3 control, gates: refusal line 3 gives the remedy for pid 1768
+    FAIL and does not print the reclaim line
+    FAIL the gate command never runs
+    FAIL the lock is byte-identical afterwards
+    FAIL selftest.sh over a live holder's lock exits 2
+    FAIL AC-3 control, selftest: refusal line 1 names this run (scripts/selftest.sh tiny)
+    FAIL AC-3 control, selftest: refusal line 2 names the holder (pid 1768, scripts/selftest.sh ghost)
+    FAIL AC-3 control, selftest: refusal line 3 gives the remedy for pid 1768
+    FAIL no suite runs
+    FAIL the lock is byte-identical afterwards
+    FAIL and it is the parent's lock: the nested run took none of its own
+    FAIL the same gate with the markers removed is reported FAIL
+    FAIL gates.sh exits 1
+    FAIL its gate log carries refusal line 1, naming the nested selftest.sh tiny
+    FAIL and refusal line 2, naming the holder: scripts/gates.sh --gate unit
+    FAIL the suite never ran
+    FAIL right lock path, another live pid: selftest.sh exits 2
+    FAIL AC-6 wrong-pid marker: refusal line 1 names this run (scripts/selftest.sh tiny)
+    FAIL AC-6 wrong-pid marker: refusal line 2 names the holder (pid 1768, scripts/gates.sh --gate unit)
+    FAIL AC-6 wrong-pid marker: refusal line 3 gives the remedy for pid 1768
+    FAIL no suite runs
+    FAIL the lock is byte-identical afterwards
+    FAIL and the parent's lock is byte-identical afterwards, not released by the child
+    FAIL scripts/run-lock.sh defines run_lock_alive on exactly the one line DV-1 mutates
+run-lock: 99 passed, 41 failed
+FAIL run-lock  did 99 units of work, below the floor of 140 in .claude/tests/floors.conf
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_run-lock.sh.20261005T193749Z.1669.bak) ===
+### MUT-EXIT=1
+assertion floors: all 1 suite(s) met their declared floor (140 assertions executed, 140 declared).
+1 harness suite(s) passed.
+```
+
+**DV-2, the field scenario in the real tree: as required.** Run 20 s into
+GATES -> REVIEW step 1's detached full self-test, in this worktree:
+
+```
+$ cat .claude/state/run.lock
+pid	2400
+started	2026-10-05T19:39:58Z
+command	scripts/selftest.sh
+$ bash scripts/gates.sh --gate unit; echo "rc=$?"
+run-lock: refusing to start scripts/gates.sh --gate unit: another harness run holds this worktree's lock.
+run-lock:   pid 2400, started 2026-10-05T19:39:58Z: scripts/selftest.sh
+run-lock: wait for it to finish. If pid 2400 is not that run, delete .claude/state/run.lock and run again.
+rc=2
+```
+
+After the self-test exited (0, `24 harness suite(s) passed.`):
+
+```
+$ ls .claude/state/run.lock*
+ls: cannot access '.claude/state/run.lock*': No such file or directory
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -581,6 +663,7 @@ name, below the table.
 - GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. It stopped on a wrong test; the orchestrator reproduced the defect independently (see ## Regressions).
 - RED (return), `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`); no override. One-line fix to state_row, earned by a README mutation.
 - GREEN (resumed), same `feature-developer` agent, Opus 5.5; no override. Orchestrator read run-lock.sh and the wiring, checked no trap conflicts, re-ran `selftest.sh run-lock` (140/0, floor met).
+- GATES: no dispatch. The orchestrator (`claude-opus-5-5`) ran DV-1, DV-2, `gates.sh` and the full selftest itself.
 
 **Oracle partition for the RED brief:** `## Contract` C-6. In short: the lock's
 existence, per-tree keying and pid reclaim are settled (audit `## Decided`
@@ -1096,10 +1179,21 @@ at its remaining steps (other suites, `gates.sh --fast`, control confirmation).
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-05T19:39:48Z
+    commit: b6c8307
+    tree:   065d3625be3f390f953737d98d25d8290dafe55e
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -1242,3 +1336,13 @@ No divergence from RED's expected values.
 *Not done here, by brief:* DV-1 and DV-2 (GATES), no `mutate.sh` run, no
 commit. This story changes no gate, so `## Gate probes` stays empty.
 
+
+**GATES (2026-10-05), orchestrator.** DV-1 and DV-2 came out as required
+(results under `## Deferred verifications`). `bash scripts/gates.sh`: all
+required gates passed (0 ran, 7 unconfigured), recorded. Full
+`bash scripts/selftest.sh`, detached, with only DV-2's refused probe beside it:
+exit 0 in 4,242 s, last line `24 harness suite(s) passed.` (2,547 assertions
+executed, 2,320 declared). Duration on this host has varied from 1,518 s to
+4,242 s across HARNESS-031..034 on the same day. The cause is not known; this
+run's probe was refused in under a second, so it cannot have competed with the
+self-test.
