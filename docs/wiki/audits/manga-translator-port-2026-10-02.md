@@ -11,6 +11,40 @@ problems the report raises (A-E) to fix. Read-only triage, four reviewers, each
 reading the downstream commit and testing behaviour against upstream in a
 scratch tree. Downstream commits are in `ryanczhang7/manga-translator`.
 
+## Progress
+
+Updated 2026-10-05, paused at the user's request. Each port is one story, driven
+by `/complete-story`, and each later story is planned only when the one before
+it closes, because every port changes the code the next one builds on.
+
+| Group (order in "Decided") | Downstream change | Story | State |
+|---|---|---|---|
+| 1 Speed | MT-040 manifest parsing with builtins | HARNESS-024 | **done**, #100, release 67 |
+| 2 Speed | MT-041 + R-1 phase-guard spawns | HARNESS-025 | **done**, #101, release 68 |
+| 3 Gate correctness | MT-043 `--audit` counts; MT-032 F-2 branch refusal | HARNESS-026 | **done**, #102, release 69 |
+| 3 Gate correctness | MT-046 kept `.failed.log` | HARNESS-027 | **done**, #103, release 70 |
+| 3 Gate correctness | MT-037 `skipped-when` | HARNESS-028 | **done**, #105, release 71 |
+| 4 Mutation safety | c7bd4ce cleanup; finding E count (+ the PIPE void-probe and `\| head` hang found in triage) | HARNESS-029 | **done**, #106, release 72 |
+| 4 Mutation safety | a0b43a2 + MT-047 `.active`, `--check`, gates refuse | HARNESS-030 | **done**, #107, release 73 |
+| 5 Phase lock | MT-034 `classify()` bare-path retry | - | **next**; not yet planned |
+| 6 Process | A: GATES -> REVIEW runs `ci-local.sh`/full selftest | - | to do |
+| 6 Process | B: check-boundaries 3d baseline at the last committed PLANNED | - | to do |
+| 6 Process | C + MT-042: run lock, then opt-in `SELFTEST_JOBS` | - | to do |
+| 6 Process | D: 3h/3g messages name the fenced-block rule | - | to do |
+| - | Refresh manga-translator from the release that carries them | - | after group 6 |
+
+**To resume:** plan the group 5 story with `/plan-story`, citing this audit and
+issue #97, then `/complete-story <id>`. Lessons the later stories rely on are in
+each story's `## Notes`. The main ones:
+- a Linux-only awk difference passed every local run (HARNESS-025);
+- `mutate.sh` takes one expression;
+- run deferred verifications detached (`nohup`), so a tool limit cannot kill a
+  mutation mid-run (HARNESS-024).
+
+**If manga-translator is refreshed before group 5 lands,** add `test |
+fixtures` to its merged `paths.conf`. Until MT-034 is ported, upstream lets
+GREEN delete a project-added test directory named by a bare path.
+
 ## Decided
 
 **Do not port** (already upstream, or project content):
