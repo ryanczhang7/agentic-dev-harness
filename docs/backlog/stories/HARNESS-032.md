@@ -5,7 +5,7 @@ slug: the-full-self-test-runs-before-a-story-r
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-032-the-full-self-test-runs-before-a-story-r
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -576,6 +576,7 @@ name, below the table.
 
 - PLANNED: `lead-po`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5). No override was reported.
 - RED: `test-developer` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override. Orchestrator re-ran procedure (36/1, the real-tree assertion) and selftest (100/0): both match the handoff.
+- GREEN: `feature-developer` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override. Orchestrator read the diff and re-ran procedure (37/0).
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -968,3 +969,51 @@ GREEN's job is to confirm the real-tree line goes to 0 and the total stays 37.
   HARNESS-031 is DONE, and no group 6 story exists yet.
 - **Not committed, and the phase was not set.** The orchestrator creates the
   branch.
+
+**GREEN (2026-10-05), feature-developer, ran on `claude-opus-5-5` (Opus 5.5);
+no override was given in the dispatch.**
+
+- **Started from the failure.** `bash .claude/tests/procedure.test.sh` before
+  any edit: `procedure: 36 passed, 1 failed`, the real-tree assertion, printing
+  the six C-5 lines. Same as the handoff.
+- **What changed** (only the two command files, as C-6 says):
+  - line 4 of `.claude/commands/advance-story.md` and
+    `.claude/commands/complete-story.md` is now exactly C-6's `allowed-tools:`
+    line, with `Bash(bash scripts/selftest.sh:*)`, `Bash(bash scripts/ci-local.sh:*)`
+    inserted after the check-boundaries entry (so DV-2's expression, which
+    expects `, ` before the ci-local entry, applies as written);
+  - advance-story.md, GATES → REVIEW: C-6's step 1 draft inserted verbatim,
+    the old steps 1-4 renumbered 2-5 with their text unchanged, and C-6's
+    `ci-local.sh` paragraph added after the "The phase is set **before**"
+    paragraph. Step 1 has no blank line; no line in the region begins with
+    `**`. The ci-local paragraph's "step 4's check" and "after step 3" were
+    checked against the new numbering (step 3 is the commit, step 4 is
+    `check-boundaries.sh`);
+  - complete-story.md: the GATES → REVIEW bullet replaced by C-6's draft
+    verbatim.
+  No wording was tightened. `grep -nE '[Ss]tep [0-9]'` over both command
+  files and `lead-po.md` finds only the three references in the new ci-local
+  paragraph, so no other step-number reference went stale. No new text
+  matches `COUNT_RE` `(three|two) mutations`.
+- **Results after the edit:**
+  - `bash .claude/tests/procedure.test.sh` -> `procedure: 37 passed, 0 failed`;
+  - `bash scripts/selftest.sh procedure` -> `procedure: 37 passed, 0 failed`,
+    `assertion floors: all 1 suite(s) met their declared floor (37 assertions
+    executed, 37 declared).`, `1 harness suite(s) passed.` The total is 37 as
+    RED predicted, so the floor stands;
+  - `policy: 17 passed, 0 failed`; `reporting: 27 passed, 0 failed`;
+    `selftest: 100 passed, 0 failed`; `settings: 27 passed, 0 failed`;
+    `phase: 45 passed, 0 failed` (it reads advance-story.md, C-9);
+  - `bash scripts/check-sigpipe.sh` -> 45 files, 0 findings;
+    `bash scripts/check-grep-count.sh` -> 45 files, 0 findings;
+  - `bash scripts/gates.sh --fast` -> `All required gates passed (0 ran, 5
+    unconfigured, 0 known).` Every project.conf gate is UNCONFIGURED here, so
+    this judges nothing; not recorded, by design.
+- **Negative controls.** Every control here executed in RED (the guard lives
+  in the suite, no import can fail), and each fixture assertion compares the
+  guard's whole output with `assert_eq`. All 35 fixture assertions pass in
+  GREEN with the guard unchanged, so each measured value equals the handoff's
+  table row exactly. The one value that moved is the one meant to: the real
+  tree went from 6 lines (C-5) to 0 lines. No divergence to report.
+- **Not run in GREEN, by instruction:** the full `bash scripts/selftest.sh`,
+  DV-1, DV-2 (all GATES), and no commit.

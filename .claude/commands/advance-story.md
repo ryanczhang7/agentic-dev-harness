@@ -1,7 +1,7 @@
 ---
 description: Move one story forward by exactly one phase
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -189,11 +189,28 @@ without it is the point.
 
 Then, **in this order**:
 
-1. `bash scripts/phase.sh set $1 REVIEW`
-2. Commit, with a message that names the story and what it does.
-3. `bash scripts/check-boundaries.sh` — the second script CI runs, and the one
+1. `bash scripts/selftest.sh` — the whole harness self-test, every suite,
+   once, while the story is still at GATES. CI runs every suite, and one the
+   story never touched can still fail on its change: a line number another
+   suite pins, a floor, a value an upstream suite asserts. Run it detached
+   (the Bash tool's `run_in_background` with its longest timeout, or `nohup`
+   from a shell), so that a tool timeout cannot kill it, and run nothing else
+   in this worktree until it exits: not `gates.sh`, not a second self-test.
+   CI's whole job takes about 2 minutes; on a Windows host the self-test
+   alone has taken about 25. That is slow, not wrong. Do not swap in named
+   suites because the host is slow. If a run goes far past the last duration
+   a story recorded, look for an orphaned self-test or gate run before
+   blaming the host; one run stalled past an hour beside an orphan and passed
+   alone. Judge it by its exit status and its last line, `N harness suite(s)
+   passed.`, and paste both, with the duration, into `## Notes`. A failure
+   takes GATES' own routes: the feature-developer, or RED if a test is
+   wrong. A fix changes the tree, so `bash scripts/gates.sh` runs again and
+   these steps start over.
+2. `bash scripts/phase.sh set $1 REVIEW`
+3. Commit, with a message that names the story and what it does.
+4. `bash scripts/check-boundaries.sh` — the second script CI runs, and the one
    `gates.sh` cannot stand in for. Fix anything it reports before pushing.
-4. Push the branch and open a PR whose body links the story file and lists the
+5. Push the branch and open a PR whose body links the story file and lists the
    acceptance criteria with the test that covers each.
 
 The phase is set **before** the commit, and the order is not cosmetic:
@@ -202,6 +219,12 @@ so a commit made while the story still says `phase: GATES` is a commit CI
 rejects. Committing first happens to survive when the PR is opened before that
 job runs, which makes it fail intermittently rather than every time — the worse
 of the two. Do not reorder these to be helpful.
+
+`bash scripts/ci-local.sh` runs that self-test and every other step CI runs,
+read from the workflow files, and ends with step 4's check. It judges the
+commit, so it can only run after step 3. It runs the self-test twice and the
+gates again, so it is the better check where it is fast and never a
+substitute for step 1 where it is not.
 
 **REVIEW → DONE.** Only once the PR is merged. Set the phase to DONE, clear the
 lock with `bash scripts/phase.sh clear`, and relay the report that
