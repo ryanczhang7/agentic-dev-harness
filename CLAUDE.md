@@ -165,6 +165,7 @@ bash scripts/classify.sh --list source src   # what the lock thinks a path is
 bash scripts/refresh-harness.sh ../agentic-dev-harness  # pull a newer harness in
 bash scripts/task.sh dev         # run the app
 bash scripts/mutate.sh F 'EXPR' -- CMD   # the only sanctioned diagnostic mutation
+bash scripts/mutate.sh --check   # is a killed mutation still in the tree? gates.sh asks first
 ```
 
 `mutate.sh` exists because the law below requires mutating production code in a

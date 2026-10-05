@@ -12,6 +12,7 @@ in here is ever committed; only this file and `.gitkeep` are tracked.
 | `mutations/*.bak` | `scripts/mutate.sh` | `scripts/mutate.sh`, to restore the file | yes |
 | `mutations/*.new` | `scripts/mutate.sh` | nothing; scratch for the mutated text | yes |
 | `mutations/log` | `scripts/mutate.sh` | you, and the story that quotes it | yes |
+| `mutations/*.active` | `scripts/mutate.sh` | `mutate.sh --check`, and `gates.sh` through it | yes |
 | `phase-guard-declined.log` | `.claude/hooks/phase-guard.sh` | you, when the guard looks noisy | yes |
 | `refresh-self.<pid>.sh` | `scripts/refresh-harness.sh` | `bash`, as the script it is running | yes |
 | `plan-write.<pid>.md` | `scripts/plan.sh write` | `awk`, while it splices the section | yes |
@@ -79,6 +80,14 @@ the count is read from, on every path the script can still run code on. **A
 going away - which no trap can catch. It arrives with its `.bak`, and there is no
 log line for that run: the source file may still be mutated, so check it against
 the `.bak` with `cmp` before deleting either.
+
+`mutations/*.active` is the mutation in flight: written immediately before the
+file is touched, removed only after a restore verified with `cmp`. **One left
+behind means a run was killed, or its restore failed**, so the file may still be
+mutated. `bash scripts/mutate.sh --check` names each one and prints its remedy,
+and `gates.sh` runs that first and refuses to judge the tree until it is clean.
+It is `yes` because deleting it is that remedy; a deny rule would also block the
+printed `rm`.
 
 `plan-write.<pid>.md` holds the rendered `## Model guidance` block for the moment
 it takes `awk` to splice it into the story, and is removed straight after. Same

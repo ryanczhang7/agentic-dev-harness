@@ -211,6 +211,27 @@ if [ -n "$ONLY" ]; then
   esac
 fi
 
+# IS THE TREE THE CODE? (HARNESS-030) Everything below judges the working tree
+# and records the verdict as evidence. mutate.sh puts its file back on every path
+# it can still run code on, but a kill is a path where it cannot, and a failed
+# restore one where it could not; its `.active` sentinel survives both, and
+# `mutate.sh --check` reads them. Refused before any gate runs - a run behind a
+# stranded mutation is minutes producing a number that must be thrown away -
+# and with 2, the existing "nothing ran" code. Detection, not a lock: nothing
+# here waits. The mutation this run is itself the command of is not counted
+# (--check honours HARNESS_MUTATION), so a gate probe still runs; whether such a
+# run may be RECORDED is decided at the refusal block below. --list and --audit
+# read the manifest, never the tree, and must not be gagged. Inert on CI, where
+# .claude/state is gitignored and no sentinel can exist.
+if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ] && [ -f "$ROOT/scripts/mutate.sh" ]; then
+  if ! mutation_report="$(bash "$ROOT/scripts/mutate.sh" --check 2>&1)"; then
+    printf '%s\n' "$mutation_report" >&2
+    printf 'gates: refusing to run. The gates judge the working tree, and the tree may hold a mutation nobody restored.\n' >&2
+    printf 'Resolve each mutation above, then run the gates again.\n' >&2
+    exit 2
+  fi
+fi
+
 # table_lookup <table> <id>   Echoes the value. Exact string comparison, never
 # a regex match: a gate id containing `.` or `*` must not silently adopt a
 # different gate's line. Returns 1 when the id has no line.
@@ -867,12 +888,23 @@ FULLRUN=yes
 # and the exit status stays the gates' own. A refused run did not discharge the
 # full run, so its stamp says FULL=no.
 REFUSED=0; REFUSED_WHY=""
+# Never record a run made inside a mutation of this tree (HARNESS-030): a gate
+# probe may run the gates under its own mutation, but a verdict on mutated code
+# is not evidence. Checked first, ahead of the branch: the mutation is the more
+# fundamental reason. The directory comparison is load-bearing - a fixture copy
+# of this script, run by a suite that is itself under a mutation of the REAL
+# tree, inherits HARNESS_MUTATION and must not take that mutation for its own.
+if [ "$FULLRUN" = yes ] && [ -n "${HARNESS_MUTATION:-}" ] && [ -f "$HARNESS_MUTATION" ] \
+   && [ "${HARNESS_MUTATION%/*}" = "$ROOT/.claude/state/mutations" ]; then
+  REFUSED=1; FULLRUN=no
+  REFUSED_WHY="this run is inside mutate.sh's mutation of $(awk -F'\t' '$1 == "file" { print $2; exit }' "$HARNESS_MUTATION"); a verdict on mutated code is not evidence"
+fi
 # Refuse to record into a story from a checkout on another branch: the record
 # would stamp another branch's tree into this story, which gate-reminder.sh
 # tells the agent cannot happen. The branch is the story file's own `branch:`,
 # not current-story.env's, because the story file is what is written to. A
 # story with no `branch:`, or a detached HEAD, cannot be judged, so it fails
-# open, as gate-reminder.sh does. Checked first: an untracked-file count means
+# open, as gate-reminder.sh does. Checked before the untracked files: a count means
 # nothing for a tree that belongs to another story.
 if [ "$FULLRUN" = yes ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
   checkout_branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || printf '')"

@@ -5,7 +5,7 @@ slug: a-killed-mutation-is-announced-and-the-g
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-030-a-killed-mutation-is-announced-and-the-g
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, scripts/gates.sh, .claude/tests/mutate.test.sh, .claude/tests/gates.test.sh, .claude/state/README.md, CLAUDE.md, .claude/harness/rules.md, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -434,6 +434,7 @@ name, below the table.
 
 - PLANNED: `lead-po` resolved to `opus` (`claude-opus-5-5`); no override given in the dispatch.
 - RED: `test-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
+- GREEN: `feature-developer`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5), as planned. No override.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -937,3 +938,46 @@ stamp says FULL=no`.
 - **Pins.** `gates.sh:74` does not move. The `:542` pin moves, and GREEN
   updates it.
 - **`depends_on`** is empty, as instructed.
+
+**GREEN, 2026-10-05 (feature-developer, `claude-opus-5-5`, no override).**
+
+- **Suites:** `mutate: 189 passed, 0 failed`; `gates: 470 passed, 0 failed`;
+  `settings: 27 passed, 0 failed`; `reporting: 27 passed, 0 failed`;
+  `sigpipe: 82 passed, 0 failed`; `selftest: 100 passed, 0 failed`;
+  `check-sigpipe: scanned 44 shell file(s), 41 with pipefail, 0 finding(s)`;
+  `check-grep-count: scanned 44 shell file(s), 0 finding(s)`; `gates.sh --fast`:
+  `All required gates passed (0 ran, 5 unconfigured, 0 known)`.
+- **One divergence from C-1's text.** C-1's literal `"${EXPR//$'\n'/\\n}"`
+  writes `anb` for `a<newline>b` under this host's bash 5.3.15 (measured), i.e.
+  the backslash is lost. Shipped as `NL=$'\n'; BSN='\n'; "${EXPR//"$NL"/"$BSN"}"`,
+  which gives `a\nb` and is what the AC-1 two-line test pins.
+- **Also:** `--check` skips a non-regular `*.active` (`[ -f ]`, downstream had
+  `-e`): a directory under that name is never a sentinel mutate.sh wrote.
+  `sigpipe.test.sh`'s pin moved `gates.sh:542` -> `gates.sh:563`; `:74` unmoved.
+- **Negative controls, re-measured against the shipped code (VERBOSE runs):**
+  every row of the handoff's table now reads its "Expected after GREEN" value -
+  dead pid `gone`, live pid `alive`, shim `refused`; `--check` clean 0 + the AC-3
+  line; second live sentinel under a mutation: exit 1, RUNNING, one count line;
+  `HARNESS_MUTATION` -> dead sentinel: exit 1, GONE; AC-5 sentinel removed: full
+  run exit 0 and records, `--fast`/`--gate unit` exit 0 and run the gate;
+  `--list`/`--audit` 0/0; C-2 other-tree: records, exit 0, `FULL=yes`; C-2
+  missing file: records, exit 0; probe 48: exit 0 PASS observed 48 floor 40;
+  probe 3: exit 1, below floor; second dead / live sentinel under the probe: 2 / 2.
+- **Two on-arrival controls shown to bite** (not the DVs, which stay GATES'):
+  - own-sentinel exemption in `--check` replaced by `false` (out-of-tree runner,
+    `bash "$R/scripts/mutate.sh" "$PWD/scripts/mutate.sh" 's/\[ "\$a" = "\$HARNESS_MUTATION" \] \&\& \[ "\$a_alive" = 1 \]/false/' -- bash "$PWD/.claude/tests/mutate.test.sh"`):
+    `mutate: 182 passed, 7 failed` - `FAIL AC-6 control: and only it is counted`,
+    `FAIL AC-6 control: the command's own mutation is not listed as unaccounted for`,
+    `FAIL C-1: HARNESS_MUTATION naming a live sentinel in this tree counts it out, exit 0`,
+    `FAIL C-1: and says the one in flight is that command's own`,
+    `FAIL AC-6: --check as the mutation's own command exits 0`,
+    `FAIL AC-6: and says the one mutation in flight is its own`,
+    `FAIL AC-6: and does not call it unaccounted for`; `restored (verified ...)`.
+  - `gates.sh`'s `HARNESS_MUTATION` directory comparison replaced by `true`
+    (`bash scripts/mutate.sh scripts/gates.sh 's|\[ "\${HARNESS_MUTATION%/\*}" = "\$ROOT/.claude/state/mutations" \]|true|' -- bash .claude/tests/gates.test.sh`):
+    `gates: 408 passed, 62 failed`, including `FAIL C-2 control: HARNESS_MUTATION
+    naming another tree's sentinel: the run records` / `and exits 0` / `and stamps
+    FULL=yes`, plus every recorded-run assertion in the suite - handoff item 4's
+    leak, observed: the outer mutation's variable reaches every fixture run.
+    `command exited 1; restored (verified byte-for-byte ...)`.
+  `mutate.sh --check` on the real tree afterwards: clean, exit 0.

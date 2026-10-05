@@ -304,7 +304,9 @@ inspect.
   new state file belongs in that table, with a yes or no, or the suite fails. A
   `.bak` left behind under `mutations/` means a
   restore failed and `mutate.sh` exited 90 saying so; everything else it cleans
-  up. The backup path is explicit rather than `$TMPDIR` because that variable is
+  up. A `.active` left behind means a mutation was killed or not restored, and
+  `gates.sh` refuses to run until `bash scripts/mutate.sh --check` is clean.
+  The backup path is explicit rather than `$TMPDIR` because that variable is
   unset in some of the shells this harness runs in, and a mutation whose backup
   went nowhere once left its restore depending on the `sed` expression happening
   to be an exact inverse of a single-occurrence match.
