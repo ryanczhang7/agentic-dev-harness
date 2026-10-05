@@ -28,7 +28,7 @@ it closes, because every port changes the code the next one builds on.
 | 4 Mutation safety | a0b43a2 + MT-047 `.active`, `--check`, gates refuse | HARNESS-030 | **done**, #107, release 73 |
 | 5 Phase lock | MT-034 `classify()` bare-path retry | HARNESS-031 | **done**, #108, release 74 |
 | 6 Process | A: GATES -> REVIEW runs `ci-local.sh`/full selftest | HARNESS-032 | **done**, #109, release 75 |
-| 6 Process | B: check-boundaries 3d baseline at the last committed PLANNED | - | to do |
+| 6 Process | B: check-boundaries 3d baseline at the last committed PLANNED | HARNESS-033 | **done**, #110, release 76 |
 | 6 Process | C + MT-042: run lock, then opt-in `SELFTEST_JOBS` | - | to do |
 | 6 Process | D: 3h/3g messages name the fenced-block rule | - | to do |
 | - | Refresh manga-translator from the release that carries them | - | after group 6 |

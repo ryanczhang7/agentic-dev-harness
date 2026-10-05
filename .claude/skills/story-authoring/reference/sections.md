@@ -69,8 +69,9 @@ field. Exhaustive earning goes to `/audit-mutations`, not into the story.
 Acceptance criteria are frozen once the story leaves PLANNED. If one is wrong or
 unsatisfiable, the story stops, the product owner decides, and the change is
 recorded here: which AC, what it said, what it says now, who approved it and
-why. `check-boundaries.sh` fails a PR whose criteria differ from the base branch
-without an entry. Omit when unused.
+why. `check-boundaries.sh` fails a PR whose criteria differ from their last
+committed PLANNED state (else the base branch) without an entry. Omit when
+unused.
 
 ## Model guidance - Lead PO
 

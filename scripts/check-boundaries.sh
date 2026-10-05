@@ -298,18 +298,86 @@ else
   ok "branch matches the story's frontmatter"
 fi
 
-# 3d. Acceptance criteria are frozen: any difference from the base branch needs
-#     an ## Amendments entry, whatever phase the edit was made in. CI cannot
-#     see when in the branch's history an edit happened, only that it did.
-if git cat-file -e "$BASE:$sfile" 2>/dev/null; then
-  before=$(git show "$BASE:$sfile" | section - "Acceptance criteria" | sed 's/[[:space:]]*$//')
+# 3d. Acceptance criteria are frozen once a story leaves PLANNED (law 6): any
+#     difference from the state committed immediately before the FIRST commit
+#     that left PLANNED - else the base branch - needs an ## Amendments entry.
+#     criteria_baseline decides which state that is, from the branch's history.
+#
+# criteria_baseline <story-file>   Prints one line, `<kind> <rev>`:
+#   planned <sha>   the last committed PLANNED state on the branch
+#   first <sha>     new in the PR and first committed outside PLANNED
+#   base <BASE>     the base copy: the branch never committed it at PLANNED,
+#                   or it had already left PLANNED on the base
+#   unwalked <BASE> no merge base (depth-1 clone, unrelated history); compare
+#                   with the base itself, as before
+#   open -          no state has left PLANNED; nothing is frozen yet
+#   none -          nothing to compare with
+# The states, oldest first, are the base copy, every commit of BASE..HEAD that
+# holds the file (not --first-parent: in CI HEAD is a merge whose first parent
+# is the base), and the working tree. Nothing after the first non-PLANNED state
+# is read, so a later return to PLANNED cannot move the baseline. Each copy is
+# read into a variable and fed by here-string: `git show | section -` was a
+# pipeline into an early-exiting awk (see has_content above).
+criteria_baseline() {
+  local f="$1" txt cph rev prev_kind="" prev_rev="" have_base=0
+  git cat-file -e "$BASE:$f" 2>/dev/null && have_base=1
+  if ! git merge-base "$BASE" HEAD >/dev/null 2>&1; then
+    if [ "$have_base" = 1 ]; then printf 'unwalked %s\n' "$BASE"; else printf 'none -\n'; fi
+    return 0
+  fi
+  if [ "$have_base" = 1 ]; then
+    txt="$(git show "$BASE:$f" 2>/dev/null)"
+    cph="$(frontmatter_value - phase <<< "$txt")"; cph="${cph//[[:space:]]/}"
+    if [ "$cph" != PLANNED ]; then printf 'base %s\n' "$BASE"; return 0; fi
+    prev_kind=base; prev_rev="$BASE"
+  fi
+  for rev in $(git rev-list --reverse --topo-order "$BASE"..HEAD 2>/dev/null); do
+    txt="$(git show "$rev:$f" 2>/dev/null)" || continue
+    cph="$(frontmatter_value - phase <<< "$txt")"; cph="${cph//[[:space:]]/}"
+    if [ "$cph" != PLANNED ]; then
+      case "$prev_kind" in
+        "")   printf 'first %s\n' "$rev" ;;
+        base) printf 'base %s\n' "$BASE" ;;
+        *)    printf 'planned %s\n' "$prev_rev" ;;
+      esac
+      return 0
+    fi
+    prev_kind=planned; prev_rev="$rev"
+  done
+  cph="$(frontmatter_value "$f" phase)"; cph="${cph//[[:space:]]/}"
+  if [ "$cph" = PLANNED ]; then printf 'open -\n'; return 0; fi
+  case "$prev_kind" in
+    "")   printf 'none -\n' ;;
+    base) printf 'base %s\n' "$BASE" ;;
+    *)    printf 'planned %s\n' "$prev_rev" ;;
+  esac
+}
+crit_base="$(criteria_baseline "$sfile")"
+crit_kind="${crit_base%% *}"; crit_rev="${crit_base#* }"
+crit_label=""; crit_txt=""
+case "$crit_kind" in
+  unwalked)
+    note "no merge base with $BASE, so the branch's history cannot be walked; criteria compared with $BASE itself"
+    crit_kind=base ;;
+esac
+case "$crit_kind" in
+  planned) crit_label="the last committed PLANNED state (${crit_rev:0:7})" ;;
+  first)   crit_label="the first commit that left PLANNED (${crit_rev:0:7})" ;;
+  base)    crit_label="$BASE"; crit_rev="$BASE" ;;
+esac
+if [ "$crit_kind" = open ]; then
+  note "story $sid has not left PLANNED in any committed state; its criteria are not frozen yet"
+elif [ -n "$crit_label" ] && git cat-file -e "$crit_rev:$sfile" 2>/dev/null; then
+  crit_txt="$(git show "$crit_rev:$sfile" 2>/dev/null)"
+  before="$(section - "Acceptance criteria" <<< "$crit_txt")"
+  before="$(sed 's/[[:space:]]*$//' <<< "$before")"
   after=$(section "$sfile" "Acceptance criteria" | sed 's/[[:space:]]*$//')
   if [ "$before" = "$after" ]; then
-    ok "acceptance criteria unchanged since $BASE"
+    ok "acceptance criteria unchanged since $crit_label"
   elif section "$sfile" "Amendments" | has_content; then
     ok "acceptance criteria changed, with an ## Amendments entry"
   else
-    problem "story $sid: ## Acceptance criteria differ from $BASE with no ## Amendments entry. Criteria are frozen once a story leaves PLANNED; record which AC changed, what it said, what it says now, who approved it and why."
+    problem "story $sid: ## Acceptance criteria differ from $crit_label with no ## Amendments entry. Criteria are frozen once a story leaves PLANNED, against the last state committed while it was PLANNED (else the base branch); record which AC changed, what it said, what it says now, who approved it and why."
   fi
 else
   note "story file is new in this PR; nothing to freeze the criteria against"
