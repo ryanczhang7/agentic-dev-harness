@@ -4,8 +4,8 @@ title: Criteria freeze at the last committed PLANNED state, not the base branch
 slug: criteria-freeze-at-the-last-committed-pl
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-033-criteria-freeze-at-the-last-committed-pl
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/commands/advance-story.md, .claude/harness/rules.md, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -508,6 +508,57 @@ exit status: the copied script makes the scratch tree differ from its gate recor
 lines and `mutate.sh`'s restore report, then `git worktree remove --force` the
 scratch tree. **Owner: GATES.**
 
+### Results, run at GATES (2026-10-05) by the orchestrator
+
+Both through `scripts/mutate.sh` with the one expression written above, detached, one at a time, against the GREEN commit. Passing lines elided.
+
+**DV-1, the defect put back: `boundaries: 91 passed, 10 failed`, exactly the handoff's prediction.** The ten are the new-behaviour assertions other than AC-7; AC-2's second case, AC-3 (with `:205-221`), AC-7 and all 82 earlier assertions stayed green.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s|^crit_base="$(criteria_baseline "$sfile")"$|crit_base="base $BASE"|) ===
+  355 - crit_base="$(criteria_baseline "$sfile")"
+  355 + crit_base="base $BASE"
+=== mutate: running bash scripts/selftest.sh boundaries ===
+  acceptance criteria are frozen
+    FAIL AC-1: a refinement committed at PLANNED on the branch is not refused
+         expected NOT to contain: ## Acceptance criteria differ from
+         FAIL  story T-31: ## Acceptance criteria differ from main with no ## Amendments entry. Criteria are frozen once a story leaves PLANNED, against the last state committed while it was PLANNED (else the base branch); record which AC changed, what it said, what it says now, who approved it and why.
+    FAIL AC-1: the criteria are judged against the branch's PLANNED commit
+         expected to contain: ok    acceptance criteria unchanged since the last committed PLANNED state (fc6131b)
+         FAIL  story T-31: ## Acceptance criteria differ from main with no ## Amendments entry. Criteria are frozen once a story leaves PLANNED, against the last state committed while it was PLANNED (else the base branch); record which AC changed, what it said, what it says now, who approved it and why.
+    FAIL AC-2: a flip back to PLANNED is refused against the FIRST PLANNED commit, not the second
+         expected a refusal saying: ## Acceptance criteria differ from the last committed PLANNED state (4e44f21)
+    FAIL AC-4a: a new story is judged against its LAST PLANNED commit
+         expected to contain: ok    acceptance criteria unchanged since the last committed PLANNED state (f854ac5)
+    FAIL AC-4b: a new story first committed at RED is frozen at that commit
+         expected a refusal saying: ## Acceptance criteria differ from the first commit that left PLANNED (8272369)
+    FAIL AC-4c: and is reported unchanged since the first commit that left PLANNED
+         expected to contain: ok    acceptance criteria unchanged since the first commit that left PLANNED (73a560e)
+    FAIL AC-4d: and says its criteria are not frozen yet
+    FAIL AC-5: the flip-back history is accepted on its ## Amendments entry
+         expected to contain: ok    acceptance criteria changed, with an ## Amendments entry
+    FAIL AC-5: a first-committed-at-RED change is accepted on its ## Amendments entry
+         expected to contain: ok    acceptance criteria changed, with an ## Amendments entry
+    FAIL AC-6: with no merge base the check says the history cannot be walked
+         FAIL  story T-39: ## Acceptance criteria differ from unrelated-T-39 with no ## Amendments entry. Criteria are frozen once a story leaves PLANNED, against the last state committed while it was PLANNED (else the base branch); record which AC changed, what it said, what it says now, who approved it and why.
+boundaries: 91 passed, 10 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_check-boundaries.sh.20261005T165456Z.1478.bak) ===
+```
+
+**DV-2, the probe against HARNESS-032's real branch: both lines as required.** The scratch worktree was removed afterwards.
+
+```
+--- unmutated
+ok    acceptance criteria unchanged since the first commit that left PLANNED (a947567)
+--- mutated
+=== mutate: docs/backlog/stories/HARNESS-032.md (1 line(s) changed by s/^- \*\*AC-4\*\* /- **AC-4** (probe) /) ===
+  155 - - **AC-4** — complete-story.md's `- **GATES → REVIEW` bullet names
+  155 + - **AC-4** (probe) — complete-story.md's `- **GATES → REVIEW` bullet names
+=== mutate: running env GITHUB_HEAD_REF=story/HARNESS-032-the-full-self-test-runs-before-a-story-r PR_HEAD_SHA= bash scripts/check-boundaries.sh f9ab433 ===
+FAIL  story HARNESS-032: ## Acceptance criteria differ from the first commit that left PLANNED (a947567) with no ## Amendments entry. Criteria are frozen once a story leaves PLANNED, against the last state committed while it was PLANNED (else the base branch); record which AC changed, what it said, what it says now, who approved it and why.
+=== mutate: command exited 1; restored (verified byte-for-byte against /tmp/claude/D--agentic-dev-harness--claude-worktrees-nostalgic-williams-fcf700/62196ff3-22ca-4509-8ec9-310ab8c7b7f8/scratchpad/h032/.claude/state/mutations/docs_backlog_stories_HARNESS-032.md.20261005T165806Z.12202.bak) ===
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -546,6 +597,7 @@ name, below the table.
 - PLANNED, `lead-po`, resolved to Opus 5.5 (`claude-opus-5-5`), dispatched without a model override.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran boundaries: 90 passed, 11 failed, matching the handoff.
 - GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the check-boundaries.sh diff.
+- GATES: no dispatch. The orchestrator (`claude-opus-5-5`) ran DV-1, DV-2, `gates.sh` and the full selftest itself.
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -809,10 +861,21 @@ exercised here; DV-2 (and CI itself) is where a merge-commit `HEAD` meets it.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-05T16:58:41Z
+    commit: 328ee4b
+    tree:   4d435989b3b9da1a8d6d64fbe10e99b2b559ba65
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -910,3 +973,10 @@ model override in the dispatch).**
   PLANNED state (f5be9a4)` - this story's PLANNED commit - and refused only
   `story HARNESS-033 is in phase 'GREEN'; a PR should be opened from REVIEW or DONE`.
 - Not run, by instruction: `mutate.sh`, DV-1, DV-2 (Owner: GATES).
+
+**GATES (2026-10-05), orchestrator.** DV-1 and DV-2 came out as required
+(results under `## Deferred verifications`). `bash scripts/gates.sh`: all
+required gates passed (0 ran, 7 unconfigured), recorded. Full
+`bash scripts/selftest.sh`, detached and alone: exit 0 in 2,809 s, last line
+`23 harness suite(s) passed.` (2,407 assertions executed, 2,180 declared);
+boundaries 101/0, sigpipe 82/0, procedure 37/0.
