@@ -4,8 +4,8 @@ title: A run lock stops the self-test and gates overlapping
 slug: a-run-lock-stops-the-self-test-and-gates
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-034-a-run-lock-stops-the-self-test-and-gates
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-lock.sh, scripts/gates.sh, scripts/selftest.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/sigpipe.test.sh, .claude/state/README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1346,3 +1346,16 @@ executed, 2,320 declared). Duration on this host has varied from 1,518 s to
 4,242 s across HARNESS-031..034 on the same day. The cause is not known; this
 run's probe was refused in under a second, so it cannot have competed with the
 self-test.
+
+**DONE, 2026-10-05.** Merged in #111 (merge commit 1e02f30), release 77. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI, first attempt: both jobs were cancelled after 15 min with
+no steps run, annotated "The job was not acquired by Runner of type hosted even
+after multiple attempts" (runner allocation, not the change). Re-run, same
+commit: `gates` passed in 2m06s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37372397667),
+`boundaries` in 7s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37372397640).
+No epic. Group 6 finding C's run lock is complete; next is the MT-042 follow-up
+(opt-in `SELFTEST_JOBS`), then finding D.
