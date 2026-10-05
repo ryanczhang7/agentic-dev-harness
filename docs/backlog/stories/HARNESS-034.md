@@ -4,8 +4,8 @@ title: The lock follows the session into a worktree and judges a write by the wo
 slug: the-lock-follows-the-session-into-a-work
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-034-the-lock-follows-the-session-into-a-work
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/hooks/phase-guard.sh, .claude/tests/_lib.sh, .claude/tests/_spawns.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/spawns.test.sh, .claude/tests/fixtures/classify/classify.golden, CLAUDE.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -420,10 +420,21 @@ denial text, the `worktree:` line, and process counts.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-05T19:41:40Z
+    commit: e6b4496
+    tree:   1e2218f3a37dbb9532647158ddd0c353a6dd8055
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
