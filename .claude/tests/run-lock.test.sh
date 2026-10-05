@@ -537,7 +537,7 @@ describe "AC-7  state and suite hygiene, in this repository"
 README="$REPO_ROOT/.claude/state/README.md"
 # state_row <path cell>   Table rows with that path cell whose last cell is yes.
 state_row() {
-  local p; p="$(printf '%s' "$1" | sed 's/[.*<>]/\\&/g')"
+  local p; p="$(printf '%s' "$1" | sed 's/[.*]/\\&/g')"
   tr -d '\r' < "$README" | grep -cE -- "^\\| \`$p\` +\\|.*\\| yes +\\|\$"
 }
 assert_eq "README has one run.lock row, hand-editable yes" 1 "$(state_row 'run.lock')"

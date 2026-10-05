@@ -1014,6 +1014,83 @@ in about a second).
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+### Return 1: GREEN -> RED (2026-10-05), test-developer, Opus 5.5 (`claude-opus-5-5`), no override
+
+**Which test.** `.claude/tests/run-lock.test.sh`, AC-7,
+`README has one run.lock.<pid> row, hand-editable yes`. It asserts that
+`.claude/state/README.md` has exactly one table row whose path cell is
+`` `run.lock.<pid>` `` and whose last cell is `yes` (C-8, AC-7).
+
+**What was wrong.** The reader `state_row` escaped the path cell with
+`sed 's/[.*<>]/\\&/g'`, so `run.lock.<pid>` became the ERE
+`run\.lock\.\<pid\>`. In `grep -E`, `\<` and `\>` are word-boundary anchors,
+not literal angle brackets, so the needle could match only a cell reading
+`run.lock.pid` and never C-8's correct `run.lock.<pid>` row. The test was
+unsatisfiable by a correct README and satisfiable by a wrong one.
+
+**How it was found.** GREEN, running the suite against its implementation:
+139 passed, 1 failed, the one red being this assertion against a README that
+holds the correct row (GREEN's note in `## Notes` has its three-file repro of
+the extracted `state_row`). Reproduced independently by the orchestrator: a
+file containing ``| `a.<b>` | x |`` gives 0 matches for ERE `a\.\<b\>` and 1
+for `a\.<b>`, and `echo a.b | grep -cE 'a\.\<b\>'` gives 1.
+
+**The fix, and the only change in any test.** `<` and `>` are literal in ERE
+unescaped, so the escape set drops them:
+
+```
+-  local p; p="$(printf '%s' "$1" | sed 's/[.*<>]/\\&/g')"
++  local p; p="$(printf '%s' "$1" | sed 's/[.*]/\\&/g')"
+```
+
+The assertion's name, expected count and anchoring are unchanged; the other two
+`state_row` callers (`run.lock`, `mutations/*.active`) contain no `<>` and
+build the same regex as before.
+
+**What earns it.** The corrected assertion runs for the first time against a
+README that already satisfies it, so it was probed: one mutation of the exact
+property it pins - the `run.lock.<pid>` row's hand-editable cell, `yes` to
+`no` - through `scripts/mutate.sh`, against this suite only:
+
+```
+$ bash scripts/mutate.sh .claude/state/README.md '/^| `run\.lock\.<pid>`/s/| yes |/| no |/' -- bash .claude/tests/run-lock.test.sh
+=== mutate: .claude/state/README.md (1 line(s) changed by /^| `run\.lock\.<pid>`/s/| yes |/| no |/) ===
+  20 - | `run.lock.<pid>` | `scripts/run-lock.sh` | `ln`, while it takes the lock | yes |
+  20 + | `run.lock.<pid>` | `scripts/run-lock.sh` | `ln`, while it takes the lock | no |
+
+=== mutate: running bash .claude/tests/run-lock.test.sh ===
+...
+  AC-7  state and suite hygiene, in this repository
+    FAIL README has one run.lock.<pid> row, hand-editable yes
+         expected: 1
+         actual:   0
+
+run-lock: 139 passed, 1 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_state_README.md.20261005T192359Z.983.bak) ===
+  20: | `run.lock.<pid>` | `scripts/run-lock.sh` | `ln`, while it takes the lock | yes |
+exit=1
+```
+
+Exactly that assertion went red, and no other; the file was restored and the
+restore verified with `cmp`. `bash scripts/mutate.sh --check` afterwards:
+`mutate: no stranded mutation; nothing of a previous run is in the tree.`
+
+**Unmutated, with GREEN's uncommitted implementation in the tree:**
+
+```
+$ bash .claude/tests/run-lock.test.sh
+run-lock: 140 passed, 0 failed
+exit=0
+```
+
+**GREEN.** Not a no-op in the sense of "nothing to do": GREEN's implementation
+(`scripts/run-lock.sh`, `scripts/gates.sh`, `scripts/selftest.sh`,
+`.claude/state/README.md`, `.claude/tests/sigpipe.test.sh`) was left exactly as
+GREEN wrote it, uncommitted, and this return touched none of it. GREEN resumes
+at its remaining steps (other suites, `gates.sh --fast`, control confirmation).
+`gates.sh --fast` was not run in this return.
+
 ## Gate results
 
 <!-- Written by scripts/gates.sh itself on every full run, stamped with the
@@ -1081,3 +1158,35 @@ line 2. The test asserts both lines (line 1 whole, line 2 anchored on
 criterion stands as written. C-2's fourth message ("cannot create") is not
 tested: it needs an unwritable state directory, which `chmod` cannot make on
 Windows.
+
+**GREEN (2026-10-05), feature-developer, Opus 5.5 (`claude-opus-5-5`), no
+override - STOPPED, a test is wrong.** Implementation written per the Contract
+(uncommitted): `scripts/run-lock.sh` (new), the take in `scripts/gates.sh`
+after the `mutate.sh --check` block plus one `RUN_LOCK_SELF` line below `:74`
+(before the argument loop shifts `$@` away; `:74` unchanged), the take in
+`scripts/selftest.sh` between the floors faults and `# --- run ---`, the two
+`.claude/state/README.md` rows and an exhaust paragraph, and the C-5 pin in
+`sigpipe.test.sh` moved `563 -> 580`. No `.gitignore` change: `.claude/state/*`
+already ignores `run.lock` (`git check-ignore -v` names `.gitignore:2`).
+
+`bash .claude/tests/run-lock.test.sh`: **139 passed, 1 failed** (42.7 s). The
+one red is `README has one run.lock.<pid> row, hand-editable yes`, and the
+defect is in the test's reader, not the README. `state_row` escapes the path
+cell with `sed 's/[.*<>]/\\&/g'`, turning `run.lock.<pid>` into the ERE
+`run\.lock\.\<pid\>`; in GNU grep (and BSD) `\<` and `\>` are WORD BOUNDARIES,
+not literal angle brackets. So the needle can match only a cell reading
+`run.lock.pid`, never C-8's `run.lock.<pid>`. The test's own `state_row`,
+extracted verbatim from the suite and run against three files:
+
+```
+README.md (C-8 rows):                      run.lock=1 run.lock.<pid>=0 active=1
+| `run.lock.<pid>` | x | yes |  (literal):  run.lock.<pid>=0
+| `run.lock.pid` | x | yes |    (no <>):   run.lock.<pid>=1
+```
+
+The fix is RED's: escape `<` and `>` differently (they are literal in ERE
+unescaped, so dropping them from the bracket: `s/[.*]/\\&/g`), then earn the
+corrected assertion by mutation per `rules.md`. GREEN did not write
+`run.lock.pid` into the README to satisfy it: that contradicts C-8 and AC-7.
+Remaining GREEN steps (other suites, `gates.sh --fast`, control confirmation)
+not run; resume after the RED return.
