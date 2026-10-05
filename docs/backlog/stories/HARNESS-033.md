@@ -5,7 +5,7 @@ slug: criteria-freeze-at-the-last-committed-pl
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-033-criteria-freeze-at-the-last-committed-pl
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/commands/advance-story.md, .claude/harness/rules.md, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -545,6 +545,7 @@ name, below the table.
 
 - PLANNED, `lead-po`, resolved to Opus 5.5 (`claude-opus-5-5`), dispatched without a model override.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran boundaries: 90 passed, 11 failed, matching the handoff.
+- GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the check-boundaries.sh diff.
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -860,3 +861,52 @@ exercised here; DV-2 (and CI itself) is where a merge-commit `HEAD` meets it.
 - The GATES -> REVIEW procedure now runs the full self-test first (HARNESS-032).
   `sigpipe.test.sh` pins `check-boundaries.sh` line numbers as well as
   `gates.sh`'s; C-5 lists the three that move.
+
+**GREEN (2026-10-05, `feature-developer`, ran on Opus 5.5 (`claude-opus-5-5`), no
+model override in the dispatch).**
+
+- **Built.** `criteria_baseline` and the new 3d block in
+  `scripts/check-boundaries.sh` (the function sits immediately before the 3d
+  block, inside its comment header). C-2's line is at column 0, line 355:
+  `crit_base="$(criteria_baseline "$sfile")"`. Every committed copy is read into
+  a variable and fed by here-string; the old `git show "$BASE:$sfile" | section`
+  pipeline is gone. The 3d comment no longer says "whatever phase" or that CI
+  cannot see when an edit happened. C-4's sentence is in
+  `.claude/commands/advance-story.md`, before the first `Set the phase;`. C-6
+  wording changed in `rules.md`, `new-story.sh` (the `## Amendments` template
+  comment) and `story-authoring/reference/sections.md`. C-5 pins in
+  `sigpipe.test.sh` moved 326 -> 394, 365 -> 433, 540 -> 608; nothing else in
+  any test file changed. `criteria_baseline` added no status-discarding `$(...)`
+  the guard flags (check-sigpipe: 0 findings).
+- **Measured.** `bash scripts/selftest.sh boundaries` -> `boundaries: 101 passed,
+  0 failed` (handoff predicted 101/0). `sigpipe: 82 passed, 0 failed`,
+  `procedure: 37 passed, 0 failed`, `new-story: 34 passed, 0 failed`,
+  `selftest: 100 passed, 0 failed`, `policy: 17 passed, 0 failed`,
+  `reporting: 27 passed, 0 failed`. `check-sigpipe: scanned 45 shell file(s), 42
+  with pipefail, 0 finding(s)`; `check-grep-count: scanned 45 shell file(s), 0
+  finding(s)`. `bash scripts/gates.sh --fast`: exit 0, every project gate
+  UNCONFIGURED (unbootstrapped repository), so it judges nothing here. The full
+  `bash scripts/selftest.sh` was NOT run in GREEN.
+- **Controls, measured against the shipped function** (the function extracted
+  from the real script and run over scratch histories of the same shape, plus
+  the suite run above, where every control assertion passed):
+
+  | Control | Expected after GREEN | Measured |
+  |---|---|---|
+  | `:205-221` | pass (kind `base`) | pass |
+  | #4 AC-2 second case | pass, kind `base` | pass; `criteria_baseline` -> `base main` |
+  | #5 AC-3 | pass, kind `base` | pass; -> `base main` |
+  | #18 AC-6 fallback | pass, kind `unwalked` | pass; -> `unwalked orph` (orphan base) |
+  | AC-1 (AC-6's control) | no refusal + ok line | pass; -> `planned <sha of the branch's PLANNED commit>` |
+
+  No divergence from RED's table.
+- **The merge-commit `HEAD` the handoff flagged as unexercised** was checked in a
+  scratch repository: branch PLANNED v1 then RED v1, base advanced by one
+  commit, `--no-ff` merge, detached at the merge, `BASE=main~1`:
+  `planned d0bf566...` = the PLANNED commit, as expected. Scratch only, not a
+  test; DV-2 and CI remain the real exercise.
+- **Own branch.** `bash scripts/check-boundaries.sh` (base `origin/main`) on this
+  branch printed `ok    acceptance criteria unchanged since the last committed
+  PLANNED state (f5be9a4)` - this story's PLANNED commit - and refused only
+  `story HARNESS-033 is in phase 'GREEN'; a PR should be opened from REVIEW or DONE`.
+- Not run, by instruction: `mutate.sh`, DV-1, DV-2 (Owner: GATES).
