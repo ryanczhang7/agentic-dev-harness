@@ -394,4 +394,36 @@ assert_eq "AC-5: the golden judges every path in paths.txt (instrument control)"
   "$(awk 'NF { n++ } END { print n + 0 }' "$CLASSIFY_FIXTURES/paths.txt")" \
   "$(awk 'END { print NR }' "$_cls")"
 
+# ===========================================================================
+describe "HARNESS-031 AC-6  the bare-path retry costs no process"
+
+# The retry goes inside classify_stdin's awk (C-1), so a bare path that only its
+# slashed form classifies is decided there and never reaches is_ignored's git.
+# Numbers READ OUT of the story (C-6: settled), measured at 16c42a1 on this
+# fixture in GREEN: `rm -rf fixtures` spawned 26 in total, 1 of them
+# `git check-ignore`. HARNESS-025's AC-1 bound of 27 (above) has no headroom,
+# which is why a retry that added a process would fail an existing test.
+FIXF="$(make_fixture)"; FIXTURES_MADE="$FIXTURES_MADE $FIXF"
+printf '%s\n' 'test | fixtures/**' >> "$FIXF/.claude/harness/paths.conf"
+set_phase "$FIXF" GREEN
+spawn_trace "$FIXF" Bash command 'rm -rf fixtures' "$WORK/h031"
+_h031="$(spawn_tally "$WORK/h031")"
+
+# Instrument control by verdict: the trace reached the judgement and the bare
+# test directory was refused in GREEN. RED on arrival (allowed today).
+assert_contains "AC-6: the traced rm -rf fixtures is refused in GREEN (instrument control)" \
+  '"permissionDecision":"deny"' "$(cat "$WORK/h031.out")"
+# at_most's shape: classify reached exactly once, THEN the bound. RED on
+# arrival: measured 1 git check-ignore at 16c42a1.
+at_most "AC-6: rm -rf fixtures spawns no git check-ignore" \
+  "$WORK/h031" "$_h031" 1 0
+_c="$(spawn_traced_calls "$WORK/h031" classify)"
+_n="$(spawn_count "$_h031" TOTAL)"
+if [ "$_c" -ne 1 ]; then
+  _bad "AC-6: rm -rf fixtures spawns at most 26 external processes" \
+    "classify was called $_c times, not 1 (instrument control)"
+elif [ "$_n" -le 26 ]; then _ok "AC-6: rm -rf fixtures spawns at most 26 external processes"
+else _bad "AC-6: rm -rf fixtures spawns at most 26 external processes" "spawned $_n
+$(tally_detail "$_h031")"; fi
+
 summary "spawns"

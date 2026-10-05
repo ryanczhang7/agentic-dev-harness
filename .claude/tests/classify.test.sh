@@ -19,7 +19,10 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
 FIX="$(make_project_fixture)"
-trap 'rm -rf "$FIX"' EXIT
+# HARNESS-031 builds its own fixtures (C-3: never append a rule to the shared FIX,
+# or every later block inherits it); each is added here as it is made.
+H031_FIXES=""
+trap 'rm -rf "$FIX" $H031_FIXES' EXIT
 
 cls() { ( cd "$FIX" && bash scripts/classify.sh "$@" 2>&1 ); }
 
@@ -230,4 +233,93 @@ printf 'not a directory\n' > "$FIX/test"
 assert_eq "a FILE named test classifies as test: the accepted trade" "test	test" \
   "$(cls test)"
 rm -f "$FIX/test"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-031: a bare path no rule matches takes its slashed form's category"
+
+# HARNESS-011 closed the bare-directory hole by writing every built-in rule
+# twice (`docs/**` AND `docs`). A PROJECT's own rule gets no twin unless its
+# author remembers one, and manga-translator's `test | fixtures/**` is exactly
+# that case: bare `fixtures` fell to `source`. Even the built-in twins are
+# incomplete - `**/.pytest_cache/**`, `**/.tox/**` and `**/.next/**` have no
+# bare form. The settled fix (port audit, Decided 5): a bare path that matches
+# NO rule is judged again with one trailing `/`, so any rule `X/**` covers `X`.
+#
+# Each extra-rule fixture is its own tree (C-3). Measured at 16c42a1, before
+# the retry: `fixtures`, `pkg/golden`, `.pytest_cache` and `.tox` -> source,
+# `.next` (gitignored as `.next/`) -> ignored.
+H031A="$(make_project_fixture)"; H031_FIXES="$H031_FIXES $H031A"
+printf '%s\n' 'test | fixtures/**' >> "$H031A/.claude/harness/paths.conf"
+clsa() { ( cd "$H031A" && bash scripts/classify.sh "$@" 2>&1 ); }
+
+# AC-3 - rule-driven, never child-driven. Nothing named `fixtures` exists on
+# disk in this fixture: the retry reads rules, not the filesystem.
+assert_eq "AC-3: bare fixtures takes the category of its fixtures/** rule" \
+  "test	fixtures" "$(clsa fixtures)"
+# THE CONTROLS. A retry that made every bare name match something would pass
+# the positive above and destroy the fail-closed `source` fallback.
+assert_eq "AC-3 control: bare src is still source"            "source	src"    "$(clsa src)"
+assert_eq "AC-3 control: an invented bare name is still source" "source	wibble" "$(clsa wibble)"
+# `fixtures/**` is root-anchored, and the retry keeps each rule's anchoring: it
+# appends a slash to the PATH, it does not loosen the RULE.
+assert_eq "AC-3 control: a nested lib/fixtures is not reached by a root-anchored rule" \
+  "source	lib/fixtures" "$(clsa lib/fixtures)"
+# A `**/`-prefixed project rule reaches a nested bare directory.
+printf '%s\n' 'test | **/golden/**' >> "$H031A/.claude/harness/paths.conf"
+assert_eq "AC-3: a nested bare pkg/golden takes the category of **/golden/**" \
+  "test	pkg/golden" "$(clsa pkg/golden)"
+
+# A built-in rule with no twin, against the REAL paths.conf - a fresh fixture,
+# so no extra rule is in play. Neither name is gitignored in it.
+H031R="$(make_project_fixture)"; H031_FIXES="$H031_FIXES $H031R"
+clsr() { ( cd "$H031R" && bash scripts/classify.sh "$@" 2>&1 ); }
+assert_eq "AC-3: bare .pytest_cache is vendor under the real paths.conf, with no twin" \
+  "vendor	.pytest_cache" "$(clsr .pytest_cache)"
+assert_eq "AC-3: bare .tox is vendor under the real paths.conf, with no twin" \
+  "vendor	.tox" "$(clsr .tox)"
+
+# AC-4 - an explicit rule for the bare form always wins. The retry fires when NO
+# RULE matched, not when the answer happens to be `source`: here a rule says
+# `source` for bare `gen`, and `gen/**` must not override it. Passes on
+# arrival (no retry exists to get it wrong); DV-2 earns it by putting back
+# downstream's `c == "source"` heuristic.
+H031G="$(make_project_fixture)"; H031_FIXES="$H031_FIXES $H031G"
+printf '%s\n' 'source | gen' 'test | gen/**' >> "$H031G/.claude/harness/paths.conf"
+clsg() { ( cd "$H031G" && bash scripts/classify.sh "$@" 2>&1 ); }
+assert_eq "AC-4: an explicit source rule for bare gen beats the retry onto gen/**" \
+  "source	gen" "$(clsg gen)"
+# The control that makes the line above mean something: the gen/** rule is
+# live in this fixture, so the retry WOULD reach it if it fired.
+assert_eq "AC-4 control: the gen/** rule is live (gen/x.ts is test)" \
+  "test	gen/x.ts" "$(clsg gen/x.ts)"
+
+# The order is rules on the bare form, rules on the slashed form, .gitignore,
+# then source. `.next/` is gitignored here and `**/.next/**` is a rule: the
+# rule wins, as it already does for `dist`.
+printf '%s\n' '.next/' >> "$H031A/.gitignore"
+git -C "$H031A" add -A >/dev/null 2>&1
+if git -C "$H031A" check-ignore -q -- .next/ 2>/dev/null; then
+  _ok "AC-4 control: .next/ is gitignored in the fixture (precondition)"
+else _bad "AC-4 control: .next/ is gitignored in the fixture (precondition)" \
+  "git check-ignore .next/ said not ignored - the assertion below would separate nothing"; fi
+assert_eq "AC-4: a slashed-form rule beats .gitignore - bare .next is vendor, not ignored" \
+  "vendor	.next" "$(clsa .next)"
+
+# AC-5 - one implementation. classify_stdin itself, sourced against the
+# fixture as spawns.test.sh does: every caller of it (the gate hash, the diff
+# classifiers) gets the same answer as classify(). One output line per input
+# line, in order, each path AS GIVEN - no `/` appended.
+got="$( export CLAUDE_PROJECT_DIR="$H031A"
+        . "$H031A/.claude/hooks/lib.sh"
+        printf '%s\n' fixtures src fixtures/a.json .pytest_cache | classify_stdin )"
+assert_eq "AC-5: classify_stdin retries per line, in order, printing each path as given" \
+  "test	fixtures
+source	src
+test	fixtures/a.json
+vendor	.pytest_cache" "$got"
+got="$( export CLAUDE_PROJECT_DIR="$H031A"
+        . "$H031A/.claude/hooks/lib.sh"
+        printf '%s\n' fixtures/ | classify_stdin )"
+assert_eq "AC-5 control: an already-slashed fixtures/ is one line, unchanged" \
+  "test	fixtures/" "$got"
 summary "classify"

@@ -15,7 +15,10 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
 FIX="$(make_fixture)"
-trap 'rm -rf "$FIX"' EXIT
+# HARNESS-031 builds its own fixture (C-3: never append a rule to the shared FIX,
+# or every later block inherits it) and adds it here.
+H031_FIXES=""
+trap 'rm -rf "$FIX" $H031_FIXES' EXIT
 
 # ---------------------------------------------------------------------------
 describe "RED: quoted arguments are not shell syntax"
@@ -1252,4 +1255,56 @@ assert_allowed "$FIX" 'rm -rf tests'   'the bare tests directory in RED'
 # frozen. These two assertions are what notices.
 assert_blocked "$FIX" 'rm -rf src'    src    'the control: bare src is still frozen in RED'
 assert_blocked "$FIX" 'rm -rf wibble' wibble 'the control: an unclassified bare name still falls through to source'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-031: a project rule X/** covers bare X, through the guard"
+
+# HARNESS-011 gave the BUILT-IN directory rules bare twins. A project's own
+# rule gets none unless its author writes one, and manga-translator's
+# `test | fixtures/**` had none. Measured at 16c42a1 through this hook, in a
+# fixture with that one line appended:
+#
+#   GREEN  rm -rf fixtures              ALLOW   <- the frozen test dir is deletable
+#   GREEN  rm -rf fixtures/             DENY    the slashed form was always right
+#   RED    rm -rf fixtures              DENY    category: source
+#   RED    cp docs/notes.md fixtures    DENY    category: source
+#   RED    rm -rf .pytest_cache         DENY    category: source (a built-in rule, no twin)
+#
+# The end-to-end half of the classify.test.sh block. Its own fixture (C-3).
+H031="$(make_fixture)"; H031_FIXES="$H031_FIXES $H031"
+printf '%s\n' 'test | fixtures/**' >> "$H031/.claude/harness/paths.conf"
+
+# AC-1, GREEN: the hole.
+set_phase "$H031" GREEN
+assert_blocked "$H031" 'rm -rf fixtures' fixtures \
+  'AC-1: the bare fixtures directory in GREEN, under a project rule with no twin'
+r="$(guard_bash "$H031" 'rm -rf fixtures')"
+assert_contains "AC-1: and refused because it is test, not incidentally" "category: test" "$r"
+# Controls: the slashed form was always refused (HARNESS-010), and source stays
+# writable in GREEN - a retry that reached too far would freeze src here.
+assert_blocked "$H031" 'rm -rf fixtures/' fixtures/ \
+  'AC-1 control: the trailing-slash fixtures/ is still refused in GREEN'
+assert_allowed "$H031" 'rm -rf src' 'AC-1 control: bare src is still writable in GREEN'
+
+# AC-1 and AC-2, RED: the false positives.
+set_phase "$H031" RED
+assert_allowed "$H031" 'rm -rf fixtures' 'AC-1: the bare fixtures directory in RED'
+assert_blocked "$H031" 'rm -rf src' src 'AC-1 control: bare src is still frozen in RED'
+assert_allowed "$H031" 'cp docs/notes.md fixtures' \
+  'AC-2: cp into a bare project test directory in RED'
+
+# AC-3, through the guard, against the REAL paths.conf (the shared FIX carries
+# no extra rule): a built-in rule with no twin.
+set_phase "$FIX" RED
+assert_allowed "$FIX" 'rm -rf .pytest_cache' \
+  'AC-3: the bare .pytest_cache in RED, a built-in vendor rule with no twin'
+
+# AC-2, REVIEW: what is already right stays right. The slashed operand is kept
+# by HARNESS-010 and matches `docs/**`. Passes on arrival; DV-3 earns it by
+# deleting that rule. The paired control proves an allow cannot come from the
+# guard failing to see a cp target at all.
+set_phase "$FIX" REVIEW
+assert_allowed "$FIX" 'cp docs/notes.md docs/' 'AC-2: cp into docs/ in REVIEW'
+assert_blocked "$FIX" 'cp docs/notes.md src/' src/ \
+  'AC-2 control: cp into src/ in REVIEW is refused, on src/'
 summary "phase-guard"
