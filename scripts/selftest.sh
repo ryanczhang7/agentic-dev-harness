@@ -4,6 +4,17 @@
 #   bash scripts/selftest.sh            every suite in .claude/tests
 #   bash scripts/selftest.sh phase-guard one suite, by name
 #   VERBOSE=1 bash scripts/selftest.sh  name every assertion, not just failures
+#   SELFTEST_JOBS=4 bash scripts/selftest.sh   up to 4 suites at once
+#
+# SELFTEST_JOBS (HARNESS-035) is opt-in, and unset means 1: one suite at a
+# time, exactly as before. With 2 or more over a run of two or more suites, up
+# to that many run at once, each into its own buffer under
+# .claude/state/selftest.<pid>/, and their output is still printed in suite
+# order - byte for byte what a one-at-a-time run prints - each suite as soon as
+# it and every suite before it have finished. Anything but a whole number of 1
+# or more is refused with exit 2 before anything runs. The self-test is
+# spawn-bound, and two spawn-heavy runs on one Windows machine is what hung
+# issue #97, so choose a value for a machine you know; CI leaves it unset.
 #
 # These test the harness, not the project built with it: the phase lock, the
 # path classifier, the hooks. They need bash, git and coreutils and nothing
@@ -61,6 +72,17 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ONLY="${1:-}"
+
+# SELFTEST_JOBS, read before anything else so that a bad value is refused
+# before the floors audit, the lock and any suite (HARNESS-035 C-3). Unset and
+# empty mean 1; leading zeros are refused rather than normalised.
+JOBS="${SELFTEST_JOBS-}"
+case "$JOBS" in
+  '') JOBS=1 ;;
+  *[!0-9]*|0*)
+    printf "selftest: SELFTEST_JOBS must be a whole number of suites to run at once, 1 or more; got '%s'. Nothing was run.\n" "$JOBS" >&2
+    exit 2 ;;
+esac
 
 # Resolved from the script's own root, never $PWD and never a baked path: the
 # harness's fixtures run a copy of this script from a throwaway tree.
@@ -268,24 +290,41 @@ fi
 # rather than orphaning it. Suites inherit HARNESS_RUN_LOCK(_PID), which is
 # what lets a suite that runs this tree's own selftest.sh through - and what
 # a fixture tree, whose lock path differs, ignores.
+#
+# One EXIT handler (HARNESS-035 C-4): with suites in the background the lock
+# may go only after the last of them has exited, so the handler waits for any
+# still running, removes this run's buffer directory if it made one, and only
+# then releases the lock. On a one-at-a-time run there is nothing to wait for
+# and no directory, and it is the release it always was. A trapped TERM or INT
+# therefore starts no further suite and lets the running ones finish.
+BUF="$ROOT/.claude/state/selftest.$$"
+BUF_MADE=0
+PIDS=()     # by suite index, glob order; emptied once a suite's status is collected
+selftest_exit() {
+  local i=0
+  while [ "$i" -lt "${#PIDS[@]}" ]; do
+    [ -z "${PIDS[$i]}" ] || wait "${PIDS[$i]}" 2>/dev/null
+    i=$((i+1))
+  done
+  [ "$BUF_MADE" = 1 ] && rm -rf "$BUF"
+  run_lock_release
+}
 . "$ROOT/scripts/run-lock.sh" || { printf 'run-lock: scripts/run-lock.sh is missing; nothing was run.\n' >&2; exit 2; }
-trap run_lock_release EXIT
+trap selftest_exit EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 run_lock_acquire "$ROOT" "scripts/selftest.sh${*:+ $*}" || exit 2
 
 # --- run --------------------------------------------------------------------
 fails=0; ran=0; floored=0; met=0; executed=0; declared=0
-for suite in "$TESTS_DIR"/*.test.sh; do
-  [ -e "$suite" ] || continue
-  name="${suite##*/}"; name="${name%.test.sh}"
-  [ -n "$ONLY" ] && [ "$ONLY" != "$name" ] && continue
-  printf '\n=== %s ===\n' "$name"
 
-  # Captured rather than streamed, because the count is read back out of it -
-  # and reprinted in full immediately, because a failing suite whose output was
-  # swallowed makes every failure a second command to reproduce.
-  out="$(bash "$suite" 2>&1)"; rc=$?
+# The per-suite verdict, shared by both paths so that they cannot drift
+# (HARNESS-035 C-1). suite_header prints the block's first line; report_suite
+# prints the suite's output - the global $out, captured exactly as `$(...)`
+# captures it - and judges it: exit status, then the floor read back out of it.
+suite_header() { printf '\n=== %s ===\n' "$1"; }
+report_suite() {
+  local name="$1" rc="$2" bad floor observed
   printf '%s\n' "$out"
 
   bad=0
@@ -319,7 +358,99 @@ for suite in "$TESTS_DIR"/*.test.sh; do
   fi
 
   [ "$bad" -eq 0 ] || fails=$((fails+1))
-done
+  return 0
+}
+
+# A suite's exit status, collected by its own pid once it has exited. One line,
+# exactly: DV-1's mutation targets it. A pid the shell no longer knows makes
+# `wait` return 127, which counts as a failure - fail closed.
+suite_status() { wait "$1"; }
+
+NSUITES=0
+while IFS= read -r name; do
+  [ -n "$name" ] && NSUITES=$((NSUITES+1))
+done <<SUITE_COUNT
+$SUITES
+SUITE_COUNT
+
+if [ "$JOBS" -lt 2 ] || [ "$NSUITES" -lt 2 ]; then
+  # One at a time: the loop as it has always been. Nothing in the background,
+  # no buffer directory.
+  for suite in "$TESTS_DIR"/*.test.sh; do
+    [ -e "$suite" ] || continue
+    name="${suite##*/}"; name="${name%.test.sh}"
+    [ -n "$ONLY" ] && [ "$ONLY" != "$name" ] && continue
+    suite_header "$name"
+
+    # Captured rather than streamed, because the count is read back out of it -
+    # and reprinted in full immediately, because a failing suite whose output
+    # was swallowed makes every failure a second command to reproduce.
+    out="$(bash "$suite" 2>&1)"; rc=$?
+    report_suite "$name" "$rc"
+  done
+else
+  # Concurrently (HARNESS-035 C-2). Up to $JOBS suites alive at once, started
+  # in glob order; a slot is refilled when ANY of them exits. bash 3.2 has no
+  # way to wait for whichever job ends first, so the running pids are polled
+  # with `kill -0` and a gone one's status is collected with suite_status.
+  # Printing is in glob order: a suite's block goes out as soon as it and every
+  # suite before it have finished.
+  mkdir -p "$BUF" 2>/dev/null || {
+    printf "selftest: cannot create .claude/state/selftest.%s for the suites' output; nothing was run.\n" "$$" >&2
+    exit 2
+  }
+  BUF_MADE=1
+  NAMES=(); RCS=()
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    NAMES[${#NAMES[@]}]="$name"
+  done <<SUITE_LIST
+$SUITES
+SUITE_LIST
+
+  started=0; printed=0; running=0
+  # Each `sleep` is a fork, so back off while nothing changes and start again
+  # from the shortest interval whenever something does. The ceiling stays at
+  # 1 s: a trapped TERM is acted on only once the current sleep returns.
+  delays="0.05 0.1 0.2 0.5 1"
+  delay_left="$delays"
+  while [ "$printed" -lt "$NSUITES" ]; do
+    changed=0
+    while [ "$running" -lt "$JOBS" ] && [ "$started" -lt "$NSUITES" ]; do
+      name="${NAMES[$started]}"
+      bash "$TESTS_DIR/$name.test.sh" > "$BUF/$name.out" 2>&1 &
+      PIDS[$started]=$!
+      RCS[$started]=""
+      started=$((started+1)); running=$((running+1))
+    done
+
+    i="$printed"
+    while [ "$i" -lt "$started" ]; do
+      if [ -n "${PIDS[$i]}" ] && ! kill -0 "${PIDS[$i]}" 2>/dev/null; then
+        suite_status "${PIDS[$i]}"; RCS[$i]=$?
+        PIDS[$i]=""
+        running=$((running-1)); changed=1
+      fi
+      i=$((i+1))
+    done
+
+    while [ "$printed" -lt "$started" ] && [ -n "${RCS[$printed]}" ]; do
+      name="${NAMES[$printed]}"
+      suite_header "$name"
+      out="$(cat "$BUF/$name.out")"
+      report_suite "$name" "${RCS[$printed]}"
+      printed=$((printed+1))
+    done
+
+    if [ "$changed" -eq 1 ]; then
+      delay_left="$delays"
+    elif [ "$printed" -lt "$NSUITES" ]; then
+      delay="${delay_left%% *}"
+      [ "$delay_left" = "$delay" ] || delay_left="${delay_left#* }"
+      sleep "$delay"
+    fi
+  done
+fi
 
 if [ "$ran" -eq 0 ]; then
   printf 'No suites matched%s. Looked in .claude/tests/*.test.sh\n' "${ONLY:+ '$ONLY'}" >&2

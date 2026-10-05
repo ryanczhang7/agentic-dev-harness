@@ -5,7 +5,7 @@ slug: opt-in-concurrent-self-test-suites
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-035-opt-in-concurrent-self-test-suites
 depends_on: [HARNESS-034]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/state/README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -597,6 +597,7 @@ name, below the table.
 
 - PLANNED, `lead-po`, resolved to Opus 5.5 (`claude-opus-5-5`), dispatched without a model override.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Interrupted by a Claude session restart and resumed via SendMessage (same agent). Orchestrator re-ran selftest.test.sh: 179 passed, 89 failed, matching the handoff; ## Acceptance criteria byte-identical to the PLANNED commit.
+- GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the selftest.sh diff and re-ran `selftest.sh selftest` (268/268, floor met).
 
 **Oracle partition for the RED brief:** `## Contract` C-7. In short: opt-in,
 the name, default 1 and per-run buffers are settled (audit `## Decided` 6 C,
@@ -1065,3 +1066,85 @@ a marker touched at the start. Scratch script, not committed.
 **Decision from the probe:** suites are write-isolated as far as can be
 measured, so `SELFTEST_JOBS` above 1 is not refused and no suite is
 serialised.
+
+**GREEN (2026-10-05), feature-developer, Opus 5.5 (`claude-opus-5-5`), no
+model override in the dispatch.** Wrote `scripts/selftest.sh` and
+`.claude/state/README.md` only; nothing under `.claude/tests/` was touched.
+Built against `## Contract`, not the RED scratch prototype (which was not read).
+
+- **C-3.** `JOBS="${SELFTEST_JOBS-}"` immediately after `ONLY`; `''` -> 1,
+  `*[!0-9]*|0*` -> the C-3 line on stderr, exit 2. Before the floors load, the
+  lock and any suite.
+- **C-1.** `suite_header <name>` and `report_suite <name> <rc>` (output in the
+  global `$out`) hold the per-suite block; both paths call them in glob order.
+  The sequential path is today's loop, still printing the header **before**
+  the suite runs, so a one-at-a-time run looks the same while it runs as well
+  as after. It is taken when `JOBS < 2` or the run has fewer than two suites
+  (counted from `$SUITES`, which also covers `nosuchsuite`).
+- **C-2.** `mkdir -p .claude/state/selftest.$$` after the lock, before any
+  suite (failure: C-4's line, exit 2). Suites start in **glob order** (DV-2
+  asked for this to be recorded; largest-first was not built - the PLANNED
+  isolation probe suggests `phase-guard` started late is the critical path, so
+  DV-2's timing is the evidence for or against changing it). Each is
+  `bash "$suite" > "$BUF/<name>.out" 2>&1 &`; running pids are polled with
+  `kill -0`, a gone one collected with `suite_status "$pid"; rc=$?` (the
+  one-line definition at column 0, as pinned). A block is printed as soon as
+  it and every earlier suite are collected, read back with `$(cat ...)`.
+  Poll backoff `0.05 0.1 0.2 0.5 1` s, reset on any reap: **ceiling 1 s**,
+  below C-6's "about 2 s", because a trapped TERM is acted on only when the
+  current `sleep` returns.
+- **C-4.** `selftest_exit` replaces `trap run_lock_release EXIT`: waits every
+  pid not yet collected, `rm -rf` the buffer directory if this run made it,
+  then `run_lock_release`. INT/TERM traps unchanged (`exit 130` / `exit 143`),
+  so a signal starts nothing more and the EXIT handler drains.
+- **C-5.** The row exactly as written, plus a paragraph under "The exhaust".
+- **Known, not tested, not fixed:** a TERM landing in the instant between
+  `bash ... &` and `PIDS[$started]=$!` would leave that one suite unwaited (it
+  still runs to completion, but the lock could be released before it ends).
+  The window is two builtins wide; closing it needs signal masking bash does
+  not offer portably.
+
+**Runs, sequentially, in this worktree (Windows host; another worktree's
+self-test may have been running).**
+
+| Command | Result |
+|---|---|
+| `bash scripts/selftest.sh selftest` (before README row) | `267 passed, 1 failed` (README row only), 73 s |
+| `bash scripts/selftest.sh selftest` | `selftest: 268 passed, 0 failed`, floor met, rc 0, 69 s |
+| `bash .claude/tests/settings.test.sh` / `selftest.sh settings` | `settings: 27 passed, 0 failed`; floor met |
+| `bash scripts/selftest.sh run-lock` | 140 executed, 140 declared, passed, 23 s |
+| `bash scripts/selftest.sh lib` (no `$TMPDIR`/`mktemp`, bash-3.2 rules) | 217 executed, 217 declared, passed |
+| `bash scripts/check-sigpipe.sh` | `scanned 47 shell file(s), 43 with pipefail, 0 finding(s)` |
+| `bash scripts/check-grep-count.sh` | `scanned 47 shell file(s), 0 finding(s)` |
+| `bash scripts/gates.sh --fast` | rc 0, `All required gates passed (0 ran, 5 unconfigured, 0 known)` |
+| `bash scripts/mutate.sh --check` | clean |
+
+The full `bash scripts/selftest.sh` and `bash scripts/gates.sh` were not run in
+GREEN: the full self-test is DV-2 run 1 (GATES), and `gates.sh` judges nothing
+here (`project.conf` unbootstrapped). DV-1 was not run (GATES owns it).
+
+**Negative controls, confirmed against the shipped script.** Every control in
+the handoff's table except the first two is an exact `assert_eq`, so its
+passing in the 268/0 run *is* the measured value equalling RED's expected one.
+The first two are `>=` thresholds, so their actual values were measured with a
+scratch copy of the suite (in a scratch mirror of the tree outside the
+worktree, deleted afterwards) printing `h_peak` and `h_saw_re` after the AC-1
+control's `jrun 3`.
+
+| Control | GREEN must see | Measured in GREEN |
+|---|---|---|
+| AC-1 control: peak at J=3 | >= 2 | **3** |
+| AC-1 control: suites seeing `selftest.<digits>` | >= 1 (expect 5) | **5** |
+| AC-2 failing: b1's `finbefore` lines | 5 | 5 (exact assert, passed) |
+| AC-2 failing: b2 finished after b3 | yes | yes (passed) |
+| AC-2 passing: c1's `finbefore` lines | 3 | 3 (passed) |
+| AC-3 peaks (2/4, 3/5, 10/4) | 2, 3, 4 | 2, 3, 4 (passed) |
+| AC-3 control (J=1): rc / timeout line count | 1 / 1 | 1 / 1 (passed) |
+| AC-3 work-conserving (J=2): rc / w1 timeout marker | 0 / absent | 0 / absent (passed) |
+| AC-4 control J=10: rc / passed line | 0 / 1 | 0 / 1 (passed) |
+| AC-6 bash-3.2 reader on the probe | `1: wait -n` and `4: local -A` | same (passed) |
+| AC-6 check-ignore on `.claude/state/README.md` | rc 1 | 1 (passed) |
+| AC-6 README reader on `run.lock.<pid>` | 1 | 1 (passed) |
+
+No divergence from RED's numbers. The AC-1 peak is 3, not merely 2: the
+fixture's five suites at J=3 fill all three slots.
