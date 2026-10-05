@@ -26,7 +26,7 @@ it closes, because every port changes the code the next one builds on.
 | 3 Gate correctness | MT-037 `skipped-when` | HARNESS-028 | **done**, #105, release 71 |
 | 4 Mutation safety | c7bd4ce cleanup; finding E count (+ the PIPE void-probe and `\| head` hang found in triage) | HARNESS-029 | **done**, #106, release 72 |
 | 4 Mutation safety | a0b43a2 + MT-047 `.active`, `--check`, gates refuse | HARNESS-030 | **done**, #107, release 73 |
-| 5 Phase lock | MT-034 `classify()` bare-path retry | - | **next**; not yet planned |
+| 5 Phase lock | MT-034 `classify()` bare-path retry | HARNESS-031 | **done**, #108, release 74 |
 | 6 Process | A: GATES -> REVIEW runs `ci-local.sh`/full selftest | - | to do |
 | 6 Process | B: check-boundaries 3d baseline at the last committed PLANNED | - | to do |
 | 6 Process | C + MT-042: run lock, then opt-in `SELFTEST_JOBS` | - | to do |

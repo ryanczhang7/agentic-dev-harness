@@ -4,8 +4,8 @@ title: A bare directory name takes the category its rule gives
 slug: a-bare-directory-name-takes-the-category
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-031-a-bare-directory-name-takes-the-category
 depends_on: [HARNESS-011, HARNESS-025]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/harness/paths.conf, .claude/tests/classify.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/spawns.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1127,3 +1127,13 @@ phase-guard 310/0, lib 217/0, selftest 100/0, sigpipe 82/0. The extra `awk`
 GREEN noted in the `rm -rf fixtures` trace (26 total, not 25) was not traced
 further: it is within AC-6's bound and matches PLANNED's measured
 `rm -rf fixtures/` deny row.
+
+**DONE, 2026-10-05.** Merged in #108 (merge commit e6b3953), release 74. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI: `gates` passed in 1m44s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37267220749),
+`boundaries` in 11s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37267220800).
+No epic. Group 5 (phase lock) of the port audit is complete; next is group 6,
+process.
