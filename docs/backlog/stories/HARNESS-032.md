@@ -4,8 +4,8 @@ title: The full self-test runs before a story reaches REVIEW
 slug: the-full-self-test-runs-before-a-story-r
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-032-the-full-self-test-runs-before-a-story-r
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1093,3 +1093,12 @@ step 1 requires: exit 0 in 3,611 s, last line `23 harness suite(s) passed.`
 HARNESS-031's 1,518 s on the same host the same day. No second self-test or
 gate run was going in this worktree. Whether another process on the machine
 was competing for it was not checked, so the cause is not known.
+
+**DONE, 2026-10-05.** Merged in #109 (merge commit 522332f), release 75. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI: `gates` passed in 2m00s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37337877428),
+`boundaries` in 9s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37337877695).
+No epic. Group 6 finding A of the port audit is complete; next is finding B.
