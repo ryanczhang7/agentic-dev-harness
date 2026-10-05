@@ -16,6 +16,8 @@ in here is ever committed; only this file and `.gitkeep` are tracked.
 | `phase-guard-declined.log` | `.claude/hooks/phase-guard.sh` | you, when the guard looks noisy | yes |
 | `refresh-self.<pid>.sh` | `scripts/refresh-harness.sh` | `bash`, as the script it is running | yes |
 | `plan-write.<pid>.md` | `scripts/plan.sh write` | `awk`, while it splices the section | yes |
+| `run.lock` | `scripts/gates.sh`, `scripts/selftest.sh` | `scripts/run-lock.sh`, in the next run | yes |
+| `run.lock.<pid>` | `scripts/run-lock.sh` | `ln`, while it takes the lock | yes |
 
 ## The `Hand-editable` column is enforced
 
@@ -103,3 +105,15 @@ the old offset in the new bytes, mid-line. So the script copies itself here and
 re-execs, and the file being read is then never a file the copy loop writes. An
 `EXIT` trap removes it. One left behind means a refresh died outright rather than
 finishing, and it is safe to delete.
+
+`run.lock` is the run lock: `scripts/gates.sh` and `scripts/selftest.sh` each
+take it before they run anything and release it on every exit they can still
+run code on, so a second run in the same tree refuses with exit 2 instead of
+running on top of the first. It records the holder's pid, when it started and
+its command. **One left behind means a run was killed outright** - `SIGKILL`, or
+the machine going away. The next run reclaims it, with one line saying so, when
+the recorded pid is no longer running; if that pid has since been reused by a
+live process, the next run refuses, and the refusal says to delete the file.
+It is `yes` because deleting it is that remedy. `run.lock.<pid>` is the record
+being written before `ln` puts it in place as `run.lock`, removed straight
+after; one left behind is safe to delete.

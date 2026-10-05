@@ -258,6 +258,22 @@ if [ "$faulted" -gt 0 ]; then
   exit 1
 fi
 
+# --- the run lock (HARNESS-034) ----------------------------------------------
+# A self-test beside gates.sh, or beside another self-test, in one tree is how
+# issue #97 got a hang past 30 minutes that passed alone. Every run - full or
+# one suite - takes .claude/state/run.lock or refuses with 2 before any suite
+# runs; it never waits. After the floors audit, so a malformed floors file is
+# reported at once without contending for anything. Traps BEFORE the take, so
+# no signal strands a lock; trapped, TERM and INT wait for the running suite
+# rather than orphaning it. Suites inherit HARNESS_RUN_LOCK(_PID), which is
+# what lets a suite that runs this tree's own selftest.sh through - and what
+# a fixture tree, whose lock path differs, ignores.
+. "$ROOT/scripts/run-lock.sh" || { printf 'run-lock: scripts/run-lock.sh is missing; nothing was run.\n' >&2; exit 2; }
+trap run_lock_release EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+run_lock_acquire "$ROOT" "scripts/selftest.sh${*:+ $*}" || exit 2
+
 # --- run --------------------------------------------------------------------
 fails=0; ran=0; floored=0; met=0; executed=0; declared=0
 for suite in "$TESTS_DIR"/*.test.sh; do

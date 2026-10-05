@@ -75,6 +75,7 @@ BOOTSTRAPPED="$(grep -E '^BOOTSTRAPPED=' "$CONF" | head -1)"
 BOOTSTRAPPED="${BOOTSTRAPPED#*=}"; BOOTSTRAPPED="${BOOTSTRAPPED//[[:space:]]/}"
 [ -z "$BOOTSTRAPPED" ] && BOOTSTRAPPED=no
 
+RUN_LOCK_SELF="scripts/gates.sh${*:+ $*}"   # what the run lock records; the loop below shifts $@ away
 ONLY=""; REQUIRED_ONLY=0; LIST=0; AUDIT=0; STORY=""; FAST=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -230,6 +231,22 @@ if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ] && [ -f "$ROOT/scripts/mutate.sh" ]; then
     printf 'Resolve each mutation above, then run the gates again.\n' >&2
     exit 2
   fi
+fi
+
+# THE RUN LOCK (HARNESS-034). Two harness runs in one tree - this and a
+# self-test, or two of either - starve each other: issue #97 measured a hang
+# past 30 minutes that passed alone. scripts/run-lock.sh takes
+# .claude/state/run.lock or refuses with 2, before any gate runs and before
+# last-gate-run is written; it never waits. --list and --audit read the
+# manifest, not the tree, and keep working beside a run in flight. The traps go
+# in BEFORE the take, so no signal can strand a lock; trapped, a TERM or INT
+# waits for the running gate command instead of orphaning it, and EXIT releases.
+if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ]; then
+  . "$ROOT/scripts/run-lock.sh" || { printf 'run-lock: scripts/run-lock.sh is missing; nothing was run.\n' >&2; exit 2; }
+  trap run_lock_release EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  run_lock_acquire "$ROOT" "$RUN_LOCK_SELF" || exit 2
 fi
 
 # table_lookup <table> <id>   Echoes the value. Exact string comparison, never

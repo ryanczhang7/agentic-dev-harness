@@ -535,6 +535,7 @@ procedure 37
 profiles 50
 refresh 122
 reporting 27
+run-lock 140
 selftest 100
 settings 27
 sigpipe 82
