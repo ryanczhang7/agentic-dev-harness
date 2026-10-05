@@ -4,8 +4,8 @@ title: A bare directory name takes the category its rule gives
 slug: a-bare-directory-name-takes-the-category
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-031-a-bare-directory-name-takes-the-category
 depends_on: [HARNESS-011, HARNESS-025]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/harness/paths.conf, .claude/tests/classify.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/spawns.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -365,6 +365,197 @@ mutation mid-run (HARNESS-024).
     124: test | **/tests
   ```
 
+### Results, run at GATES (2026-10-05) by the orchestrator
+
+Each through `scripts/mutate.sh` with one expression, detached (`nohup`), one at a time, against the GREEN commit. DV-4 ran in a separate detached worktree at that commit so that no mutation was in the tree it read.
+
+**DV-1, the defect put back: red as required** (the six AC-3/4/5 positives; every control green).
+
+```
+=== mutate: .claude/hooks/lib.sh (1 line(s) changed by s/if (!m && substr(lp, length(lp), 1) != "\/")/if (0)/) ===
+  968 -       if (!m && substr(lp, length(lp), 1) != "/")
+  968 +       if (0)
+
+=== mutate: running bash .claude/tests/classify.test.sh ===
+
+  paths as arguments
+
+  paths on stdin
+
+  --only filters to one category
+
+  --list enumerates the tree the way the lock sees it
+
+  a probe artifact is not a source module
+
+  the category list cannot drift from paths.conf
+
+  it refuses what it cannot answer
+
+  HARNESS-011: a bare directory name classifies as its own category
+
+  HARNESS-031: a bare path no rule matches takes its slashed form's category
+    FAIL AC-3: bare fixtures takes the category of its fixtures/** rule
+         expected: test	fixtures
+         actual:   source	fixtures
+    FAIL AC-3: a nested bare pkg/golden takes the category of **/golden/**
+         expected: test	pkg/golden
+         actual:   source	pkg/golden
+    FAIL AC-3: bare .pytest_cache is vendor under the real paths.conf, with no twin
+         expected: vendor	.pytest_cache
+         actual:   source	.pytest_cache
+    FAIL AC-3: bare .tox is vendor under the real paths.conf, with no twin
+         expected: vendor	.tox
+         actual:   source	.tox
+    FAIL AC-4: a slashed-form rule beats .gitignore - bare .next is vendor, not ignored
+         expected: vendor	.next
+         actual:   ignored	.next
+    FAIL AC-5: classify_stdin retries per line, in order, printing each path as given
+         expected: test	fixtures
+         source	src
+         test	fixtures/a.json
+         vendor	.pytest_cache
+         actual:   source	fixtures
+         source	src
+         test	fixtures/a.json
+         source	.pytest_cache
+
+classify: 49 passed, 6 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_hooks_lib.sh.20261005T044050Z.183453.bak) ===
+  968:       if (!m && substr(lp, length(lp), 1) != "/")
+```
+
+**DV-2, downstream's `c == "source"` in place of the matched flag: red as required** (exactly AC-4's `gen` assertion).
+
+```
+=== mutate: .claude/hooks/lib.sh (1 line(s) changed by s/if (!m && /if (c == "source" \&\& /) ===
+  968 -       if (!m && substr(lp, length(lp), 1) != "/")
+  968 +       if (c == "source" && substr(lp, length(lp), 1) != "/")
+
+=== mutate: running bash .claude/tests/classify.test.sh ===
+
+  paths as arguments
+
+  paths on stdin
+
+  --only filters to one category
+
+  --list enumerates the tree the way the lock sees it
+
+  a probe artifact is not a source module
+
+  the category list cannot drift from paths.conf
+
+  it refuses what it cannot answer
+
+  HARNESS-011: a bare directory name classifies as its own category
+
+  HARNESS-031: a bare path no rule matches takes its slashed form's category
+    FAIL AC-4: an explicit source rule for bare gen beats the retry onto gen/**
+         expected: source	gen
+         actual:   test	gen
+
+classify: 54 passed, 1 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_hooks_lib.sh.20261005T044123Z.186392.bak) ===
+  968:       if (!m && substr(lp, length(lp), 1) != "/")
+```
+
+**P-1, the real `test | **/tests` twin deleted: green as required.** The retry, not the twin, now covers bare `tests` (the PLANNED control above went 40/2 red on the same expression).
+
+```
+=== mutate: .claude/harness/paths.conf (1 line(s) changed by /^test | \*\*\/tests$/d) ===
+  130 - test | **/tests
+
+=== mutate: running bash .claude/tests/classify.test.sh ===
+
+  paths as arguments
+
+  paths on stdin
+
+  --only filters to one category
+
+  --list enumerates the tree the way the lock sees it
+
+  a probe artifact is not a source module
+
+  the category list cannot drift from paths.conf
+
+  it refuses what it cannot answer
+
+  HARNESS-011: a bare directory name classifies as its own category
+
+  HARNESS-031: a bare path no rule matches takes its slashed form's category
+
+classify: 55 passed, 0 failed
+
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_harness_paths.conf.20261005T044201Z.189222.bak) ===
+  130: test | **/tests
+```
+
+**DV-4, AC-7 whole-tree measurement: matches the plan.** Old = `origin/main:.claude/hooks/lib.sh` (16c42a1), new = the GREEN commit's. This repo has 167 files rather than 166 because the story file itself is now tracked.
+
+```
+=== <this repo, detached worktree> at 9821b8e: 167 files, 31 dir prefixes
+--- files diff:
+(files changed: 0)
+--- dirs diff:
+(dirs changed: 0)
+--- gate_tree_hash_of HEAD: old 0b9e42e11b06710a2d298360a915beab1d318dd5  new 0b9e42e11b06710a2d298360a915beab1d318dd5
+=== /d/manga-translator at ce5edaf: 425 files, 52 dir prefixes
+--- files diff:
+(files changed: 0)
+--- dirs diff:
+1c1
+< source	.claude
+---
+> harness	.claude
+21c21
+< source	.github
+---
+> harness	.github
+23c23
+< source	docs
+---
+> docs	docs
+30c30
+< source	fixtures
+---
+> test	fixtures
+35c35
+< source	scripts
+---
+> harness	scripts
+49c49
+< source	tests
+---
+> test	tests
+(dirs changed: 6)
+--- gate_tree_hash_of HEAD: old 3ef9048a35ca7d7615cc88de7ad5f933eacea16d  new 3ef9048a35ca7d7615cc88de7ad5f933eacea16d
+DV4-DONE
+```
+
+**DV-3, the real `docs | docs/**` rule deleted: red as required.** AC-2's `allows: AC-2: cp into docs/ in REVIEW` is among the ten failures; the other nine are older assertions that also depend on that rule (HARNESS-010/011 operand tests), which is expected. Passing lines elided.
+
+```
+=== mutate: .claude/harness/paths.conf (1 line(s) changed by /^docs | docs\/\*\*$/d) ===
+  105 - docs | docs/**
+=== mutate: running bash .claude/tests/phase-guard.test.sh ===
+    FAIL blocks: C-1 r13 sharpened: with the slash, docs/ is writable and the SOURCE is refused
+    FAIL blocks: a trailing redirect to a permitted path does not hide it either
+    FAIL blocks: -t: the positional is still a source
+    FAIL blocks: -tDIR glued: the positional is still a source
+    FAIL blocks: --target-directory=: the positional is still a source
+    FAIL blocks: a redirect to a permitted path does not hide it either
+    FAIL role: -t: the positional is a source however late it appears
+    FAIL allows: mv -t into a permitted directory
+    FAIL allows: the attached form, permitted
+    FAIL allows: AC-2: cp into docs/ in REVIEW
+phase-guard: 300 passed, 10 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_harness_paths.conf.20261005T044253Z.192303.bak) ===
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -399,6 +590,7 @@ name, below the table.
 - PLANNED: `lead-po` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override given in the dispatch.
 - RED: `test-developer` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override. Orchestrator re-ran classify (49/6), spawns (67/2), selftest (100/0) and read the detached phase-guard log (305/5): all match the handoff.
 - GREEN: `feature-developer` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override. Orchestrator re-ran classify (55/0), spawns (69/0) and read the detached phase-guard log (310/0).
+- GATES: no dispatch. The orchestrator (`claude-opus-5-5`) ran DV-1..DV-4 and P-1, `gates.sh`, and the full selftest itself; nothing in GATES needed a source change.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -842,10 +1034,21 @@ DV-1..DV-4 and P-1, and `scripts/mutate.sh` in any form. The full
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-05T04:52:07Z
+    commit: 9821b8e
+    tree:   0b9e42e11b06710a2d298360a915beab1d318dd5
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -914,3 +1117,13 @@ DV-1..DV-4 and P-1, and `scripts/mutate.sh` in any form. The full
   - `sigpipe.test.sh`'s pins are `gates.sh`-only and untouched here (C-4);
   - the full selftest before REVIEW (C-5).
 - **Not committed, phase not set:** the orchestrator creates the branch.
+
+**GATES (2026-10-05), orchestrator.** Every deferred verification came out as
+planned (results under `## Deferred verifications`). `bash scripts/gates.sh`:
+all required gates passed (0 ran, 7 unconfigured), recorded. Full
+`bash scripts/selftest.sh`, detached, once: exit 0 in 1,518 s, 22 suites,
+2,351 assertions executed against 2,121 declared; classify 55/0, spawns 69/0,
+phase-guard 310/0, lib 217/0, selftest 100/0, sigpipe 82/0. The extra `awk`
+GREEN noted in the `rm -rf fixtures` trace (26 total, not 25) was not traced
+further: it is within AC-6's bound and matches PLANNED's measured
+`rm -rf fixtures/` deny row.
