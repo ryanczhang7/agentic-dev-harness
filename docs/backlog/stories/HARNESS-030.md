@@ -4,8 +4,8 @@ title: A killed mutation is announced, and the gates refuse to judge the tree be
 slug: a-killed-mutation-is-announced-and-the-g
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-030-a-killed-mutation-is-announced-and-the-g
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, scripts/gates.sh, .claude/tests/mutate.test.sh, .claude/tests/gates.test.sh, .claude/state/README.md, CLAUDE.md, .claude/harness/rules.md, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -389,6 +389,89 @@ single expression, adapted to the committed line.
   `bash scripts/mutate.sh scripts/gates.sh '<expr>' -- bash .claude/tests/gates.test.sh`.
   AC-6's "full run under a mutation is not recorded / exit 1 / FULL=no"
   **must** go red.
+
+
+**DV-1 result (GATES, 2026-10-05).** Restored and verified:
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 227s/if ! mutation_report=.*; then/if false; then/) ===
+  227 -   if ! mutation_report="$(bash "$ROOT/scripts/mutate.sh" --check 2>&1)"; then
+  227 +   if false; then
+    FAIL AC-5 gates.sh: behind a stranded mutation gates.sh exits 2
+    FAIL AC-5 gates.sh: it prints the refusal, whole
+    FAIL AC-5 gates.sh: after --check's report, which opens with the unaccounted-for line
+    FAIL AC-5 gates.sh: and names the stranded file
+    FAIL AC-5 gates.sh: the report comes before the refusal
+    FAIL AC-5 gates.sh: no '=== gate:' line is printed
+    FAIL AC-5 gates.sh: the gate command never ran (marker absent)
+    FAIL AC-5 gates.sh: gate-logs/ is untouched
+    FAIL AC-5 gates.sh: last-gate-run is untouched
+    FAIL AC-5 gates.sh: the story's ## Gate results is byte-identical
+    FAIL AC-5 gates.sh --fast: behind a stranded mutation gates.sh exits 2
+    FAIL AC-5 gates.sh --fast: it prints the refusal, whole
+    FAIL AC-5 gates.sh --fast: after --check's report, which opens with the unaccounted-for line
+    FAIL AC-5 gates.sh --fast: and names the stranded file
+    FAIL AC-5 gates.sh --fast: the report comes before the refusal
+    FAIL AC-5 gates.sh --fast: no '=== gate:' line is printed
+    FAIL AC-5 gates.sh --fast: the gate command never ran (marker absent)
+    FAIL AC-5 gates.sh --fast: gate-logs/ is untouched
+    FAIL AC-5 gates.sh --fast: last-gate-run is untouched
+    FAIL AC-5 gates.sh --gate unit: behind a stranded mutation gates.sh exits 2
+    FAIL AC-5 gates.sh --gate unit: it prints the refusal, whole
+    FAIL AC-5 gates.sh --gate unit: after --check's report, which opens with the unaccounted-for line
+    FAIL AC-5 gates.sh --gate unit: and names the stranded file
+    FAIL AC-5 gates.sh --gate unit: the report comes before the refusal
+    FAIL AC-5 gates.sh --gate unit: no '=== gate:' line is printed
+    FAIL AC-5 gates.sh --gate unit: the gate command never ran (marker absent)
+    FAIL AC-5 gates.sh --gate unit: gate-logs/ is untouched
+    FAIL AC-5 gates.sh --gate unit: last-gate-run is untouched
+    FAIL AC-6 control: under a mutation, a second, dead sentinel still refuses: exit 2
+    FAIL AC-6 control: with the refusal, whole
+    FAIL AC-6 control: and the gate never ran
+    FAIL AC-6 control: beside a second live sentinel the probe is refused: exit 2
+    FAIL AC-6 control: that sentinel is reported RUNNING
+    FAIL AC-6 control: with the refusal, whole
+    FAIL AC-6 control: and the gate never ran
+gates: 435 passed, 35 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against its .bak) ===
+```
+
+**DV-2 result (GATES, 2026-10-05).** Restored and verified (run through a runner copy of `mutate.sh` in `mktemp -d`, HARNESS-029 C-6):
+
+```
+=== mutate: /c/Users/ryanc/Projects/agentic-dev-harness/scripts/mutate.sh (1 line(s) changed by 430s/.*/  :/) ===
+  430 -   printf 'path\t%s\n'    "$FILE"
+  430 +   :
+    FAIL AC-1: the command saw exactly one sentinel of seven lines
+    FAIL AC-1: its keys, in order, are pid file path backup expr command started
+    FAIL AC-1: path is the resolved absolute target
+    FAIL AC-1: a two-line expression still leaves a seven-line sentinel
+    FAIL AC-4 (absolute): the cp && cmp && rm -f remedy names the absolute path
+    FAIL AC-4 (absolute): once the file matches, it says MATCHES
+    FAIL AC-4 (absolute): with the exact rm -f remedy
+mutate: 182 passed, 7 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against its .bak) ===
+```
+
+**DV-3 result (GATES, 2026-10-05).** Restored and verified:
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 898s/&& \[.*\]; then/\&\& false; then/) ===
+  898 -    && [ "${HARNESS_MUTATION%/*}" = "$ROOT/.claude/state/mutations" ]; then
+  898 +    && false; then
+    FAIL AC-6: a full run under a mutation exits 1
+    FAIL AC-6: and says why it is not recorded, whole
+    FAIL AC-6: that is the only '(not recorded:' line
+    FAIL AC-6: no line claims to have recorded
+    FAIL AC-6: the stamp says FULL=no
+    FAIL AC-6: the story's ## Gate results is byte-identical
+    FAIL AC-6 (C-2): from another branch the reason given is still the mutation
+    FAIL AC-6 (C-2): and not the branch
+gates: 462 passed, 8 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against its .bak) ===
+```
+
+After all three, `git diff --quiet -- scripts` printed `clean`. All run detached.
 
 ## Amendments
 
@@ -892,10 +975,21 @@ stamp says FULL=no`.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-05T01:29:33Z
+    commit: 7cfda08 (working tree had uncommitted changes)
+    tree:   089b52e07a3a09da0c7b5d8ddeab9af7b1fe4d19
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -981,3 +1075,10 @@ stamp says FULL=no`.
     leak, observed: the outer mutation's variable reaches every fixture run.
     `command exited 1; restored (verified byte-for-byte ...)`.
   `mutate.sh --check` on the real tree afterwards: clean, exit 0.
+- GATES (2026-10-05): full `bash scripts/selftest.sh`: `assertion floors: all
+  22 suite(s) met their declared floor (2325 assertions executed, 2095
+  declared)`, `22 harness suite(s) passed` (phase-guard included), 1774 s.
+  `bash scripts/mutate.sh --check` on the real tree before the recorded gate
+  run: `no stranded mutation`. GREEN's two departures, kept: the newline
+  escape via quoted variables (the literal form drops its backslash under bash
+  5.3), and `--check` skipping a non-regular `*.active`.
