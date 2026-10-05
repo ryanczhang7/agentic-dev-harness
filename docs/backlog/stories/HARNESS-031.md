@@ -5,7 +5,7 @@ slug: a-bare-directory-name-takes-the-category
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-031-a-bare-directory-name-takes-the-category
 depends_on: [HARNESS-011, HARNESS-025]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/harness/paths.conf, .claude/tests/classify.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/spawns.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -398,6 +398,7 @@ name, below the table.
 
 - PLANNED: `lead-po` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override given in the dispatch.
 - RED: `test-developer` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override. Orchestrator re-ran classify (49/6), spawns (67/2), selftest (100/0) and read the detached phase-guard log (305/5): all match the handoff.
+- GREEN: `feature-developer` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override. Orchestrator re-ran classify (55/0), spawns (69/0) and read the detached phase-guard log (310/0).
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -731,6 +732,92 @@ shell file(s), 0 finding(s)`.
   (`make_project_fixture`), so rerun the suite after editing; nothing caches.
 - Run `phase-guard.test.sh` detached; the new block alone takes about 50 s
   if you slice it out to check quickly.
+
+## GREEN (feature-developer, 2026-10-04)
+
+Ran on `claude-opus-5-5` (Opus 5.5); no model override in the dispatch. No test
+file touched. Nothing committed (the dispatch said not to).
+
+### What changed
+
+- `.claude/hooks/lib.sh` - `classify_stdin`'s per-record block is C-1's block
+  verbatim: `m = 0`, `m = 1` on a bare match, and the retry line spelled
+  exactly `if (!m && substr(lp, length(lp), 1) != "/")`, so DV-1's and DV-2's
+  `sed` expressions apply unadapted. `classify_stdin`'s header gains a
+  "THE BARE-PATH RETRY" paragraph (why, matched flag not `source`, one line per
+  input with the path as given, only `**`/`/`-ending globs reachable with their
+  anchoring kept, no filesystem, reaches every caller, credit MT-034 /
+  HARNESS-031). `classify()`'s comment gains one sentence: the retry lives in
+  `classify_stdin`, and the order is bare rules, slashed rules, `.gitignore`,
+  `source`. `classify()`'s code is unchanged.
+- `.claude/harness/paths.conf` - comment only: the `BOTH FORMS, ALWAYS`
+  paragraph rewritten per C-2 (retry; twins predate it and are kept; a bare
+  rule wins, so write one only for a different category). Heading kept, so the
+  four "see BOTH FORMS" pointers stay valid; the "a FILE of that name"
+  paragraph kept. No rule line changed.
+
+### Per-suite results (local, Windows / Git Bash)
+
+| Suite | RED | GREEN (measured) | Expected |
+|---|---|---|---|
+| classify | 49 / 6 | **55 passed, 0 failed** | 55 / 0 |
+| spawns | 67 / 2 | **69 passed, 0 failed** | 69 / 0 |
+| phase-guard (detached) | 305 / 5 | **310 passed, 0 failed** | 310 / 0 |
+| lib | - | **217 passed, 0 failed** | consumer of classify_stdin |
+| selftest | 100 / 0 | **100 passed, 0 failed** | 100 / 0 |
+| sigpipe | - | **82 passed, 0 failed** | no pin moved (C-4) |
+| boundaries | - | **82 passed, 0 failed** | consumer (C-5) |
+| gates | - | **470 passed, 0 failed** | consumer (C-5) |
+
+Guards (C-4): `check-sigpipe: scanned 44 shell file(s), 41 with pipefail, 0
+finding(s)`; `check-grep-count: scanned 44 shell file(s), 0 finding(s)`.
+
+`bash scripts/gates.sh --fast`: `All required gates passed (0 ran, 5
+unconfigured, 0 known)` - every gate UNCONFIGURED (template,
+`BOOTSTRAPPED=no`), so this judges nothing; `selftest.sh` in CI is the real
+judge, as the Context says.
+
+### Negative controls: RED's expected values against the shipped lib.sh
+
+Measured outside the test framework: `lib.sh` from this worktree sourced with
+`CLAUDE_PROJECT_DIR` pointed at fresh `make_fixture` trees built the way the
+suites build them, and `spawn_trace` / `spawn_tally` from `_spawns.sh` for the
+cost row. Every value matches RED's table; no divergence.
+
+| Input (fixture) | RED expected | GREEN measured |
+|---|---|---|
+| `fixtures` (+`fixtures/**`) | test | test |
+| `src` | source | source |
+| `wibble` | source | source |
+| `lib/fixtures` | source | source |
+| `pkg/golden` (+`**/golden/**`) | test | test |
+| `.pytest_cache` (real conf) | vendor | vendor |
+| `.tox` (real conf) | vendor | vendor |
+| `.next` (`.next/` gitignored, added) | vendor | vendor |
+| `fixtures/` | test | test |
+| `gen` (`source | gen`, `test | gen/**`) | source | source |
+| `gen/x.ts` | test | test |
+| AC-5 stdin (4 lines) | test/source/test/vendor | `test	fixtures` / `source	src` / `test	fixtures/a.json` / `vendor	.pytest_cache` |
+
+| Spawn measure (GREEN, `rm -rf fixtures`) | Bound | RED expected | GREEN measured |
+|---|---|---|---|
+| `classify` calls (instrument control) | == 1 | 1 | **1** |
+| `git check-ignore` | <= 0 | 0 | **0** |
+| total external processes | <= 26 | 25 or 26 | **26** |
+| verdict | deny | deny | **deny** |
+
+The total stays at 26 rather than dropping to 25: `git check-ignore` went from
+1 to 0 and `awk` from 7 to 8 (tally: 8 awk, 1 cat, 1 cut, 1 dirname, 6 grep,
+3 sed, 2 sort, 3 tr:lower, 1 tr:other). This matches PLANNED's
+`rm -rf fixtures/` row (deny, 26, 0 check-ignore). RED's run was an allow and
+this one is a deny, and `classify` was reached once in both, so the extra
+`awk` coincides with the verdict changing; which call it is was not traced.
+It is within the bound and equals the measured slashed-form deny.
+
+### Not run (GATES owns them)
+
+DV-1..DV-4 and P-1, and `scripts/mutate.sh` in any form. The full
+`bash scripts/gates.sh` run also belongs to GATES.
 
 ## Regressions
 
