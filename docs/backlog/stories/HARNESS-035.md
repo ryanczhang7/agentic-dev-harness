@@ -422,9 +422,9 @@ denial text, the `worktree:` line, and process counts.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-05T19:41:40Z
-    commit: e6b4496
-    tree:   1e2218f3a37dbb9532647158ddd0c353a6dd8055
+    run:    2026-10-05T23:18:21Z
+    commit: f6c100b
+    tree:   cee023bf5b3bfde651ec8f7eaa346855c734a3ea
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
