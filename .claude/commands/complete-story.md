@@ -1,7 +1,7 @@
 ---
 description: Drive one story from its current phase all the way to a merged-ready PR
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -24,11 +24,14 @@ approval between phases is exactly when they get quietly reordered:
   tests instrumented, which is slower than the test command and slower again on
   CI. A suite can pass RED, pass GREEN, pass every local gate, and still fail a
   required gate in CI on a timeout nobody measured.
-- **GATES → REVIEW sets the phase before committing**, then runs
-  `bash scripts/check-boundaries.sh`, then pushes and opens the PR.
-  `check-boundaries.sh` reads the phase out of the *committed* frontmatter, so
-  a commit made while the story still says `phase: GATES` is one CI rejects —
-  intermittently, depending on when that job runs, which is worse than always.
+- **GATES → REVIEW runs the full `bash scripts/selftest.sh` first**, detached
+  and alone, while the story is still at GATES. Then it sets the phase before
+  committing, runs `bash scripts/check-boundaries.sh`, and pushes and opens
+  the PR. A suite the story never touched can fail on its change, and CI runs
+  them all. `check-boundaries.sh` reads the phase out of the *committed*
+  frontmatter, so a commit made while the story still says `phase: GATES` is
+  one CI rejects — intermittently, depending on when that job runs, which is
+  worse than always.
 
 - **A return to RED ends with pasted red, not with a note saying it went red.**
   A corrected test runs for the first time against code that already satisfies
