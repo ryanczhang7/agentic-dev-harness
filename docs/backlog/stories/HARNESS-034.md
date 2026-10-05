@@ -5,7 +5,7 @@ slug: a-run-lock-stops-the-self-test-and-gates
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-034-a-run-lock-stops-the-self-test-and-gates
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-lock.sh, scripts/gates.sh, scripts/selftest.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/sigpipe.test.sh, .claude/state/README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -578,6 +578,9 @@ name, below the table.
 
 - PLANNED, `lead-po`, resolved to Opus 5.5 (`claude-opus-5-5`), dispatched without a model override.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran run-lock (71/69) and selftest (100/0), and confirmed ## Acceptance criteria byte-identical to the PLANNED commit.
+- GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. It stopped on a wrong test; the orchestrator reproduced the defect independently (see ## Regressions).
+- RED (return), `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`); no override. One-line fix to state_row, earned by a README mutation.
+- GREEN (resumed), same `feature-developer` agent, Opus 5.5; no override. Orchestrator read run-lock.sh and the wiring, checked no trap conflicts, re-ran `selftest.sh run-lock` (140/0, floor met).
 
 **Oracle partition for the RED brief:** `## Contract` C-6. In short: the lock's
 existence, per-tree keying and pid reclaim are settled (audit `## Decided`
@@ -1160,33 +1163,82 @@ tested: it needs an unwritable state directory, which `chmod` cannot make on
 Windows.
 
 **GREEN (2026-10-05), feature-developer, Opus 5.5 (`claude-opus-5-5`), no
-override - STOPPED, a test is wrong.** Implementation written per the Contract
-(uncommitted): `scripts/run-lock.sh` (new), the take in `scripts/gates.sh`
-after the `mutate.sh --check` block plus one `RUN_LOCK_SELF` line below `:74`
-(before the argument loop shifts `$@` away; `:74` unchanged), the take in
-`scripts/selftest.sh` between the floors faults and `# --- run ---`, the two
-`.claude/state/README.md` rows and an exhaust paragraph, and the C-5 pin in
-`sigpipe.test.sh` moved `563 -> 580`. No `.gitignore` change: `.claude/state/*`
-already ignores `run.lock` (`git check-ignore -v` names `.gitignore:2`).
+override.** First dispatch stopped at a wrong test (`state_row` escaped `<`/`>`
+into ERE word boundaries, so `run.lock.<pid>` could never match); that is the
+RED return recorded in `## Regressions`. Resumed after it, with the
+implementation untouched in between. Uncommitted at the end of GREEN.
 
-`bash .claude/tests/run-lock.test.sh`: **139 passed, 1 failed** (42.7 s). The
-one red is `README has one run.lock.<pid> row, hand-editable yes`, and the
-defect is in the test's reader, not the README. `state_row` escapes the path
-cell with `sed 's/[.*<>]/\\&/g'`, turning `run.lock.<pid>` into the ERE
-`run\.lock\.\<pid\>`; in GNU grep (and BSD) `\<` and `\>` are WORD BOUNDARIES,
-not literal angle brackets. So the needle can match only a cell reading
-`run.lock.pid`, never C-8's `run.lock.<pid>`. The test's own `state_row`,
-extracted verbatim from the suite and run against three files:
+*What was built, per the Contract:*
 
-```
-README.md (C-8 rows):                      run.lock=1 run.lock.<pid>=0 active=1
-| `run.lock.<pid>` | x | yes |  (literal):  run.lock.<pid>=0
-| `run.lock.pid` | x | yes |    (no <>):   run.lock.<pid>=1
-```
+- `scripts/run-lock.sh` (new, sourced). `run_lock_alive` is C-3's pinned line,
+  exactly once. `run_lock_acquire <root> <command>` runs C-3's order: (1) the
+  C-4 nested check (path equal, lock present, pid line equal to
+  `HARNESS_RUN_LOCK_PID`, alive) returns 0 silently; (2) writes
+  `run.lock.$$`, `ln`s it to `run.lock`, removes the temp, exports both markers
+  (overwriting inherited ones); (3) a live digit pid is a refusal, exit 2;
+  (4) a dead pid prints the stale line, a missing or non-digit pid the
+  unreadable line, removes the lock and `ln`s exactly once more; a second
+  failure refuses naming the new holder, or prints cannot-create if no lock
+  exists; (5) `ln` failed with no lock present: **one deviation** - one more
+  `ln` is attempted before printing cannot-create, so a holder that released in
+  the instant between the failed `ln` and the existence check is not reported
+  as a broken filesystem. Not constrained by the tests; fail-closed is kept.
+  `run_lock_release` removes the lock only when this process took it, it still
+  records `$$`, and it is not running in a subshell (`BASHPID` guard; `$$` is
+  the parent's pid inside one). Fields are read with `index($0, k "\t") == 1`
+  in awk, so a command containing a TAB is kept whole; no `-F'\t'` dependence.
+- `scripts/gates.sh`: one line at `:78`,
+  `RUN_LOCK_SELF="scripts/gates.sh${*:+ $*}"`, because the argument loop
+  shifts `$@` away before the take; `:74` is unchanged (nothing above it was
+  touched, `-h`'s lines 2-42 unchanged). The take block sits immediately after
+  the `mutate.sh --check` block, guarded by `LIST = 0 && AUDIT = 0`
+  (`--help` exits inside the loop): source with C-3's fallback, the three
+  traps, then `run_lock_acquire "$ROOT" "$RUN_LOCK_SELF" || exit 2`.
+- `scripts/selftest.sh`: the same block between the floors-fault block and
+  `# --- run ---`, recording `scripts/selftest.sh${*:+ $*}`.
+- `.claude/state/README.md`: C-8's two rows (after `plan-write.<pid>.md`) and
+  an exhaust paragraph on a leftover `run.lock` / `run.lock.<pid>`.
+- `.claude/tests/sigpipe.test.sh`: only the C-5 pin,
+  `scripts/gates.sh:563:` -> `scripts/gates.sh:580:`.
+- `.gitignore`: **no change** - `.claude/state/*` (`.gitignore:2`) already
+  ignores `run.lock` and `run.lock.<pid>`, as C-8 said.
 
-The fix is RED's: escape `<` and `>` differently (they are literal in ERE
-unescaped, so dropping them from the bracket: `s/[.*]/\\&/g`), then earn the
-corrected assertion by mutation per `rules.md`. GREEN did not write
-`run.lock.pid` into the README to satisfy it: that contradicts C-8 and AC-7.
-Remaining GREEN steps (other suites, `gates.sh --fast`, control confirmation)
-not run; resume after the RED return.
+*Runs, sequentially in this worktree (local MSYS, Git Bash, Windows 11):*
+
+| Command | Result |
+|---|---|
+| `bash scripts/selftest.sh run-lock` | 140 passed, 0 failed; floor 140 met |
+| `bash .claude/tests/gates.test.sh` | 470 passed, 0 failed (floor 470), 3m44s; goldens green |
+| `bash .claude/tests/sigpipe.test.sh` | 82 / 0 (floor 82); freshness green with the moved pin |
+| `bash .claude/tests/settings.test.sh` | 27 / 0 |
+| `bash .claude/tests/selftest.test.sh` | 100 / 0 |
+| `bash .claude/tests/mutate.test.sh` | 189 / 0 |
+| `bash .claude/tests/ci-local.test.sh` | 28 / 0 |
+| `bash scripts/check-sigpipe.sh` | 47 files, 0 findings |
+| `bash scripts/check-grep-count.sh` | 47 files, 0 findings |
+| `bash scripts/gates.sh --fast` | exit 0, `0 ran, 5 unconfigured` (upstream is `BOOTSTRAPPED=no`); lists `scripts/run-lock.sh` UNTRACKED, expected while uncommitted |
+
+No `run.lock*` was left in `.claude/state/` after any of them. The full
+`bash scripts/selftest.sh` and the full `bash scripts/gates.sh` are GATES's.
+
+*Negative controls, measured against the shipped library* (a scratch script
+outside the tree, building its own `make_project_fixture`; each value read
+individually, not inferred from a passing assertion):
+
+| Control | Expected (handoff) | Measured in GREEN |
+|---|---|---|
+| AC-3 live pid, `kill -0` | 0 | 0 |
+| AC-3 dead pid, `kill -0` | 1 | 1 |
+| AC-3 live-pid lock, gates.sh: rc / refusal lines / gate marker | 2 / 1,1,1 / absent | 2 / 1,1,1 / absent |
+| AC-3 live-pid lock, selftest.sh: rc / refusal lines / suite marker | 2 / 1,1,1 / absent | 2 / 1,1,1 / absent |
+| AC-6 `env -u` gate: FAIL line / rc / log line 1 / log line 2 | 1 / 1 / 1 / 1 | 1 / 1 / 1 / 1 (and 0 leftovers) |
+| AC-6 wrong-pid marker: rc / refusal lines / suite marker | 2 / 1,1,1 / absent | 2 / 1,1,1 / absent |
+| AC-7 README reader control (`mutations/*.active` yes rows) | 1 | 1 |
+| AC-7 check-ignore control (`README.md`) | 1 | 1 |
+| TERM: alive 1 s after TERM / rc / gate command finished first | yes / 143 / yes | yes / 143 / yes (0 leftovers) |
+
+No divergence from RED's expected values.
+
+*Not done here, by brief:* DV-1 and DV-2 (GATES), no `mutate.sh` run, no
+commit. This story changes no gate, so `## Gate probes` stays empty.
+
