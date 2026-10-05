@@ -5,7 +5,7 @@ slug: the-lock-follows-the-session-into-a-work
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-034-the-lock-follows-the-session-into-a-work
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/hooks/phase-guard.sh, .claude/tests/_lib.sh, .claude/tests/_spawns.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/spawns.test.sh, .claude/tests/fixtures/classify/classify.golden, CLAUDE.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -360,6 +360,63 @@ denial text, the `worktree:` line, and process counts.
          or Gate probes section describes a failure without showing one
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### Return 1: GREEN -> RED, the suite only ever spoke in forward slashes
+
+- **What was wrong.** No test was wrong; the suite was incomplete. Every
+  fixture path was `/tmp/...`, so neither the hook input's `cwd` nor
+  `CLAUDE_PROJECT_DIR` was ever spelled the way the host spells them on
+  Windows. GREEN went green (`phase-guard: 347 passed, 0 failed`) with two
+  defects still in it.
+- **How it was found.** The orchestrator drove the GREEN hooks by hand against
+  this repository's real worktrees, using the host's spellings. The calls are
+  read-only, because the hook only judges.
+  ```
+  --- 1. session rooted at IDLE main checkout, Write into the HARNESS-034 worktree (GREEN) by Windows path
+  (empty: allowed, unjudged)
+  --- 2. same, into the nested HARNESS-033 worktree (GATES)
+  (empty: allowed, unjudged)
+  --- 3. prompt hook with cwd = the worktree (escaped JSON)
+  (empty: no <harness-state> at all)
+  ```
+  Cause of 3: `_session_root` was a bash regex built around `[^"\\]`, and the
+  heredoc that appended it to lib.sh collapsed `\\` to `\`, so the pattern
+  never matched a value containing a backslash. It is now parameter expansion,
+  which has no regex dialect to get wrong. Cause of 1 and 2:
+  `git_common_dir` kept the root's backslashes, so `any_active_worktree`
+  globbed `D:\agentic-dev-harness/.git/worktrees/*`. A glob reads `\` as an
+  escape, so it found no worktree, and the IDLE root exited before judging.
+- **What is asserted now.** Under AC-1, a backslash-spelled `cwd` is read
+  (the prompt hook reports T-B, and B's GREEN allows a relative source write).
+  Under AC-2, with A IDLE and `CLAUDE_PROJECT_DIR` spelled with backslashes,
+  Write `<B>/src/main.ts` is refused by T-B.
+- **What earns them.** The backslash-root case is red on arrival, because its
+  defect was still in the tree. The two backslash-`cwd` cases passed on
+  arrival, because GREEN had already replaced the regex, so they are earned by
+  putting that defect back. The probe cuts the `cwd` value at its first
+  backslash, which is exactly what the broken regex did:
+  ```
+  === unmutated (RED)
+      FAIL AC-2: with A IDLE and spelled with backslashes, Write <B>/src/main.ts is refused by B
+           expected to contain: story:    T-B
+           actual:
+  phase-guard: 349 passed, 1 failed
+  === mutate: .claude/hooks/lib.sh (1 line(s) changed by 1524c  v="${v:1}"; v="${v%%[!A-Za-z0-9:/._ -]*}") ===
+  === mutate: running bash .claude/tests/phase-guard.test.sh ===
+      FAIL AC-1: a backslash-spelled cwd is read: the prompt hook reports B's story
+      FAIL AC-1: with a backslash-spelled cwd, B (GREEN) allows a relative source write
+      FAIL AC-2: with A IDLE and spelled with backslashes, Write <B>/src/main.ts is refused by B
+  phase-guard: 347 passed, 3 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-034/.claude/state/mutations/.claude_hooks_lib.sh.20261005T182007Z.23539.bak) ===
+  ```
+  `bash scripts/mutate.sh --check` afterwards reported: `no stranded mutation`.
+- **GREEN after the return** is not a no-op. `git_common_dir` slashes its
+  argument, and `set_harness_root` keeps `HARNESS_ROOT` in forward slashes. The
+  second change was needed because the full selftest still failed the
+  backslash-root case (`phase-guard: 349 passed, 1 failed`): the raw root was
+  file-tested as `\tmp\...` in `[ -f "$HARNESS_DIR/paths.conf" ]`, and that is
+  no path. After it: `bash scripts/selftest.sh` reported `23 harness suite(s)
+  passed`, with `phase-guard: 350 passed, 0 failed`.
 
 ## Gate results
 
