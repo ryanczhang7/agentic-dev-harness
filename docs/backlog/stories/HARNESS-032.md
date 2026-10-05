@@ -4,8 +4,8 @@ title: The full self-test runs before a story reaches REVIEW
 slug: the-full-self-test-runs-before-a-story-r
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-032-the-full-self-test-runs-before-a-story-r
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -543,6 +543,60 @@ that line in a scratch file. If GREEN placed the entry elsewhere, adjust the
 expression to delete that one entry, and say so here. RED cannot run this: the
 entry does not exist until GREEN. **Owner: GATES.**
 
+### Results, run at GATES (2026-10-05) by the orchestrator
+
+Each through `scripts/mutate.sh` with the one expression written above, detached, one at a time, against the GREEN commit. Both went red with exactly the one line their entry demands, and both files were restored and verified. Fixture-block `ok` lines elided.
+
+**DV-1, the defect put back (targeted run in place of the full self-test): red as required.**
+
+```
+=== mutate: .claude/commands/advance-story.md (1 line(s) changed by s|`bash scripts/selftest.sh`|`bash scripts/selftest.sh procedure`|g) ===
+  192 - 1. `bash scripts/selftest.sh` — the whole harness self-test, every suite,
+  192 + 1. `bash scripts/selftest.sh procedure` — the whole harness self-test, every suite,
+=== mutate: running bash scripts/selftest.sh procedure ===
+=== procedure ===
+  the real tree (AC-1 to AC-4)
+    FAIL procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, and the full self-test is a GATES → REVIEW step before the phase change
+         expected: 
+         actual:   .claude/commands/advance-story.md: its GATES → REVIEW steps do not name `bash scripts/selftest.sh`
+  the fixture: compliant by construction
+  AC-1: both commands permit both scripts in allowed-tools
+  AC-2: the full self-test is a numbered step before the phase change, and check-boundaries after it
+  AC-3: the self-test step says detached, Windows and ## Notes
+  AC-4: complete-story's GATES → REVIEW bullet names the full self-test
+procedure: 36 passed, 1 failed
+FAIL procedure  did 36 units of work, below the floor of 37 in .claude/tests/floors.conf
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_commands_advance-story.md.20261005T150135Z.63056.bak) ===
+  192: 1. `bash scripts/selftest.sh` — the whole harness self-test, every suite,
+```
+
+**DV-2, the ci-local entry deleted from complete-story: red as required.**
+
+```
+=== mutate: .claude/commands/complete-story.md (1 line(s) changed by s|, Bash(bash scripts/ci-local.sh:\*)||) ===
+  4 - allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+  4 + allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+=== mutate: running bash scripts/selftest.sh procedure ===
+=== procedure ===
+  the real tree (AC-1 to AC-4)
+    FAIL procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, and the full self-test is a GATES → REVIEW step before the phase change
+         expected: 
+         actual:   .claude/commands/complete-story.md: its allowed-tools do not permit `Bash(bash scripts/ci-local.sh:*)`
+  the fixture: compliant by construction
+  AC-1: both commands permit both scripts in allowed-tools
+  AC-2: the full self-test is a numbered step before the phase change, and check-boundaries after it
+  AC-3: the self-test step says detached, Windows and ## Notes
+  AC-4: complete-story's GATES → REVIEW bullet names the full self-test
+procedure: 36 passed, 1 failed
+FAIL procedure  did 36 units of work, below the floor of 37 in .claude/tests/floors.conf
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_commands_complete-story.md.20261005T150150Z.64550.bak) ===
+  4: allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -577,6 +631,7 @@ name, below the table.
 - PLANNED: `lead-po`, dispatched by the main session, ran on `claude-opus-5-5` (Opus 5.5). No override was reported.
 - RED: `test-developer` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override. Orchestrator re-ran procedure (36/1, the real-tree assertion) and selftest (100/0): both match the handoff.
 - GREEN: `feature-developer` ran on `claude-opus-5-5` (Opus 5.5), as planned; no override. Orchestrator read the diff and re-ran procedure (37/0).
+- GATES: no dispatch. The orchestrator (`claude-opus-5-5`) ran DV-1, DV-2, `gates.sh` and the full selftest itself.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -893,10 +948,21 @@ GREEN's job is to confirm the real-tree line goes to 0 and the total stays 37.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-05T15:02:20Z
+    commit: 1e13357
+    tree:   eccc60bd2c1cf285920bd8ff7e547d07ecd5a526
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -1017,3 +1083,13 @@ no override was given in the dispatch.**
   tree went from 6 lines (C-5) to 0 lines. No divergence to report.
 - **Not run in GREEN, by instruction:** the full `bash scripts/selftest.sh`,
   DV-1, DV-2 (all GATES), and no commit.
+
+**GATES (2026-10-05), orchestrator.** DV-1 and DV-2 came out as required
+(results under `## Deferred verifications`). `bash scripts/gates.sh`: all
+required gates passed (0 ran, 7 unconfigured), recorded. The full
+`bash scripts/selftest.sh`, detached and alone, run once as this story's own new
+step 1 requires: exit 0 in 3,611 s, last line `23 harness suite(s) passed.`
+(2,388 assertions executed, 2,158 declared). That is about 2.4 times
+HARNESS-031's 1,518 s on the same host the same day. No second self-test or
+gate run was going in this worktree. Whether another process on the machine
+was competing for it was not checked, so the cause is not known.
