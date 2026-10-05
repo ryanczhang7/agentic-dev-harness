@@ -42,7 +42,7 @@ SPAWN_PS4='+|xt| '
 # `set -x` then `.` is `bash -x` for this script - it reads its own directory
 # from BASH_SOURCE, which a sourced file sets exactly as an executed one does.
 spawn_trace() {
-  printf '{"tool_name":"%s","tool_input":{"%s":"%s"}}' "$2" "$3" "$(json_str "$4")" \
+  printf '{%s"tool_name":"%s","tool_input":{"%s":"%s"}}' "$(hook_cwd_field)" "$2" "$3" "$(json_str "$4")" \
     | CLAUDE_PROJECT_DIR="$1" \
       bash -c 'PS4="$0"; set -x; . "$1"' "$SPAWN_PS4" "$REPO_ROOT/.claude/hooks/phase-guard.sh" \
       >"$5.out" 2>"$5"

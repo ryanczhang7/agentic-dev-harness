@@ -89,6 +89,21 @@ assert_eq "an absolute path"       "src/main.ts" "$(to_rel "$FIX/src/main.ts")"
 assert_eq "a backslash path"       "src/main.ts" "$(to_rel "$(printf '%s' "$FIX" | tr '/' '\134')\\src\\main.ts")"
 assert_eq "somewhere else on disk" ""            "$(to_rel "/somewhere/else/main.ts")"
 
+# HARNESS-034 AC-5. One root, three drive spellings: MSYS `/d/p`, Windows `D:/p`
+# and `D:\p`. to_rel used to tolerate the difference by asking whether the path
+# contained `/<root's folder name>/`, which also took `/e/p` and
+# `C:/elsewhere/p` for this repository and missed a worktree named anything
+# else. Pure string work, so the roots need not exist.
+for _root in '/d/p' 'D:/p' 'D:\p' 'd:/p/'; do
+  for _path in 'D:\p\src\a.ts' 'D:/p/src/a.ts' '/d/p/src/a.ts' 'd:/P/src/a.ts'; do
+    assert_eq "AC-5: root $_root, path $_path" "src/a.ts" "$(HARNESS_ROOT="$_root"; to_rel "$_path")"
+  done
+  assert_eq "AC-5 control: root $_root, /d/pp is a different folder"  "" "$(HARNESS_ROOT="$_root"; to_rel '/d/pp/src/a.ts')"
+  assert_eq "AC-5 control: root $_root, /e/p is a different drive"    "" "$(HARNESS_ROOT="$_root"; to_rel '/e/p/src/a.ts')"
+  assert_eq "AC-5 control: root $_root, C:/elsewhere/p is elsewhere"  "" "$(HARNESS_ROOT="$_root"; to_rel 'C:/elsewhere/p/src/a.ts')"
+done
+assert_eq "AC-5: /cygdrive/d/p is D:/p" "src/a.ts" "$(HARNESS_ROOT='D:/p'; to_rel '/cygdrive/d/p/src/a.ts')"
+
 # ---------------------------------------------------------------------------
 describe "mask_shell_quotes: operators inside quotes stop being operators"
 

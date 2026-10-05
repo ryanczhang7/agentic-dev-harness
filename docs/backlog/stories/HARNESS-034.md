@@ -4,8 +4,8 @@ title: The lock follows the session into a worktree and judges a write by the wo
 slug: the-lock-follows-the-session-into-a-work
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-034-the-lock-follows-the-session-into-a-work
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/hooks/phase-guard.sh, .claude/tests/_lib.sh, .claude/tests/_spawns.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/spawns.test.sh, .claude/tests/fixtures/classify/classify.golden, CLAUDE.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -289,6 +289,18 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All are shell suites run through the real hooks against throwaway fixtures.
+
+| AC | Suite: block | What it drives |
+|---|---|---|
+| premise | `phase-guard.test.sh`: `HARNESS-034 premise` | B and W share A's `.git` (checked with `git rev-parse --git-common-dir`); C does not; B's folder name differs from A's |
+| AC-1 | `phase-guard.test.sh`: `HARNESS-034 AC-1` | `GUARD_CWD=<B>`: relative source write allowed (B is GREEN, A is RED); test write refused naming T-B/GREEN; `inject-state.sh` reports T-B; A IDLE; backslash-spelled `cwd` (added on return to RED); control with no `cwd` |
+| AC-2 | `phase-guard.test.sh`: `HARNESS-034 AC-2` | Write, Edit, `>`, `: >>`, `cd <B> &&` into B from A; A IDLE; A spelled with backslashes and IDLE (added on return to RED); controls B IDLE / B GREEN / A's own path with no `worktree:` line |
+| AC-3 | `phase-guard.test.sh`: `HARNESS-034 AC-3` | `<A>/.claude/worktrees/w`, by absolute path and by `cd .claude/worktrees/w &&`; control W GREEN |
+| AC-4 | `phase-guard.test.sh`: `HARNESS-034 AC-4`; `spawns.test.sh` AC-5 golden | separate repo C allowed; `C:\elsewhere\<A's name>\src\main.ts` allowed; golden lines 36-37 now `outside` |
+| AC-5 | `lib.test.sh`: `to_rel` | 4 root spellings x 4 path spellings, plus 3 controls per root and `/cygdrive/d` |
+| AC-6 | `spawns.test.sh`: after HARNESS-025 AC-1 | `GUARD_CWD=<root>`: still at most 27, and exactly the cwd-less count |
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -308,6 +320,25 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Command: `bash .claude/tests/phase-guard.test.sh`, `bash .claude/tests/lib.test.sh`,
+`bash .claude/tests/spawns.test.sh`. First RED run, at `c7c902f` plus the tests
+(harness release 75):
+
+- `phase-guard`: every AC-1 to AC-4 case failed for the field's reasons. With
+  `cwd` = B the guard reported `story: T-A phase: RED` and the prompt hook
+  `Active story: T-A`. Write, Edit and `>` into B and W were allowed with no
+  judgement (empty reason). `C:\elsewhere\<A's name>\src\main.ts` was refused
+  as A's `src/main.ts`. The premise and every control passed.
+- `lib: 237 passed, 9 failed`, all AC-5. `/e/p/src/a.ts` and
+  `C:/elsewhere/p/src/a.ts` came back as `src/a.ts` under every root (the
+  folder-name fallback), and `d:/P/src/a.ts` came back unchanged under `/d/p`.
+- `spawns: 71 passed, 1 failed`, the AC-5 golden diff on lines 36-37 only.
+  **AC-6 passed on arrival**, as it must: it is a bound GREEN has to keep, and
+  the code under test ignored `cwd` entirely. GREEN's run is what earns it.
+
+No new export is imported by a test. The tests constrain hook behaviour only:
+denial text, the `worktree:` line, and process counts.
 
 ## Regressions
 
