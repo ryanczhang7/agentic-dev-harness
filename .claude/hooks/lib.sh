@@ -840,7 +840,9 @@ command_cwd() {
 # have exactly one implementation, and so that a single call costs one process
 # rather than one per rule in paths.conf - which, at ninety-odd rules, cost
 # whole seconds per checked path on Windows and made the guard feel like a
-# hang.
+# hang. The bare-path retry (`x/**` covers bare `x`) lives in classify_stdin,
+# so the order is: rules on the bare form, rules on the slashed form, then
+# .gitignore, then source.
 classify() {
   local rel="$1" cat
   [ -z "$rel" ] && { printf 'outside'; return; }
@@ -884,6 +886,27 @@ is_ignored() {
 # It does NOT consult git for the `ignored` category, and does not need to: its
 # callers feed it paths that git already tracks (a diff, a tree listing, an
 # index), and a tracked path is never ignored. classify() adds that check.
+#
+# THE BARE-PATH RETRY (manga-translator MT-034; upstream HARNESS-031). A
+# directory rule is a glob ending in `/**`, which matches paths UNDER the
+# directory and never the directory itself, so a bare `fixtures` under a
+# project's `test | fixtures/**` fell through to `source`: deletable in GREEN,
+# refused in RED. So a path that NO rule matches, and that does not already end
+# in `/`, is judged once more with one trailing `/` appended, and takes the
+# category of the first rule that matches that form. Three points:
+#   - a matched FLAG decides the retry, never a `source` answer: a project may
+#     write `source | gen`, and that explicit bare rule must beat `gen/**`;
+#   - one output line per input line, with the path AS GIVEN (no `/` added):
+#     every caller keys on the path it fed in;
+#   - only a glob ending in `**` (or written ending in `/`) can match `x/`,
+#     since `*` and `?` never cross a `/`, and each rule keeps its anchoring:
+#     root-anchored `fixtures/**` covers `fixtures`, never `lib/fixtures`.
+# Nothing consults the filesystem: bare `x` classifies the same whether or not
+# the directory exists, and a FILE whose whole path equals such a prefix takes
+# the directory rule's category too (paths.conf, "BOTH FORMS"). The retry runs
+# inside this awk, so it costs no process, and it reaches every caller -
+# classify(), the diff and tree listings, the gate hash - so they cannot
+# disagree.
 #
 # The glob-to-regex conversion is a character scan rather than sed, because sed
 # bracket expressions are a minefield here (POSIX treats "[." and "[]" as
@@ -940,8 +963,10 @@ classify_stdin() {
     {
       path = $0; sub(/\r$/, "", path); sub(/^\.\//, "", path)
       if (path == "") next
-      lp = tolower(path); c = "source"
-      for (i = 1; i <= n; i++) if (lp ~ rr[i]) { c = rc[i]; break }
+      lp = tolower(path); c = "source"; m = 0
+      for (i = 1; i <= n; i++) if (lp ~ rr[i]) { c = rc[i]; m = 1; break }
+      if (!m && substr(lp, length(lp), 1) != "/")
+        for (i = 1; i <= n; i++) if ((lp "/") ~ rr[i]) { c = rc[i]; break }
       print c "\t" path
     }'
 }

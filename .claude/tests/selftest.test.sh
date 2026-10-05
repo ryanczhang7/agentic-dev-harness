@@ -519,7 +519,7 @@ while read -r n v; do
 done <<'COUNTS'
 boundaries 79
 ci-local 28
-classify 42
+classify 55
 doctor 50
 gate-reminder 32
 gates 470
@@ -528,7 +528,7 @@ lib 217
 mutate 189
 new-story 29
 phase 33
-phase-guard 300
+phase-guard 310
 plan 42
 policy 17
 profiles 50
@@ -537,7 +537,7 @@ reporting 27
 selftest 100
 settings 27
 sigpipe 82
-spawns 66
+spawns 69
 worktree 73
 COUNTS
 assert_eq "and each records the executed count measured on this tree" "" "$wrong"
