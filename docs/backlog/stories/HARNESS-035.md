@@ -4,8 +4,8 @@ title: Opt-in concurrent self-test suites
 slug: opt-in-concurrent-self-test-suites
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-035-opt-in-concurrent-self-test-suites
 depends_on: [HARNESS-034]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/state/README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -393,8 +393,22 @@ fixture (`make_project_fixture` + real `_lib.sh`) and its `reset_suites` /
 directory: alive peers on start (`alive/<name>` created on start, removed on
 finish), `finished/<name>`, a listing of `.claude/state`, the content of
 `run.lock`. AC-3's "hold until the last suite has started" uses a SHORT bound
-(about 10 s), because its control at `SELFTEST_JOBS=1` is meant to hit it; a
-120 s bound there would cost the suite two minutes on every run. The holder for AC-5 is the script itself backgrounded after `cd`
+(20 s - *amended in RED from "about 10 s"*, see below), because its control at
+`SELFTEST_JOBS=1` is meant to hit it; a 120 s bound there would cost the suite
+two minutes on every run.
+*RED amendment (2026-10-05, test-developer): 10 s -> 20 s.* With two slots, w1
+holds while w2, w3 and w4 each spawn, run and are reaped one after another
+through the other slot, and each reap can wait out one poll interval (C-2 lets
+GREEN back off to about 2 s). On this Windows host, under DV-2's own
+`SELFTEST_JOBS=4` run, three spawns plus three backed-off polls can come close
+to 10 s, and a correct runner would then fail AC-3. 20 s keeps the control
+cheap (it costs 20 s once per run) and leaves headroom. GREEN: keep the poll
+backoff ceiling at or below about 2 s.
+Two more holds the suite uses, not in the original block: a hold that waits on
+OTHER suites (not on a file the test creates) also gives up after 30 s with no
+other suite alive, and every hold gives up once any hold in the same run has
+timed out. A serial runner can never clear such a hold, and without these each
+one would cost its full 120 s in RED and in any regression. The holder for AC-5 is the script itself backgrounded after `cd`
 (`bash scripts/selftest.sh &`), as `run-lock.test.sh` does, so that `$!` is the
 pid in the directory name and the lock. An `EXIT` trap releases every hold and
 waits every background pid.
@@ -582,6 +596,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 
 - PLANNED, `lead-po`, resolved to Opus 5.5 (`claude-opus-5-5`), dispatched without a model override.
+- RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Interrupted by a Claude session restart and resumed via SendMessage (same agent). Orchestrator re-ran selftest.test.sh: 179 passed, 89 failed, matching the handoff; ## Acceptance criteria byte-identical to the PLANNED commit.
 
 **Oracle partition for the RED brief:** `## Contract` C-7. In short: opt-in,
 the name, default 1 and per-run buffers are settled (audit `## Decided` 6 C,
@@ -634,6 +649,60 @@ oracle-free.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+**Level.** Everything is in `.claude/tests/selftest.test.sh`, appended before
+its `summary` line, as C-6 asks. All of it except AC-6 is integration level: the
+fixture's own copy of `scripts/selftest.sh` runs over synthetic suites in the
+suite's existing `make_project_fixture` tree, which has its own lock. AC-6
+reads files in the real tree. Each new case states `SELFTEST_JOBS` explicitly
+(a value, `""`, or `env -u`) and sets `VERBOSE=` empty.
+
+**The instrument.** `held <name> VAR=value...` writes a suite that sources
+`.claude/tests/_held.sh` (written into the fixture; it is not a `*.test.sh`, so
+`selftest.sh` does not run it). Each suite records under `mk/`: `peers/` (the
+suites alive when it started, itself included; it creates `alive/<name>` first
+and lists afterwards, so the largest listing is the true peak), `started/`,
+`finished/`, `state/` (`ls -A .claude/state`), `buf/` (the listing of
+`.claude/state/selftest.*/`), `finbefore/` (the suites already finished when it
+finished), `lockend/` (`run.lock` as it finished) and `timeout/`. A suite can
+hold on `mk/release/<name>`, `mk/release/all`, other suites having finished
+(`WAIT_FIN`) or started (`WAIT_START`), or a count of started suites
+(`WAIT_COUNT`). Every hold is bounded (120 s by default, 20 s for AC-3's
+work-conserving case). A hold that waits on other suites also gives up after
+30 s with no other suite alive (`LONELY`), and every hold gives up once any hold
+in the run has timed out. A timed-out hold fails its suite with
+`    FAIL <name>: its hold cleared before its bound`. A held() suite executes N+1
+assertions, so a floor of N+1 is met. `PAD=<n>` adds comment lines so that
+size-first and glob-first start orders start the same suites (C-2 leaves the
+order free).
+
+| Block (describe) | Asserts | AC |
+|---|---|---|
+| AC-1, unset / `""` / `1` (loop of 3, 7 each) | exit 1; stdout `cmp`-identical to the release-77 golden; stderr empty (the golden's); all 5 ran; peak exactly 1; no suite saw `selftest.*` in `.claude/state`; nothing (`selftest.*`, `run.lock*`) left | AC-1 |
+| AC-1 control, `SELFTEST_JOBS=3` | peak >= 2; a suite saw `selftest.<digits>`; still exits 1 | AC-1 control (with AC-3 and AC-5) |
+| AC-2 failing fixture, 1 vs 3 | both exit 1; both last lines `3 of 6 harness suite(s) FAILED.`; stdout `cmp`-identical; stderr identical; all 6 ran; **control** b1 (first in glob order) finished last; b2-exits3 finished after b3, so neither first nor last | AC-2 |
+| AC-2 passing fixture, 1 vs 3 | both exit 0; stdout and stderr identical; `assertion floors: all 4 ... (12 assertions executed, 12 declared).` once in each; both end `4 harness suite(s) passed.`; **control** c1 finished last | AC-2 |
+| AC-2 single suite, `c5-nofloor`, 1 vs 3 | both exit 0; stdout and stderr identical; stderr carries the WARNING (precondition); exactly one header `=== c5-nofloor ===`; one suite started | AC-2, C-1 |
+| AC-2 `nosuchsuite` at 3 | exit 1; stderr is exactly the shipped `No suites matched` line; stdout empty; nothing started | AC-2 |
+| AC-2 print-while-held at 3 | precondition: d2 and d3 both started and held; with both still unfinished, `=== d1-quick ===` and `d1-quick: 2 passed, 0 failed` are already in the stdout file; exits 0 once released | AC-2 (incremental printing, C-2) |
+| AC-3 peaks: 2 over 4, 3 over 5, 10 over 4 | exit 0; all ran; peak exactly 2 / 3 / 4 | AC-3 |
+| AC-3 work-conserving at 2 | exits 0; w1-first's hold did not time out | AC-3 |
+| AC-3 control at 1 | exits 1; the line `    FAIL w1-first: its hold cleared before its bound` appears exactly once | AC-3 control |
+| AC-4: `0 00 -1 abc 1.5 ' 2' 2x` by full / `h1` (14 runs, 5 each) | exit 2; stderr is exactly the C-3 line with the value verbatim; stdout empty; no suite started; no `run.lock` and no `selftest.*` left | AC-4 |
+| AC-4 malformed floors.conf + `abc` | exit 2 (not 1); stderr is the C-3 line alone; stdout empty, so no floors fault printed | AC-4 |
+| AC-4 control `10` over 2 | exit 0; `2 harness suite(s) passed.` | AC-4 control |
+| AC-5 buffers at 3 (script backgrounded; `$!` is HP) | exit 0; all 3 suites saw `selftest.$HP`; each saw its own `<name>.out` in it (C-2); precondition: f1 finished last; f1's `lockend` pid is HP; nothing left | AC-5, C-2, C-4 |
+| AC-5 exit 1 at 3 (f2 exits 1, floor met) | exit 1 exactly; nothing left | AC-5 (the DV-1 target) |
+| AC-5 TERM at 2 (t1, t2 held, `FINISH_DELAY=1`; t3 queued) | precondition: t1 and t2 started; still alive 1 s after TERM; `run.lock` present while draining; exits 143; t1 and t2 `finished` present; t3 never started; nothing left | AC-5, C-4 |
+| AC-6 | README `selftest.<pid>/*.out` row with `yes` (control: `run.lock.<pid>` row found by the same reader); `.claude/state/selftest.12345/gates.out` ignored (control: README.md is not); `suite_status() { wait "$1"; }` on exactly one line, and no other `suite_status()` definition; no `wait -n`/`wait -p`/`mapfile`/`readarray`/`coproc`/`declare -A`/`local -A`/`typeset -A` on code lines (control: a probe file is flagged on its code lines only) | AC-6 |
+| existing COUNTS row and floors.conf | `selftest 268` in both | AC-6 (the floor) |
+
+**AC-6 parts that are run, not asserted:** "`bash scripts/selftest.sh
+settings` passes", "`check-sigpipe.sh` and `check-grep-count.sh` stay clean"
+and "a full `bash scripts/selftest.sh` passes". These are commands run over
+the real tree. Running them from inside this suite would nest a self-test run
+under it, so they are left as commands. RED ran settings, check-sigpipe and
+check-grep-count (see the handoff). The full run belongs to GATES (DV-2 run 1).
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -653,6 +722,244 @@ oracle-free.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**RED, 2026-10-05, test-developer (Opus 5.5, `claude-opus-5-5`, no model
+override in the dispatch).** The session restarted mid-phase. The first RED run
+had been killed and was re-run, not trusted.
+
+**Command.** `bash .claude/tests/selftest.test.sh` (direct), or
+`bash scripts/selftest.sh selftest` (through the runner). Both give the same
+result. Each case runs its own fixture tree, which has its own run lock, so
+neither takes this worktree's lock except the runner's own.
+
+**Counts.** Before: `selftest: 100 passed, 0 failed`. RED, both commands:
+`selftest: 179 passed, 89 failed` (268 executed). Through the runner it adds
+`FAIL selftest  did 179 units of work, below the floor of 268 in
+.claude/tests/floors.conf`. **Expected after GREEN: `selftest: 268 passed, 0
+failed`.** The floor (`floors.conf`) and the `COUNTS` row are both 268.
+
+**Failure output (RED run, verbatim headlines).** Detail lines are omitted.
+AC-4's loop is shown for `'0'` only; the other six values (`00 -1 abc 1.5 ' 2'
+2x`) fail the same four assertions each, 7 x 8 = 56 in all.
+
+```
+  HARNESS-035 AC-1  SELFTEST_JOBS unset, empty or 1 runs today's sequential loop, byte for byte
+  HARNESS-035 AC-1  control: the same fixture at SELFTEST_JOBS=3 is concurrent
+    FAIL SELFTEST_JOBS=3: suites were alive together (peak above 1)
+    FAIL SELFTEST_JOBS=3: a suite saw a .claude/state/selftest.<pid> buffer directory while it ran
+  HARNESS-035 AC-2  concurrent output is the serial output, failures included
+    FAIL SELFTEST_JOBS=3's last line counts the same three failures
+    FAIL SELFTEST_JOBS=3's stdout is byte-identical to SELFTEST_JOBS=1's
+    FAIL control: at SELFTEST_JOBS=3 the first suite in glob order finished last
+    FAIL control: and b2-exits3 was neither the first nor the last to finish
+  HARNESS-035 AC-2  an all-passing fixture: the same totals, the same verdict
+    FAIL SELFTEST_JOBS=3 over the passing fixture exits 0
+    FAIL SELFTEST_JOBS=3's stdout is byte-identical to SELFTEST_JOBS=1's
+    FAIL SELFTEST_JOBS=3 prints the all-met floors line once
+    FAIL SELFTEST_JOBS=3 ends with 4 harness suite(s) passed.
+    FAIL control: at SELFTEST_JOBS=3 the first suite in glob order finished last
+  HARNESS-035 AC-2  one named suite at SELFTEST_JOBS=3 is the same single-suite run
+  HARNESS-035 AC-2  a name that matches nothing at SELFTEST_JOBS=3
+  HARNESS-035 AC-2  a finished suite is printed while a later one is still held
+    FAIL precondition: at SELFTEST_JOBS=3, d2-held and d3-held are both running and held
+    FAIL while both later suites are concurrently held, d1-quick's whole block is already on stdout
+  HARNESS-035 AC-3  at most SELFTEST_JOBS suites alive at once, and exactly that many
+    FAIL SELFTEST_JOBS=2 over 4 held suites exits 0
+    FAIL SELFTEST_JOBS=2 over 4: the most suites alive at once is exactly 2
+    FAIL SELFTEST_JOBS=3 over 5 held suites exits 0
+    FAIL SELFTEST_JOBS=3 over 5: the most suites alive at once is exactly 3
+    FAIL SELFTEST_JOBS=10 over 4 held suites exits 0
+    FAIL SELFTEST_JOBS=10 over 4: the most suites alive at once is exactly 4
+  HARNESS-035 AC-3  a free slot is refilled when ANY suite exits, not the oldest
+    FAIL SELFTEST_JOBS=2: the run completes and exits 0
+    FAIL SELFTEST_JOBS=2: w1-first's hold cleared, it did not time out
+  HARNESS-035 AC-4  a bad SELFTEST_JOBS is refused before anything runs
+    FAIL SELFTEST_JOBS='0', full run: exits 2
+    FAIL SELFTEST_JOBS='0', full run: stderr is exactly the one refusal line
+    FAIL SELFTEST_JOBS='0', full run: nothing on stdout
+    FAIL SELFTEST_JOBS='0', full run: no suite started
+    FAIL SELFTEST_JOBS='0', h1 run: exits 2
+    FAIL SELFTEST_JOBS='0', h1 run: stderr is exactly the one refusal line
+    FAIL SELFTEST_JOBS='0', h1 run: nothing on stdout
+    FAIL SELFTEST_JOBS='0', h1 run: no suite started
+  HARNESS-035 AC-4  the value is checked before the floors file
+    FAIL SELFTEST_JOBS=abc over a malformed floors.conf: exits 2, not the floors audit's 1
+    FAIL and stderr is the refusal line, alone
+    FAIL and no floors fault is printed: stdout is empty
+  HARNESS-035 AC-4  control: a value above the number of suites is accepted
+  HARNESS-035 AC-5  buffers under .claude/state/selftest.<pid>/, the lock held to the end
+    FAIL SELFTEST_JOBS=3 over three passing suites exits 0
+    FAIL every suite saw .claude/state/selftest.<pid>, <pid> being selftest.sh's own ($!)
+    FAIL C-2: and its own buffer, <name>.out, already in it
+    FAIL precondition: f1 finished last, after f2 and f3
+  HARNESS-035 AC-5  TERM drains the running suites, starts no more, and cleans up
+    FAIL precondition: at SELFTEST_JOBS=2, t1-held and t2-held are both running and held
+    FAIL t2-held wrote its finished marker before the run exited
+  HARNESS-035 AC-6  state, suite and portability hygiene, in this repository
+    FAIL README has one selftest.<pid>/*.out row, hand-editable yes
+    FAIL scripts/selftest.sh defines suite_status on exactly the one line DV-1 mutates
+    FAIL and defines it nowhere else
+selftest: 179 passed, 89 failed
+```
+
+**Why these are the right failures.** Today's `selftest.sh` ignores
+`SELFTEST_JOBS`, so a `SELFTEST_JOBS=3` run is serial. Every hold that needs a
+second suite alive therefore times out, after 30 s alone or 60 s waiting for a
+start. For example, AC-2's diff shows `FAIL b1-last: its hold cleared before
+its bound` and `4 of 6 harness suite(s) FAILED.` where `3 of 6` is expected.
+Peaks are measured as 1. No buffer directory exists. A bad value is not
+refused: rc 0 and the suites run. `suite_status` and the README row do not
+exist. No failure is a syntax error, a timeout of the suite itself, or a
+missing helper.
+
+**Files touched.** `.claude/tests/selftest.test.sh`: the new cases before
+`summary`, the `COUNTS` row `selftest 268`, and an EXIT trap
+(`selftest_cleanup`: releases every hold, waits every background pid, then
+removes the fixture) replacing `trap 'rm -rf "$FIX"' EXIT`.
+`.claude/tests/floors.conf`: `selftest` 100 -> 268, with a HARNESS-035 note at
+the foot. This story file: `## Contract` C-6 (amendment below), `## Test plan`,
+and this section. Not touched: `scripts/selftest.sh`,
+`.claude/state/README.md`, `## Acceptance criteria`.
+
+**What the tests pin. Treat this as fact; a test reads each item.**
+- `SELFTEST_JOBS` is read before the floors file. A value outside `''` (unset
+  or empty) and `[1-9][0-9]*` prints exactly
+  `selftest: SELFTEST_JOBS must be a whole number of suites to run at once, 1 or more; got '<value>'. Nothing was run.`
+  on stderr, prints nothing on stdout, and exits 2. It takes no lock, creates
+  no buffer and starts no suite. This holds for both the full run and
+  `selftest.sh <suite>`.
+- Unset, empty, `1`, or a single-suite run: the output is byte-identical to
+  release 77. The AC-1 golden is in the suite as a literal, sha256
+  `7818e840e8102cd55115e7891c9266884fbabf0edf8ae861975eb46ccececa78`, captured
+  from `b6c8307`'s `scripts/selftest.sh` (release 77; unchanged in the working
+  tree). Stderr is empty. No `.claude/state/selftest.*` entry is created.
+- `SELFTEST_JOBS >= 2` over two or more suites: stdout is `cmp`-identical to
+  the `SELFTEST_JOBS=1` run, and stderr is identical. The buffer directory is
+  `.claude/state/selftest.<selftest.sh's $$>/`, and it exists, holding
+  `<name>.out`, before each suite's first line runs. `run.lock` still records
+  that pid when the last suite finishes. After exit 0, 1 or 143, no
+  `.claude/state/selftest.*`, `run.lock` or `run.lock.*` remains. The peak
+  number of suites alive is exactly `min(SELFTEST_JOBS, suites)`. A slot is
+  refilled when any suite exits. On TERM: alive 1 s later while suites are
+  held, `run.lock` still present, held suites let finish, the queued suite
+  never started, exit 143.
+- A finished suite's block reaches stdout while later suites are still running
+  (polled for up to 30 s, so a poll backoff of a few seconds is fine).
+- `scripts/selftest.sh` holds the line `suite_status() { wait "$1"; }` exactly
+  once, with no other `suite_status()` definition. Its code lines contain none
+  of `wait -n`, `wait -p`, `mapfile`, `readarray`, `coproc`, `declare -A`,
+  `local -A`, `typeset -A`. The reader skips full-line comments and strips a
+  trailing ` # ...`.
+- `.claude/state/README.md` has a row matching
+  ``^| `selftest.<pid>/*.out` +|.*| yes +|$`` (C-5's row satisfies it).
+
+**Not constrained** (GREEN's choice): the name `report_suite` and how it gets
+its arguments; start order (the AC-3 and TERM fixtures are padded, so glob order
+and largest-first both start the intended suites); the poll interval and
+backoff (keep the ceiling at about 2 s or below: AC-3's hold is 20 s); how a
+finished suite's status is stored before printing; the wording of the
+cannot-create-buffer line (C-4: no test, `chmod` cannot make it on Windows);
+the `selftest.sh` header text.
+
+**Green on arrival, and what earns each.**
+
+| Assertions | Why green now | Earned by |
+|---|---|---|
+| AC-1's 21 (3 modes x 7) | they pin today's default path | the golden captured from release 77 in RED; DV-1's "must stay green" half; and the AC-1 control, which is red now |
+| AC-2 single-suite (7) and `nosuchsuite` (4) | single-suite and no-match are serial today | they pin that C-1 sends these down the sequential path; checked against a scratch prototype (below) |
+| AC-2 failing fixture "exits 1" (2) and passing "J=1 exits 0", J=1 floors/last lines | J=1 halves are today's code; J=3 still exits 1 (b3, b4 fail regardless) | DV-1 (the lost-status mutant leaves them green, as it must) |
+| AC-3 control at J=1 (2) | serial is what the control describes | it is the control; measured below |
+| AC-4 leftovers (14), control J=10 (2) | today leaves nothing and runs J=10 serially | leftovers turn meaningful once GREEN creates buffers; the control is the control |
+| AC-5 exit-1 case (2) | serial exits 1 and leaves nothing | DV-1: on the prototype with `return 0` it goes red (`SELFTEST_JOBS=3 with one suite exiting 1 (floor met) exits 1`) |
+| AC-5 TERM: alive after 1 s, lock present, 143, t1 finished, t3 never started (5) | serial TERM already drains the foreground suite | the two red assertions in the block (t2 precondition, t2 finished); 143 and alive are HARNESS-034's serial behaviour carried over |
+| AC-5 "nothing left" after exit 0 (1) | nothing is created today | becomes meaningful once buffers exist |
+| AC-6 check-ignore (2), bash-3.2 reader (1) + control (1), README control (1) | `.gitignore` already covers it; the script is clean today | each has a control that is the opposite case, measured below |
+
+**Negative controls: expected values.** Unlike a missing module, this suite
+does not fail at import: every assertion ran in RED, so these numbers come from
+real executions. Confirming them against the shipped `selftest.sh` is GREEN's
+job.
+
+| Control | Threshold | Measured in RED (release 77) | Measured on scratch prototype | GREEN must see |
+|---|---|---|---|---|
+| AC-1 control: peak at J=3 | >= 2 | 1 | passes (>= 2) | >= 2 |
+| AC-1 control: suites seeing `selftest.<digits>` | >= 1 | 0 | passes | >= 1 (expect 5) |
+| AC-2 failing: b1's `finbefore` lines | = 5 | 0 (b1 timed out, finished first) | 5 | 5 |
+| AC-2 failing: b2 finished after b3 | yes | no | yes | yes |
+| AC-2 passing: c1's `finbefore` lines | = 3 | 0 | 3 | 3 |
+| AC-3 peaks (2/4, 3/5, 10/4) | = 2, 3, 4 | 1, 1, 1 | 2, 3, 4 | 2, 3, 4 |
+| AC-3 control (J=1): rc / timeout line count | 1 / 1 | 1 / 1 | 1 / 1 | 1 / 1 |
+| AC-3 work-conserving (J=2): rc / w1 timeout marker | 0 / absent | 1 / present | 0 / absent | 0 / absent |
+| AC-4 control J=10: rc / passed line | 0 / 1 | 0 / 1 | 0 / 1 | 0 / 1 |
+| AC-6 bash-3.2 reader on the probe | exactly `1: wait -n` and `4: local -A` | exactly that | exactly that | exactly that |
+| AC-6 check-ignore on `.claude/state/README.md` | rc 1 | 1 | - | 1 |
+| AC-6 README reader on `run.lock.<pid>` | 1 | 1 | 1 | 1 |
+
+**Satisfiability check (scratch only, nothing committed).** To show the suite
+can be passed, a throwaway concurrent prototype of `selftest.sh` was built in
+the session scratchpad, outside this tree. It reads and refuses the variable
+after `ONLY`, keeps `report_suite` shared, uses `kill -0` polling plus
+`suite_status`, a buffer dir `selftest.$$`, `selftest_exit` and
+`stop=143` drain traps. It ran the suite from a scratch copy of the tree:
+`selftest: 267 passed, 1 failed` in 67 s. The one failure was the README row,
+which the prototype does not write. With DV-1's expression applied to that
+prototype: `263 passed, 5 failed`. The new failures were AC-2's failing-fixture
+last line (`expected: 3 of 6 harness suite(s) FAILED.` /
+`actual: 2 of 6 harness suite(s) FAILED.`) and its stdout identity; AC-5's
+exit-1 case (`expected: 1` / `actual: 0`); and the `suite_status` line check,
+which the mutation itself changes. **Note for GATES on DV-1's wording:** in
+this fixture the `SELFTEST_JOBS=3` run under the mutant still exits **1**, with
+`2 of 6 harness suite(s) FAILED.`, because b3 (below floor) and b4 (no summary)
+fail without reference to an exit status. DV-1's "exits 0 and its last line is
+`<N> harness suite(s) passed.`" is wrong for this fixture. What DV-1 requires
+holds: only the rc-only failure is lost, the count is visibly wrong, and both
+named assertions go red. AC-5's exit-1 case is the one where the mutant
+produces exit 0. Every AC-1 assertion and every J=1
+half stayed green, which is DV-1's prediction. This does not discharge DV-1:
+it was run against a prototype, not the shipped script. GATES still owns it.
+
+**Discovered in RED; this changes the approach.**
+- *Fixed in the test before handoff:* AC-5's "last finisher" was found by the
+  suite whose `finbefore` listed the other two. On the prototype that was a
+  race: three quick suites finished together and none qualified. f1 now holds
+  until f2 and f3 have finished, a precondition asserts it, and the lock is
+  read from f1's `lockend`. That adds one assertion, hence 268.
+- *Contract amended (C-6):* AC-3's short bound is 10 s -> 20 s. Reason in C-6.
+  Keep poll backoff at or below about 2 s.
+- *For GREEN:* in the concurrent loop a trapped TERM is handled only after the
+  current `sleep` returns, so keep the poll sleep short while suites run. The
+  TERM test allows 1 s before it checks liveness, and the drain must not exit
+  early. Create the buffer directory before starting any suite: every suite
+  must see it and its own `<name>.out` at start. Read buffers back with
+  `$(cat ...)`: b5/c3/a2 end in blank lines, and identity requires the same
+  stripping as `$(...)`.
+
+**Timings, all local (this Windows host; none from CI).** Baseline suite 127 s.
+RED direct run 467 s and the runner run 466 s: RED pays the hold bounds that
+a serial runner cannot clear: seven 30 s lonely holds (AC-1 control, AC-2 x 2,
+three AC-3 peaks, AC-5's f1), two 60 s start waits (print-while-held, TERM)
+and two 20 s holds (AC-3 work-conserving case and its control). Only the
+control's 20 s is paid once GREEN lands. The
+prototype passed the whole suite in 59-67 s, against a 127 s baseline taken
+while another worktree's self-test was running on the same machine. That
+number is comparable only roughly. Expect GREEN on this host somewhere between
+those, and CI (`ubuntu-latest`) far faster. Every wait is bounded:
+the worst-case hang is one 120 s hold.
+
+**Other commands run in RED, sequentially.** `bash .claude/tests/settings.test.sh`
+-> `settings: 27 passed, 0 failed`. `bash scripts/check-sigpipe.sh` ->
+`scanned 47 shell file(s), 43 with pipefail, 0 finding(s)`.
+`bash scripts/check-grep-count.sh` -> `scanned 47 shell file(s), 0 finding(s)`.
+`bash scripts/gates.sh --fast` -> rc 0, `All required gates passed (0 ran, 5
+unconfigured, 0 known)`. `project.conf` is not bootstrapped upstream, so no
+gate judges this suite locally. The CI step `bash scripts/selftest.sh` is the
+required gate that does. `bash scripts/mutate.sh --check` -> clean.
+`.claude/state` holds no lock, buffer or mutation.
+
+**Deferred verifications.** DV-1 and DV-2 are GATES-owned. RED cannot run
+either against the real implementation, which does not exist yet. The
+prototype check above is evidence that the suite discriminates. It is not a
+substitute for either entry.
 
 ## Regressions
 
