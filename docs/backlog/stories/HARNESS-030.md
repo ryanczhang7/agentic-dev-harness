@@ -4,8 +4,8 @@ title: A killed mutation is announced, and the gates refuse to judge the tree be
 slug: a-killed-mutation-is-announced-and-the-g
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-030-a-killed-mutation-is-announced-and-the-g
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, scripts/gates.sh, .claude/tests/mutate.test.sh, .claude/tests/gates.test.sh, .claude/state/README.md, CLAUDE.md, .claude/harness/rules.md, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1082,3 +1082,12 @@ stamp says FULL=no`.
   run: `no stranded mutation`. GREEN's two departures, kept: the newline
   escape via quoted variables (the literal form drops its backslash under bash
   5.3), and `--check` skipping a non-regular `*.active`.
+
+**DONE, 2026-10-05.** Merged in #107 (merge commit 4fd8cde), release 73. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check. PR CI: `gates` passed in 1m24s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37253630451),
+`boundaries` in 7s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37253630776).
+No epic. Group 4 (mutation safety) of the port audit is complete; next is
+group 6, process.
