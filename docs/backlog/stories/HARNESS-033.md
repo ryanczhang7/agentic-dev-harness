@@ -4,8 +4,8 @@ title: Criteria freeze at the last committed PLANNED state, not the base branch
 slug: criteria-freeze-at-the-last-committed-pl
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-033-criteria-freeze-at-the-last-committed-pl
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/commands/advance-story.md, .claude/harness/rules.md, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -544,6 +544,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 
 - PLANNED, `lead-po`, resolved to Opus 5.5 (`claude-opus-5-5`), dispatched without a model override.
+- RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran boundaries: 90 passed, 11 failed, matching the handoff.
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -580,6 +581,42 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All tests are integration-level, in `.claude/tests/boundaries.test.sh`, in
+one new `describe "criteria freeze at the last committed PLANNED state
+(HARNESS-033)"` directly after the untouched `:205-221` block. Each case
+builds a real history in `$FIX`, commit by commit, under a fresh story id
+(`T-31`..`T-39`), and runs the real `scripts/check-boundaries.sh`. Base
+copies are committed on `main`; the block saves `main`'s sha first and
+`reset --hard`s back to it at the end, so nothing after the block sees them.
+AC-7 is one pure-bash assertion over the real `advance-story.md`.
+
+| # | Assertion (description in the suite) | AC | RED today |
+|---|---|---|---|
+| 1 | `AC-1: a refinement committed at PLANNED on the branch is not refused` - no `## Acceptance criteria differ from` | AC-1 | FAIL (refused `differ from main`) |
+| 2 | `AC-1: the criteria are judged against the branch's PLANNED commit` - `ok    acceptance criteria unchanged since the last committed PLANNED state (<p7>)` | AC-1 | FAIL |
+| 3 | `AC-2: a flip back to PLANNED is refused against the FIRST PLANNED commit, not the second` - `refused` with `differ from the last committed PLANNED state (<first p7>)` | AC-2 | FAIL (skip note) |
+| 4 | `AC-2: a story already past PLANNED on main cannot be reopened by a PLANNED commit on the branch` - `refused` `## Acceptance criteria differ from main` | AC-2 (2nd case) | pass - control |
+| 5 | `AC-3: a refinement first committed at RED is compared with main` - `refused` `## Acceptance criteria differ from main` | AC-3 | pass - control |
+| 6 | `AC-4a: a new story refined while PLANNED is not refused` | AC-4(a) | pass (today's skip) |
+| 7 | `AC-4a: a new story is judged against its LAST PLANNED commit` - `ok ... last committed PLANNED state (<2nd p7>)` | AC-4(a) | FAIL |
+| 8 | `AC-4b: a new story first committed at RED is frozen at that commit` - `refused` `differ from the first commit that left PLANNED (<r7>)` | AC-4(b) | FAIL (skip note) |
+| 9 | `AC-4c: a new story whose criteria never changed after RED is not refused` | AC-4(c) | pass (today's skip) |
+| 10 | `AC-4c: and is reported unchanged since the first commit that left PLANNED` - `ok ... first commit that left PLANNED (<r7>)` | AC-4(c) | FAIL |
+| 11 | `AC-4d: a story that never left PLANNED has no criteria refusal` | AC-4(d) | pass (today's skip) |
+| 12 | `AC-4d: and says its criteria are not frozen yet` - note `  story T-38 has not left PLANNED in any committed state; its criteria are not frozen yet` | AC-4(d) | FAIL |
+| 13 | `AC-5: the flip-back history with an ## Amendments entry is not refused` | AC-5 | pass (today's skip) |
+| 14 | `AC-5: the flip-back history is accepted on its ## Amendments entry` - `ok    acceptance criteria changed, with an ## Amendments entry` | AC-5 | FAIL |
+| 15 | `AC-5: a first-committed-at-RED change with an ## Amendments entry is not refused` | AC-5 | pass (today's skip) |
+| 16 | `AC-5: a first-committed-at-RED change is accepted on its ## Amendments entry` | AC-5 | FAIL |
+| 17 | `AC-6: with no merge base the check says the history cannot be walked` - note `  no merge base with unrelated-T-39, so the branch's history cannot be walked; criteria compared with unrelated-T-39 itself` | AC-6 | FAIL |
+| 18 | `AC-6: and falls back to comparing with the base itself, as before` - `refused` `## Acceptance criteria differ from unrelated-T-39` | AC-6 | pass - today's behaviour, kept |
+| 19 | `AC-7: advance-story.md says to commit the story while it is still PLANNED, before setting the phase` | AC-7 | FAIL |
+
+AC-6's control ("the same history with a merge base is accepted") is
+assertions 1-2: AC-1 is that history. AC-8 is the floor raise (79 -> 101 in
+`floors.conf:39` and `selftest.test.sh:520`) plus the full self-test and the
+two tree guards, which GREEN/GATES run.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -599,6 +636,154 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**RED, 2026-10-05, `test-developer`, ran on Opus 5.5 (`claude-opus-5-5`), no
+model override in the dispatch.**
+
+**Command.** `bash scripts/selftest.sh boundaries` (or directly
+`bash .claude/tests/boundaries.test.sh`). About 4-5 minutes on this Windows
+host; run it detached.
+
+**Measured in RED (local run, this host, `check-boundaries.sh` and
+`advance-story.md` unchanged):** `boundaries: 90 passed, 11 failed` - **101
+executed** (82 before + 19 new). Every failure is in the new block; all 82
+pre-existing assertions pass, including `:205-221`. Verbatim, abridged to the
+failure header plus the line that decides it (the full haystacks are the
+whole check-boundaries output):
+
+```
+  criteria freeze at the last committed PLANNED state (HARNESS-033)
+    FAIL AC-1: a refinement committed at PLANNED on the branch is not refused
+         expected NOT to contain: ## Acceptance criteria differ from
+         FAIL  story T-31: ## Acceptance criteria differ from main with no ## Amendments entry. Criteria are frozen once a story leaves PLANNED; record which AC changed, what it said, what it says now, who approved it and why.
+    FAIL AC-1: the criteria are judged against the branch's PLANNED commit
+         expected to contain: ok    acceptance criteria unchanged since the last committed PLANNED state (2d7111d)
+    FAIL AC-2: a flip back to PLANNED is refused against the FIRST PLANNED commit, not the second
+         expected a refusal saying: ## Acceptance criteria differ from the last committed PLANNED state (4eee9a5)
+           story file is new in this PR; nothing to freeze the criteria against
+    FAIL AC-4a: a new story is judged against its LAST PLANNED commit
+         expected to contain: ok    acceptance criteria unchanged since the last committed PLANNED state (f2d91de)
+           story file is new in this PR; nothing to freeze the criteria against
+    FAIL AC-4b: a new story first committed at RED is frozen at that commit
+         expected a refusal saying: ## Acceptance criteria differ from the first commit that left PLANNED (a1932cb)
+           story file is new in this PR; nothing to freeze the criteria against
+    FAIL AC-4c: and is reported unchanged since the first commit that left PLANNED
+         expected to contain: ok    acceptance criteria unchanged since the first commit that left PLANNED (390cce7)
+           story file is new in this PR; nothing to freeze the criteria against
+    FAIL AC-4d: and says its criteria are not frozen yet
+         expected to contain:   story T-38 has not left PLANNED in any committed state; its criteria are not frozen yet
+           story file is new in this PR; nothing to freeze the criteria against
+    FAIL AC-5: the flip-back history is accepted on its ## Amendments entry
+         expected to contain: ok    acceptance criteria changed, with an ## Amendments entry
+           story file is new in this PR; nothing to freeze the criteria against
+    FAIL AC-5: a first-committed-at-RED change is accepted on its ## Amendments entry
+         expected to contain: ok    acceptance criteria changed, with an ## Amendments entry
+           story file is new in this PR; nothing to freeze the criteria against
+    FAIL AC-6: with no merge base the check says the history cannot be walked
+         expected to contain:   no merge base with unrelated-T-39, so the branch's history cannot be walked; criteria compared with unrelated-T-39 itself
+         FAIL  story T-39: ## Acceptance criteria differ from unrelated-T-39 with no ## Amendments entry. ...
+    FAIL AC-7: advance-story.md says to commit the story while it is still PLANNED, before setting the phase
+         expected to contain: while it still says `phase: PLANNED`
+         actual:                (`story/<id>-<slug>`) if it does not exist.
+
+boundaries: 90 passed, 11 failed
+```
+
+The shas differ per run (fixture commits carry the wall-clock time); each
+needle computes its own from the commit just made. Every failure is the right
+one: the AC-1 history is refused against `main` (the field defect), every
+new-in-PR history gets today's skip note, the AC-6 run lacks the note but
+already falls back, and AC-7's segment of `advance-story.md` is today's text.
+
+**Expected after GREEN:** `boundaries: 101 passed, 0 failed`. Floor raised to
+101 in `.claude/tests/floors.conf:39` (with a paragraph at the end of that
+file) and the `COUNTS` row `.claude/tests/selftest.test.sh:520`;
+`bash .claude/tests/selftest.test.sh` -> `selftest: 100 passed, 0 failed` with
+the new floor. `check-sigpipe.sh` (45 files, 0 findings) and
+`check-grep-count.sh` (45 files, 0 findings) are clean over the tree with the
+new test file. `bash scripts/gates.sh --fast`: exit 0, every project gate
+UNCONFIGURED (this repository is unbootstrapped; `selftest` is what judges it),
+so it says nothing about the suite's shape beyond "no gate trips on it".
+
+**Passed on arrival (8), and what earns each.** These are controls or the
+"no refusal" half of an acceptance claim, not assertions of new behaviour:
+
+- #4 (AC-2 second case), #5 (AC-3), #18 (AC-6 fallback refusal): today's
+  base-branch comparison already produces them, and the story requires that it
+  keep doing so. Earned by the paired new-behaviour assertions in the same
+  history going red (#17 in AC-6's run) and, for #4/#5, by DV-1's prediction
+  below that they survive the defect put back - i.e. they are the half of the
+  discrimination that must NOT move. The `refused` helper's `rc != 0` half is
+  weak here (3e always refuses); the message is the claim.
+- #6, #9, #11, #13, #15 (the "not refused" halves of AC-4a/c/d and AC-5):
+  green today only because today's 3d skips new-in-PR stories. Each is paired
+  with an exact `ok`/`note` line (#7, #10, #12, #14, #16) that is red now. The
+  not-refused half that has real teeth today is #1 (AC-1), and it is red.
+
+**Export shape the tests pin (fact, not suggestion).** The tests call only the
+script, `bash scripts/check-boundaries.sh <base>` with `GITHUB_HEAD_REF=` and
+`PR_HEAD_SHA=` cleared, and read its stdout+stderr. They pin, byte for byte,
+C-2's lines:
+
+- `ok    acceptance criteria unchanged since the last committed PLANNED state (<sha7>)`
+- `ok    acceptance criteria unchanged since the first commit that left PLANNED (<sha7>)`
+- `ok    acceptance criteria changed, with an ## Amendments entry`
+- `## Acceptance criteria differ from the last committed PLANNED state (<sha7>)` / `... the first commit that left PLANNED (<sha7>)` / `... main` / `... unrelated-T-39` (substring of the `FAIL  story <id>: ` line)
+- note `  story <id> has not left PLANNED in any committed state; its criteria are not frozen yet`
+- note `  no merge base with <BASE>, so the branch's history cannot be walked; criteria compared with <BASE> itself`
+
+`<sha7>` is `${full:0:7}`; `<BASE>` is the ref as passed. The tests do NOT
+constrain: the name or signature of `criteria_baseline` (C-1/C-2 still fix it
+for DV-1's sed line), where it is defined, the kind vocabulary, the wording
+after `with no ## Amendments entry` in the refusal, or the 3d comment text.
+Nor do they pin the `none` note (today's text) - no case reaches it.
+
+**AC-7 detail.** The segment between the first `Create and switch to the
+story's branch` and the first `Set the phase;` after it has `\r` removed and
+newlines folded to spaces before the match, so C-4's sentence may be wrapped
+anywhere at a space. It must sit **before** the first `Set the phase;` in that
+paragraph. If the anchor phrase itself is reworded, the test fails with
+`anchor ... not found`.
+
+**Fixture choices.** AC-6 uses an orphan branch (`git checkout --orphan
+unrelated-T-39`, full fixture tree plus T-39 at PLANNED v1), not a depth-1
+clone. `git diff "$BASE"...HEAD` at `check-boundaries.sh:174` is already
+`|| true`-guarded, so the script reaches 3d with no merge base (observed: the
+run printed `story T-39 is in REVIEW` and the 3d refusal). The working tree
+always equals `HEAD` in these cases (`commit_all` after each state), so none
+distinguishes "working tree as last state" from "HEAD as last state" - AC-4(d)
+is the one case where that would matter and both are PLANNED there.
+
+**Negative controls - expected values (claims until GREEN measures them).**
+
+| Control | Threshold | Expected in RED | Measured in RED | Expected after GREEN |
+|---|---|---|---|---|
+| `:205-221` (base PLANNED, branch REVIEW changed) | `differ from main` present | pass | pass | pass (kind `base`) |
+| #4 AC-2 second case (base RED v1, branch PLANNED v2, REVIEW v2) | `differ from main` present | pass | pass | pass (kind `base`, F is the base copy) |
+| #5 AC-3 (base PLANNED v1, branch RED v2, REVIEW v2) | `differ from main` present | pass | pass | pass (kind `base`, state before F is the base copy) |
+| #18 AC-6 fallback | `differ from unrelated-T-39` present | pass | pass | pass (kind `unwalked`) |
+| AC-6's control = AC-1 (#1, #2) | no refusal + ok line | fail | fail | pass |
+
+**DV-1 prediction (GATES runs it; RED cannot - the C-2 line does not exist
+yet).** With `crit_base="base $BASE"`: the 10 new-behaviour assertions other
+than AC-7 go red - #1, #2, #3, #7, #8, #10, #12, #14, #16, #17 - and
+everything else passes, including #4, #5, #18, #19 and all 82 pre-existing
+assertions. **Predicted: `boundaries: 91 passed, 10 failed`.** (#1 and #2 both
+fail because main has T-31 and it differs; #6/#9/#11/#13/#15 pass because the
+mutated 3d prints C-2's `none` note for a story with no base copy.)
+
+**DV-2:** not run in RED, owned by GATES; it needs the GREEN script.
+
+**Files touched:** `.claude/tests/boundaries.test.sh` (new block after
+`:221`, helpers `crit_write`, `crit_base`, `crit_branch`, `crit_commit`,
+`run_boundaries_against`), `.claude/tests/floors.conf` (line 39 and a closing
+paragraph), `.claude/tests/selftest.test.sh` (line 520), and this story's
+`## Test plan` / `## Handoff`. Nothing GREEN owns was touched.
+
+**For GREEN.** No Contract amendment was needed. One thing to watch: in the
+fixture the PLANNED -> RED history is linear and `HEAD` is the story branch,
+not a merge commit, so the `--topo-order` / no-`--first-parent` choice is not
+exercised here; DV-2 (and CI itself) is where a merge-commit `HEAD` meets it.
 
 ## Regressions
 
