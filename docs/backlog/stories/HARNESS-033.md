@@ -4,8 +4,8 @@ title: Criteria freeze at the last committed PLANNED state, not the base branch
 slug: criteria-freeze-at-the-last-committed-pl
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-033-criteria-freeze-at-the-last-committed-pl
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/commands/advance-story.md, .claude/harness/rules.md, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -980,3 +980,12 @@ required gates passed (0 ran, 7 unconfigured), recorded. Full
 `bash scripts/selftest.sh`, detached and alone: exit 0 in 2,809 s, last line
 `23 harness suite(s) passed.` (2,407 assertions executed, 2,180 declared);
 boundaries 101/0, sigpipe 82/0, procedure 37/0.
+
+**DONE, 2026-10-05.** Merged in #110 (merge commit 4971cce), release 76. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI: `gates` passed in 2m05s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37351016881),
+`boundaries` in 11s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37351016874).
+No epic. Group 6 finding B of the port audit is complete; next is C + MT-042.
