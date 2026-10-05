@@ -9,13 +9,24 @@
 # nobody writes down why - so the policy lives in a file with a reason per row,
 # and the plan is written INTO the story before the phase it applies to.
 #
-# The policy is not taste. It is the one measurement this repository has:
-#   * a partitioned RED brief on the weaker model produced sharper negative
-#     controls than the stronger model without one, so RED runs on the weaker
-#     model WHEN THE BRIEF EXISTS, and on the stronger one when it does not;
-#   * the failure mode of a weaker model in GREEN or GATES is reaching green by
-#     weakening a test, which is precisely what this harness exists to prevent,
-#     so those never move.
+# TWO THINGS ARE TESTED HERE, AND THEY ARE KEPT APART ON PURPOSE.
+#
+#   * THE SHIPPED POLICY - what `.claude/harness/models.conf` says today. Since
+#     release 78 that is a split by kind of work rather than a weaker/stronger
+#     ladder: `fable` plans (PLANNED, REVIEW - the orchestrator's judgement
+#     phases), `opus` builds and tests (RED, GREEN, GATES, SCAFFOLD), and no
+#     row moves with the story. One describe block, against the real file.
+#
+#   * THE MECHANISM - exceptions, first match wins, and the three conditions
+#     (`no-contract`, `unenforced`, `type=`). The shipped policy no longer
+#     uses an exception, so a test of the mechanism that read the shipped file
+#     would pass for nothing: every RED row is `opus` whether or not the
+#     exception fired. So every block after the first runs against
+#     MECHANISM_POLICY below, a fixture that keeps the pre-78 shape - RED on
+#     `fable` with a brief, back to `opus` without one. In those blocks
+#     "the weaker model" means that fixture's base row and "the stronger"
+#     its exception rows; it is a statement about the fixture, not about the
+#     models.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
@@ -70,7 +81,102 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-describe "which model each phase runs on"
+describe "the shipped policy: fable plans, opus builds and tests"
+
+# WHY THE SPLIT. Until release 77 the policy was a ladder: `opus` the stronger
+# model everywhere, `fable` the weaker one in RED when a brief existed. The
+# user's call on 2026-10-05 is that Opus 5.5 is now the better development and
+# testing model and Fable the better planner - so the rows split by KIND OF
+# WORK: the orchestrator's judgement phases (PLANNED, REVIEW) on `fable`, every
+# phase that writes or tests code on `opus`. GREEN and GATES were on `opus`
+# before and stay there, so the asymmetry this harness rests on - never a
+# weaker model where the temptation is to weaken a test - holds unchanged.
+#
+# NEEDLES. Each check compares the whole (phase, agent, model) projection,
+# sorted, against the exact expected set: a missing row, an extra row, a row on
+# the wrong agent and a row on the wrong model all read as "differs". Nothing
+# floats.
+
+SHIP="$(make_project_fixture)"
+trap 'rm -rf "$FIX" "$SHIP"' EXIT
+ship()     { ( cd "$SHIP" && bash scripts/plan.sh "$@" 2>&1 ); }
+ship_set() { ship models "$1" | awk -F'\t' 'NF >= 4 { print $1, $2, $3 }' | LC_ALL=C sort; }
+SHIP_EXPECTED="$(LC_ALL=C sort <<'ROWS'
+PLANNED lead-po fable
+RED test-developer opus
+GREEN feature-developer opus
+GATES feature-developer opus
+REVIEW lead-po fable
+SCAFFOLD lead-po opus
+ROWS
+)"
+ship_story() { # <id> <type> <contract line, or empty>
+  mkdir -p "$SHIP/docs/backlog/stories"
+  printf -- '---\nid: %s\ntitle: Fixture story\nslug: fixture\ntype: %s\nstatus: todo\nphase: PLANNED\nbranch: story/%s-fixture\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Contract\n\n%s\n\n## Model guidance\n\n## Notes\n' \
+    "$1" "$2" "$1" "$3" > "$SHIP/docs/backlog/stories/$1.md"
+}
+
+ship_story S-1 feature '`src/core/world.ts` exports `buildWorld(seed: number): World`.'
+assert_eq "an ordinary story: fable plans and reviews, opus writes and tests the code" \
+  "$SHIP_EXPECTED" "$(ship_set S-1)"
+
+# No row moves with the story. Each of these fired an exception under the old
+# ladder; under the split there is nothing for one to move to.
+ship_story S-2 feature ''
+assert_eq "with no contract, the plan is the same" "$SHIP_EXPECTED" "$(ship_set S-2)"
+ship_story S-3 feature '**Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh`'
+assert_eq "with a contract the lock cannot police, the plan is the same" "$SHIP_EXPECTED" "$(ship_set S-3)"
+ship_story S-4 bootstrap 'the stack, the runner, and the scaffold.'
+assert_eq "for a bootstrap story, the plan is the same" "$SHIP_EXPECTED" "$(ship_set S-4)"
+
+# The agents' own `model:` is what a dispatch gets when nobody passes the plan's
+# model - /audit-mutations, a designer review, a lead-po interview. It follows
+# the same split: the planning roles declare `fable`, the roles that write or
+# judge tests declare `opus`. lead-po runs SCAFFOLD on `opus` by the plan above,
+# which is why that row exists: the declaration is its home, not its every
+# dispatch.
+declared() { awk '/^---$/ { n++; next } n == 1 && /^model:/ { print $2; exit }' "$REPO_ROOT/.claude/agents/$1.md"; }
+agents_got="$(for a in feature-developer lead-designer lead-po mutation-tester test-developer; do printf '%s %s\n' "$a" "$(declared "$a")"; done)"
+assert_eq "each agent declares the model of its kind of work" \
+"feature-developer opus
+lead-designer fable
+lead-po fable
+mutation-tester opus
+test-developer opus" "$agents_got"
+
+# The orchestrating commands run in the user's session, not in an agent, so the
+# agent's `model:` never reaches them. Their own frontmatter is the only place
+# the harness can say "this multi-stage workflow is planned on fable".
+cmd_model() { awk '/^---$/ { n++; next } n == 1 && /^model:/ { print $2; exit }' "$REPO_ROOT/.claude/commands/$1.md"; }
+cmds_got="$(for c in advance-story complete-story create-product plan-product plan-story; do printf '%s %s\n' "$c" "$(cmd_model "$c")"; done)"
+assert_eq "each orchestrating command runs on fable" \
+"advance-story fable
+complete-story fable
+create-product fable
+plan-product fable
+plan-story fable" "$cmds_got"
+
+# ---------------------------------------------------------------------------
+# MECHANISM_POLICY. Every block below tests plan.sh's exception machinery, not
+# the shipped policy, so it runs against this file rather than the real one -
+# see the header. It is the pre-78 policy verbatim in shape: one base row per
+# dispatching phase, RED on `fable`, and three RED exceptions back to `opus`.
+cat > "$FIX/.claude/harness/models.conf" <<'POLICY'
+# Mechanism fixture for plan.test.sh - not the shipped policy.
+model  | PLANNED  | lead-po           | opus  | planning is the judgement phase
+model  | RED      | test-developer    | fable | the measured case: with a partitioned contract the brief carries the judgement and the model writes sharper negative controls
+model  | GREEN    | feature-developer | opus  | a weaker model here reaches green by weakening a test
+model  | GATES    | feature-developer | opus  | same risk as GREEN
+model  | REVIEW   | lead-po           | opus  | a wrong call here ships
+model  | SCAFFOLD | lead-po           | opus  | source, tests and config in one derivation
+
+except | RED | no-contract    | opus  | with no contract to hand RED, the thing that was measured is absent
+except | RED | unenforced     | opus  | the lock freezes none of the paths this story names, so the contract is the only enforcement there is
+except | RED | type=bootstrap | opus  | a bootstrap story derives the runner, the config and the scaffold together
+POLICY
+
+# ---------------------------------------------------------------------------
+describe "the exception mechanism (against MECHANISM_POLICY)"
 
 ordinary T-1
 out="$(plan models T-1)"

@@ -1,5 +1,6 @@
 ---
 description: Interview the user and write the product brief
+model: fable
 argument-hint: [one-line product idea]
 ---
 
