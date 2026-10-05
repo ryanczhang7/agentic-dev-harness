@@ -220,6 +220,211 @@ commit_all "T-1 review"
 run_boundaries
 refused "changed criteria with no amendment" "## Acceptance criteria differ from main"
 
+# ---------------------------------------------------------------------------
+describe "criteria freeze at the last committed PLANNED state (HARNESS-033)"
+
+# Law 6 freezes criteria once a story LEAVES PLANNED, and advance-story.md calls
+# PLANNED the last phase in which they may change freely. 3d used to compare
+# with the base branch whatever the phase, so a story merged to main at PLANNED
+# and refined on its own branch before RED was refused (the manga-translator
+# field case, issue #97 finding B) - and a story new in its PR, which is every
+# story this repository has run, had no freeze at all. The baseline is now the
+# state immediately before the FIRST commit that left PLANNED (else the base),
+# and nothing after that commit is consulted.
+#
+# Every history is built commit by commit, one fresh story id per case, so a
+# case that needs "new in the PR" cannot find its id on main. Base copies are
+# committed on main and main is put back at the end of the block, so nothing
+# below this describe sees them.
+#
+# "Accepted" is two claims: no criteria refusal, and the exact ok/note line.
+# Never exit 0 - these stories carry no ## Gate results, so 3e refuses them.
+crit_main_before="$(git -C "$FIX" rev-parse main)"
+
+# crit_write <id> <phase> <criteria> [amendment]   The story file, as it stands
+# in the working tree. Its branch: frontmatter is the fixture branch, or 3c
+# refuses, and the branch name is where 3d's story id comes from.
+crit_write() {
+  mkdir -p "$FIX/docs/backlog/stories"
+  {
+    printf -- '---\nid: %s\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: %s\nbranch: story/%s-fixture\n---\n\n' "$1" "$2" "$1"
+    printf -- '## Acceptance criteria\n\n- **AC-1** - %s.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n' "$3"
+    [ -n "${4:-}" ] && printf -- '\n## Amendments\n\n%s\n' "$4"
+  } > "$FIX/docs/backlog/stories/$1.md"
+}
+# crit_base <id> <phase> <criteria>   Commits the story on main: the base copy.
+crit_base() {
+  git -C "$FIX" checkout -q main 2>/dev/null
+  crit_write "$1" "$2" "$3"
+  commit_all "$1 on main at $2"
+}
+# crit_branch <id>   A fresh story/<id>-fixture cut from main.
+crit_branch() {
+  git -C "$FIX" checkout -q main 2>/dev/null
+  git -C "$FIX" branch -D "story/$1-fixture" >/dev/null 2>&1
+  git -C "$FIX" checkout -q -b "story/$1-fixture" 2>/dev/null
+}
+# crit_commit <id> <phase> <criteria> [amendment]   One committed state. Sets
+# $c7 to the first seven characters of the full commit id - not rev-parse
+# --short, which can print more.
+crit_commit() {
+  crit_write "$@"
+  commit_all "$1 at $2"
+  local c; c="$(git -C "$FIX" rev-parse HEAD)"; c7="${c:0:7}"
+}
+# run_boundaries_against <base-ref>   run_boundaries with the base ref chosen,
+# for AC-6's unwalkable base. Sets $out and $rc.
+run_boundaries_against() {
+  out="$( cd "$FIX" && GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh "$1" 2>&1 )"
+  rc=$?
+}
+
+# AC-1, the field case: main holds the story at PLANNED v1; the branch refines
+# it at PLANNED, then moves on. Today this is refused with `differ from main`.
+crit_base T-31 PLANNED "criteria v1"
+crit_branch T-31
+crit_commit T-31 PLANNED "criteria v2"; p7="$c7"
+crit_commit T-31 RED     "criteria v2"
+crit_commit T-31 REVIEW  "criteria v2"
+run_boundaries
+assert_not_contains "AC-1: a refinement committed at PLANNED on the branch is not refused" \
+  "## Acceptance criteria differ from" "$out"
+assert_contains "AC-1: the criteria are judged against the branch's PLANNED commit" \
+  "ok    acceptance criteria unchanged since the last committed PLANNED state ($p7)" "$out"
+
+# AC-2, first case: a return to PLANNED after RED cannot move the baseline.
+# New in the PR; today it is skipped as "nothing to freeze".
+crit_branch T-32
+crit_commit T-32 PLANNED "criteria v1"; first7="$c7"
+crit_commit T-32 RED     "criteria v1"
+crit_commit T-32 PLANNED "criteria v2"
+crit_commit T-32 RED     "criteria v2"
+crit_commit T-32 REVIEW  "criteria v2"
+run_boundaries
+refused "AC-2: a flip back to PLANNED is refused against the FIRST PLANNED commit, not the second" \
+  "## Acceptance criteria differ from the last committed PLANNED state ($first7)"
+
+# AC-2, second case: the story had already left PLANNED on main. A PLANNED
+# commit on the branch comes after the freeze and cannot reopen it.
+# (Control: passes today, and must still pass under DV-1.)
+crit_base T-33 RED "criteria v1"
+crit_branch T-33
+crit_commit T-33 PLANNED "criteria v2"
+crit_commit T-33 REVIEW  "criteria v2"
+run_boundaries
+refused "AC-2: a story already past PLANNED on main cannot be reopened by a PLANNED commit on the branch" \
+  "## Acceptance criteria differ from main"
+
+# AC-3, else the base: the refinement was never committed at PLANNED, so the
+# baseline is main's copy. (Control: passes today; the case above at REVIEW is
+# the same rule.)
+crit_base T-34 PLANNED "criteria v1"
+crit_branch T-34
+crit_commit T-34 RED    "criteria v2"
+crit_commit T-34 REVIEW "criteria v2"
+run_boundaries
+refused "AC-3: a refinement first committed at RED is compared with main" \
+  "## Acceptance criteria differ from main"
+
+# AC-4 (a): new in the PR, refined across two PLANNED commits, then frozen.
+crit_branch T-35
+crit_commit T-35 PLANNED "criteria v1"
+crit_commit T-35 PLANNED "criteria v2"; p7="$c7"
+crit_commit T-35 RED     "criteria v2"
+crit_commit T-35 REVIEW  "criteria v2"
+run_boundaries
+assert_not_contains "AC-4a: a new story refined while PLANNED is not refused" \
+  "## Acceptance criteria differ from" "$out"
+assert_contains "AC-4a: a new story is judged against its LAST PLANNED commit" \
+  "ok    acceptance criteria unchanged since the last committed PLANNED state ($p7)" "$out"
+
+# AC-4 (b): new in the PR, first committed at RED, changed later. Today this
+# is the skip note; it is the hole every new-in-PR story fell through.
+crit_branch T-36
+crit_commit T-36 RED    "criteria v1"; r7="$c7"
+crit_commit T-36 REVIEW "criteria v2"
+run_boundaries
+refused "AC-4b: a new story first committed at RED is frozen at that commit" \
+  "## Acceptance criteria differ from the first commit that left PLANNED ($r7)"
+
+# AC-4 (c): the same history with the criteria left alone.
+crit_branch T-37
+crit_commit T-37 RED    "criteria v1"; r7="$c7"
+crit_commit T-37 REVIEW "criteria v1"
+run_boundaries
+assert_not_contains "AC-4c: a new story whose criteria never changed after RED is not refused" \
+  "## Acceptance criteria differ from" "$out"
+assert_contains "AC-4c: and is reported unchanged since the first commit that left PLANNED" \
+  "ok    acceptance criteria unchanged since the first commit that left PLANNED ($r7)" "$out"
+
+# AC-4 (d): nothing has left PLANNED, committed or in the working tree.
+crit_branch T-38
+crit_commit T-38 PLANNED "criteria v1"
+crit_commit T-38 PLANNED "criteria v2"
+run_boundaries
+assert_not_contains "AC-4d: a story that never left PLANNED has no criteria refusal" \
+  "## Acceptance criteria differ from" "$out"
+assert_contains "AC-4d: and says its criteria are not frozen yet" \
+  "  story T-38 has not left PLANNED in any committed state; its criteria are not frozen yet" "$out"
+
+# AC-5: the escape hatch still works on both refused new-in-PR histories.
+crit_branch T-32
+crit_commit T-32 PLANNED "criteria v1"
+crit_commit T-32 RED     "criteria v1"
+crit_commit T-32 PLANNED "criteria v2"
+crit_commit T-32 RED     "criteria v2"
+crit_commit T-32 REVIEW  "criteria v2" "AC-1 said v1 and says v2; approved by the PO because v1 was unsatisfiable."
+run_boundaries
+assert_not_contains "AC-5: the flip-back history with an ## Amendments entry is not refused" \
+  "## Acceptance criteria differ from" "$out"
+assert_contains "AC-5: the flip-back history is accepted on its ## Amendments entry" \
+  "ok    acceptance criteria changed, with an ## Amendments entry" "$out"
+
+crit_branch T-36
+crit_commit T-36 RED    "criteria v1"
+crit_commit T-36 REVIEW "criteria v2" "AC-1 said v1 and says v2; approved by the PO because v1 was unsatisfiable."
+run_boundaries
+assert_not_contains "AC-5: a first-committed-at-RED change with an ## Amendments entry is not refused" \
+  "## Acceptance criteria differ from" "$out"
+assert_contains "AC-5: a first-committed-at-RED change is accepted on its ## Amendments entry" \
+  "ok    acceptance criteria changed, with an ## Amendments entry" "$out"
+
+# AC-6: no merge base, so no history to walk. The base is an ORPHAN branch
+# holding the story at PLANNED v1 - chosen over a depth-1 clone because it is
+# faster on Windows, and `git merge-base` fails on both. The control is AC-1:
+# the same history WITH a merge base is accepted.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" checkout -q --orphan unrelated-T-39 2>/dev/null
+crit_write T-39 PLANNED "criteria v1"
+commit_all "T-39 on an unrelated history"
+crit_branch T-39
+crit_commit T-39 PLANNED "criteria v2"
+crit_commit T-39 REVIEW  "criteria v2"
+run_boundaries_against unrelated-T-39
+assert_contains "AC-6: with no merge base the check says the history cannot be walked" \
+  "  no merge base with unrelated-T-39, so the branch's history cannot be walked; criteria compared with unrelated-T-39 itself" "$out"
+refused "AC-6: and falls back to comparing with the base itself, as before" \
+  "## Acceptance criteria differ from unrelated-T-39"
+
+# AC-7: the procedure tells the orchestrator to commit at PLANNED, which is
+# what makes the PLANNED baseline reachable. One assertion over the real file,
+# pure bash. Line breaks fold to spaces so that a wrapped sentence still counts.
+adv="$(< "$REPO_ROOT/.claude/commands/advance-story.md")"
+adv_after="${adv#*"Create and switch to the story's branch"}"
+if [ "$adv_after" = "$adv" ]; then
+  _bad "AC-7: advance-story.md says to commit the story while it is still PLANNED" \
+    "anchor 'Create and switch to the story's branch' not found in .claude/commands/advance-story.md"
+else
+  adv_seg="${adv_after%%"Set the phase;"*}"
+  adv_seg="${adv_seg//$'\r'/}"
+  adv_seg="${adv_seg//$'\n'/ }"
+  assert_contains "AC-7: advance-story.md says to commit the story while it is still PLANNED, before setting the phase" \
+    'while it still says `phase: PLANNED`' "$adv_seg"
+fi
+
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" reset -q --hard "$crit_main_before" 2>/dev/null
+
 
 # ---------------------------------------------------------------------------
 describe "a BLOCKED gate can reach REVIEW, but only with the decision written down"

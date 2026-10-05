@@ -75,8 +75,12 @@ the user *first*, so they can overrule it before GREEN. Never absorb it silently
 and never skip it silently.
 
 Create and switch to the story's branch
-(`story/<id>-<slug>`) if it does not exist. Set the phase; `phase.sh` refuses
-if a `depends_on` story is not DONE or the checkout is on another branch, and
+(`story/<id>-<slug>`) if it does not exist. Before setting the phase, commit
+the story file on that branch while it still says `phase: PLANNED`:
+`check-boundaries.sh` freezes the criteria at the last state committed at
+PLANNED, so a refinement first committed together with RED is compared with the
+base branch instead and needs an `## Amendments` entry. Set the phase;
+`phase.sh` refuses if a `depends_on` story is not DONE or the checkout is on another branch, and
 either refusal is a reason to stop and tell the user, not to reach for
 `--force`. Then dispatch the
 **test-developer** subagent with the story path, the criteria restated in full

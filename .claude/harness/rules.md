@@ -285,7 +285,8 @@ inspect.
   is wrong or unsatisfiable, stop, put it to the product owner, and record the
   change under `## Amendments` - which AC, what it said, what it says now, who
   approved it and why. `check-boundaries.sh` fails a PR whose criteria differ
-  from the base branch without an entry there.
+  from their last committed PLANNED state (else the base branch) without an
+  entry there.
 - `## Gate results` is written by `scripts/gates.sh`, never by hand. It carries
   the commit and a hash of the code the gates ran against, and
   `check-boundaries.sh` refuses a PR where that hash does not match the code
