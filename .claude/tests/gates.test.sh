@@ -1858,4 +1858,254 @@ git -C "$FIX" checkout -q -- . 2>/dev/null
 git -C "$FIX" checkout -q main 2>/dev/null
 set_phase "$FIX" ""
 
+
+# ============================================================================
+# HARNESS-030: the gates refuse to judge a tree behind a stranded mutation
+# (AC-5), and a mutation's own command may run them but never record (AC-6)
+# ============================================================================
+#
+# A STRANDED mutation is planted, not produced by a kill (the story's C-4): the
+# target mutated, a `.bak` holding the original, an `.active` with the seven
+# keys whose pid is the `$$` of a `bash -c` that has already exited. A RUNNING
+# one uses the pid of a bounded `sleep 30 &`, killed when its case ends and by
+# the EXIT trap.
+#
+# EVERY PLANTED SENTINEL IS REMOVED WHEN ITS CASE ENDS. FIX is shared by the
+# whole suite, and one sentinel left behind would make every later gates.sh run
+# exit 2.
+#
+# Whether a gate RAN is a fact about the filesystem, not a reading of the
+# summary (MT-047, and the ondemand block's MARKER above): the gate command
+# touches h30-ran. Before each refused run the stamp, the gate log and the story
+# are set to known content, so "untouched" is a byte comparison against a value
+# no real run could reproduce - not a cksum of a file a rewrite within the same
+# second could reproduce exactly.
+#
+# The recorded-run cases run on story/T-1-fixture (HARNESS-026). Needles are
+# whole lines through count_line, or anchored count_re with no intervals.
+
+H30W="$(mktemp -d 2>/dev/null || mktemp -d -t h030.XXXXXX)"
+H30_SLEEP=""
+trap '[ -n "$H30_SLEEP" ] && kill "$H30_SLEEP" 2>/dev/null; rm -rf "$FIX" "$H30W"' EXIT
+
+git -C "$FIX" checkout -q -- . 2>/dev/null
+git -C "$FIX" checkout -q -B story/T-1-fixture 2>/dev/null
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | touch .claude/state/h30-ran; printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+floor    | unit | 40
+EOF
+story "$FIX" T-1 GATES </dev/null
+fix_commit "HARNESS-030 fixture: a marker gate, T-1 on its own branch"
+set_phase "$FIX" GATES
+
+H30ABS="$(cd "$FIX" && pwd)"
+H30MUT="$H30ABS/.claude/state/mutations"
+H30MARK="$FIX/.claude/state/h30-ran"
+H30LOGS="$FIX/.claude/state/gate-logs"
+H30STAMPF="$FIX/.claude/state/last-gate-run"
+T1="$FIX/docs/backlog/stories/T-1.md"
+H30_REFUSAL='gates: refusing to run. The gates judge the working tree, and the tree may hold a mutation nobody restored.'
+H30_UNACCOUNTED='mutate: a mutation is unaccounted for. The tree may not be the code you think.'
+H30_INSIDE="(not recorded: this run is inside mutate.sh's mutation of .claude/harness/project.conf; a verdict on mutated code is not evidence)"
+H30_RECORDED='^recorded in docs/backlog/stories/T-1\.md'
+
+h30_mark() { if [ -e "$H30MARK" ]; then printf present; else printf absent; fi; }
+# h30_logs   Every file under gate-logs/ with its checksum, in glob order.
+h30_logs() { local f; for f in "$H30LOGS"/*; do [ -f "$f" ] && printf '%s %s\n' "${f##*/}" "$(cksum < "$f")"; done; }
+# h30_fresh   Known state before a run: no marker, the story as committed (an
+# empty ## Gate results), a stamp and a gate log no real run writes.
+h30_fresh() {
+  rm -f "$H30MARK"
+  git -C "$FIX" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null
+  mkdir -p "$H30LOGS"
+  printf 'RESULT=h30-before\n' > "$H30STAMPF"
+  printf 'h30 before\n' > "$H30LOGS/unit.log"
+}
+# line_no <exact line> <text>   The number of the first line that is exactly
+# <line>, or empty.
+line_no() { awk 'BEGIN { l = ARGV[1]; ARGV[1] = "" } $0 == l { print NR; exit }' "$1" <<< "$2"; }
+# h30_plant <sentinel> <pid> <file>   A sentinel with all seven keys, for a
+# target in this fixture; its backup is <sentinel>.bak's sibling.
+h30_plant() {
+  mkdir -p "$H30MUT"
+  printf 'pid\t%s\nfile\t%s\npath\t%s\nbackup\t%s\nexpr\t%s\ncommand\t%s\nstarted\t%s\n' \
+    "$2" "$3" "$H30ABS/$3" "${1%.active}.bak" 's/1/-1/' 'bash scripts/gates.sh' 20261004T010203Z > "$1"
+}
+# h30_probe <expr> [gates args...]   The fixture's OWN mutate.sh mutating the
+# fixture's project.conf around the fixture's gates.sh, so the sentinel is in
+# the fixture's mutations/ (the story's C-4).
+h30_probe() { local e="$1"; shift; ( cd "$FIX" && bash scripts/mutate.sh .claude/harness/project.conf "$e" -- bash scripts/gates.sh "$@" 2>&1 ); }
+
+# --- the baseline: nothing planted, the run records ---------------------------
+h30_fresh
+out="$(gates)"; rc=$?
+assert_eq "HARNESS-030 baseline: with nothing planted the full run exits 0" 0 "$rc"
+assert_eq "HARNESS-030 baseline: the marker gate's command ran" present "$(h30_mark)"
+assert_eq "HARNESS-030 baseline: and the run records" 1 "$(count_re "$H30_RECORDED" "$out")"
+
+# --- AC-5: refused behind a stranded mutation ---------------------------------
+H30_DEAD="$(bash -c 'echo $$')"
+if kill -0 "$H30_DEAD" 2>/dev/null; then h30_alive=alive; else h30_alive=gone; fi
+assert_eq "AC-5 precondition: the planted pid belongs to a process that has exited" gone "$h30_alive"
+H30_ACT="$H30MUT/src_main.ts.20261004T010203Z.$H30_DEAD.active"
+mkdir -p "$H30MUT"
+cp "$FIX/src/main.ts" "${H30_ACT%.active}.bak"
+printf 'export const x = -1\n' > "$FIX/src/main.ts"
+h30_plant "$H30_ACT" "$H30_DEAD" src/main.ts
+
+# The precondition is checked, not assumed: if --check did not call this
+# stranded, every refusal below would be testing nothing.
+check_out="$( cd "$FIX" && bash scripts/mutate.sh --check 2>&1 )"; check_rc=$?
+assert_eq "AC-5 precondition: mutate.sh --check calls the planted sentinel stranded (exit 1)" 1 "$check_rc"
+
+h30_refused() { # <label> [gates args...]
+  local label="$1" logs_before n_report n_refusal; shift
+  h30_fresh
+  logs_before="$(h30_logs)"
+  cp "$T1" "$H30W/t1.before"
+  out="$(gates "$@")"; rc=$?
+  assert_eq "$label: behind a stranded mutation gates.sh exits 2" 2 "$rc"
+  assert_eq "$label: it prints the refusal, whole" 1 "$(count_line "$H30_REFUSAL" "$out")"
+  assert_eq "$label: after --check's report, which opens with the unaccounted-for line" 1 "$(count_line "$H30_UNACCOUNTED" "$out")"
+  assert_eq "$label: and names the stranded file" 1 "$(count_line '  src/main.ts' "$out")"
+  n_report="$(line_no "$H30_UNACCOUNTED" "$out")"; n_refusal="$(line_no "$H30_REFUSAL" "$out")"
+  if [ -n "$n_report" ] && [ -n "$n_refusal" ] && [ "$n_report" -lt "$n_refusal" ]; then
+    _ok "$label: the report comes before the refusal"
+  else _bad "$label: the report comes before the refusal" "report at line '${n_report}', refusal at line '${n_refusal}'"; fi
+  assert_eq "$label: no '=== gate:' line is printed" 0 "$(count_re '^=== gate:' "$out")"
+  assert_eq "$label: the gate command never ran (marker absent)" absent "$(h30_mark)"
+  assert_eq "$label: gate-logs/ is untouched" "$logs_before" "$(h30_logs)"
+  assert_eq "$label: last-gate-run is untouched" 'RESULT=h30-before' "$(tr -d '\r' < "$H30STAMPF")"
+  if cmp -s "$H30W/t1.before" "$T1"; then _ok "$label: the story's ## Gate results is byte-identical"
+  else _bad "$label: the story's ## Gate results is byte-identical" "the story file changed"; fi
+}
+h30_refused "AC-5 gates.sh"
+h30_refused "AC-5 gates.sh --fast"      --fast
+h30_refused "AC-5 gates.sh --gate unit" --gate unit
+
+# --list and --audit read the manifest and never run a gate, so a stranded
+# mutation is none of their business.
+h30_fresh
+out="$(gates --list)"; rc=$?
+assert_eq "AC-5: --list still exits 0 behind a stranded mutation" 0 "$rc"
+assert_contains "AC-5: --list still lists the gate" "unit" "$out"
+assert_eq "AC-5: --list prints no refusal" 0 "$(count_line "$H30_REFUSAL" "$out")"
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-5: --audit still exits 0 behind a stranded mutation" 0 "$rc"
+assert_eq "AC-5: --audit prints no refusal" 0 "$(count_line "$H30_REFUSAL" "$out")"
+assert_eq "AC-5: neither ran the gate" absent "$(h30_mark)"
+
+# A SECOND, dead sentinel under a mutation still refuses (C-3: "a second
+# sentinel, live or dead"). Planted beside the probe's own.
+h30_fresh
+out="$(h30_probe 's/47 passed (47)/48 passed (48)/' --gate unit)"; rc=$?
+assert_eq "AC-6 control: under a mutation, a second, dead sentinel still refuses: exit 2" 2 "$rc"
+assert_eq "AC-6 control: with the refusal, whole" 1 "$(count_line "$H30_REFUSAL" "$out")"
+assert_eq "AC-6 control: and the gate never ran" absent "$(h30_mark)"
+
+# AC-5 control: resolved - file back, backup and sentinel gone - the same three
+# runs proceed. Without this a gates.sh that refused unconditionally would pass
+# every assertion above.
+cp "${H30_ACT%.active}.bak" "$FIX/src/main.ts"
+rm -f "$H30_ACT" "${H30_ACT%.active}.bak"
+h30_fresh
+out="$(gates)"; rc=$?
+assert_eq "AC-5 control: with the sentinel removed the full run exits 0" 0 "$rc"
+assert_eq "AC-5 control: and prints the marker gate's header" 1 "$(count_re '^=== gate: unit ' "$out")"
+assert_eq "AC-5 control: and the gate command ran" present "$(h30_mark)"
+assert_eq "AC-5 control: and the run records" 1 "$(count_re "$H30_RECORDED" "$out")"
+h30_fresh
+out="$(gates --fast)"; rc=$?
+assert_eq "AC-5 control: --fast proceeds, exit 0" 0 "$rc"
+assert_eq "AC-5 control: --fast ran the gate" present "$(h30_mark)"
+h30_fresh
+out="$(gates --gate unit)"; rc=$?
+assert_eq "AC-5 control: --gate unit proceeds, exit 0" 0 "$rc"
+assert_eq "AC-5 control: --gate unit ran the gate" present "$(h30_mark)"
+
+# --- AC-6: the mutation's own command ------------------------------------------
+# A gate probe (rules.md requires one whenever a story changes a gate): mutate
+# the conf, run the gate under it. Its own sentinel must not refuse it.
+h30_fresh
+out="$(h30_probe 's/47 passed (47)/48 passed (48)/' --gate unit)"; rc=$?
+assert_eq "AC-6: a gate probe under its own mutation runs the gate: exit 0" 0 "$rc"
+assert_eq "AC-6: the probe prints no refusal" 0 "$(count_line "$H30_REFUSAL" "$out")"
+assert_eq "AC-6: the gate's header is printed" 1 "$(count_re '^=== gate: unit ' "$out")"
+assert_eq "AC-6: the gate command ran" present "$(h30_mark)"
+assert_eq "AC-6: and its result is the mutated gate's own: PASS, observed 48 against the floor of 40" 1 \
+  "$(count_re '^PASS +unit \([0-9]+s, observed 48, floor 40\)$' "$out")"
+h30_fresh
+out="$(h30_probe 's/47 passed (47)/3 passed (3)/' --gate unit)"; rc=$?
+assert_eq "AC-6: a probe whose mutation breaks the gate gets the gate's failure: exit 1" 1 "$rc"
+assert_eq "AC-6: below the floor, as the gate says" 1 "$(count_re 'below the floor of 40' "$out")"
+assert_eq "AC-6: and no refusal" 0 "$(count_line "$H30_REFUSAL" "$out")"
+
+# PO decision 1: a FULL run inside a mutation of this tree runs, and is never
+# recorded. On the story's own branch, so nothing else refuses it.
+h30_fresh
+cp "$T1" "$H30W/t1.before"
+out="$(h30_probe 's/47 passed (47)/48 passed (48)/')"; rc=$?
+assert_eq "AC-6: a full run under a mutation exits 1" 1 "$rc"
+assert_eq "AC-6: and says why it is not recorded, whole" 1 "$(count_line "$H30_INSIDE" "$out")"
+assert_eq "AC-6: that is the only '(not recorded:' line" 1 "$(count_re '^\(not recorded:' "$out")"
+assert_eq "AC-6: no line claims to have recorded" 0 "$(count_re "$H30_RECORDED" "$out")"
+assert_eq "AC-6: the stamp says FULL=no" no "$(stamp_val FULL)"
+if cmp -s "$H30W/t1.before" "$T1"; then _ok "AC-6: the story's ## Gate results is byte-identical"
+else _bad "AC-6: the story's ## Gate results is byte-identical" "the story file changed"; fi
+assert_eq "AC-6: but the gates did run" present "$(h30_mark)"
+
+# Precedence (C-2): mutated code first, then the branch. From another branch,
+# the one reason given is the mutation.
+git -C "$FIX" checkout -q -b h30-elsewhere 2>/dev/null
+h30_fresh
+out="$(h30_probe 's/47 passed (47)/48 passed (48)/')"; rc=$?
+assert_eq "AC-6 (C-2): from another branch the reason given is still the mutation" 1 "$(count_line "$H30_INSIDE" "$out")"
+assert_eq "AC-6 (C-2): and not the branch" 0 "$(count_re '^\(not recorded: the checkout is on ' "$out")"
+assert_eq "AC-6 (C-2): one '(not recorded:' line" 1 "$(count_re '^\(not recorded:' "$out")"
+assert_eq "AC-6 (C-2): exit 1" 1 "$rc"
+git -C "$FIX" checkout -q story/T-1-fixture 2>/dev/null
+git -C "$FIX" branch -q -D h30-elsewhere 2>/dev/null
+
+# Controls on HARNESS_MUTATION itself: it counts only when it names a file
+# in THIS tree's mutations/. A deferred verification runs gates.test.sh under a
+# mutation of the real tree, and every fixture gates.sh inherits that variable;
+# if the fixture took it for its own, every recorded-run assertion in this
+# suite would fail under every such verification.
+mkdir -p "$H30W/other/.claude/state/mutations"
+printf 'pid\t%s\nfile\tsrc/x.ts\n' "$$" > "$H30W/other/.claude/state/mutations/x.active"
+h30_fresh
+out="$( cd "$FIX" && HARNESS_MUTATION="$H30W/other/.claude/state/mutations/x.active" bash scripts/gates.sh 2>&1 )"; rc=$?
+assert_eq "C-2 control: HARNESS_MUTATION naming another tree's sentinel: the run records" 1 "$(count_re "$H30_RECORDED" "$out")"
+assert_eq "C-2 control: and exits 0" 0 "$rc"
+assert_eq "C-2 control: and stamps FULL=yes" yes "$(stamp_val FULL)"
+h30_fresh
+out="$( cd "$FIX" && HARNESS_MUTATION="$H30MUT/no-such.active" bash scripts/gates.sh 2>&1 )"; rc=$?
+assert_eq "C-2 control: HARNESS_MUTATION naming no file in this tree: the run records" 1 "$(count_re "$H30_RECORDED" "$out")"
+assert_eq "C-2 control: and exits 0" 0 "$rc"
+
+# AC-6 control: a SECOND, unrelated LIVE sentinel is still RUNNING, and the
+# gates still refuse the probe.
+sleep 30 &
+H30_SLEEP=$!
+H30_ACT2="$H30MUT/src_other.ts.20261004T010203Z.$H30_SLEEP.active"
+printf 'other\n' > "${H30_ACT2%.active}.bak"
+h30_plant "$H30_ACT2" "$H30_SLEEP" src/other.ts
+h30_fresh
+out="$(h30_probe 's/47 passed (47)/48 passed (48)/' --gate unit)"; rc=$?
+assert_eq "AC-6 control: beside a second live sentinel the probe is refused: exit 2" 2 "$rc"
+assert_eq "AC-6 control: that sentinel is reported RUNNING" 1 \
+  "$(count_line "    process:     $H30_SLEEP (RUNNING - a mutation is in flight right now; wait for it)" "$out")"
+assert_eq "AC-6 control: with the refusal, whole" 1 "$(count_line "$H30_REFUSAL" "$out")"
+assert_eq "AC-6 control: and the gate never ran" absent "$(h30_mark)"
+kill "$H30_SLEEP" 2>/dev/null; wait "$H30_SLEEP" 2>/dev/null; H30_SLEEP=""
+rm -f "$H30_ACT2" "${H30_ACT2%.active}.bak"
+
+assert_eq "HARNESS-030: no sentinel is left in the shared fixture" "" \
+  "$(for a in "$H30MUT"/*.active; do [ -e "$a" ] && printf '%s ' "${a##*/}"; done)"
+rm -f "$H30MARK"
+git -C "$FIX" checkout -q -- . 2>/dev/null
+git -C "$FIX" checkout -q main 2>/dev/null
+set_phase "$FIX" ""
+
 summary "gates"

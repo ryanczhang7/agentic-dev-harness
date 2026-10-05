@@ -7,6 +7,12 @@
 #   bash scripts/mutate.sh src/camera.ts 's/Math.min(90/Math.min(900/' \
 #     -- pnpm exec vitest run tests/camera.test.ts
 #
+#   bash scripts/mutate.sh --check
+#
+# ...asks the other question: is anything of a PREVIOUS run still in the tree?
+# Exit 0 and one line when not; exit 1 and a report per stranded mutation when
+# so. scripts/gates.sh runs it before it runs any gate.
+#
 # This is the ONLY sanctioned way to mutate production source, and it is allowed
 # in every phase. The phase lock knows about it and does not treat the file it
 # names as a write, because the file is restored before this script returns.
@@ -39,6 +45,14 @@
 #     the expression, and the log records both. A single trap removes it on
 #     every path this script can still run code on, so a `.new` that survives
 #     means the run was killed outright, and it arrives with its `.bak`.
+#   * And a mutation in flight SAYS SO, in an `.active` file written before the
+#     file is touched and removed only once it is verifiably back. That answers
+#     the one hole the two properties above cannot close: a kill runs no code,
+#     so the file stays mutated and nothing says so, and the next thing to read
+#     the tree judges code nobody wrote. `--check` reads the sentinels; gates.sh
+#     runs it before any gate. The command itself is told its own sentinel in
+#     HARNESS_MUTATION, so a gate probe run under a mutation is not refused by
+#     the very mutation it exists to observe.
 #
 # A mutation that changes nothing is refused before the command runs (exit 3):
 # an expression that matches nothing leaves the command green and hands the
@@ -71,8 +85,103 @@ LOG="$MUTDIR/log"
 usage() {
   printf 'usage: bash scripts/mutate.sh <FILE> '"'"'<SED-EXPRESSION>'"'"' -- <command> [args...]\n' >&2
   printf '\n  e.g. bash scripts/mutate.sh src/camera.ts '"'"'s/90/900/'"'"' -- pnpm exec vitest run\n' >&2
+  printf '\n  bash scripts/mutate.sh --check   is anything of a previous run still in the tree?\n' >&2
 }
 die() { printf 'mutate: %s\n' "$1" >&2; usage; exit 2; }
+
+# --- --check: is anything of a previous run still in the tree? --------------
+#
+# The one failure this script cannot clean up after is a kill - SIGKILL, a
+# closed terminal, a tool limit that does not wait. Nothing below runs, so the
+# file is left mutated and the only trace is the backup and the scratch file in
+# $MUTDIR. So a mutation announces itself while it is in flight, in an `.active`
+# sentinel written immediately before the file is mutated and removed only once
+# the file is verifiably back; it survives exactly a kill and a restore that
+# could not be verified, and this is what reads it.
+#
+# Detection, not a lock: this reports and exits, holds nothing and waits for
+# nothing, because a lock the harness can deadlock against its own subagent is
+# worse than the race. A sentinel whose process is alive is reported as in
+# flight rather than as wreckage, because the answer differs - "wait" against
+# "put the file back". `kill -0` can say RUNNING for a recycled pid but never
+# GONE for a live one, so the error it can make is the cautious one.
+#
+# One sentinel is not counted: the caller's own. A gate probe runs gates.sh
+# UNDER a mutation, and gates.sh asks this first; refusing that probe would make
+# every gate probe impossible. The command is told its sentinel in
+# HARNESS_MUTATION, and it is honoured only for a sentinel in THIS tree's
+# mutations/ (it is compared with the globbed path) whose process is alive, so a
+# stale variable, or one inherited by a fixture tree, gains nothing.
+#
+# The remedy compares against the sentinel's `path`, the resolved absolute
+# target, because a target may be given as an absolute path and `$ROOT/<file>`
+# is then no file at all. A sentinel with no `path` falls back to that.
+if [ "${1:-}" = "--check" ]; then
+  TAB="$(printf '\t')"
+  found=0; own=""
+  for a in "$MUTDIR"/*.active; do
+    [ -f "$a" ] || continue
+    a_pid=""; a_file=""; a_path=""; a_backup=""; a_expr=""; a_command=""; a_started=""
+    while IFS="$TAB" read -r k v; do
+      case "$k" in
+        pid)     a_pid="$v" ;;
+        file)    a_file="$v" ;;
+        path)    a_path="$v" ;;
+        backup)  a_backup="$v" ;;
+        expr)    a_expr="$v" ;;
+        command) a_command="$v" ;;
+        started) a_started="$v" ;;
+      esac
+    done < "$a"
+    a_alive=0
+    [ -n "$a_pid" ] && kill -0 "$a_pid" 2>/dev/null && a_alive=1
+    if [ -n "${HARNESS_MUTATION:-}" ] && [ "$a" = "$HARNESS_MUTATION" ] && [ "$a_alive" = 1 ]; then
+      own="${a_file:-<unrecorded>}"
+      continue
+    fi
+    [ -n "$a_path" ] || a_path="$ROOT/$a_file"
+    if [ "$found" = 0 ]; then
+      printf 'mutate: a mutation is unaccounted for. The tree may not be the code you think.\n\n' >&2
+    fi
+    found=$((found+1))
+    if [ "$a_alive" = 1 ]; then
+      a_state="$a_pid (RUNNING - a mutation is in flight right now; wait for it)"
+    else
+      a_state="$a_pid (GONE - the run was killed, so the file is probably still mutated)"
+    fi
+    printf '  %s\n' "${a_file:-<unrecorded>}" >&2
+    printf '    mutated by:  %s\n' "${a_expr:-<unrecorded>}" >&2
+    printf '    command:     %s\n' "${a_command:-<unrecorded>}" >&2
+    printf '    started:     %s\n' "${a_started:-<unrecorded>}" >&2
+    printf '    process:     %s\n' "$a_state" >&2
+    printf '    original:    %s\n' "${a_backup:-<gone - check git diff>}" >&2
+    if [ -n "$a_backup" ] && [ -f "$a_backup" ]; then
+      if cmp -s "$a_backup" "$a_path" 2>/dev/null; then
+        printf '    the file currently MATCHES the original; clearing this is safe:\n' >&2
+        printf '      rm -f %s %s\n' "$a_backup" "$a" >&2
+      else
+        printf '    the file DIFFERS from the original. Put it back:\n' >&2
+        printf '      cp %s %s && cmp %s %s && rm -f %s %s\n' \
+          "$a_backup" "$a_path" "$a_backup" "$a_path" "$a_backup" "$a" >&2
+      fi
+    else
+      printf '    no backup survives, so this cannot be undone from here: check\n' >&2
+      printf '    git status and git diff before running anything that judges this tree.\n' >&2
+    fi
+    printf '\n' >&2
+  done
+  if [ "$found" = 0 ]; then
+    if [ -n "$own" ]; then
+      printf "mutate: no stranded mutation; the one in flight is this command's own (%s).\n" "$own"
+    else
+      printf 'mutate: no stranded mutation; nothing of a previous run is in the tree.\n'
+    fi
+    exit 0
+  fi
+  printf '%d unaccounted-for mutation(s). Nothing that judges this tree should run\n' "$found" >&2
+  printf 'until each is resolved above.\n' >&2
+  exit 1
+fi
 
 REL="${1:-}"; EXPR="${2:-}"
 [ -n "$REL" ] || die "no file given"
@@ -110,6 +219,7 @@ SAFE="$(printf '%s' "$REL" | tr '/\\ ' '___')"
 BAK="$MUTDIR/$SAFE.$STAMP.$$.bak"
 NEW="$MUTDIR/$SAFE.$STAMP.$$.new"
 DIFF="$MUTDIR/$SAFE.$STAMP.$$.diff"
+ACTIVE="$MUTDIR/$SAFE.$STAMP.$$.active"
 
 # $NEW is scratch and nothing else. sed cannot read and write one path, so the
 # mutated text is built here and copied over the original. It is not evidence:
@@ -146,7 +256,12 @@ put_back() {
   cp "$BAK" "$FILE" 2>/dev/null
   return 0
 }
-on_exit() { put_back; rm -f "$NEW" "$NEW.err" "$DIFF" 2>/dev/null; return 0; }
+# The sentinel goes only when the file is verifiably the original again. That is
+# what makes its presence mean something: it survives a restore that could not
+# be verified and it survives a kill, the two states in which the tree is not
+# what it looks like.
+clear_active() { [ -f "$BAK" ] && cmp -s "$BAK" "$FILE" 2>/dev/null && rm -f "$ACTIVE" 2>/dev/null; return 0; }
+on_exit() { put_back; clear_active; rm -f "$NEW" "$NEW.err" "$DIFF" 2>/dev/null; return 0; }
 
 # A signal that arrives once the file is mutated is handled the way it always
 # was: put the file back, then RETURN, so that the restore-and-verify block
@@ -160,6 +275,7 @@ on_exit() { put_back; rm -f "$NEW" "$NEW.err" "$DIFF" 2>/dev/null; return 0; }
 on_signal() {
   put_back
   [ "$MUTATED" = 1 ] && return 0
+  clear_active
   [ -f "$BAK" ] && cmp -s "$BAK" "$FILE" 2>/dev/null && rm -f "$BAK" 2>/dev/null
   rm -f "$NEW" "$NEW.err" "$DIFF" 2>/dev/null
   exit 130
@@ -298,6 +414,26 @@ printf '=== mutate: %s (%s line(s) changed%s by %s) ===\n%s' "$REL" "$CHANGED" "
 
 # From here the file is mutated, and the traps installed above restore it on the
 # abnormal exits - an interrupt, a signal - where nothing below runs.
+#
+# The sentinel is written BEFORE the file is mutated, never after: one that
+# appears a moment later leaves a window in which the tree is wrong and nothing
+# says so, and that window is the whole failure it guards against. Tab-separated
+# so an expression or a command containing anything reads back whole; a newline
+# in the expression is written as the two characters \n, so the record stays one
+# line per key. And it is not optional: a sentinel that silently failed to exist
+# defeats the mechanism, so a run that cannot write one does not mutate.
+# The replacement is held in quoted variables: the literal `${EXPR//$'\n'/\\n}`
+# writes `n` without its backslash under bash 5.3, joining the two commands.
+NL=$'\n'; BSN='\n'
+{ printf 'pid\t%s\n'     "$$"
+  printf 'file\t%s\n'    "$REL"
+  printf 'path\t%s\n'    "$FILE"
+  printf 'backup\t%s\n'  "$BAK"
+  printf 'expr\t%s\n'    "${EXPR//"$NL"/"$BSN"}"
+  printf 'command\t%s\n' "${CMD[*]}"
+  printf 'started\t%s\n' "$STAMP"
+} > "$ACTIVE" 2>/dev/null || { rm -f "$ACTIVE" "$BAK" 2>/dev/null; die "cannot record the mutation in flight at $ACTIVE; refusing to mutate without it"; }
+
 if cp "$NEW" "$FILE"; then
   MUTATED=1
 else
@@ -309,7 +445,7 @@ else
   # as a failed restore and gets the same exit code and the same backup.
   cp "$BAK" "$FILE" 2>/dev/null
   if cmp -s "$BAK" "$FILE" 2>/dev/null; then
-    rm -f "$BAK"
+    rm -f "$ACTIVE" "$BAK"
     die "cannot write $REL; it is unchanged, verified against the backup"
   fi
   printf '\n=== mutate: COULD NOT RESTORE %s ===\n' "$REL" >&2
@@ -321,7 +457,9 @@ else
 fi
 
 printf '\n=== mutate: running %s ===\n' "${CMD[*]}" 2>/dev/null
-( cd "$ROOT" && "${CMD[@]}" )
+# HARNESS_MUTATION tells the command which sentinel is its own, so that a gate
+# probe's gates.sh, and --check, do not refuse the mutation they run under.
+( cd "$ROOT" && HARNESS_MUTATION="$ACTIVE" "${CMD[@]}" )
 rc=$?
 
 # --- restore, and check it ---------------------------------------------------
@@ -345,7 +483,7 @@ if cmp -s "$BAK" "$FILE" 2>/dev/null; then
   printf '\n=== mutate: command exited %d; %s ===\n%s%s' "$rc" "$verdict" "$LISTING" "${LISTING:+$'\n'}" 2>/dev/null
   printf '%s\t%s\t%s\t%s line(s)\tcommand: %s\texited %d\t%s\n' \
     "$STAMP" "$REL" "$EXPR" "$CHANGED" "${CMD[*]}" "$rc" "restored (verified)" >> "$LOG" 2>/dev/null || true
-  rm -f "$BAK"
+  rm -f "$ACTIVE" "$BAK"
   exit "$rc"
 fi
 
