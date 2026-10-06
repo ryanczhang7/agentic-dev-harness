@@ -4,8 +4,8 @@ title: The worktree premises compare the directory, not its spelling
 slug: the-worktree-premises-compare-the-direct
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-038-the-worktree-premises-compare-the-direct
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/phase-guard.test.sh, .claude/tests/worktree.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -206,6 +206,98 @@ RED and GREEN has nothing to build. There is no production change; `lib.sh`'s
   worktree: 70 passed, 3 failed
   ```
 
+  **Result (RED, test-developer, 2026-10-06).** PASSED: both suites' premise
+  checks fail before the change and pass after, under a symlinked `TMPDIR`, and
+  the plain-`/tmp` control passes either way. Run in WSL Ubuntu, git 2.43.0.
+
+  Method, chosen over the brief's literal command for a reason: WSL wiped
+  `/tmp` between separate `wsl.exe` invocations once during this phase (the
+  symlink vanished and a run failed 201 assertions on `mktemp`), so the symlink,
+  the BEFORE tree and the AFTER tree were all built in ONE invocation. The
+  BEFORE tree is `git archive HEAD` (commit 7847b3c, the PLANNED commit)
+  extracted to `/tmp/h38b` and committed as its own Linux repository; AFTER
+  overlays this phase's two test files onto that same tree. A native Linux
+  repository also removes the three WSL-only `check-ignore` failures the
+  PLANNED measurement saw when running the Windows checkout under WSL, so every
+  count below is the suite's full count. Script:
+  `scratchpad/dv1.sh` (session-local), reproduced in essence:
+
+      rm -rf /tmp/h38 /tmp/h38b && mkdir -p /tmp/h38/real && ln -s /tmp/h38/real /tmp/h38/link
+      tar -xf head.tar -C /tmp/h38b && cd /tmp/h38b && git init -q && git add -A && git commit -qm x
+      TMPDIR=<dir> VERBOSE=1 bash .claude/tests/<suite>.test.sh | grep -E "FAIL|shares|separate repository|own git dir|expected|actual|<suite>: [0-9]"
+      cp <after files> .claude/tests/ ; same four runs again
+
+  Output, verbatim:
+
+  ```
+  lrwxrwxrwx 1 ryanc ryanc 13 Oct  6 13:33 /tmp/h38/link -> /tmp/h38/real
+  == BEFORE: TMPDIR=/tmp/h38/link bash .claude/tests/worktree.test.sh
+      FAIL a: shares the main checkout's .git
+           expected: /tmp/h38/link/tmp.O1D9L8mgR8/.git
+           actual:   /tmp/h38/real/tmp.O1D9L8mgR8/.git
+      ok   a: has its own git dir, so it is linked, not main
+      FAIL b: shares the main checkout's .git
+           expected: /tmp/h38/link/tmp.O1D9L8mgR8/.git
+           actual:   /tmp/h38/real/tmp.O1D9L8mgR8/.git
+      ok   b: has its own git dir, so it is linked, not main
+  worktree: 71 passed, 2 failed
+  == BEFORE: TMPDIR=/tmp bash .claude/tests/worktree.test.sh
+      ok   a: shares the main checkout's .git
+      ok   a: has its own git dir, so it is linked, not main
+      ok   b: shares the main checkout's .git
+      ok   b: has its own git dir, so it is linked, not main
+  worktree: 73 passed, 0 failed
+  == BEFORE: TMPDIR=/tmp/h38/link bash .claude/tests/phase-guard.test.sh
+      FAIL B shares A's .git
+           expected: /tmp/h38/link/tmp.zpgPhTz7x1/.git
+           actual:   /tmp/h38/real/tmp.zpgPhTz7x1/.git
+      FAIL W shares A's .git
+           expected: /tmp/h38/link/tmp.zpgPhTz7x1/.git
+           actual:   /tmp/h38/real/tmp.zpgPhTz7x1/.git
+      ok   C is a separate repository
+      ok   AC-4: Write into a separate repository's src from A is allowed
+  phase-guard: 348 passed, 2 failed
+  == BEFORE: TMPDIR=/tmp bash .claude/tests/phase-guard.test.sh
+      ok   B shares A's .git
+      ok   W shares A's .git
+      ok   C is a separate repository
+      ok   AC-4: Write into a separate repository's src from A is allowed
+  phase-guard: 350 passed, 0 failed
+  == AFTER: TMPDIR=/tmp/h38/link bash .claude/tests/worktree.test.sh
+      ok   a: shares the main checkout's .git
+      ok   a: has its own git dir, so it is linked, not main
+      ok   b: shares the main checkout's .git
+      ok   b: has its own git dir, so it is linked, not main
+  worktree: 73 passed, 0 failed
+  == AFTER: TMPDIR=/tmp bash .claude/tests/worktree.test.sh
+      ok   a: shares the main checkout's .git
+      ok   a: has its own git dir, so it is linked, not main
+      ok   b: shares the main checkout's .git
+      ok   b: has its own git dir, so it is linked, not main
+  worktree: 73 passed, 0 failed
+  == AFTER: TMPDIR=/tmp/h38/link bash .claude/tests/phase-guard.test.sh
+      ok   B shares A's .git
+      ok   W shares A's .git
+      ok   C is a separate repository
+      ok   AC-4: Write into a separate repository's src from A is allowed
+  phase-guard: 350 passed, 0 failed
+  == AFTER: TMPDIR=/tmp bash .claude/tests/phase-guard.test.sh
+      ok   B shares A's .git
+      ok   W shares A's .git
+      ok   C is a separate repository
+      ok   AC-4: Write into a separate repository's src from A is allowed
+  phase-guard: 350 passed, 0 failed
+  DONE
+  ```
+
+  The phase-guard BEFORE run is the CI failure's exact shape (`348 passed, 2
+  failed`, the two `shares A's .git` premises) reproduced on Linux. The brief's
+  literal command against this worktree (the Windows checkout under WSL) was
+  also run AFTER the change, before `/tmp` was wiped: `worktree: 70 passed, 3
+  failed` under both `TMPDIR=/tmp/h38/link` and `TMPDIR=/tmp`, the three being
+  the known `check-ignore` cases, with `a:`/`b: shares the main checkout's .git`
+  reported `ok`; and `phase-guard: 350 passed, 0 failed` under the symlink.
+
 - **DV-2 (AC-2, the new comparison still discriminates).** Owner: GATES. Make
   B a separate repository rather than a worktree of A, with one expression
   through `scripts/mutate.sh` on `phase-guard.test.sh` (replace B's
@@ -249,6 +341,8 @@ name, below the table.
 **Resolved:**
 
 - PLANNED: written by the orchestrator itself (`claude-opus-5-5`, Opus 5.5) rather than a `lead-po` dispatch, because the diagnosis, the CI evidence and the reproduction were already in hand in that session. No override.
+- RED: `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the diff and re-ran `selftest.sh worktree` (73/73).
+- GREEN: no dispatch. A test-only story; nothing to build. The orchestrator moved the phase through after confirming the RED suites green.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -266,6 +360,33 @@ name, below the table.
 
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
+
+No new assertion: the story replaces the comparison inside existing premise
+assertions (AC-4, C-4). Each is a shell-suite assertion over real git fixtures,
+the only level at which "a linked worktree's common dir is the main checkout's
+`.git`" exists. Each file gets a local helper,
+`_same_dir() { [ "$1" = "$2" ] || [ "$1" -ef "$2" ]; }`, the exact expression
+`same_repo` uses in `.claude/hooks/lib.sh:808`. It is defined in each suite,
+not in `_lib.sh`, because the Contract's `**Writes:**` names only the two suites.
+
+| Assertion (label unchanged) | File | AC |
+|---|---|---|
+| `B shares A's .git` | `phase-guard.test.sh` | AC-1 (passes for two spellings); AC-2 (fails for a separate repo - DV-2) |
+| `W shares A's .git` | `phase-guard.test.sh` | AC-1; AC-2 by the same comparison |
+| `C is a separate repository` | `phase-guard.test.sh` | AC-3: fails when C's common dir is A's under any spelling (`_same_dir` true is the failure) |
+| `a: shares the main checkout's .git`, `b: …` | `worktree.test.sh` | AC-1; AC-2 by the same comparison |
+| `a: has its own git dir, so it is linked, not main`, `b: …` | `worktree.test.sh` | C-2: a linked tree's own git dir is NOT the common dir under any spelling |
+| suite totals 350 / 73, floors untouched | both | AC-4 |
+
+**AC-1** is observed by DV-1 (above): before/after under a symlinked `TMPDIR` on
+Linux, reproducing the CI shape. **AC-2's discrimination is DV-2, owned by
+GATES** (mutate B's `git worktree add` into a `git init` through
+`scripts/mutate.sh`, `B shares A's .git` must fail); RED did not run it inside
+the suite. RED did check the comparison itself outside the framework (Handoff,
+control table). **AC-3** has no in-suite negative fixture (none is added; C-4
+forbids new assertions) - the C check's inversion is the same `_same_dir`, whose
+"other spelling of one directory -> same" result is in the control table.
+**AC-4** is the local selftest counts in the Handoff, plus CI's full run.
 
 ## Handoff: RED -> GREEN
 
@@ -286,6 +407,74 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**GREEN has nothing to build.** This is a test-only fix (Contract, opening
+paragraph): the defect was in two suites' premise comparisons and the whole
+change is in RED. There is no production module, export or signature; nothing
+in `lib.sh` or any script changes. GREEN's job is to confirm that and move on.
+
+**This RED is not red, and that is correct for this story.** The tests already
+exist and pass on this machine and on Linux CI; the defect only shows on a
+runner where `pwd` returns two spellings of one directory. "Watched it fail" is
+satisfied by DV-1: the unmodified suites fail the exact premises under a
+symlinked `TMPDIR` on Linux (`phase-guard: 348 passed, 2 failed` - the CI
+run's shape - and `worktree: 71 passed, 2 failed`), and pass after. The
+discrimination of the new comparison (it still fails for a genuinely separate
+repository) is **DV-2, owned by GATES**, and RED did not run it in-suite.
+
+Files touched:
+
+- `.claude/tests/phase-guard.test.sh` - HARNESS-035 premise block (~:1356-1378): `_same_dir` helper, `h035_shares` for B and W, `C is a separate repository` via `_same_dir`
+- `.claude/tests/worktree.test.sh` - linked-worktree block (~:186-208): `_same_dir` helper, both `shares the main checkout's .git` and `has its own git dir` via `_same_dir`
+- `docs/backlog/stories/HARNESS-038.md` - DV-1 result, `## Test plan`, this handoff
+
+Commands:
+
+    bash scripts/selftest.sh worktree
+    bash scripts/selftest.sh phase-guard        # ~25 min on Windows, ~1 min on Linux
+
+Local results, Windows (Git for Windows bash), after the change:
+
+    worktree: 73 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (73 assertions executed, 73 declared).
+    phase-guard: 350 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (350 assertions executed, 310 declared).
+    check-sigpipe: scanned 47 shell file(s), 43 with pipefail, 0 finding(s)
+    check-grep-count: scanned 47 shell file(s), 0 finding(s)
+
+Counts are identical to before (350 / 73, matching the PLANNED CI evidence
+`348+2` and `71+2`): AC-4 / C-4, no assertion added or removed, `floors.conf`
+and `selftest.test.sh` COUNTS untouched. `gates.sh --fast`: 0 ran, 5
+unconfigured (this repository has no project gates; the self-test is the
+required gate), exit 0, not recorded.
+
+Assertion -> AC: see `## Test plan` table. In short: `B/W shares A's .git` and
+`a/b: shares the main checkout's .git` cover AC-1 (and AC-2 via DV-2);
+`C is a separate repository` covers AC-3; `a/b: has its own git dir` is C-2's
+companion; totals cover AC-4.
+
+Behaviour deliberately kept from the old comparison: if `_common` (or the
+`cd`/`pwd` pipeline) fails on BOTH sides, two empty strings compare equal and
+the "shares" premise passes, exactly as `assert_eq "" ""` did. `-ef` adds
+nothing there (it is false for empty operands). Not this story's to change.
+
+Negative controls - measured OUTSIDE the suites with the exact helper
+expression, plain bash, not in-framework (the in-suite control is DV-2, GATES):
+
+| Control | Expected | Measured |
+|---|---|---|
+| same path, same spelling (WSL) | same | `same /tmp/h38c/real/x \| /tmp/h38c/real/x` |
+| symlink spelling vs real path, one dir (WSL) - AC-1, AC-3's "C under another spelling is caught" | same | `same /tmp/h38c/link/x \| /tmp/h38c/real/x` |
+| two different directories, same leaf name (WSL) - AC-2 | DIFFERENT | `DIFFERENT /tmp/h38c/real/x \| /tmp/h38c/other/x` |
+| symlink spelling vs a different directory (WSL) - AC-2 | DIFFERENT | `DIFFERENT /tmp/h38c/link/x \| /tmp/h38c/other/x` |
+| empty vs a directory (WSL) | DIFFERENT | `DIFFERENT  \| /tmp/h38c/real/x` |
+| MSYS `/d/...` vs Windows `D:/...` of one dir (Git for Windows) | same | `same /d/.../.claude \| D:/.../.claude` |
+| MSYS `/d/.../.claude` vs `D:/.../docs` | DIFFERENT | `DIFFERENT` |
+| in-suite: B made a separate repo (DV-2) | `B shares A's .git` FAILS | **not run in RED - GATES owns it** |
+
+Discovered: WSL can discard `/tmp` between separate `wsl.exe` invocations (the
+VM idles out), so a symlink created in one call may be gone in the next. DV-1
+was therefore run as one script; anyone re-running it should do the same.
 
 ## Regressions
 
