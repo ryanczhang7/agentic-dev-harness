@@ -581,3 +581,10 @@ self-test with `SELFTEST_JOBS=4`: exit 0 in 716 s, `24 harness suite(s)
 passed.` (2,814 assertions executed, 2,514 declared; unchanged, per AC-4).
 DV-3 (manga-translator's `windows-latest` CI after the release-82 refresh) is
 owned by REVIEW and is recorded below once it runs.
+
+**Merged, 2026-10-06.** #118 (merge commit 5c90d04), shipped as release 82
+(the VERSION bump is in this commit). PR CI: `gates` passed in 2m46s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37516118363),
+`boundaries` in 9s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37516118412).
+The story stays in REVIEW until DV-3, which needs release 82 to exist.
