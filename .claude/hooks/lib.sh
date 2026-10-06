@@ -7,10 +7,30 @@
 #     error we allow the action. Correctness is defended in depth by the gates
 #     and by CI; the hook exists to catch the honest mistake, not the attacker.
 
-HARNESS_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
-HARNESS_DIR="$HARNESS_ROOT/.claude/harness"
-STATE_FILE="$HARNESS_ROOT/.claude/state/current-story.env"
-GATE_STAMP="$HARNESS_ROOT/.claude/state/last-gate-run"
+# set_harness_root <dir>   Points every per-tree global at <dir>. The guard
+# uses it to judge a write by the lock of another worktree and then to restore
+# its own, so all four always move together.
+#
+# The root is kept in FORWARD SLASHES (HARNESS-035). The host spells
+# CLAUDE_PROJECT_DIR with backslashes on Windows. Every comparison already
+# slashed both sides, but a glob over the root reads a backslash as an escape,
+# and on every platform but Windows a backslashed path is no path at all. Git
+# Bash, git and every coreutil take `D:/x` for `D:\x`. Spelled inline, as
+# _to_slashes is, because that function is defined further down this file.
+set_harness_root() {
+  HARNESS_ROOT=${1//\\//}
+  HARNESS_DIR="$HARNESS_ROOT/.claude/harness"
+  STATE_FILE="$HARNESS_ROOT/.claude/state/current-story.env"
+  GATE_STAMP="$HARNESS_ROOT/.claude/state/last-gate-run"
+}
+
+# The tree whose lock, confs and state the hooks read. This is a DEFAULT: a hook
+# input carrying `cwd` moves it to the harness tree the session is actually in,
+# at the bottom of this file (HARNESS-035, see _session_root).
+set_harness_root "${CLAUDE_PROJECT_DIR:-$PWD}"
+# The session's working directory, slashed, from the hook input's `cwd`; empty
+# when there is none (every script that sources this file outside a hook).
+SESSION_CWD=""
 
 # First line of the block gates.sh writes into a story's ## Gate results.
 # check-boundaries.sh looks for it to tell a tool-written record from a pasted
@@ -661,13 +681,171 @@ _to_slashes() {
   while [[ "$__lib_fs" == *$'\n' ]]; do __lib_fs=${__lib_fs%$'\n'}; done
 }
 
+# _drive_form <path>   Sets __lib_fs to _to_slashes' result with an MSYS or
+# Cygwin drive prefix (`/d/...`, `/cygdrive/d/...`) rewritten as `d:/...`, so
+# that the spellings of one Windows directory compare equal. Case is left
+# alone: callers lower-case both sides themselves. Length-preserving for the
+# `/d/` form, which is what lets to_rel cut the suffix by the root's length.
+_drive_form() {
+  _to_slashes "$1"
+  case "$__lib_fs" in
+    /cygdrive/[A-Za-z]|/cygdrive/[A-Za-z]/*) __lib_fs="${__lib_fs:10:1}:/${__lib_fs:12}" ;;
+    /[A-Za-z]|/[A-Za-z]/*) __lib_fs="${__lib_fs:1:1}:/${__lib_fs:3}" ;;
+  esac
+}
+
+# abs_norm <absolute path>   Sets __lib_abs to the path slashed, with `.` and
+# `..` collapsed and no trailing slash. `..` never climbs above the `/` or `X:/`
+# it starts from. Returns 1 for a relative path.
+abs_norm() {
+  local p pre seg out="" oldIFS
+  _to_slashes "$1"; p=$__lib_fs
+  case "$p" in
+    [A-Za-z]:/*) pre="${p:0:3}"; p="${p:3}" ;;
+    /*)          pre="/";        p="${p:1}" ;;
+    *) return 1 ;;
+  esac
+  oldIFS="$IFS"; IFS='/'
+  # shellcheck disable=SC2086
+  set -- $p
+  IFS="$oldIFS"
+  for seg in "$@"; do
+    case "$seg" in
+      ''|.) continue ;;
+      ..) case "$out" in */*) out="${out%/*}" ;; *) out="" ;; esac ;;
+      *) out="${out:+$out/}$seg" ;;
+    esac
+  done
+  __lib_abs="$pre$out"
+  return 0
+}
+
+# --- Worktrees (HARNESS-035) ------------------------------------------------
+#
+# "One worktree, one story, one lock" (CLAUDE.md) held only while a session
+# never left the tree it started in. The host runs these hooks with
+# CLAUDE_PROJECT_DIR fixed at the FIRST tree, so a session the desktop app moved
+# into a linked worktree read the main checkout's story on every hook, and an
+# absolute path into the worktree was "outside" and never judged
+# (fantasy-world-builder WORLD-113, D-7). Three rules now, all pure bash - no
+# process, and no `git rev-parse`, which would cost one per judged path:
+#
+#   * the session's tree is the harness tree holding the hook input's `cwd`;
+#   * a write is judged by the lock of the worktree that OWNS it, when that is
+#     another worktree of the same repository;
+#   * anything else outside the root is still outside, as it always was.
+
+# worktree_top <absolute path>   Sets __lib_wt to the nearest of the path and
+# its ancestors that holds `.git` (a directory in a main checkout, a file in a
+# linked worktree), slashed. Returns 1, with __lib_wt empty, when there is none.
+# The path itself need not exist: a file about to be created has a parent that
+# does.
+worktree_top() {
+  local d
+  __lib_wt=""
+  _to_slashes "$1"; d="${__lib_fs%/}"
+  while [ -n "$d" ]; do
+    if [ -e "$d/.git" ]; then __lib_wt="$d"; return 0; fi
+    case "$d" in */*) d="${d%/*}" ;; *) return 1 ;; esac
+  done
+  return 1
+}
+
+# git_common_dir <tree>   Sets __lib_gcd to the tree's common git directory:
+# `<tree>/.git` when that is a directory, else the `gitdir:` its `.git` file
+# names, followed through that directory's `commondir`. Returns 1 when the tree
+# has no readable `.git`. Read with `read`, as git writes it, never with git.
+# The tree is slashed FIRST: the host spells CLAUDE_PROJECT_DIR with
+# backslashes on Windows, and the result is globbed by any_active_worktree,
+# where a backslash is an escape - `D:\proj/.git/worktrees/*` matched nothing,
+# and an IDLE root waved through every write into its worktrees.
+git_common_dir() {
+  local t line="" g c=""
+  _to_slashes "${1%/}"; t="${__lib_fs%/}"
+  __lib_gcd=""
+  if [ -d "$t/.git" ]; then __lib_gcd="$t/.git"; return 0; fi
+  [ -f "$t/.git" ] || return 1
+  IFS= read -r line < "$t/.git" || [ -n "$line" ] || return 1
+  line="${line%$'\r'}"
+  g="${line#gitdir: }"
+  [ "$g" != "$line" ] && [ -n "$g" ] || return 1
+  _to_slashes "$g"; g=$__lib_fs
+  path_is_absolute "$g" || g="$t/$g"
+  if [ -f "$g/commondir" ]; then
+    IFS= read -r c < "$g/commondir" || [ -n "$c" ]
+    c="${c%$'\r'}"
+    if [ -n "$c" ]; then
+      _to_slashes "$c"; c=$__lib_fs
+      path_is_absolute "$c" || c="$g/$c"
+      g="$c"
+    fi
+  fi
+  abs_norm "$g" || return 1
+  __lib_gcd=$__lib_abs
+  return 0
+}
+
+# is_root <dir>   True when <dir> is HARNESS_ROOT. The string comparison is the
+# ordinary path and costs nothing; `-ef` (same device and inode, a test builtin)
+# catches every other spelling of the same directory - a drive letter, an MSYS
+# mount, /tmp against the Windows temp path it maps to - without a process.
+is_root() {
+  local d="${1%/}"
+  _to_slashes "${HARNESS_ROOT%/}"
+  [ "$d" = "$__lib_fs" ] && return 0
+  [ -n "$d" ] && [ "$d" -ef "$HARNESS_ROOT" ]
+}
+
+# same_repo <tree> <tree>   True when both are worktrees of one repository: their
+# common git directories are the same directory. `-ef` again, because git
+# writes Windows spellings into a linked worktree's `.git` file while a hook may
+# know the same directory by its MSYS one.
+same_repo() {
+  local a
+  git_common_dir "$1" || return 1; a=$__lib_gcd
+  git_common_dir "$2" || return 1
+  [ "$a" = "$__lib_gcd" ] || [ "$a" -ef "$__lib_gcd" ]
+}
+
+# any_active_worktree   True when some OTHER worktree of the root's repository
+# has a story active - a `current-story.env` - so that a root which is itself
+# IDLE still has writes to judge. Reads `<common>/worktrees/*/gitdir` and the
+# main checkout; a stale entry whose tree is gone has no state file and counts
+# for nothing.
+any_active_worktree() {
+  local common g wt line
+  git_common_dir "$HARNESS_ROOT" || return 1
+  common=$__lib_gcd
+  case "$common" in
+    */.git)
+      wt="${common%/.git}"
+      if ! is_root "$wt" && [ -f "$wt/.claude/state/current-story.env" ]; then return 0; fi ;;
+  esac
+  for g in "$common"/worktrees/*/gitdir; do
+    [ -f "$g" ] || continue
+    line=""
+    IFS= read -r line < "$g" || [ -n "$line" ] || continue
+    line="${line%$'\r'}"
+    _to_slashes "$line"; wt="${__lib_fs%/.git}"
+    is_root "$wt" && continue
+    [ -f "$wt/.claude/state/current-story.env" ] && return 0
+  done
+  return 1
+}
+
 # to_rel <path>   Repo-relative, forward slashes. Empty output means "outside
 # this repository", and therefore not the harness's business.
+#
+# Drive spellings are one root: `/d/p`, `/cygdrive/d/p`, `D:/p` and `D:\p` all
+# name the same directory (_drive_form). This used to be approximated by asking
+# whether the path contained `/<root's folder name>/`, which judged an unrelated
+# `C:/elsewhere/<same name>/src` as this repository and missed a linked worktree
+# named anything else - every absolute write into `D:/fwb-WORLD-113` from a
+# session rooted at `D:/fantasy-world-builder` went unjudged (HARNESS-035).
 to_rel() {
-  local p root lp lr base
-  _to_slashes "$1"; p=$__lib_fs
-  _to_slashes "$HARNESS_ROOT"; root=$__lib_fs
-  root="${root%/}"
+  local p root lp lr
+  _drive_form "$1"; p=$__lib_fs
+  _drive_form "$HARNESS_ROOT"; root="${__lib_fs%/}"
   lp="$(lower "$p")"
   lr="$(lower "$root")"
 
@@ -678,12 +856,6 @@ to_rel() {
 
   # Absolute path elsewhere on disk (scratchpad, /tmp, another checkout).
   if [[ "$p" == /* || "$p" == ?:/* ]]; then
-    # Tolerate C:/ vs /c/ drive spellings by matching the repo folder name.
-    base="${root##*/}"
-    if [[ "$lp" == */"$(lower "$base")"/* ]]; then
-      printf '%s' "${p#*/$base/}"
-      return
-    fi
     printf '%s' ""
     return
   fi
@@ -801,11 +973,30 @@ normalize_rel() {
 #
 # Fail open, as ever: returning 1 means relative candidates are skipped, not
 # that they are blocked.
+#
+# HARNESS-035: <start>, when given, is the absolute directory the shell starts
+# in - the session's `cwd` - rather than the root. And a directory OUTSIDE the
+# root that the guard can name is no longer a dead end: it is printed as an
+# absolute path, so `cd <linked worktree> && echo x > src/a.ts` reaches the
+# guard as `<linked worktree>/src/a.ts` and is judged by that worktree's lock.
+# Return 1 is kept for what it always meant: a directory nobody can name.
 command_cwd() {
-  local masked="$1" tgt cur="" rel joined lp lr
+  local masked="$1" start="${2:-}" tgt cur="" out="" rel joined lp lr r
   # A bare `cd` goes home. Nothing after it is a repo path.
   printf '%s\n' "$masked" | grep -qE '(^|[|&;(])[[:space:]]*cd[[:space:]]*($|[|&;)])' && return 1
-  _to_slashes "${HARNESS_ROOT%/}"; lr="$(lower "$__lib_fs")"
+  _drive_form "${HARNESS_ROOT%/}"; lr="$(lower "$__lib_fs")"
+  # The start directory. Spelled exactly as the root, or under it - the ordinary
+  # case, since the root was found by walking up from it - this costs nothing;
+  # any other spelling goes through the absolute branch below.
+  if [ -n "$start" ]; then
+    _to_slashes "${start%/}"; start=$__lib_fs
+    _to_slashes "${HARNESS_ROOT%/}"; r=$__lib_fs
+    if [ "$start" = "$r" ]; then
+      start=""
+    elif [[ "$start" == "$r"/* ]] && joined="$(normalize_rel "${start#"$r"/}")"; then
+      cur="$joined"; start=""
+    fi
+  fi
   while IFS= read -r tgt; do
     [ -z "$tgt" ] && continue
     tgt="$(printf '%s' "$tgt" | unmask_shell_quotes)"
@@ -816,20 +1007,33 @@ command_cwd() {
       *'$'*)   return 1 ;;   # a variable the guard cannot expand
     esac
     if path_is_absolute "$tgt"; then
-      _to_slashes "${tgt%/}"; lp="$(lower "$__lib_fs")"
+      _drive_form "${tgt%/}"; lp="$(lower "$__lib_fs")"
       if [ "$lp" = "$lr" ]; then cur=""; continue; fi
       rel="$(to_rel "$tgt")"
-      if [ -z "$rel" ]; then cur="OUTSIDE"; else cur="$rel"; fi
+      if [ -z "$rel" ]; then
+        abs_norm "$tgt" || return 1
+        cur="OUTSIDE"; out=$__lib_abs
+      else cur="$rel"; fi
       continue
     fi
-    [ "$cur" = "OUTSIDE" ] && continue
-    joined="$(normalize_rel "${cur:+$cur/}$tgt")" || { cur="OUTSIDE"; continue; }
-    cur="$joined"
-  done <<< "$(printf '%s\n' "$masked" \
+    if [ "$cur" = "OUTSIDE" ]; then
+      abs_norm "$out/$tgt" || return 1
+      out=$__lib_abs
+      continue
+    fi
+    if joined="$(normalize_rel "${cur:+$cur/}$tgt")"; then
+      cur="$joined"
+    else
+      # Climbed above the root: `cd ../sibling-worktree`. Still nameable.
+      abs_norm "$HARNESS_ROOT/${cur:+$cur/}$tgt" || return 1
+      cur="OUTSIDE"; out=$__lib_abs
+    fi
+  done <<< "$( [ -n "$start" ] && printf '%s\n' "$start"
+    printf '%s\n' "$masked" \
     | grep -oE '(^|[|&;(]|[[:space:]])cd[[:space:]]+[^|&;><[:space:]]+' \
     | sed -E -e 's/.*[[:space:]]cd[[:space:]]+|^cd[[:space:]]+|.*[|&;(]cd[[:space:]]+//' \
              -e 's/["'"'"']//g')"
-  [ "$cur" = "OUTSIDE" ] && return 1
+  if [ "$cur" = "OUTSIDE" ]; then printf '%s' "$out"; return 0; fi
   printf '%s' "$cur"
   return 0
 }
@@ -1300,3 +1504,39 @@ json_escape() {
       if (NR > 1) printf "\\n"
       printf "%s", $0 }'
 }
+
+# --- Which tree this session is in (HARNESS-035) ----------------------------
+
+# _session_root   When the hook input carries `cwd`, sets SESSION_CWD to it and
+# moves HARNESS_ROOT to the harness tree that holds it - the tree the session is
+# standing in, which is not CLAUDE_PROJECT_DIR once the session has moved. The
+# host fixes that variable when the session starts; `cwd` it keeps current.
+#
+# Read by parameter expansion, not json_get_string: that is an awk process on
+# every hook call, and HARNESS-025's bound has no room for one. Not by a bash
+# regex either: what a backslash inside a bracket expression means differs
+# between regex libraries, and an escaped Windows path - the field's only
+# shape - is all backslashes. The value ends at the first `"`: no Windows path,
+# and no sane POSIX one, contains one. A JSON string's `\\` and `\/` both
+# become `/` once backslashes are slashes and doubled slashes collapse, which is
+# all a path needs. A `cwd` outside every harness tree - a scratch directory -
+# leaves the root where it was; SESSION_CWD is still set, so a relative write
+# there resolves against the scratch directory and not against the root.
+_session_root() {
+  local v
+  case "${HOOK_INPUT:-}" in *'"cwd"'*) ;; *) return 0 ;; esac
+  v="${HOOK_INPUT#*\"cwd\"}"
+  v="${v#"${v%%[![:space:]]*}"}"
+  [ "${v:0:1}" = ":" ] || return 0
+  v="${v:1}"; v="${v#"${v%%[![:space:]]*}"}"
+  [ "${v:0:1}" = '"' ] || return 0
+  v="${v:1}"; v="${v%%\"*}"
+  _to_slashes "$v"; v=$__lib_fs
+  while [[ "$v" == *//* ]]; do v="${v%%//*}/${v#*//}"; done
+  path_is_absolute "$v" || return 0
+  SESSION_CWD="${v%/}"
+  worktree_top "$SESSION_CWD" || return 0
+  [ -f "$__lib_wt/.claude/harness/phases.conf" ] || return 0
+  set_harness_root "$__lib_wt"
+}
+_session_root

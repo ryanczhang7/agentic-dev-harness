@@ -82,6 +82,11 @@ bash scripts/phase.sh set WORLD-014 GREEN  # the only supported way to change ph
 `.claude/state/*` is gitignored and a git worktree has its own working
 directory, so each gets its own `current-story.env`, its own gate stamp and its
 own copy of the harness. Nothing is shared and nothing coordinates them.
+The hooks follow the session rather than `CLAUDE_PROJECT_DIR`. They read the
+tree holding the session's `cwd`, and a write into another worktree of the same
+repository is judged by *that* worktree's lock, whether it comes by absolute
+path, by `cd`, or into a nested `.claude/worktrees/<name>`. The denial then
+carries a `worktree:` line.
 
 ```bash
 git worktree add ../adh-WORLD-015 -b story/WORLD-015-slug   # a tree per story
