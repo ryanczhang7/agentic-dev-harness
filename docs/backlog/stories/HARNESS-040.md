@@ -5,7 +5,7 @@ slug: the-refresh-adds-missing-harness-shipped
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-040-the-refresh-adds-missing-harness-shipped
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/harness/docs-shipped.conf, .claude/tests/refresh.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -552,6 +552,7 @@ name, below the table.
 - PLANNED: `lead-po` dispatched as `/plan-story`, resolved to Fable 5.1
   (`claude-fable-5-1`), as planned; no override visible to the agent.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran refresh (156/9) and shipped-docs (13/1), matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
+- GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the refresh-harness.sh diff and the new conf. The added guard (a `ship` path outside `docs/` or with a `..` segment is skipped) is kept as a safety the contract did not forbid.
 - Oracle partition for the RED brief: every criterion is mechanical (C-7);
   nothing is settled-by-measurement, nothing is oracle-free. Brief RED to pin
   C-3's two report lines and C-4's summary line byte for byte with whole-line
@@ -914,6 +915,67 @@ call do not exist - nor DV-3/DV-4, which need GREEN's conf and block):
   add seven refresh runs (about 7 x 1-2 s on a quiet machine), so most of the
   difference looks like machine load, cause not established. The suite has no
   per-assertion timeout to budget.
+
+## GREEN
+
+GREEN by `feature-developer` on Opus 5.5 (`claude-opus-5-5`), as planned; no
+override visible to the agent. Nothing committed; no test file touched; no
+`mutate.sh` run and no deferred verification run (both GATES's).
+
+**Files written:** `scripts/refresh-harness.sh`, `.claude/harness/docs-shipped.conf`
+(new, C-1's twelve lines verbatim under a prose header), `README.md` (C-4 row).
+
+**`scripts/refresh-harness.sh`, by C-2 clause:**
+
+- (a) Header `:23-30` rewritten in place, same 8 lines: "Four kinds of file",
+  an `ADDED     upstream ships it under docs/ and you had no copy (never overwrites)`
+  row, the `LEFT` entry folded into two lines. Lines 134, 135, 147, 148 read
+  exactly as before (checked with `sed -n`), so `sigpipe.test.sh`'s pins hold
+  (82/0).
+- (b) `.claude/harness/docs-shipped.conf` added to the LOCAL candidate list
+  (now `:307-309`) and to the single-file REPLACED list (`:400-403`).
+- (c) `ship_missing_docs` defined after the `scripts/*.sh` REPLACED line and
+  called once on its own line. `grep -cx 'ship_missing_docs'` prints `1`;
+  `grep -c '\[ -e "\$PROJ/\$p" \]'` prints `1` - DV-1/DV-2's `sed` anchors
+  are live. The body is C-2's `if` block verbatim; `ship` lines are parsed
+  with `awk -F'|'` (plain `gsub` trims, CR stripped, no gawk-isms), the
+  trailing `say ""` prints only when a line was printed. **Beyond the
+  contract, one addition, said so here:** a `ship` path not under `docs/`, or
+  containing a `..` segment, is skipped silently, so an upstream list cannot
+  make the refresh write outside `docs/`. No assertion reads it; measured
+  below.
+- C-4: the summary paragraph gains the two pinned lines.
+
+**Counts:** `refresh: 165 passed, 0 failed` (floor 165 met; 4 min 55 s wall
+on this machine), `shipped-docs: 14 passed, 0 failed` (floor 14 met),
+`sigpipe: 82 passed, 0 failed`, `settings: 27 passed, 0 failed`,
+`selftest: 268 passed, 0 failed`; `check-sigpipe: scanned 48 shell file(s),
+44 with pipefail, 0 finding(s)`; `check-grep-count: scanned 48 shell file(s),
+0 finding(s)`; `gates.sh --fast`: "All required gates passed (0 ran, 5
+unconfigured, 0 known)" plus `UNTRACKED .claude/harness/docs-shipped.conf` -
+stage it with the GREEN commit. The full `bash scripts/selftest.sh` (all
+suites) was not run in GREEN; GATES owns it.
+
+**Negative controls, measured against the shipped script outside the suite**
+(a scratch upstream holding the real `refresh-harness.sh` - so no hand-over -
+a CRLF conf with the fixture's two lines plus `ship | ../escape.md` and
+`ship | docs/wiki/ghost.md`, and fresh non-git projects):
+
+| Control | RED's expected | Measured in GREEN |
+|---|---|---|
+| AC-1: template created, `cmp` vs upstream | identical | identical; one ADDED line, zero KEPT lines |
+| AC-3: product-brief.md / README.md created | absent | absent (project `docs/` holds only `stack.md` and the template) |
+| AC-3: ADDED/KEPT lines naming either | 0 | 0 |
+| AC-2 edited: `cmp` vs copy taken before | identical | identical; KEPT once; ADDED lines 0 |
+| AC-3 no conf: exit / ADDED-KEPT lines naming `docs/` / docs fingerprint | 0 / 0 / unchanged | 0 / 0 / unchanged |
+| AC-4 dry run: ADDED once, `Dry run: nothing was written.`, template absent, fingerprint | as stated | as stated |
+| shipped-docs extraction from this tree (distinct file/path pairs) | 24 | 24 (C-6 pipeline run by hand) |
+| ghost `ship` entry (upstream lacks the file) | skipped silently (C-2) | no line printed |
+| `ship | ../escape.md` with the file present on both sides | (not in contract) | no line, nothing written |
+
+No divergence from RED's numbers. The `report_lines_naming` synthetic-line
+check and the shipped-docs fixture controls (AC-5(b)-(d)) are the suite's
+own and were watched in RED; they pass unchanged.
 
 ## Regressions
 

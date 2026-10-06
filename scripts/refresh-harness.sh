@@ -20,14 +20,14 @@
 # Each was a step somebody had to get right by reading carefully, which is a
 # requirement this repository does not accept anywhere else.
 #
-# Three kinds of file, and the middle one is the reason this is not a `cp -r`:
+# Four kinds of file, and the second one is the reason this is not a `cp -r`:
 #
 #   REPLACED  upstream owns it outright
 #   KEPT      inside a replaced directory, but upstream does not ship it, so it
 #             is the project's and survives
+#   ADDED     upstream ships it under docs/ and you had no copy (never overwrites)
 #   LEFT      project-owned, or needs a human: project.conf, docs, .gitignore,
-#             .github/workflows, and the two that must be MERGED rather than
-#             copied - paths.conf and CLAUDE.md
+#             .github/workflows, and paths.conf and CLAUDE.md (MERGE, not copy)
 
 set -uo pipefail
 
@@ -305,7 +305,8 @@ if [ "$up_has_history" = 1 ]; then
     local_changes="$local_changes scripts/$b"
   done
   for f in .claude/harness/phases.conf .claude/harness/models.conf \
-           .claude/harness/rules.md .claude/settings.json .claude/state/README.md; do
+           .claude/harness/rules.md .claude/harness/docs-shipped.conf \
+           .claude/settings.json .claude/state/README.md; do
     [ -f "$PROJ/$f" ] && [ -f "$UP/$f" ] || continue
     h="$(git -C "$PROJ" hash-object "$f" 2>/dev/null)" || continue
     [ -n "$h" ] && up_shipped "$h" && continue
@@ -398,6 +399,7 @@ for d in $replaced_dirs; do say "  REPLACED  .claude/$d/"; done
 # --- single files upstream owns ---------------------------------------------
 for f in .claude/harness/phases.conf .claude/harness/models.conf \
          .claude/harness/rules.md .claude/harness/VERSION \
+         .claude/harness/docs-shipped.conf \
          .claude/settings.json .claude/state/README.md; do
   [ -f "$UP/$f" ] || continue
   act "mkdir -p \"$PROJ/$(dirname "$f")\" && cp \"$UP/$f\" \"$PROJ/$f\""
@@ -414,6 +416,47 @@ done
 say "  REPLACED  scripts/*.sh  (your own scripts and subdirectories untouched)"
 say ""
 
+# --- docs/ files upstream ships, added only where the project has none -------
+#
+# docs/** is the project's, and stays so: nothing under it is ever overwritten.
+# But the harness ships a template there that its own commands tell an agent to
+# follow (docs/wiki/audits/TEMPLATE.md, named by /audit-mutations and the
+# mutation tester), and a project vendored before that file existed never
+# received it - two re-vendors delivered the command and not the template, and
+# nothing said so. The list is upstream's docs-shipped.conf, read from the
+# release being installed; only its `ship` lines matter here. An upstream with
+# no list predates this block and has nothing to add. A listed path upstream
+# does not hold is skipped silently: the shipped-docs suite reports that, not
+# the refresh. Only paths under docs/ are honoured, so the list cannot be used
+# to write anywhere else.
+ship_missing_docs() {
+  local conf="$UP/.claude/harness/docs-shipped.conf" p printed=0
+  [ -f "$conf" ] || return 0
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    case "$p" in docs/*) ;; *) continue ;; esac
+    case "/$p/" in */../*) continue ;; esac
+    [ -f "$UP/$p" ] || continue
+    if [ -e "$PROJ/$p" ]; then
+      say "  KEPT      $p  (yours; upstream never overwrites docs/)"
+    else
+      act "mkdir -p \"$PROJ/$(dirname "$p")\" && cp \"$UP/$p\" \"$PROJ/$p\""
+      say "  ADDED     $p  (upstream ships it and you had no copy)"
+    fi
+    printed=1
+  done <<< "$(awk -F'|' '
+    { gsub(/\r/, "") }
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    {
+      k = $1; v = $2
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+      if (k == "ship" && v != "") print v
+    }' "$conf")"
+  [ "$printed" = 0 ] || say ""
+}
+ship_missing_docs
+
 # --- what a human still has to do -------------------------------------------
 say "  LEFT for you to merge by hand - do not just copy these:"
 say "    .claude/harness/paths.conf   upstream's rules PLUS your project's globs."
@@ -426,6 +469,8 @@ say "                                 harness repository rather than about you."
 say ""
 say "  LEFT untouched (project-owned): .claude/harness/project.conf, docs/**,"
 say "    .gitignore, .github/workflows/**, and everything outside .claude and scripts."
+say "    Under docs/, the files .claude/harness/docs-shipped.conf lists are ADDED"
+say "    when you have no copy and KEPT when you do - never overwritten."
 say ""
 
 if [ "$DRY" = 1 ]; then
