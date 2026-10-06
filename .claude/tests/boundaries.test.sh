@@ -79,6 +79,26 @@ story_on_branch() {
   commit_all "story T-1"
 }
 
+# HARNESS-037. The 3g and 3h refusals say WHAT counts as a pasted result,
+# because an agent that pasted its result as prose with inline backticks was
+# told "paste the output" and had no way to learn the rule but to read
+# has_pasted_output. The clause is the story's C-1, byte for byte, and it is the
+# same in both messages. Pinned as WHOLE lines (grep -cxF, fixed string,
+# anchored both ends): the refused helper matches a substring, so a message
+# that dropped a word of the rule - "four spaces" for "exactly four spaces" -
+# would still satisfy every refused needle in this file.
+BLOCK_RULE='a line beginning with three backticks or three tildes (a fence), or a line indented by exactly four spaces - a tab does not count, nor does inline code in backticks, nor anything inside an HTML comment.'
+# want_3g <section>   The whole output line 3g prints for fixture story T-1.
+want_3g() {
+  printf 'FAIL  story T-1: ## %s describes something without showing it. What counts as showing it is the shape, not the words: %s Paste the output as such a block - the failure a reverted mutation produced, or the before/after measurement taken under the gate command. A test corrected while the implementation exists has never been observed to fail, and a description of red is not red.' "$1" "$BLOCK_RULE"
+}
+WANT_3H="FAIL  story T-1: ## Deferred verifications has no result and no waiver. The phase that owned it has passed and nothing says what happened. What counts as a result is the shape, not the words: $BLOCK_RULE Paste the output as such a block - what was mutated and what failed - or write WAIVED with the reason. This is the control that makes a threshold or a round trip mean anything; skipping it silently is the failure it was filed against."
+# whole_line <what> <line>   Reads $out from the run just made: <line> appears
+# in it exactly once, as a whole line. A count, on a here-string, never a pipe.
+whole_line() {
+  assert_eq "$1" 1 "$(grep -cxF -- "$2" <<< "$out")"
+}
+
 # ---------------------------------------------------------------------------
 describe "a return to RED has to show the red"
 
@@ -153,6 +173,67 @@ case "$out" in
   *) _ok "an untouched template block is not a claim" ;;
 esac
 
+# HARNESS-037 AC-1. A reverted mutation, reported in prose - complete, honest,
+# and in the one shape the check cannot see. The refusal has to say what shape
+# it CAN see, or the author learns the rule by reading the predicate.
+story_on_branch <<'EOF'
+## Regressions
+
+The seaFloorM test was corrected to a floor below sea level. Probed by mutating
+the guard to compare against zero: the corrected test failed, one failure out
+of twenty-eight, and the guard was reverted with cmp clean.
+EOF
+run_boundaries
+refused "AC-1: a reverted mutation in prose is refused" "## Regressions describes something without showing it"
+whole_line "AC-1: the 3g refusal for ## Regressions is exactly the line the contract gives, naming what counts" \
+  "$(want_3g Regressions)"
+
+# HARNESS-037 AC-3. The message states a rule; these pin that the rule it states
+# is the rule the check applies, in both directions. Each passes against today's
+# detection - they pin behaviour this story must NOT change - and DV-2 and DV-3
+# in the story are what earn them, at GATES.
+#
+# (a) "three tildes" counts: a ~~~ fence is accepted. DV-3 flips this one.
+story_on_branch <<'EOF'
+## Regressions
+
+Probed by mutating the guard to compare against zero:
+
+~~~
+ x compares seaFloorM against the document's sea level, not against zero
+ Tests  1 failed | 27 passed (28)
+~~~
+
+Reverted.
+EOF
+run_boundaries
+assert_contains "AC-3 (a): a block fenced with three tildes counts as pasted output" \
+  "ok    ## Regressions carries pasted output" "$out"
+
+# (b) "a tab does not count": the only indented line is led by a TAB, written
+# with printf so no editor can quietly turn it into spaces. DV-2 flips it.
+printf '## Regressions\n\nProbed by mutating the guard to compare against zero; the run printed:\n\n\tTests  1 failed | 27 passed (28)\n\nReverted.\n' | story_on_branch
+run_boundaries
+refused "AC-3 (b): a result indented by a tab is refused" "## Regressions describes something without showing it"
+whole_line "AC-3 (b): and the refusal is AC-1's whole line" "$(want_3g Regressions)"
+
+# (c) "nor anything inside an HTML comment": the only fence lies inside a
+# comment, and prose follows. DV-2 flips it.
+story_on_branch <<'EOF'
+## Regressions
+
+<!-- the shape to use:
+```
+ x the test name
+```
+-->
+Probed by mutating the guard to compare against zero, and the test failed.
+Reverted.
+EOF
+run_boundaries
+refused "AC-3 (c): a fence inside an HTML comment, then prose, is refused" "## Regressions describes something without showing it"
+whole_line "AC-3 (c): and the refusal is AC-1's whole line" "$(want_3g Regressions)"
+
 # ---------------------------------------------------------------------------
 describe "the story comes from GITHUB_HEAD_REF where CI sets it"
 
@@ -200,6 +281,10 @@ Broke the import boundary and the lint gate failed, as expected. Reverted.
 EOF
 run_boundaries
 refused "a gate probe described but not shown" "## Gate probes describes something without showing it"
+# HARNESS-037 AC-1, second case: the probe above is a reverted mutation told in
+# prose, and the same refusal names the same rule for this section.
+whole_line "AC-1: the 3g refusal for ## Gate probes is exactly the line the contract gives, naming what counts" \
+  "$(want_3g 'Gate probes')"
 
 # ---------------------------------------------------------------------------
 describe "acceptance criteria are frozen"
@@ -626,6 +711,33 @@ case "$out" in
   *"Deferred verifications"*) _bad "silent when the section is absent" "said something about it: $out" ;;
   *) _ok "silent when the section is absent" ;;
 esac
+
+# HARNESS-037 AC-2. The issue #97 shape: owned, run, reported - in prose, with
+# the restore lines in inline backticks. The check is right to refuse it (the
+# audit's decision 6 D); the message has to say why, in the same words as 3g.
+story_on_branch <<'EOF'
+## Deferred verifications
+
+1. Drop a field from the encoder; AC-1's property must fail. Owner: GATES.
+   Ran it at GATES; `mutate.sh` reported the failure and `cmp` confirmed the
+   restore.
+EOF
+run_boundaries
+refused "AC-2: a result reported in prose with inline backticks is refused" "## Deferred verifications has no result and no waiver"
+whole_line "AC-2: the 3h refusal is exactly the line the contract gives, naming what counts" "$WANT_3H"
+
+# HARNESS-037 AC-3 (d): "nor inline code" - the output itself quoted in inline
+# backticks within a sentence, owned, no waiver. DV-2 flips it.
+story_on_branch <<'EOF'
+## Deferred verifications
+
+1. Drop a field from the encoder; AC-1's property must fail. Owner: GATES.
+   The run printed `x round-trips an arbitrary world document` and then
+   `Tests  1 failed | 44 passed (45)`, and the encoder was put back.
+EOF
+run_boundaries
+refused "AC-3 (d): output quoted in inline backticks within prose is refused" "## Deferred verifications has no result and no waiver"
+whole_line "AC-3 (d): and the refusal is AC-2's whole line" "$WANT_3H"
 
 # ---------------------------------------------------------------------------
 describe "a harness change bumps the stamp"

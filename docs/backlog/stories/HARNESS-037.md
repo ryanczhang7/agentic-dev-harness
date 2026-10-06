@@ -4,8 +4,8 @@ title: check-boundaries 3g/3h refusals name the block rule a result must take
 slug: boundaries-refusals-name-the-block-rule
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-037-boundaries-refusals-name-the-block-rule
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/harness/rules.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/sigpipe.test.sh, .claude/harness/VERSION, docs/wiki/audits/manga-translator-port-2026-10-02.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -432,6 +432,7 @@ name, below the table.
 
 - PLANNED, `lead-po`, resolved to Fable 5.1 (`claude-fable-5-1`), as planned;
   dispatched by the orchestrator with no model override stated.
+- RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran new-story (34/9) and boundaries (107/6), matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
 
 ## Out of scope
 
@@ -463,6 +464,43 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Level: integration throughout - the real `scripts/check-boundaries.sh` in the
+suite's two-branch fixture (`story_on_branch` + `run_boundaries`), and the real
+`scripts/new-story.sh` run into a temp root. Nothing here has a unit below it.
+
+`.claude/tests/boundaries.test.sh` (12 new assertions; helpers `BLOCK_RULE`,
+`want_3g <section>`, `WANT_3H`, `whole_line <what> <line>` defined after
+`story_on_branch`):
+
+| Assertion | AC | Now |
+|---|---|---|
+| `AC-1: a reverted mutation in prose is refused` (new Regressions fixture; `refused`, substring + rc) | AC-1 | pass (leading clause kept) |
+| `AC-1: the 3g refusal for ## Regressions is exactly the line the contract gives, naming what counts` (`grep -cxF` = 1) | AC-1 | **FAIL** |
+| `AC-1: the 3g refusal for ## Gate probes is exactly ...` (on the existing prose probe at "the same rule covers gate probes") | AC-1 | **FAIL** |
+| `AC-2: a result reported in prose with inline backticks is refused` (issue #97 shape, `Owner: GATES`) | AC-2 | pass |
+| `AC-2: the 3h refusal is exactly the line the contract gives, naming what counts` | AC-2 | **FAIL** |
+| `AC-3 (a): a block fenced with three tildes counts as pasted output` (`ok    ## Regressions carries pasted output`) | AC-3 | pass on arrival - earned by DV-3 |
+| `AC-3 (b): a result indented by a tab is refused` (tab written with `printf '\t'`) | AC-3 | pass on arrival - earned by DV-2 |
+| `AC-3 (b): and the refusal is AC-1's whole line` | AC-3 | **FAIL** |
+| `AC-3 (c): a fence inside an HTML comment, then prose, is refused` | AC-3 | pass on arrival - earned by DV-2 |
+| `AC-3 (c): and the refusal is AC-1's whole line` | AC-3 | **FAIL** |
+| `AC-3 (d): output quoted in inline backticks within prose is refused` | AC-3 | pass on arrival - earned by DV-2 |
+| `AC-3 (d): and the refusal is AC-2's whole line` | AC-3 | **FAIL** |
+
+AC-3's three shipped cases (``` fence accepted, four-space measurement accepted,
+bare prose refused) and AC-1/AC-2's unchanged `ok` lines are the existing
+assertions `shown in a fence`, `shown as an indented measurement`, `described but
+not shown`, `a gate probe described but not shown`, `run, with the failure
+shown`, `waived in writing` - untouched, all green.
+
+`.claude/tests/new-story.test.sh` (9 new, one fixed loop over `Regressions`,
+`Gate probes`, `Deferred verifications`, in a new `describe` after the
+HARNESS-015 block): each section's own text, extracted with the `:123` awk
+shape (`index($0, "## <sec>") == 1` to `^## `), whitespace runs collapsed to one
+space, must contain `three backticks`, `exactly four spaces` and `inline code`
+(`## <sec> carries the rule sentence: "<needle>"`). AC-4. All 9 **FAIL** now.
+The existing span / stderr / `THREE` assertions are untouched and green.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -482,6 +520,115 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED by `test-developer`, 2026-10-06, on Opus 5.5 (`claude-opus-5-5`), no
+override stated in the dispatch. Nothing committed by RED.
+
+**Commands** (sequential; selftest takes a run lock):
+
+    bash scripts/selftest.sh boundaries     # ~5 min
+    bash scripts/selftest.sh new-story
+    bash scripts/selftest.sh selftest       # floors table
+
+**Failure output, verbatim** (`check-boundaries.sh`, `new-story.sh` unchanged):
+
+    === boundaries ===
+
+      a return to RED has to show the red
+        FAIL AC-1: the 3g refusal for ## Regressions is exactly the line the contract gives, naming what counts
+             expected: 1
+             actual:   0
+        FAIL AC-3 (b): and the refusal is AC-1's whole line
+             expected: 1
+             actual:   0
+        FAIL AC-3 (c): and the refusal is AC-1's whole line
+             expected: 1
+             actual:   0
+      the same rule covers gate probes
+        FAIL AC-1: the 3g refusal for ## Gate probes is exactly the line the contract gives, naming what counts
+             expected: 1
+             actual:   0
+      a deferred verification is discharged or waived, never just filed
+        FAIL AC-2: the 3h refusal is exactly the line the contract gives, naming what counts
+             expected: 1
+             actual:   0
+        FAIL AC-3 (d): and the refusal is AC-2's whole line
+             expected: 1
+             actual:   0
+    boundaries: 107 passed, 6 failed
+
+    new-story: 34 passed, 9 failed
+      (each of the 9: "FAIL ## <sec> carries the rule sentence: \"<needle>\"",
+       expected to contain three backticks / exactly four spaces / inline code,
+       actual = that section's current comment, which says none of them)
+
+    selftest: 268 passed, 0 failed
+
+**Why this is the right failure.** In every refused fixture the `refused`
+assertion beside the pin PASSES - the old message is printed, exit non-zero -
+so the pins fail on the one thing they measure: today's line lacks C-1's rule
+clause, so the anchored fixed-string count is 0, not an error. No suite fails to
+load; the other 101 boundaries and 34 new-story assertions are green.
+
+**Counts.** boundaries 101 floor (101 executed) -> **113** executed (107 + 6);
+new-story 29 floor (34 executed) -> **43** executed (34 + 9). Floors raised in
+`floors.conf` (with a dated comment) and `selftest.test.sh` `COUNTS` together.
+Selftest's floor check reads the PASSED count, so in RED both suites also report
+below floor (107 < 113, 34 < 43), as HARNESS-033's RED did. **Expected after
+GREEN: `boundaries: 113 passed, 0 failed`, `new-story: 43 passed, 0 failed`,
+`selftest: 268 passed, 0 failed`.**
+
+**What the tests pin, as fact** (no code module; the "export shape" is text):
+
+- `check-boundaries.sh` 3g prints, for fixture story `T-1`, exactly the line
+  `FAIL  story T-1: ## <sec> describes something ... a description of red is not red.`
+  with C-1's 3g text and `<sec>` = `Regressions` / `Gate probes`; 3h prints
+  exactly C-1's 3h line. The test needles were checked byte-equal to story
+  lines 220 and 229 (with `$sid`/`$sec` substituted) by evaluating the test's
+  own `BLOCK_RULE`/`want_3g`/`WANT_3H` against `sed -n 220p/229p` of this file:
+  `3g Regressions MATCH`, `3g Gate probes MATCH`, `3h MATCH`. Each line must
+  appear exactly once in the output (count = 1).
+- The leading clauses stay, since eight `refused` needles depend on them (three shipped, five new).
+- `ok    ## Regressions carries pasted output` unchanged.
+- `new-story.sh`: each of the three section comments contains the three
+  needles after whitespace collapse. **Not constrained:** where in the comment
+  the sentence goes, how it wraps (a needle may straddle a line break - the
+  whitespace collapse makes that safe), or C-3's exact wording beyond the three
+  needles. Do not add backticks (the span check would still pass, but C-3 says
+  none).
+- **Not constrained by any test here:** `rules.md`, `sections.md` (C-3 asks for
+  them; nothing asserts them), the header comment at `:82-85`, VERSION (the
+  bump is enforced by check-boundaries on the PR, not by these suites).
+
+**Passed on arrival** (they pin unchanged detection, C-2): the five `refused`
+assertions (AC-1 Regressions, AC-2, AC-3 (b), (c), (d)) and AC-3 (a). Earned by
+DV-2 ((b), (c), (d), and with them the refusal halves) and DV-3 ((a)) at GATES;
+RED did not run either (the Contract assigns both to GATES so one run earns them
+against the shipped tree). DV-1 cannot run in RED: the lines it mutates do not
+exist yet.
+
+**Expected value of each control** (no threshold - mechanical; these are
+claims until GATES runs the DVs against the shipped script):
+
+| Control | Today (measured, RED) | After GREEN | Under DV-1 | Under DV-2 | Under DV-3 |
+|---|---|---|---|---|---|
+| (a) `~~~` accepted | pass | pass | pass | pass | **fail** |
+| (b) tab refused + pin | refused pass, pin 0 | both pass | pin **fail** | refused **fail**, pin **fail** | pass |
+| (c) comment fence refused + pin | refused pass, pin 0 | both pass | pin **fail** | refused **fail**, pin **fail** | pass |
+| (d) inline code refused + pin | refused pass, pin 0 | both pass | pin **fail** | refused **fail**, pin **fail** | pass |
+| AC-1/AC-2 pins | 0 | 1 | **0** (all three) | 0 for the fixtures DV-2 accepts | 1 |
+
+**Discovered.** `refused` tests at `:96`, `:202`, `:583` keep matching only if
+the leading clauses stay byte-identical. The sigpipe `:608` pin: the new lines
+are each still one physical line, so if GREEN changes only `:489`/`:526` in
+place, `:608` does not move; a header sentence at `:82-85` WOULD move it.
+`check-sigpipe.sh` and `check-grep-count.sh` are clean over the new test code
+(47 files, 0 findings each). `gates.sh --fast` exits 0 with every code gate
+UNCONFIGURED (this repo's gate is the self-test).
+
+**Files touched:** `.claude/tests/boundaries.test.sh`,
+`.claude/tests/new-story.test.sh`, `.claude/tests/floors.conf`,
+`.claude/tests/selftest.test.sh`, this story (`## Test plan`, this handoff).
 
 ## Regressions
 
