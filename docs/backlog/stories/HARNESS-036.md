@@ -1236,3 +1236,11 @@ full self-test with `SELFTEST_JOBS=4`: exit 0 in 418 s, `24 harness suite(s)
 passed.` (2,793 assertions executed, 2,488 declared). Renaming the PR branch on
 GitHub closed #115 (`head_ref_deleted`) instead of retargeting it, so the
 review continues in a new PR from this branch.
+
+**Criteria freeze across the move.** `check-boundaries.sh` 3d now baselines
+this story at the move commit (609dd00, "the first commit that left PLANNED"),
+because it walks the history of the story's *current* path and the file had a
+different name at PLANNED. So the move reset the freeze. Checked by hand
+instead: `## Acceptance criteria` here is byte-identical to the PLANNED commit's
+`HARNESS-035.md` (f42b1bb). A rename resetting the 3d baseline is a gap in
+HARNESS-033's rule. It is not fixed here.
