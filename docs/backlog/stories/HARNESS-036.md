@@ -1035,9 +1035,9 @@ substitute for either entry.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-06T00:04:21Z
-    commit: e6d2345 (working tree had uncommitted changes)
-    tree:   cebe14325f13924dd98ebd41c95ab9ede1bcf6ae
+    run:    2026-10-06T14:58:46Z
+    commit: 54f469e
+    tree:   7f45a272d7d659beeec3dab775757abd8bf57efe
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1228,3 +1228,11 @@ behaviour changed. Commit hashes quoted above (the PLANNED baseline `f42b1bb`
 and the rest) are this story's own history, unchanged by the move. Main was
 then merged in (releases 78 and 79), and the gates and a full self-test were
 re-run on the merged tree.
+
+**After the merge of `main` (2026-10-06), orchestrator.** Merge 54f469e brought
+in #113 (release 78) and #114 (release 79) with no conflict once the story file
+had moved. `bash scripts/gates.sh` re-run and recorded against the merged tree;
+full self-test with `SELFTEST_JOBS=4`: exit 0 in 418 s, `24 harness suite(s)
+passed.` (2,793 assertions executed, 2,488 declared). Renaming the PR branch on
+GitHub closed #115 (`head_ref_deleted`) instead of retargeting it, so the
+review continues in a new PR from this branch.
