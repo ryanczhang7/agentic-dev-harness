@@ -4,8 +4,8 @@ title: The refresh adds missing harness-shipped docs files and never overwrites 
 slug: the-refresh-adds-missing-harness-shipped
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-040-the-refresh-adds-missing-harness-shipped
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/harness/docs-shipped.conf, .claude/tests/refresh.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -289,7 +289,13 @@ caller list.
         Under docs/, the files .claude/harness/docs-shipped.conf lists are ADDED
         when you have no copy and KEPT when you do - never overwritten.
 
-  RED asserts the third line whole (`exact_count`, count 1, AC-6). `README.md:479`,
+  RED asserts the third line whole (`exact_count`, count 1, AC-6). **RED
+  amendment:** RED asserts lines one, three AND four whole, each count 1
+  (`whole_line_count`, the same `grep -cxF`): AC-6 requires the summary to say
+  "never overwritten", and that phrase is on line four, so line three alone
+  could pass with the half AC-6 names dropped; line one is unchanged text,
+  asserted so the rewrite cannot drop `docs/**`. Indentation is the existing
+  summary's: line one two spaces, lines two to four four spaces. `README.md:479`,
   the row `` | `.claude/hooks/`, `.claude/tests/` | `docs/**` — wiki, backlog, stories, audits | ``,
   gains after `audits`: `; files `docs-shipped.conf` lists are added when
   missing, never overwritten`. `README.md` is `docs`, writable in GREEN; no
@@ -336,7 +342,14 @@ caller list.
   (audit-mutations.md:32, mutation-tester.md:37), the five
   `docs/wiki/design/*.md` (design-system/SKILL.md:16-20, plus tokens.md again
   at reference/tokens.md:29), and `docs/backlog/epics/EPIC-03.md`
-  (story-authoring/reference/epics.md:13). No non-`.md` file exists under
+  (story-authoring/reference/epics.md:13). **RED amendment (measured at
+  `22958c3`, same pipeline):** the enumeration above is exact, but its totals
+  are not - it sums to **26 tokens**, **24 distinct (file, path) pairs** (the
+  `godot.md x2` and `bootstrap-story.md x2` collapse) and **11 distinct
+  paths**, not 14. RED defines a literal reference as a distinct (file, path)
+  pair - so a file naming an uncovered path twice prints one problem line, not
+  two - which makes AC-5(a)'s "the 24" true as written; the C-5 floor stays
+  24, counted in pairs. No non-`.md` file exists under
   `.claude/skills`. `README.md` and `CLAUDE.md` are not scanned: they describe
   the harness rather than instruct an agent.
 - **C-7 Oracle partition.** Every criterion is **mechanical**: pin exactly.
@@ -361,6 +374,20 @@ caller list.
   block (`describe` at `:754`). In `shipped-docs.test.sh`: a fixture tree with
   one command, one agent, one skill file, and a conf - compliant by
   construction - then one regression per assertion, each in a fresh copy.
+  **RED amendment:** the fixture's `ship` file is
+  `docs/wiki/templates/audit.md`, not `docs/wiki/audits/TEMPLATE.md`. AC-5(d)
+  adds a `written` directory entry covering the regressed path's directory
+  (`docs/wiki/audits/`); with the fixture's ship file inside that directory,
+  R3 (ship under written) fires and (d) cannot print nothing. AC-5 does not fix
+  the fixture's ship path, so it moves rather than R3 being weakened. The same
+  interaction holds for the real conf: a future `written | docs/wiki/audits/`
+  would contradict the TEMPLATE `ship` line, and R3 says so. **Also:** the
+  AC-6 lines are asserted on the identical-copies control as written here, which
+  is a real run against the fixture `$UP` (`bash scripts/refresh-harness.sh
+  "$UP"` from the project), not `--dry-run .` against this repository: the
+  summary paragraph prints in both modes, and running against `.` would write a
+  self-copy into this checkout's `.claude/state/` and make the REPLACED line
+  depend on GREEN's real conf rather than on the fixture's.
 - **C-9 Counts (RED).** `refresh` is floored at 122 (`floors.conf:55`) and
   recorded at 122 in `selftest.test.sh` COUNTS (`:546`); measured at PLANNED,
   `bash scripts/selftest.sh refresh` executes **132** (`132 assertions
@@ -524,6 +551,7 @@ name, below the table.
 
 - PLANNED: `lead-po` dispatched as `/plan-story`, resolved to Fable 5.1
   (`claude-fable-5-1`), as planned; no override visible to the agent.
+- RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran refresh (156/9) and shipped-docs (13/1), matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
 - Oracle partition for the RED brief: every criterion is mechanical (C-7);
   nothing is settled-by-measurement, nothing is oracle-free. Brief RED to pin
   C-3's two report lines and C-4's summary line byte for byte with whole-line
@@ -589,6 +617,74 @@ this story draws and does not cross:
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Two suites, both integration-level shell tests (bash, git, awk, coreutils; no
+test-only dependency, C-11). Every criterion is mechanical (C-7): whole-line
+counts, `cmp`, `[ -e ]`, `cksum` fingerprints, problem-line equality. No
+metric was invented.
+
+**`.claude/tests/refresh.test.sh`** - drives the real `scripts/refresh-harness.sh`
+from a fixture project against a fixture upstream repository. The upstream
+fixture (`:26-53`) gains `docs/wiki/audits/TEMPLATE.md`,
+`docs/wiki/product-brief.md`, `docs/wiki/README.md` and its own
+`.claude/harness/docs-shipped.conf` (`ship | docs/wiki/audits/TEMPLATE.md`,
+`written | docs/wiki/product-brief.md`), committed in the first upstream commit.
+New block "HARNESS-040 AC-1..AC-4" after "it reports before it acts"; AC-6 on
+the identical-copies control in "the procedure belongs to the release being
+installed"; the existing dry-run fingerprint now includes `$PROJ/docs`.
+
+| Assertion | AC | RED |
+|---|---|---|
+| fixture: project has docs/wiki/ and no audit template | AC-1 precondition | green |
+| AC-1: the refresh exits 0 | AC-1 | green |
+| AC-1: the missing template is added, byte-identical to upstream's (`cmp`) | AC-1 | **red** |
+| AC-1: the ADDED line is printed exactly once (whole line, C-3) | AC-1 | **red** |
+| AC-1 control: no KEPT line for a file the project did not have | AC-1 | green |
+| AC-3: product-brief.md (upstream holds, declared written) NOT created | AC-3 | green |
+| AC-3: docs/wiki/README.md (upstream holds, unlisted) NOT created | AC-3 | green |
+| AC-3: no ADDED/KEPT line names product-brief.md | AC-3 | green |
+| AC-3: no ADDED/KEPT line names docs/wiki/README.md | AC-3 | green |
+| AC-3: docs/wiki/stack.md untouched | AC-3 | green |
+| AC-2: exits 0 / edited template byte-identical after (`cmp` vs copy taken before) | AC-2 | green / green |
+| AC-2: KEPT line exactly once | AC-2 | **red** |
+| AC-2: no ADDED line names it | AC-2 | green |
+| AC-2 identical: exits 0 / still upstream's bytes | AC-2 | green / green |
+| AC-2 identical: KEPT exactly once | AC-2 | **red** |
+| AC-2 identical: never ADDED | AC-2 | green |
+| fixture: the no-conf upstream holds the template and no conf | AC-3 precondition | green |
+| AC-3 no conf: exits 0 / no ADDED or KEPT line names `docs/` / docs fingerprint unchanged | AC-3 | green x3 |
+| AC-4: dry run exits 0 | AC-4 | green |
+| AC-4: dry run prints the ADDED line exactly once | AC-4 | **red** |
+| AC-4: `Dry run: nothing was written.` exactly once | AC-4 | green |
+| AC-4: template still does not exist / docs fingerprint unchanged | AC-4 | green / green |
+| AC-4 with a copy: KEPT exactly once | AC-4 | **red** |
+| AC-4 with a copy: no ADDED line names it | AC-4 | green |
+| AC-6: summary line one (`docs/**` project-owned) whole | AC-6 | green |
+| AC-6: summary line three (`Under docs/, the files ... lists are ADDED`) whole | AC-6 | **red** |
+| AC-6: summary line four (`when you have no copy and KEPT when you do - never overwritten.`) whole | AC-6 | **red** |
+| AC-6: `  REPLACED  .claude/harness/docs-shipped.conf` exactly once | AC-6 | **red** |
+
+**`.claude/tests/shipped-docs.test.sh`** (new) - `shipped_docs_problems <root>`
+lives in the suite itself (C-5), with `scanned_files`, `literal_refs` and
+`conf_entries`, run over `$REPO_ROOT` and over fresh copies of a fixture
+compliant by construction.
+
+| Assertion | AC | RED |
+|---|---|---|
+| the rule extracts >= 24 literal references (distinct file/path pairs) from this tree | AC-5(a) needle liveness | green (24) |
+| `shipped_docs_problems "$REPO_ROOT"` prints nothing | AC-5(a) | **red** - conf missing |
+| the compliant fixture is silent | AC-5(b) control | green |
+| its extraction is exactly the 4 literal refs, once per file, patterns skipped | C-6 | green |
+| a command naming `docs/wiki/audits/CHECKLIST.md` -> exactly one line naming file and path | AC-5(b) | green |
+| naming it twice in one file is still one line | C-6 (dedupe) | green |
+| an agent file is scanned | AC-5 scope | green |
+| a skill reference file two levels down is scanned | AC-5 scope | green |
+| README.md and CLAUDE.md are not scanned | Out of scope | green |
+| a deleted ship file -> one line naming the conf and the path | AC-5(c) | green |
+| a ship path under a written directory -> one line (R3) | C-5 R3 | green |
+| an unknown kind -> one line naming its line number (R4) | C-5 R4 | green |
+| no conf -> one line, `file is missing` | C-5 | green |
+| regressed command plus `written | docs/wiki/audits/` -> nothing (the limit) | AC-5(d) | green |
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -608,6 +704,216 @@ this story draws and does not cross:
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED by `test-developer` on Opus 5.5 (`claude-opus-5-5`), as planned; no
+override visible to the agent. Nothing committed; `shipped-docs.test.sh` is
+untracked until the orchestrator stages it.
+
+**Commands** (run them one at a time - the refresh suite is slow):
+
+    bash scripts/selftest.sh refresh
+    bash scripts/selftest.sh shipped-docs
+    bash scripts/selftest.sh selftest
+
+**Files touched:** `.claude/tests/refresh.test.sh`, `.claude/tests/shipped-docs.test.sh`
+(new), `.claude/tests/floors.conf` (refresh 122 -> 165, `shipped-docs | 14`,
+the before/after paragraph at the foot), `.claude/tests/selftest.test.sh`
+(COUNTS: `refresh 165`, new `shipped-docs 14`), and this story (`## Contract`
+amendments in C-4, C-6 and C-8, `## Test plan`, this section). Not touched:
+`scripts/refresh-harness.sh`, `.claude/harness/docs-shipped.conf`, `README.md`.
+
+**Counts.** refresh: 132 executed before (122 floor) -> **165** executed now
+(156 passed, 9 failed); expected after GREEN `refresh: 165 passed, 0 failed`.
+shipped-docs: new, **14** executed (13 passed, 1 failed); expected after GREEN
+`shipped-docs: 14 passed, 0 failed`. selftest: 268 passed, 0 failed (COUNTS
+row edits are green). Until GREEN, `refresh` sits below its floor (156 < 165
+passed) and `shipped-docs` below its floor (13 < 14) - recorded in RED by
+precedent, not a defect.
+
+**Verbatim failure output, refresh** (local, 2026-10-06, 4 min 40 s wall on
+this machine under default `SELFTEST_JOBS` - slower than PLANNED's 80 s; local
+timing only, no CI number taken):
+
+    HARNESS-040 AC-1  a docs file upstream ships and the project lacks is ADDED
+      FAIL AC-1: the project's missing audit template is added, byte-identical to upstream's
+           docs/wiki/audits/TEMPLATE.md was not created
+      FAIL AC-1: the ADDED line for it is printed exactly once
+           expected: 1
+           actual:   0
+
+    HARNESS-040 AC-2  a copy the project already has is KEPT, never overwritten
+      FAIL AC-2: the KEPT line for it is printed exactly once
+           expected: 1
+           actual:   0
+      FAIL AC-2 identical: an identical copy is reported KEPT, once
+           expected: 1
+           actual:   0
+
+    HARNESS-040 AC-3  an upstream that ships no docs-shipped.conf adds nothing
+
+    HARNESS-040 AC-4  a dry run reports the ADDED line and writes nothing
+      FAIL AC-4: the dry run prints the ADDED line exactly once
+           expected: 1
+           actual:   0
+      FAIL AC-4 with a copy: the dry run prints the KEPT line exactly once
+           expected: 1
+           actual:   0
+    ...
+    the procedure belongs to the release being installed
+      FAIL AC-6: the summary says the files docs-shipped.conf lists are ADDED
+           expected: 1
+           actual:   0
+      FAIL AC-6: when missing, KEPT when present, and never overwritten
+           expected: 1
+           actual:   0
+      FAIL AC-6: docs-shipped.conf is REPLACED as an upstream-owned file, once
+           expected: 1
+           actual:   0
+
+    refresh: 156 passed, 9 failed
+
+Right failure: every red line is a new-behaviour assertion against the
+unchanged script - no file created, count 0 where C-3/C-4 pin a line - and no
+existing assertion went red from the fixture additions.
+
+**Verbatim failure output, shipped-docs** (local, 31 s wall):
+
+    the real tree (AC-5(a))
+      FAIL shipped_docs_problems over the real tree prints nothing: every docs/ path a command, agent or skill names is shipped or declared written
+           expected:
+           actual:   .claude/harness/docs-shipped.conf: file is missing
+
+    shipped-docs: 13 passed, 1 failed
+
+Right failure: the conf is GREEN's (C-1), and its absence is the one thing
+this assertion reports. Measured outside the tree to show it is the ONLY
+thing: a scratch root holding copies of this tree's `.claude/commands`,
+`agents`, `skills`, the real `docs/wiki/audits/TEMPLATE.md`, this suite and
+`_lib.sh`, plus C-1's twelve lines verbatim as the conf, ran
+`shipped-docs: 14 passed, 0 failed`. So C-1 as written is sufficient; GREEN
+needs no extra `written` line.
+
+**What the tests pin (the interface, stated as fact):**
+
+- `scripts/refresh-harness.sh` output lines, byte for byte, whole-line:
+  `  ADDED     docs/wiki/audits/TEMPLATE.md  (upstream ships it and you had no copy)`,
+  `  KEPT      docs/wiki/audits/TEMPLATE.md  (yours; upstream never overwrites docs/)`,
+  `  REPLACED  .claude/harness/docs-shipped.conf`,
+  `  LEFT untouched (project-owned): .claude/harness/project.conf, docs/**,` (unchanged),
+  `    Under docs/, the files .claude/harness/docs-shipped.conf lists are ADDED`,
+  `    when you have no copy and KEPT when you do - never overwritten.`
+  (four leading spaces on the last two), and the existing
+  `Dry run: nothing was written.`.
+- The ship file is read from `$UP/.claude/harness/docs-shipped.conf`, the
+  fixture's own (`# comment`, `ship    | docs/wiki/audits/TEMPLATE.md`,
+  `written | docs/wiki/product-brief.md`). The parser must trim around `|`.
+- Behaviour: missing -> created with upstream's bytes; present (edited or
+  identical) -> untouched, KEPT; `written` or unlisted upstream docs -> never
+  created and never reported; no conf upstream -> no docs/ line, nothing under
+  docs/ changes; `--dry-run` -> lines printed, nothing written.
+- `shipped-docs.test.sh` reads the real conf at `.claude/harness/docs-shipped.conf`
+  with C-1's grammar; `#` comments and blank lines allowed; kinds exactly
+  `ship` and `written`; directory entries end in `/`.
+
+**Not constrained** (GREEN's choice): the function name and placement (C-2's
+`ship_missing_docs` on its own line and the `[ -e "$PROJ/$p" ]` spelling are
+required by DV-1/DV-2's `sed` expressions, not by any assertion); the header
+comment wording of `docs-shipped.conf` and of the script; where the blank
+`say ""` goes; the README row; ordering of the docs block relative to other
+REPLACED lines (no assertion reads order).
+
+**Problem-line formats the suite owns** (written by RED, in the test - GREEN
+does not produce them): R1 `.claude/harness/docs-shipped.conf: ship path <p> does not exist`;
+R2 `<file>: names <p>, which docs-shipped.conf neither ships nor declares written`;
+R3 `.claude/harness/docs-shipped.conf: ship path <p> lies under written directory <d>`;
+R4 `.claude/harness/docs-shipped.conf: line <n>: unknown kind `<k>` (expected ship or written)`;
+missing conf `.claude/harness/docs-shipped.conf: file is missing` (the function
+returns after it rather than reporting 24 R2 lines for want of a list).
+
+**Passed on arrival, and what earns each.**
+
+- refresh, AC-3 (both halves) and the "no ADDED"/"no KEPT" controls in AC-1,
+  AC-2, AC-4: the current script never touches docs/, so every "never creates /
+  never reports" control is green today, as it will be against a refresh that
+  adds nothing. They are earned by **DV-1** (the destructive half: the guard
+  replaced by `false` turns the AC-2 "no ADDED" and `cmp` controls red) - and
+  are, by design, NOT earned by DV-2. AC-3's never-create controls are earned
+  by no mutation in the budget; the needle was checked outside the framework
+  instead: `report_lines_naming` returns 1 on a synthetic
+  `  ADDED     docs/wiki/product-brief.md  (x)` line and 0 on the current
+  output - see the control table.
+- shipped-docs, every fixture assertion (12) and the extraction floor: the
+  function under test is the suite's own (C-5), so these ran in RED and were
+  watched: compliant silent, each regression one line. The floor's negative
+  control was run on a scratch copy with `.claude/commands`, `agents` and
+  `skills` removed: `FAIL the rule extracts at least 24 literal docs/ references
+  from this tree / extracted 0`. The real-tree verdict's discrimination is
+  **DV-3** (GATES). A scratch-copy preview of DV-3 - the same `sed` on a COPY of
+  `audit-mutations.md`, with C-1's conf - printed exactly
+  `.claude/commands/audit-mutations.md: names docs/wiki/audits/CHECKLIST.md, which docs-shipped.conf neither ships nor declares written`
+  and `shipped-docs: 13 passed, 1 failed`. That is a preview, not DV-3: DV-3
+  runs on the real tree once the real conf exists.
+
+**Negative controls - expected values** (refresh assertions were measured
+against the unchanged script; their post-GREEN values are claims until GREEN
+measures them):
+
+| Control | Threshold | Expected after GREEN | Measured in RED |
+|---|---|---|---|
+| AC-1 KEPT count, project without template | == 0 | 0 | 0 |
+| AC-3 product-brief.md / README.md exist | must not | absent | absent |
+| AC-3 ADDED/KEPT lines naming either | == 0 | 0 | 0 |
+| AC-2 edited copy `cmp` vs before | identical | identical | identical |
+| AC-2 ADDED lines naming template (edited, identical, dry run) | == 0 | 0 | 0 |
+| AC-3 no-conf: ADDED/KEPT lines naming `docs/` | == 0 | 0 | 0 |
+| AC-3 no-conf / AC-4: docs fingerprint | unchanged | unchanged | unchanged |
+| `report_lines_naming` on a synthetic ADDED line for product-brief | 1 | - | 1 (driven directly) |
+| shipped-docs: extraction from this tree | >= 24 | 24 | 24; 0 with the scanned dirs removed |
+| shipped-docs: AC-5(b) regressed fixture | exactly 1 line | 1 | 1 |
+| shipped-docs: AC-5(c) ghost ship | exactly 1 line | 1 | 1 |
+| shipped-docs: AC-5(d) written limit | 0 lines | 0 | 0 |
+
+**DV predictions** (Owner: GATES; RED cannot run DV-1/DV-2 - the guard and the
+call do not exist - nor DV-3/DV-4, which need GREEN's conf and block):
+
+- **DV-1** (guard -> `false`): **7** assertions red in `refresh` -
+  AC-2 edited: `cmp`, KEPT count, no-ADDED (3); AC-2 identical: KEPT count,
+  never-ADDED (2; the `cmp` stays green because upstream's bytes are copied
+  over upstream's bytes); AC-4 with a copy: KEPT count, no-ADDED (2). AC-1,
+  AC-3, AC-4's no-copy half and AC-6 stay green. Note this corrects DV-1's text
+  "AC-4's dry-run assertions stay green": AC-4's **with-a-copy** dry run goes
+  red, because with the guard gone the dry run reports ADDED for a file the
+  project has. Expected `refresh: 158 passed, 7 failed`.
+- **DV-2** (call -> no-op): **6** red - AC-1 `cmp` and ADDED, AC-2 KEPT (edited
+  and identical), AC-4 ADDED and AC-4 with-a-copy KEPT - exactly the six
+  AC-1..AC-4 reds of this RED run; AC-3 and every never-create control stay
+  green; AC-6 stays green (summary and REPLACED are not in the function).
+  Expected `refresh: 159 passed, 6 failed`.
+- **DV-3**: AC-5(a) real-tree verdict red with exactly the line above; every
+  fixture assertion green. Expected `shipped-docs: 13 passed, 1 failed`.
+
+**Discovered, for the implementation:**
+
+- C-6's totals were wrong (26 tokens, 24 distinct file/path pairs, 11 distinct
+  paths - not "24 references, 14 paths"); amended in place. The rule counts
+  pairs, so AC-5(a)'s "the 24" stands.
+- AC-5(d) and R3 interact: any `written` directory covering
+  `docs/wiki/audits/` contradicts the TEMPLATE `ship` line. The fixture's ship
+  file moved to `docs/wiki/templates/audit.md` (C-8 amendment); the real conf
+  must not add `written | docs/wiki/audits/`.
+- `## Context` names "the `selftest` gate (`.claude/harness/project.conf`)",
+  but this tree's `project.conf` has no `selftest` gate - `gates.sh --fast`
+  lists format, lint, typecheck, unit, coverage (all UNCONFIGURED,
+  `BOOTSTRAPPED=no`). What judges these suites is CI's `bash scripts/selftest.sh`
+  step. No test depends on it; flagged for the record.
+- `gates.sh --fast`: "All required gates passed (0 ran, 5 unconfigured)", plus
+  `UNTRACKED .claude/tests/shipped-docs.test.sh` - stage it with the RED commit.
+  `check-sigpipe.sh`: 48 files, 0 findings. `check-grep-count.sh`: 48 files,
+  0 findings.
+- `refresh` took 4 min 40 s here against PLANNED's 80 s; the 33 new assertions
+  add seven refresh runs (about 7 x 1-2 s on a quiet machine), so most of the
+  difference looks like machine load, cause not established. The suite has no
+  per-assertion timeout to budget.
 
 ## Regressions
 
@@ -663,3 +969,12 @@ this story draws and does not cross:
   a scratch copy instead.
 - The `touches:` list and the Contract's `**Writes:**` line are the same seven
   paths; `bash scripts/plan.sh conflicts` should print no DRIFT for this story.
+
+**Orchestrator note after RED (2026-10-06).** Two corrections RED raised, not
+amendments to any criterion: (1) `## Context` names a `selftest` gate in
+`project.conf`; this tree has none. The suites are judged by CI's
+`bash scripts/selftest.sh` step. (2) DV-1's text says AC-4's dry-run
+assertions stay green; with the guard replaced by `false`, AC-4's with-a-copy
+dry run goes red too. RED predicts DV-1 `158 passed, 7 failed`, DV-2
+`159 passed, 6 failed`, DV-3 `13 passed, 1 failed`; GATES compares against
+those.

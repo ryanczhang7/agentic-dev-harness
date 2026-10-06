@@ -41,6 +41,16 @@ printf 'upstream state doc\n'  > "$UP/.claude/state/README.md"
 printf 'upstream paths\n'      > "$UP/.claude/harness/paths.conf"
 printf 'upstream claude md\n'  > "$UP/CLAUDE.md"
 printf 'echo new\n'            > "$UP/scripts/brand-new.sh"
+# HARNESS-040, C-8. Upstream ships one file under docs/ that its own commands
+# name - the audit template - and holds two more it must NOT deliver: a page an
+# agent writes (product-brief.md, declared `written`) and a README nothing lists.
+# The conf is the fixture's own, never the real tree's: the real one is GREEN's.
+mkdir -p "$UP/docs/wiki/audits"
+printf 'upstream audit template\n'     > "$UP/docs/wiki/audits/TEMPLATE.md"
+printf 'upstream brief, NOT shipped\n' > "$UP/docs/wiki/product-brief.md"
+printf 'upstream wiki readme\n'        > "$UP/docs/wiki/README.md"
+printf '# fixture docs-shipped.conf\nship    | docs/wiki/audits/TEMPLATE.md\nwritten | docs/wiki/product-brief.md\n' \
+  > "$UP/.claude/harness/docs-shipped.conf"
 
 # The upstream fixture is a REPOSITORY, not a directory of files, because the
 # question "has upstream ever had this content?" is answered out of its object
@@ -197,10 +207,11 @@ new_project
 # by a DIFFERENT guard (`if [ "$DRY" = 0 ]` around the copy block), so making
 # `act()` eval unconditionally left every assertion green while a dry run
 # overwrote settings.json, state/README.md, three harness files and every
-# scripts/*.sh.
-before="$(find "$PROJ/.claude" "$PROJ/scripts" "$PROJ/CLAUDE.md" -type f -exec cksum {} \; 2>/dev/null | sort)"
+# scripts/*.sh. docs/ joined the list in HARNESS-040 (AC-4), once the refresh
+# could write there.
+before="$(find "$PROJ/.claude" "$PROJ/scripts" "$PROJ/CLAUDE.md" "$PROJ/docs" -type f -exec cksum {} \; 2>/dev/null | sort)"
 out="$(refresh --dry-run "$UP")"; rc=$?
-after="$(find "$PROJ/.claude" "$PROJ/scripts" "$PROJ/CLAUDE.md" -type f -exec cksum {} \; 2>/dev/null | sort)"
+after="$(find "$PROJ/.claude" "$PROJ/scripts" "$PROJ/CLAUDE.md" "$PROJ/docs" -type f -exec cksum {} \; 2>/dev/null | sort)"
 assert_eq "--dry-run succeeds" 0 "$rc"
 assert_eq "and writes nothing at all" "$before" "$after"
 assert_eq "and changes nothing" "OLD agent" "$(cat "$PROJ/.claude/agents/lead-po.md")"
@@ -213,6 +224,177 @@ assert_eq "--dry-run works on a dirty tree" 0 "$rc"
 ( cd "$PROJ" && git checkout -q -- . 2>/dev/null )
 assert_contains "while still naming what it would keep" "tauri-react-webgl.md" "$out"
 assert_contains "and the version it would move to" "2026-09-17" "$out"
+
+# ===========================================================================
+# HARNESS-040: the refresh ADDS a docs/ file upstream's docs-shipped.conf lists
+# as `ship` when the project has none, and never overwrites one it has.
+#
+# Issue #104, Symptom A: `/audit-mutations` and the mutation-tester agent name
+# docs/wiki/audits/TEMPLATE.md, the refresh left all of docs/** alone, and a
+# project vendored before the template existed never received it - two
+# re-vendors, nothing reported. Every needle below is a WHOLE LINE (`grep -cxF`)
+# pinned byte for byte by the story's Contract, C-3, because a floating `ADDED`
+# is satisfied by the KEPT line's neighbour and `KEPT` by the project-floors
+# line. Files are compared with `cmp`, never through `$(cat)`, which strips the
+# trailing bytes that make "byte-identical" mean anything.
+# ===========================================================================
+
+T_DOC="docs/wiki/audits/TEMPLATE.md"
+ADDED_T="  ADDED     $T_DOC  (upstream ships it and you had no copy)"
+KEPT_T="  KEPT      $T_DOC  (yours; upstream never overwrites docs/)"
+
+# whole_line_count <line> <haystack>   Whole-line matches. A here-doc, not a
+# pipe, for check-sigpipe.sh; no `|| printf 0`, for check-grep-count.sh -
+# grep -c prints 0 itself.
+whole_line_count() { grep -cxF -- "$1" <<WHOLE_HAY
+$2
+WHOLE_HAY
+}
+
+# report_lines_naming <needle> <haystack>   How many ADDED or KEPT report lines
+# contain <needle>. The negative controls ask "is this path delivered or
+# claimed in ANY wording", so the needle is the path and the line is restricted
+# to the two report words - a whole-line needle there would pass on a line that
+# names the path in different words.
+report_lines_naming() {
+  awk -v p="$1" '(index($0, "  ADDED ") == 1 || index($0, "  KEPT ") == 1) && index($0, p) { n++ }
+                 END { print n + 0 }' <<REPORT_HAY
+$2
+REPORT_HAY
+}
+
+# added_lines_naming <path> <haystack>   How many ADDED lines contain <path>,
+# whatever their padding or parenthesis: "never ADDED" is about the word.
+added_lines_naming() {
+  awk -v p="$1" 'index($0, "  ADDED ") == 1 && index($0, p) { n++ } END { print n + 0 }' <<ADDED_HAY
+$2
+ADDED_HAY
+}
+
+# docs_fingerprint   Every file under the project's docs/, with its checksum.
+docs_fingerprint() { find "$PROJ/docs" -type f -exec cksum {} \; 2>/dev/null | sort; }
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-040 AC-1  a docs file upstream ships and the project lacks is ADDED"
+
+new_project
+assert_eq "fixture: the project has docs/wiki/ and no audit template" "yes no" \
+  "$([ -d "$PROJ/docs/wiki" ] && echo yes || echo no) $([ -e "$PROJ/$T_DOC" ] && echo yes || echo no)"
+out="$(refresh "$UP")"; rc=$?
+assert_eq "AC-1: the refresh exits 0" 0 "$rc"
+if cmp -s "$UP/$T_DOC" "$PROJ/$T_DOC"; then
+  _ok "AC-1: the project's missing audit template is added, byte-identical to upstream's"
+else
+  _bad "AC-1: the project's missing audit template is added, byte-identical to upstream's" \
+    "$( [ -e "$PROJ/$T_DOC" ] && echo 'it exists but its bytes differ from upstream' || echo "$T_DOC was not created" )"
+fi
+assert_eq "AC-1: the ADDED line for it is printed exactly once" 1 "$(whole_line_count "$ADDED_T" "$out")"
+assert_eq "AC-1 control: and no KEPT line for a file the project did not have" 0 "$(whole_line_count "$KEPT_T" "$out")"
+
+# AC-3, first half, in the same run: upstream HOLDS these two, and its conf
+# does not list either as `ship` (product-brief.md is `written`). Only the list
+# is delivered.
+if [ -e "$PROJ/docs/wiki/product-brief.md" ]; then
+  _bad "AC-3: a page upstream holds but declares written is NOT created" "docs/wiki/product-brief.md was created"
+else
+  _ok "AC-3: a page upstream holds but declares written is NOT created"
+fi
+if [ -e "$PROJ/docs/wiki/README.md" ]; then
+  _bad "AC-3: a docs file upstream holds but does not list is NOT created" "docs/wiki/README.md was created"
+else
+  _ok "AC-3: a docs file upstream holds but does not list is NOT created"
+fi
+assert_eq "AC-3: no ADDED or KEPT line names the written page" 0 \
+  "$(report_lines_naming "docs/wiki/product-brief.md" "$out")"
+assert_eq "AC-3: no ADDED or KEPT line names the unlisted file" 0 \
+  "$(report_lines_naming "docs/wiki/README.md" "$out")"
+assert_eq "AC-3: the project's own docs are untouched" "project notes" "$(cat "$PROJ/docs/wiki/stack.md")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-040 AC-2  a copy the project already has is KEPT, never overwritten"
+
+# Content a sloppy copy would not reproduce: no final newline.
+new_project
+mkdir -p "$PROJ/docs/wiki/audits"
+printf '# our audit template\nedited for this project' > "$PROJ/$T_DOC"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "a project-edited template" >/dev/null 2>&1 )
+cp "$PROJ/$T_DOC" "$WORK/template.before"
+out="$(refresh "$UP")"; rc=$?
+assert_eq "AC-2: the refresh exits 0" 0 "$rc"
+if cmp -s "$WORK/template.before" "$PROJ/$T_DOC"; then
+  _ok "AC-2: an edited project template survives byte-identical"
+else
+  _bad "AC-2: an edited project template survives byte-identical" \
+    "$( cmp -s "$UP/$T_DOC" "$PROJ/$T_DOC" && echo "it was overwritten with upstream's" || echo 'its bytes changed' )"
+fi
+assert_eq "AC-2: the KEPT line for it is printed exactly once" 1 "$(whole_line_count "$KEPT_T" "$out")"
+assert_eq "AC-2: and no ADDED line names it" 0 "$(added_lines_naming "$T_DOC" "$out")"
+
+# The same holds when the project's copy is upstream's own bytes: KEPT, never
+# ADDED - "have a copy" is the test, not "have a different copy".
+new_project
+mkdir -p "$PROJ/docs/wiki/audits"
+cp "$UP/$T_DOC" "$PROJ/$T_DOC"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "upstream's template, already here" >/dev/null 2>&1 )
+out="$(refresh "$UP")"; rc=$?
+assert_eq "AC-2 identical: the refresh exits 0" 0 "$rc"
+if cmp -s "$UP/$T_DOC" "$PROJ/$T_DOC"; then
+  _ok "AC-2 identical: the project's copy is still upstream's bytes"
+else
+  _bad "AC-2 identical: the project's copy is still upstream's bytes" "it changed"
+fi
+assert_eq "AC-2 identical: an identical copy is reported KEPT, once" 1 "$(whole_line_count "$KEPT_T" "$out")"
+assert_eq "AC-2 identical: and never ADDED" 0 "$(added_lines_naming "$T_DOC" "$out")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-040 AC-3  an upstream that ships no docs-shipped.conf adds nothing"
+
+# A COPY of $UP with the conf removed and committed away, as the half-a/half-b
+# trees are built - never a mutation of $UP, which later blocks reuse. It still
+# HOLDS the template, so the only thing missing is the list: a refresh that
+# delivered docs/ files without reading a list would add it here.
+NOCONF="$WORK/upstream-noconf"
+rm -rf "$NOCONF"; cp -r "$UP" "$NOCONF"
+rm -f "$NOCONF/.claude/harness/docs-shipped.conf"
+( cd "$NOCONF" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "an upstream from before the list" >/dev/null 2>&1 )
+assert_eq "fixture: the no-conf upstream still holds the template, and no conf" "yes no" \
+  "$([ -f "$NOCONF/$T_DOC" ] && echo yes || echo no) $([ -e "$NOCONF/.claude/harness/docs-shipped.conf" ] && echo yes || echo no)"
+new_project
+before="$(docs_fingerprint)"
+out="$(refresh "$NOCONF")"; rc=$?
+after="$(docs_fingerprint)"
+assert_eq "AC-3 no conf: the refresh exits 0" 0 "$rc"
+assert_eq "AC-3 no conf: no ADDED or KEPT line names a docs/ path" 0 "$(report_lines_naming "docs/" "$out")"
+assert_eq "AC-3 no conf: nothing under the project's docs/ is created or changed" "$before" "$after"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-040 AC-4  a dry run reports the ADDED line and writes nothing"
+
+new_project
+before="$(docs_fingerprint)"
+out="$(refresh --dry-run "$UP")"; rc=$?
+after="$(docs_fingerprint)"
+assert_eq "AC-4: the dry run exits 0" 0 "$rc"
+assert_eq "AC-4: the dry run prints the ADDED line exactly once" 1 "$(whole_line_count "$ADDED_T" "$out")"
+assert_eq "AC-4: and says it wrote nothing" 1 "$(whole_line_count "Dry run: nothing was written." "$out")"
+if [ -e "$PROJ/$T_DOC" ]; then
+  _bad "AC-4: the template it would add still does not exist" "$T_DOC was created by a dry run"
+else
+  _ok "AC-4: the template it would add still does not exist"
+fi
+assert_eq "AC-4: every file under docs/ is unchanged" "$before" "$after"
+
+new_project
+mkdir -p "$PROJ/docs/wiki/audits"
+printf '# our audit template\nedited for this project' > "$PROJ/$T_DOC"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "a project-edited template" >/dev/null 2>&1 )
+out="$(refresh --dry-run "$UP")"; rc=$?
+assert_eq "AC-4 with a copy: the dry run prints the KEPT line exactly once" 1 "$(whole_line_count "$KEPT_T" "$out")"
+assert_eq "AC-4 with a copy: and no ADDED line names it" 0 "$(added_lines_naming "$T_DOC" "$out")"
 
 # ---------------------------------------------------------------------------
 describe "it names the files of yours it is about to overwrite"
@@ -791,6 +973,20 @@ case "$out" in
   *"upstream ships a different"*) _bad "and hands over to nobody" "it handed over anyway: $out" ;;
   *) _ok "and hands over to nobody" ;;
 esac
+
+# HARNESS-040 AC-6, on the same run: the summary says what happens under docs/
+# (C-4, lines one, three and four whole), and the list itself travels as a
+# single upstream-owned file, so a consumer's shipped-docs suite reads the list
+# its refresh used. Line one is unchanged by the story; it is asserted so that
+# the rewrite cannot drop `docs/**` from the project-owned list.
+assert_eq "AC-6: the summary still names docs/** as project-owned" 1 \
+  "$(whole_line_count "  LEFT untouched (project-owned): .claude/harness/project.conf, docs/**," "$out")"
+assert_eq "AC-6: the summary says the files docs-shipped.conf lists are ADDED" 1 \
+  "$(whole_line_count "    Under docs/, the files .claude/harness/docs-shipped.conf lists are ADDED" "$out")"
+assert_eq "AC-6: when missing, KEPT when present, and never overwritten" 1 \
+  "$(whole_line_count "    when you have no copy and KEPT when you do - never overwritten." "$out")"
+assert_eq "AC-6: docs-shipped.conf is REPLACED as an upstream-owned file, once" 1 \
+  "$(whole_line_count "  REPLACED  .claude/harness/docs-shipped.conf" "$out")"
 
 # The hand-over happens BEFORE the dirty-tree and mid-cycle refusals, so the
 # process that refuses is the one handed TO rather than the one invoked. Same
