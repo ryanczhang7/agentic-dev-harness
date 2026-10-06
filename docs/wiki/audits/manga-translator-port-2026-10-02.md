@@ -32,10 +32,10 @@ closed, because every port changed the code the next one built on.
 | 6 Process | C: run lock | HARNESS-034 | **done**, #111, release 77 |
 | 6 Process | MT-042: opt-in `SELFTEST_JOBS` | HARNESS-036 | **done**, #116, release 80 |
 | 6 Process | D: 3h/3g messages name the fenced-block rule | HARNESS-037 | **done**, #117, release 81 |
-| - | Refresh manga-translator from the release that carries them (82) | manga-translator#71 | open, CI green; HARNESS-038 (release 82) fixed two upstream premises its Windows CI caught |
+| - | Refresh manga-translator from the release that carries them (82) | manga-translator#71 | **done**, merged 2026-10-06; HARNESS-038 (release 82) fixed two upstream premises its Windows CI caught |
 
-**What is left:** refresh manga-translator from release 81 (the user runs it
-between stories), then run its FULL selftest before committing. Lessons the
+**Closed 2026-10-06:** manga-translator was refreshed to release 82 in its #71 (merged),
+with its FULL selftest and its Windows CI green, and issue #97 was closed. Lessons the
 stories relied on are in each story's `## Notes`. The main ones:
 - a Linux-only awk difference passed every local run (HARNESS-025);
 - `mutate.sh` takes one expression;
