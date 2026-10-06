@@ -4,8 +4,8 @@ title: The worktree premises compare the directory, not its spelling
 slug: the-worktree-premises-compare-the-direct
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-038-the-worktree-premises-compare-the-direct
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/phase-guard.test.sh, .claude/tests/worktree.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -304,6 +304,31 @@ RED and GREEN has nothing to build. There is no production change; `lib.sh`'s
   `git worktree add` with a `git init` of that path), against
   `bash .claude/tests/phase-guard.test.sh`. `B shares A's .git` MUST fail.
 
+  **DV-2 result (GATES, 2026-10-06, orchestrator): red as required.** With B created by `git init` instead of `git worktree add`, `B shares A's .git` fails under the new comparison; the AC-1/AC-2 cases that depend on B being a worktree fail with it (first 16 failure lines shown); the file was restored and verified.
+
+  ```
+  === mutate: .claude/tests/phase-guard.test.sh (1 line(s) changed by s|^git -C "\$H035_A" worktree add -q -b story/T-B "\$H035_B" HEAD|git init -q "$H035_B"|) ===
+    1337 - git -C "$H035_A" worktree add -q -b story/T-B "$H035_B" HEAD >/dev/null 2>&1
+    1337 + git init -q "$H035_B" >/dev/null 2>&1
+  === mutate: running bash .claude/tests/phase-guard.test.sh ===
+      FAIL B shares A's .git
+      FAIL AC-1: in B a relative test write is refused
+      FAIL AC-1: by B's story
+      FAIL AC-1: in B's phase
+      FAIL AC-1: Write into B's tests with cwd B is refused by B's story
+      FAIL AC-1: the prompt hook reports B's story
+      FAIL AC-1: and not A's
+      FAIL AC-1: with A IDLE, B's GREEN still refuses a test write
+      FAIL AC-1: a backslash-spelled cwd is read: the prompt hook reports B's story
+      FAIL AC-2: Write <B>/src/main.ts from A is refused, on B's relative path
+      FAIL AC-2: Write names B's story
+      FAIL AC-2: Write names B as the worktree
+      FAIL AC-2: Edit <B>/src/main.ts from A is refused, on B's relative path
+      FAIL AC-2: Edit names B's story
+      FAIL AC-2: Edit names B as the worktree
+      FAIL AC-2: a Bash redirect to <B>/src/main.ts is refused by B
+  ```
+
 - **DV-3 (the downstream proof).** Owner: REVIEW. After release 82, the
   manga-translator refresh PR (#71) re-run on `windows-latest`: phase-guard and
   worktree pass. Recorded in `## Notes` with the run URL.
@@ -343,6 +368,7 @@ name, below the table.
 - PLANNED: written by the orchestrator itself (`claude-opus-5-5`, Opus 5.5) rather than a `lead-po` dispatch, because the diagnosis, the CI evidence and the reproduction were already in hand in that session. No override.
 - RED: `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the diff and re-ran `selftest.sh worktree` (73/73).
 - GREEN: no dispatch. A test-only story; nothing to build. The orchestrator moved the phase through after confirming the RED suites green.
+- GATES: no dispatch. The orchestrator ran DV-2, `gates.sh` and the full selftest.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -503,10 +529,21 @@ was therefore run as one script; anyone re-running it should do the same.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-06T18:50:45Z
+    commit: 3064c43
+    tree:   59b63b0531f70ac110f0d76b6cb2861d06001fa0
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -536,3 +573,11 @@ was therefore run as one script; anyone re-running it should do the same.
 
 ## Notes
 
+
+**GATES (2026-10-06), orchestrator.** DV-2 came out as required (result under
+`## Deferred verifications`). `bash scripts/gates.sh`: all required gates
+passed (0 ran, 7 unconfigured), recorded. GATES -> REVIEW step 1's full
+self-test with `SELFTEST_JOBS=4`: exit 0 in 716 s, `24 harness suite(s)
+passed.` (2,814 assertions executed, 2,514 declared; unchanged, per AC-4).
+DV-3 (manga-translator's `windows-latest` CI after the release-82 refresh) is
+owned by REVIEW and is recorded below once it runs.
