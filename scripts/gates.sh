@@ -36,10 +36,10 @@
 # so out loud. A --fast run is never recorded: it is not a full run.
 #
 # `ondemand` lines name the gates NO run executes unless asked: `--gate <id>`,
-# or a story that names the gate in `required_gates`. `slow` alone still let a
-# mutation tool run on every full run - every story's GATES, every PR's CI job.
-# A run that leaves one out prints `ON REQUEST   <id> (not run: <why>; ...)`
-# and counts it in nothing. --audit refuses one on a required gate.
+# or a story that names the gate in `required_gates`; `slow` alone still let a
+# mutation tool run on every full run. A run that leaves one out prints
+# `ON REQUEST   <id> (not run: <why>; ...)` and counts it in nothing. --audit
+# refuses one on a required gate, and a `mutation` gate with no `ondemand` line.
 #
 # A full run writes its own summary into the story's ## Gate results, stamped
 # with the commit and a hash of the code it ran against. Nobody pastes it.
@@ -700,6 +700,17 @@ if [ "$AUDIT" = 1 ]; then
       *) printf 'FAIL %-12s an `ondemand` line names no configured gate\n' "$oid"; fails=$((fails+1)) ;;
     esac
   done <<< "$ONDEMANDS"
+  # HARNESS-039 / issue #104 Symptom B: a `mutation` gate with no `ondemand`
+  # line runs on every full run - `slow` alone only keeps it out of --fast. The
+  # id is compared exactly: the one every profile, the template and
+  # /audit-mutations use. A mutation tool under another id is not caught.
+  # Regardless of command (the cost arrives when it is filled in) and of
+  # `required` (that is a second fault with its own message).
+  for gid in $GATE_IDS; do
+    [ "$gid" = mutation ] || continue
+    table_lookup "$ONDEMANDS" "$gid" >/dev/null && continue
+    printf 'FAIL %-12s no `ondemand | mutation | <why>` line, so every full run executes it; `slow` alone only leaves it out of --fast\n' "$gid"; fails=$((fails+1))
+  done
   # Same for a ci-factor: a measurement filed against a gate that does not
   # exist is a number nobody will ever find when they need it.
   while IFS="$TAB" read -r cid _; do

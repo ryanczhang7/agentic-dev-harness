@@ -934,6 +934,147 @@ assert_eq "a story escalation does not make the audit fail: the manifest itself 
 assert_eq "and no FAIL names the gate" 0 "$(count_re '^FAIL +mutation' "$out")"
 story "$FIX" T-1 GATES </dev/null
 
+# ---------------------------------------------------------------------------
+describe "ondemand: the audit refuses a mutation gate with no ondemand line (HARNESS-039)"
+
+# Issue #104 Symptom B. `slow` keeps a gate out of --fast; only `ondemand`
+# keeps it out of a FULL run. A consumer's project.conf with a `mutation` gate,
+# a `slow` line and no `ondemand` line passed the audit, so the day the tool is
+# installed every story's GATES and every PR's CI runs it. The message is
+# pinned byte for byte (story C-3) and matched WHOLE: `^FAIL +mutation +` ...
+# `$`. H39_ANY is the same message under ANY id - the controls use it, because
+# a rule that judged every gate except `mutation` (DV-3's mutation) prints the
+# message under `unit`, which the mutation-anchored needle cannot see.
+H39_MSG='no `ondemand \| mutation \| <why>` line, so every full run executes it; `slow` alone only leaves it out of --fast$'
+H39_LINE="^FAIL +mutation +$H39_MSG"
+H39_ANY="^FAIL +[^ ]+ +$H39_MSG"
+
+# AC-1: the bug. The AC-2 manifest of HARNESS-015 above, with the `ondemand`
+# line replaced by a `slow` line (story C-9). No other fault in it, so the
+# problem count is exactly this one.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+evidence | mutation | Killed [0-9]+ of
+slow     | mutation | re-runs the suite once per mutant
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-1: a mutation gate with slow and no ondemand line fails the audit with exactly one whole-line FAIL naming it" \
+  1 "$(count_re "$H39_LINE" "$out")"
+assert_eq "AC-1: and it is counted as the one manifest problem" \
+  1 "$(count_re '^1 manifest problem\(s\)\.$' "$out")"
+assert_eq "AC-1: and the audit no longer says it passed" \
+  0 "$(count_re '^Manifest audit passed\.$' "$out")"
+assert_eq "AC-1: and the audit exits 1" 1 "$rc"
+
+# AC-4a: the same, with an EMPTY command - the shape the template ships before
+# bootstrap. The cost arrives the day the command is filled in.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . |
+evidence | unit     | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-4a: an unconfigured (empty-command) mutation gate with no ondemand line is still flagged, whole line" \
+  1 "$(count_re "$H39_LINE" "$out")"
+assert_eq "AC-4a: and it is counted as the one manifest problem" \
+  1 "$(count_re '^1 manifest problem\(s\)\.$' "$out")"
+assert_eq "AC-4a: and the audit exits 1" 1 "$rc"
+
+# C-4: regardless of `required`. A required mutation gate with no ondemand line
+# gets this FAIL; it has no ondemand line, so the "cannot be required" FAIL of
+# HARNESS-015 does not fire alongside it.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | required | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+evidence | mutation | Killed [0-9]+ of
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "C-4: a REQUIRED mutation gate with no ondemand line is flagged too, whole line" \
+  1 "$(count_re "$H39_LINE" "$out")"
+assert_eq "C-4: and it is the one manifest problem" \
+  1 "$(count_re '^1 manifest problem\(s\)\.$' "$out")"
+assert_eq "C-4: and the audit exits 1" 1 "$rc"
+
+# AC-2: control - the line is what passes. The AC-1 manifest plus the line.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit     | Tests +[1-9][0-9]* passed
+evidence | mutation | Killed [0-9]+ of
+slow     | mutation | re-runs the suite once per mutant
+ondemand | mutation | per-story cost the user declined
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-2 control: with the ondemand line the new message appears under no id" \
+  0 "$(count_re "$H39_ANY" "$out")"
+assert_eq "AC-2 control: and no FAIL names mutation" 0 "$(count_re '^FAIL +mutation' "$out")"
+assert_eq "AC-2 control: and the audit says it passed" 1 "$(count_re '^Manifest audit passed\.$' "$out")"
+assert_eq "AC-2 control: and exits 0" 0 "$rc"
+
+# AC-3: control - only the mutation gate. Other ids never need the line, with
+# or without a mutation gate beside them; and the rule demands the line of a
+# gate that exists, never the gate.
+write_conf "$FIX" <<'EOF'
+gate     | unit        | required | . | printf 'Tests  47 passed (47)\n'
+gate     | build       | required | . | printf 'built ok\n'
+gate     | integration | optional | . | printf 'Tests  3 passed (3)\n'
+evidence | unit        | Tests +[1-9][0-9]* passed
+evidence | build       | built ok
+evidence | integration | Tests +[1-9][0-9]* passed
+slow     | integration | starts a database
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-3 control: with no mutation gate at all, the new message appears under no id" \
+  0 "$(count_re "$H39_ANY" "$out")"
+assert_eq "AC-3 control: and nothing FAILs at all" 0 "$(count_re '^FAIL ' "$out")"
+assert_eq "AC-3 control: and the audit says it passed" 1 "$(count_re '^Manifest audit passed\.$' "$out")"
+assert_eq "AC-3 control: and exits 0" 0 "$rc"
+
+write_conf "$FIX" <<'EOF'
+gate     | unit        | required | . | printf 'Tests  47 passed (47)\n'
+gate     | build       | required | . | printf 'built ok\n'
+gate     | integration | optional | . | printf 'Tests  3 passed (3)\n'
+gate     | mutation    | optional | . | printf 'Killed 12 of 12 mutants\n'
+evidence | unit        | Tests +[1-9][0-9]* passed
+evidence | build       | built ok
+evidence | integration | Tests +[1-9][0-9]* passed
+evidence | mutation    | Killed [0-9]+ of
+slow     | mutation    | re-runs the suite once per mutant
+ondemand | mutation    | per-story cost the user declined
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-3 control: beside a mutation gate that has the line, unit/build/integration are not asked for one" \
+  0 "$(count_re "$H39_ANY" "$out")"
+assert_eq "AC-3 control: and nothing FAILs at all" 0 "$(count_re '^FAIL ' "$out")"
+assert_eq "AC-3 control: and the audit says it passed" 1 "$(count_re '^Manifest audit passed\.$' "$out")"
+assert_eq "AC-3 control: and exits 0" 0 "$rc"
+
+# AC-4b: the written limit of the rule. A mutation tool under another id is not
+# caught - the id is compared exactly. A later story that names a convention for
+# a second mutation gate changes this assertion deliberately.
+write_conf "$FIX" <<'EOF'
+gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
+gate     | mutants  | optional | . | cargo mutants
+evidence | unit     | Tests +[1-9][0-9]* passed
+EOF
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-4b limit: a mutation tool under the id 'mutants' is not flagged - the rule is on the id 'mutation' only" \
+  0 "$(count_re "$H39_ANY" "$out")"
+assert_eq "AC-4b limit: and the audit says it passed" 1 "$(count_re '^Manifest audit passed\.$' "$out")"
+assert_eq "AC-4b limit: and exits 0" 0 "$rc"
+
+# AC-5: this repository's own project.conf - what the CI step at gates.yml's
+# `--audit` judges on this tree - still passes: it carries `ondemand | mutation`.
+cp "$REPO_ROOT/.claude/harness/project.conf" "$FIX/.claude/harness/project.conf"
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-5: this repository's own project.conf draws the new message under no id" \
+  0 "$(count_re "$H39_ANY" "$out")"
+assert_eq "AC-5: and its audit says it passed" 1 "$(count_re '^Manifest audit passed\.$' "$out")"
+assert_eq "AC-5: and exits 0" 0 "$rc"
+
 rm -f "$MARKER"
 git -C "$FIX" checkout -q -- . 2>/dev/null
 set_phase "$FIX" ""
@@ -1219,10 +1360,15 @@ NOEV_ANY='required gate\(s\) have no evidence line'
 
 # AC-1: the audit's own reproduction. Required `unit` has evidence, optional
 # `mutation` has none. Upstream printed `1 required gate(s) ...` for it.
+# The `ondemand` line is HARNESS-039's: without it the audit FAILs this
+# manifest for a reason unrelated to evidence, and the exit-0 assertion below
+# is about evidence counting only. An on-request gate still gets its per-gate
+# no-evidence WARN in the audit, so nothing else here changes.
 write_conf "$FIX" <<'EOF'
 gate     | unit     | required | . | printf 'Tests  47 passed (47)\n'
 gate     | mutation | optional | . | printf 'Killed 12 of 12 mutants\n'
 evidence | unit     | Tests +[1-9][0-9]* passed
+ondemand | mutation | per-story cost the user declined
 EOF
 out="$(gates --audit)"; rc=$?
 assert_eq "AC-1: an optional gate without evidence produces no 'required gate(s) have no evidence line' summary" \
