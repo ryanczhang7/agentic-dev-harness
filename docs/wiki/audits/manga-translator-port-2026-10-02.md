@@ -32,7 +32,7 @@ closed, because every port changed the code the next one built on.
 | 6 Process | C: run lock | HARNESS-034 | **done**, #111, release 77 |
 | 6 Process | MT-042: opt-in `SELFTEST_JOBS` | HARNESS-036 | **done**, #116, release 80 |
 | 6 Process | D: 3h/3g messages name the fenced-block rule | HARNESS-037 | **done**, #117, release 81 |
-| - | Refresh manga-translator from the release that carries them (81) | - | **next**; the user runs it |
+| - | Refresh manga-translator from the release that carries them (82) | manga-translator#71 | open, CI green; HARNESS-038 (release 82) fixed two upstream premises its Windows CI caught |
 
 **What is left:** refresh manga-translator from release 81 (the user runs it
 between stories), then run its FULL selftest before committing. Lessons the

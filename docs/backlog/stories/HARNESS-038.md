@@ -4,8 +4,8 @@ title: The worktree premises compare the directory, not its spelling
 slug: the-worktree-premises-compare-the-direct
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-038-the-worktree-premises-compare-the-direct
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/phase-guard.test.sh, .claude/tests/worktree.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -333,6 +333,19 @@ RED and GREEN has nothing to build. There is no production change; `lib.sh`'s
   manga-translator refresh PR (#71) re-run on `windows-latest`: phase-guard and
   worktree pass. Recorded in `## Notes` with the run URL.
 
+  **DV-3 result (REVIEW, 2026-10-06, orchestrator): as required.**
+  manga-translator#71 re-refreshed to release 82 (commit 8207deb); its
+  `windows-latest` `gates` run
+  https://github.com/ryanczhang7/manga-translator/actions/runs/37519344490
+  succeeded, every step including the project's own gates:
+
+  ```
+  phase-guard: 350 passed, 0 failed
+  worktree: 73 passed, 0 failed
+  assertion floors: all 25 suite(s) met their declared floor (2827 assertions executed, 2518 declared).
+  25 harness suite(s) passed.
+  ```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -588,3 +601,8 @@ owned by REVIEW and is recorded below once it runs.
 `boundaries` in 9s
 (https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37516118412).
 The story stays in REVIEW until DV-3, which needs release 82 to exist.
+
+**DONE, 2026-10-06.** DV-3 passed (above), so the story leaves REVIEW. Merged
+in #118, shipped in release 82 (cee23d5). `phase.sh set DONE --force` was run
+on `main` (a detached checkout of `origin/main` in the worktree), overriding
+the branch check.
