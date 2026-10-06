@@ -129,6 +129,26 @@ assert_contains "and sends exhaustive earning to /audit-mutations" "/audit-mutat
 assert_eq "the word THREE is absent from the generated story" 0 "$(grep -cw THREE "$STORY")"
 
 # ---------------------------------------------------------------------------
+describe "each pasted-result section says what shape a result must take (HARNESS-037, AC-4)"
+
+# check-boundaries.sh accepts a result in ## Regressions, ## Gate probes and
+# ## Deferred verifications only as a block - a fence line, or a line indented
+# by exactly four spaces - and refuses prose, inline code and tabs. The template
+# comment is where an author reads before writing, so each of the three says
+# so, in the sentence the story's C-3 gives. Scoped to each section's own text,
+# as the deferred-verifications block above is, so a mention in one section
+# cannot satisfy another. Runs of whitespace are collapsed first: the sentence
+# is wrapped to the comment's width, and a needle split by a line break and its
+# comment indent is still the same words. Nothing else is normalised.
+for sec in "Regressions" "Gate probes" "Deferred verifications"; do
+  body="$(awk -v h="## $sec" 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on { print }' "$STORY" \
+    | tr -s ' \t\n' '   ')"
+  assert_contains "## $sec carries the rule sentence: \"three backticks\"" "three backticks" "$body"
+  assert_contains "## $sec carries the rule sentence: \"exactly four spaces\"" "exactly four spaces" "$body"
+  assert_contains "## $sec carries the rule sentence: \"inline code\"" "inline code" "$body"
+done
+
+# ---------------------------------------------------------------------------
 describe "a new story declares the files it touches (HARNESS-006, AC-5)"
 
 # `plan.sh conflicts` reads `touches:` from frontmatter to say which stories

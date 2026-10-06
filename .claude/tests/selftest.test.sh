@@ -527,7 +527,7 @@ while read -r n v; do
   got="$(floor_of "$n" "$REAL")"
   [ "$got" = "$v" ] || wrong="$wrong $n=${got:-<none>}(want $v)"
 done <<'COUNTS'
-boundaries 101
+boundaries 113
 ci-local 28
 classify 55
 doctor 50
@@ -536,7 +536,7 @@ gates 470
 grep-count 20
 lib 217
 mutate 189
-new-story 29
+new-story 43
 phase 33
 phase-guard 310
 plan 42

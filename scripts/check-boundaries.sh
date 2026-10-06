@@ -486,7 +486,7 @@ for sec in Regressions "Gate probes"; do
   if printf '%s\n' "$body" | has_pasted_output; then
     ok "## $sec carries pasted output"
   else
-    problem "story $sid: ## $sec describes something without showing it. Paste the output - the failure a reverted mutation produced, or the before/after measurement taken under the gate command. A test corrected while the implementation exists has never been observed to fail, and a description of red is not red."
+    problem "story $sid: ## $sec describes something without showing it. What counts as showing it is the shape, not the words: a line beginning with three backticks or three tildes (a fence), or a line indented by exactly four spaces - a tab does not count, nor does inline code in backticks, nor anything inside an HTML comment. Paste the output as such a block - the failure a reverted mutation produced, or the before/after measurement taken under the gate command. A test corrected while the implementation exists has never been observed to fail, and a description of red is not red."
   fi
 done
 
@@ -523,7 +523,7 @@ if printf '%s\n' "$dv" | has_content; then
   elif printf '%s\n' "$dv" | has_waiver; then
     ok "## Deferred verifications carries an explicit waiver"
   else
-    problem "story $sid: ## Deferred verifications has no result and no waiver. The phase that owned it has passed and nothing says what happened. Run it and paste the output - what was mutated and what failed - or write WAIVED with the reason. This is the control that makes a threshold or a round trip mean anything; skipping it silently is the failure it was filed against."
+    problem "story $sid: ## Deferred verifications has no result and no waiver. The phase that owned it has passed and nothing says what happened. What counts as a result is the shape, not the words: a line beginning with three backticks or three tildes (a fence), or a line indented by exactly four spaces - a tab does not count, nor does inline code in backticks, nor anything inside an HTML comment. Paste the output as such a block - what was mutated and what failed - or write WAIVED with the reason. This is the control that makes a threshold or a round trip mean anything; skipping it silently is the failure it was filed against."
   fi
 fi
 

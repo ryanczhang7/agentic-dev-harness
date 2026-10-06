@@ -257,8 +257,11 @@ inspect.
   or beside the deferred verification that owns it when the probe is a control
   some later phase has to run. `check-boundaries.sh` validates both sections and
   demands pasted output from either, so the choice is about which one owns the
-  result, not about how much evidence is required. Say which, rather than
-  letting the probe want to live in two places at once.
+  result, not about how much evidence is required. A result counts only as a
+  block: a line beginning with three backticks or three tildes (a fence), or a
+  line indented by exactly four spaces. Prose does not count, nor inline code in
+  backticks, nor a tab, nor anything inside an HTML comment. Say which, rather
+  than letting the probe want to live in two places at once.
   The fixtures say the rule is right about what you imagined; only this says it
   is right about what is there. A fixture corpus that has never met the real
   tree is a statement about your own understanding, and it is always green.
