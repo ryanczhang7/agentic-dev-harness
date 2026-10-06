@@ -4,8 +4,8 @@ title: The refresh adds missing harness-shipped docs files and never overwrites 
 slug: the-refresh-adds-missing-harness-shipped
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-040-the-refresh-adds-missing-harness-shipped
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/harness/docs-shipped.conf, .claude/tests/refresh.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -468,7 +468,18 @@ and the restore is verified by the script.
   identical copy) in `## Handoff`; GATES pastes the run and the matching
   count. Result:
 
-  _(pasted by GATES)_
+  **Result (GATES, 2026-10-06, orchestrator): as required.** Two `git clone --no-hardlinks` copies of manga-translator (release 82); the first attempt with `--local` could not hard-link across drives and ran nothing, so it was re-run. The copy with the template removed (committed, so the tree is clean):
+
+  ```
+  missing: rc=0, afterwards the file is absent, git status clean
+    into: /tmp/claude/D--agentic-dev-harness--claude-worktrees-nostalgic-williams-fcf700/62196ff3-22ca-4509-8ec9-310ab8c7b7f8/scratchpad/h040/mt2-missing  (82 (2026-10-06))
+    ADDED     docs/wiki/audits/TEMPLATE.md  (upstream ships it and you had no copy)
+      Under docs/, the files .claude/harness/docs-shipped.conf lists are ADDED
+  Dry run: nothing was written.
+  present: rc=0, afterwards the file is present, git status clean
+    KEPT      docs/wiki/audits/TEMPLATE.md  (yours; upstream never overwrites docs/)
+  Dry run: nothing was written.
+  ```
 
 - **DV-2 (defect put back: the refresh adds nothing - the issue's symptom).**
   Owner: GATES. With the call to `ship_missing_docs` turned into a no-op,
@@ -482,7 +493,6 @@ and the restore is verified by the script.
 
   RED predicts the count in `## Handoff`; GATES pastes the run. Result:
 
-  _(pasted by GATES)_
 
 - **DV-3 (the rule, against a REAL line of this tree).** Owner: GATES. With
   `.claude/commands/audit-mutations.md:32`'s reference changed from
@@ -499,7 +509,6 @@ and the restore is verified by the script.
 
   Result:
 
-  _(pasted by GATES)_
 
 - **DV-4 (the fix, against a real consumer, read-only).** Owner: GATES. Copy
   `D:\manga-translator` (release 82, has its own `docs/wiki/audits/TEMPLATE.md`
@@ -515,7 +524,51 @@ and the restore is verified by the script.
   fixture upstream is a stand-in and the fixture project is twelve files. RED
   cannot run it: there is no block to run. Result:
 
-  _(pasted by GATES)_
+
+### Results, run at GATES (2026-10-06) by the orchestrator
+
+DV-1..DV-3 each through `scripts/mutate.sh` with the one expression written above, detached, one at a time, against the GREEN commit; each restore verified. All three match RED's predictions exactly.
+
+**DV-1, overwrites (the guard replaced by `false`): `refresh: 158 passed, 7 failed`.**
+
+```
+=== mutate: scripts/refresh-harness.sh (1 line(s) changed by s|\[ -e "\$PROJ/\$p" \]|false|) ===
+=== mutate: running bash scripts/selftest.sh refresh ===
+    FAIL AC-2: an edited project template survives byte-identical
+    FAIL AC-2: the KEPT line for it is printed exactly once
+    FAIL AC-2: and no ADDED line names it
+    FAIL AC-2 identical: an identical copy is reported KEPT, once
+    FAIL AC-2 identical: and never ADDED
+    FAIL AC-4 with a copy: the dry run prints the KEPT line exactly once
+    FAIL AC-4 with a copy: and no ADDED line names it
+refresh: 158 passed, 7 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_refresh-harness.sh.20261006T23
+```
+
+**DV-2, adds nothing (the call disabled), the issue's symptom: `refresh: 159 passed, 6 failed`; AC-3's never-create controls stayed green.**
+
+```
+=== mutate: scripts/refresh-harness.sh (1 line(s) changed by s/^ship_missing_docs$/: ship_missing_docs/) ===
+=== mutate: running bash scripts/selftest.sh refresh ===
+    FAIL AC-1: the project's missing audit template is added, byte-identical to upstream's
+    FAIL AC-1: the ADDED line for it is printed exactly once
+    FAIL AC-2: the KEPT line for it is printed exactly once
+    FAIL AC-2 identical: an identical copy is reported KEPT, once
+    FAIL AC-4: the dry run prints the ADDED line exactly once
+    FAIL AC-4 with a copy: the dry run prints the KEPT line exactly once
+refresh: 159 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_refresh-harness.sh.20261006T23
+```
+
+**DV-3, the real-tree probe (a real command names a docs path that is neither shipped nor written): `shipped-docs: 13 passed, 1 failed`.**
+
+```
+=== mutate: .claude/commands/audit-mutations.md (1 line(s) changed by s|docs/wiki/audits/TEMPLATE.md|docs/wiki/audits/CHECKLIST.md|) ===
+=== mutate: running bash scripts/selftest.sh shipped-docs ===
+    FAIL shipped_docs_problems over the real tree prints nothing: every docs/ path a command, agent or skill names is shipped or declared written
+shipped-docs: 13 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_commands_audit-mutations.md.20
+```
 
 ## Amendments
 
@@ -553,6 +606,7 @@ name, below the table.
   (`claude-fable-5-1`), as planned; no override visible to the agent.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran refresh (156/9) and shipped-docs (13/1), matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
 - GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the refresh-harness.sh diff and the new conf. The added guard (a `ship` path outside `docs/` or with a `..` segment is skipped) is kept as a safety the contract did not forbid.
+- GATES: no dispatch. The orchestrator (`claude-opus-5-5`) ran DV-1..DV-4, `gates.sh` and the full selftest.
 - Oracle partition for the RED brief: every criterion is mechanical (C-7);
   nothing is settled-by-measurement, nothing is oracle-free. Brief RED to pin
   C-3's two report lines and C-4's summary line byte for byte with whole-line
@@ -1004,10 +1058,21 @@ own and were watched in RED; they pass unchanged.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-06T23:26:44Z
+    commit: 40e1afd
+    tree:   a2f3c7495fe19808869ecb885946f54ceb0c0682
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -1040,3 +1105,9 @@ assertions stay green; with the guard replaced by `false`, AC-4's with-a-copy
 dry run goes red too. RED predicts DV-1 `158 passed, 7 failed`, DV-2
 `159 passed, 6 failed`, DV-3 `13 passed, 1 failed`; GATES compares against
 those.
+
+**GATES (2026-10-06), orchestrator.** DV-1..DV-4 came out as required
+(results under `## Deferred verifications`). `bash scripts/gates.sh`: all
+required gates passed (0 ran, 7 unconfigured), recorded. GATES -> REVIEW step
+1's full self-test with `SELFTEST_JOBS=4`: exit 0 in 899 s, `25 harness
+suite(s) passed.` (2,889 assertions executed, 2,599 declared).
