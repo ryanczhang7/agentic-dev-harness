@@ -4,8 +4,8 @@ title: The manifest audit flags a mutation gate with no ondemand line
 slug: the-manifest-audit-flags-a-mutation-gate
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-039-the-manifest-audit-flags-a-mutation-gate
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/skills/quality-gates/SKILL.md, .claude/harness/project.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -400,6 +400,65 @@ else.
   re-run. If AC-3's assertions stay green under this mutation they assert
   nothing, and the story returns to RED.
 
+### Results, run at GATES (2026-10-06) by the orchestrator
+
+Each through `scripts/mutate.sh` with the one expression written above, detached, one at a time, against the GREEN commit; each restore verified. DV-2 read manga-translator only.
+
+**DV-1, the defect put back: `gates: 488 passed, 10 failed`, exactly the handoff's prediction and the same ten names.**
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by s/= mutation \]/= no-such-gate ]/) ===
+  710 -     [ "$gid" = mutation ] || continue
+  710 +     [ "$gid" = no-such-gate ] || continue
+=== mutate: running bash scripts/selftest.sh gates ===
+    FAIL AC-1: a mutation gate with slow and no ondemand line fails the audit with exactly one whole-line FAIL naming it
+    FAIL AC-1: and it is counted as the one manifest problem
+    FAIL AC-1: and the audit no longer says it passed
+    FAIL AC-1: and the audit exits 1
+    FAIL AC-4a: an unconfigured (empty-command) mutation gate with no ondemand line is still flagged, whole line
+    FAIL AC-4a: and it is counted as the one manifest problem
+    FAIL AC-4a: and the audit exits 1
+    FAIL C-4: a REQUIRED mutation gate with no ondemand line is flagged too, whole line
+    FAIL C-4: and it is the one manifest problem
+    FAIL C-4: and the audit exits 1
+gates: 488 passed, 10 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_gates.sh.20261006T211633Z.12507.bak) ===
+```
+
+**DV-2, the real tree: as required.** manga-translator's real `project.conf` (release 82), audited by this tree's `gates.sh` in a fixture: the C-3 FAIL, `1 manifest problem(s).`, exit 1 (PLANNED baseline: `Manifest audit passed.`, exit 0).
+
+```
+                  slow:   PyInstaller freezes an interpreter and later ~1 GB of weights; 34 s at MT-001 with PySide6 alone, minutes once the weights land
+WARN mutation     no evidence line; a vacuous pass would go unnoticed
+FAIL mutation     no `ondemand | mutation | <why>` line, so every full run executes it; `slow` alone only leaves it out of --fast
+
+1 manifest problem(s).
+exit=1
+```
+
+**DV-3, earning the controls: red as required.** `gates: 464 passed, 34 failed`. Every AC-2, AC-3, AC-4b and AC-5 control is among them (below), plus older audit assertions the inverted rule also breaks.
+
+```
+    FAIL AC-2 control: the same line on an optional gate passes the audit
+    FAIL AC-2 control: with the ondemand line the new message appears under no id
+    FAIL AC-2 control: and the audit says it passed
+    FAIL AC-2 control: and exits 0
+    FAIL AC-3 control: with no mutation gate at all, the new message appears under no id
+    FAIL AC-3 control: and nothing FAILs at all
+    FAIL AC-3 control: and the audit says it passed
+    FAIL AC-3 control: and exits 0
+    FAIL AC-3 control: beside a mutation gate that has the line, unit/build/integration are not asked for one
+    FAIL AC-3 control: and nothing FAILs at all
+    FAIL AC-3 control: and the audit says it passed
+    FAIL AC-3 control: and exits 0
+    FAIL AC-4b limit: a mutation tool under the id 'mutants' is not flagged - the rule is on the id 'mutation' only
+    FAIL AC-4b limit: and the audit says it passed
+    FAIL AC-4b limit: and exits 0
+    FAIL AC-5: this repository's own project.conf draws the new message under no id
+gates: 464 passed, 34 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_gates.sh.20261006T212106Z.43333.bak) ===
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -436,6 +495,7 @@ name, below the table.
   (`claude-fable-5-1`), as planned; no override visible to the agent.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran gates.test.sh: 488 passed, 10 failed, matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
 - GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the gates.sh diff and ran `gates.sh --audit` on this repo (passed).
+- GATES: no dispatch. The orchestrator (`claude-opus-5-5`) ran DV-1..DV-3, `gates.sh` and the full selftest.
 - Oracle partition for the RED brief: every criterion is mechanical (C-5);
   nothing is settled-by-measurement, nothing is oracle-free. Brief RED to pin
   the C-3 message byte for byte and to invent no metric.
@@ -770,10 +830,21 @@ full selftest before REVIEW.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-06T21:25:35Z
+    commit: f8ce228
+    tree:   a3359be657c265ff75b7427cbba2a97a2fb93d66
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -790,3 +861,9 @@ full selftest before REVIEW.
 chosen by the user with the trade-off stated: a consuming project's CI goes red
 on its next refresh until it adds the one `ondemand | mutation` line, and
 manga-translator is such a project today.
+
+**GATES (2026-10-06), orchestrator.** DV-1..DV-3 came out as required
+(results under `## Deferred verifications`). `bash scripts/gates.sh`: all
+required gates passed (0 ran, 7 unconfigured), recorded. GATES -> REVIEW step
+1's full self-test with `SELFTEST_JOBS=4`: exit 0 in 684 s, `24 harness
+suite(s) passed.` (2,842 assertions executed, 2,542 declared).
