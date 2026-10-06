@@ -18,6 +18,7 @@ in here is ever committed; only this file and `.gitkeep` are tracked.
 | `plan-write.<pid>.md` | `scripts/plan.sh write` | `awk`, while it splices the section | yes |
 | `run.lock` | `scripts/gates.sh`, `scripts/selftest.sh` | `scripts/run-lock.sh`, in the next run | yes |
 | `run.lock.<pid>` | `scripts/run-lock.sh` | `ln`, while it takes the lock | yes |
+| `selftest.<pid>/*.out` | `scripts/selftest.sh`, with `SELFTEST_JOBS` above 1 | `scripts/selftest.sh`, to print each suite in order | yes |
 
 ## The `Hand-editable` column is enforced
 
@@ -117,3 +118,12 @@ live process, the next run refuses, and the refusal says to delete the file.
 It is `yes` because deleting it is that remedy. `run.lock.<pid>` is the record
 being written before `ln` puts it in place as `run.lock`, removed straight
 after; one left behind is safe to delete.
+
+`selftest.<pid>/` exists only during a run of `scripts/selftest.sh` with
+`SELFTEST_JOBS` of 2 or more over two or more suites: each suite's output goes
+to `<name>.out` there while it runs, and the script prints them in suite order.
+`<pid>` is the run's own, the one `run.lock` records, so a run nested under
+the lock holder gets a directory of its own. It is removed on every exit the
+script can still run code on, after the last suite has exited and before the
+lock is released. **One left behind means a run was killed outright**, and it
+is safe to delete; the next run does not reclaim it.
