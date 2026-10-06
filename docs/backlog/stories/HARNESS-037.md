@@ -4,8 +4,8 @@ title: check-boundaries 3g/3h refusals name the block rule a result must take
 slug: boundaries-refusals-name-the-block-rule
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-037-boundaries-refusals-name-the-block-rule
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/harness/rules.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/sigpipe.test.sh, .claude/harness/VERSION, docs/wiki/audits/manga-translator-port-2026-10-02.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -394,6 +394,63 @@ Dry-run at PLANNED: changes `:131` only, to `/^[[:space:]]*(```)/`. **Must**
 fail: AC-3 (a) alone (`~~~` refused with the 3g line). **Must** still pass:
 everything else. Green again after the restore. **Owner: GATES.**
 
+### Results, run at GATES (2026-10-06) by the orchestrator
+
+Each through `scripts/mutate.sh` with the one expression written above, detached, one at a time, against the GREEN commit; each restore verified. Passing lines elided; long diff lines cut at 200 characters.
+
+**DV-1, the defect put back: red as required** - exactly the six whole-line pins (AC-1 x2, AC-2, AC-3 (b)(c)(d)); every `refused` substring needle stayed green.
+
+```
+=== mutate: scripts/check-boundaries.sh (2 line(s) changed by s/exactly four spaces/four spaces/) ===
+=== mutate: running bash scripts/selftest.sh boundaries ===
+    FAIL AC-1: the 3g refusal for ## Regressions is exactly the line the contract gives, naming what counts
+    FAIL AC-3 (b): and the refusal is AC-1's whole line
+    FAIL AC-3 (c): and the refusal is AC-1's whole line
+    FAIL AC-1: the 3g refusal for ## Gate probes is exactly the line the contract gives, naming what counts
+    FAIL AC-2: the 3h refusal is exactly the line the contract gives, naming what counts
+    FAIL AC-3 (d): and the refusal is AC-2's whole line
+boundaries: 107 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_check-boundaries.sh.20261006T1
+```
+
+**DV-2, any non-blank line counts: red as required** - AC-3 (b), (c), (d) and the shipped prose cases; AC-3 (a) stayed green.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s|/\^    \[\^\[:space:\]\]/|/[^[:space:]]/|) ===
+  131 -            if (lines[k] ~ /^[[:space:]]*(```|~~~)/ || lines[k] ~ /^    [^[:space:]]/) exit 0
+  131 +            if (lines[k] ~ /^[[:space:]]*(```|~~~)/ || lines[k] ~ /[^[:space:]]/) exit 0
+=== mutate: running bash scripts/selftest.sh boundaries ===
+    FAIL described but not shown
+    FAIL AC-1: a reverted mutation in prose is refused
+    FAIL AC-1: the 3g refusal for ## Regressions is exactly the line the contract gives, naming what counts
+    FAIL AC-3 (b): a result indented by a tab is refused
+    FAIL AC-3 (b): and the refusal is AC-1's whole line
+    FAIL AC-3 (c): a fence inside an HTML comment, then prose, is refused
+    FAIL AC-3 (c): and the refusal is AC-1's whole line
+    FAIL a gate probe described but not shown
+    FAIL AC-1: the 3g refusal for ## Gate probes is exactly the line the contract gives, naming what counts
+    FAIL named, owned, and never run
+    FAIL waived in writing
+    FAIL AC-2: a result reported in prose with inline backticks is refused
+    FAIL AC-2: the 3h refusal is exactly the line the contract gives, naming what counts
+    FAIL AC-3 (d): output quoted in inline backticks within prose is refused
+    FAIL AC-3 (d): and the refusal is AC-2's whole line
+boundaries: 98 passed, 15 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_check-boundaries.sh.20261006T1
+```
+
+**DV-3, a tilde fence stops counting: red as required** - AC-3 (a) alone.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/(```|~~~)/(```)/) ===
+  131 -            if (lines[k] ~ /^[[:space:]]*(```|~~~)/ || lines[k] ~ /^    [^[:space:]]/) exit 0
+  131 +            if (lines[k] ~ /^[[:space:]]*(```)/ || lines[k] ~ /^    [^[:space:]]/) exit 0
+=== mutate: running bash scripts/selftest.sh boundaries ===
+    FAIL AC-3 (a): a block fenced with three tildes counts as pasted output
+boundaries: 112 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_check-boundaries.sh.20261006T1
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -434,6 +491,7 @@ name, below the table.
   dispatched by the orchestrator with no model override stated.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran new-story (34/9) and boundaries (107/6), matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
 - GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the two message hunks and re-ran new-story (43/0).
+- GATES: no dispatch. The orchestrator (`claude-opus-5-5`) ran DV-1..DV-3, `gates.sh` and the full selftest itself.
 
 ## Out of scope
 
@@ -704,10 +762,21 @@ confirm; not run here, per the dispatch.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-06T16:24:55Z
+    commit: 77aa5fb
+    tree:   de6e799c29c4ecfa597106b17e85b4a21000c1ef
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -741,3 +810,9 @@ confirm; not run here, per the dispatch.
   machine against about 19 serial.
 - Floors: when a suite's count rises, both `floors.conf` and
   `selftest.test.sh`'s `COUNTS` heredoc move together (HARNESS-033 lesson).
+
+**GATES (2026-10-06), orchestrator.** DV-1..DV-3 came out as required
+(results under `## Deferred verifications`). `bash scripts/gates.sh`: all
+required gates passed (0 ran, 7 unconfigured), recorded. GATES -> REVIEW step
+1's full self-test, run with `SELFTEST_JOBS=4` (HARNESS-036): exit 0 in 444 s,
+`24 harness suite(s) passed.` (2,814 assertions executed, 2,514 declared).
