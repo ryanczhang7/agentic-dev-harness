@@ -4,8 +4,8 @@ title: The manifest audit flags a mutation gate with no ondemand line
 slug: the-manifest-audit-flags-a-mutation-gate
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-039-the-manifest-audit-flags-a-mutation-gate
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/skills/quality-gates/SKILL.md, .claude/harness/project.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -867,3 +867,12 @@ manga-translator is such a project today.
 required gates passed (0 ran, 7 unconfigured), recorded. GATES -> REVIEW step
 1's full self-test with `SELFTEST_JOBS=4`: exit 0 in 684 s, `24 harness
 suite(s) passed.` (2,842 assertions executed, 2,542 declared).
+
+**DONE, 2026-10-06.** Merged in #119 (merge commit 276ec72), release 83. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI: `gates` passed in 2m41s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37535309405),
+`boundaries` in 11s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37535309428).
+Issue #104 item 1B is done; its other items remain (see `## Out of scope`).
