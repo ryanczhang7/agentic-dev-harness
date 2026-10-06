@@ -4,8 +4,8 @@ title: The manifest audit flags a mutation gate with no ondemand line
 slug: the-manifest-audit-flags-a-mutation-gate
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-039-the-manifest-audit-flags-a-mutation-gate
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/skills/quality-gates/SKILL.md, .claude/harness/project.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -271,6 +271,13 @@ is no caller list.
   and writes the before/after in `## Handoff` the way `floors.conf:228-235`
   records earlier raises. `profiles` stays 50 (AC-5). Nothing else in COUNTS
   moves.
+  **Note from RED:** `selftest.sh`'s `executed_count` (`:220-234`) sets
+  `COUNT="$passed"`, not passed + failed, despite its comments saying
+  "executed". So the floor actually compares PASSED assertions; the recorded
+  number (498) is the executed count, which equals passed once GREEN lands.
+  The red run therefore also prints `FAIL gates  did 488 units of work, below
+  the floor of 498` - the same "sits at its floor and failing until GREEN"
+  pattern earlier raises record. Not this story's to change; reported.
 - **C-8 Line numbers that must not move.** `sigpipe.test.sh:567-568` pins
   `scripts/gates.sh:74` (`BOOTSTRAPPED="$(grep`) and `scripts/gates.sh:580`
   (`why="could not launch: $(`) as status-discarded lines. C-1 inserts at
@@ -286,6 +293,19 @@ is no caller list.
   `ondemand` line replaced by `slow | mutation | re-runs the suite once per mutant`.
   The platform-independent `awk` rule applies (CI's `mawk`): `count_re` as
   written, no `gensub`, no `--re-interval`.
+  **Amended by RED, 2026-10-06:** one EXISTING fixture would break under the
+  new rule for a reason unrelated to its claim, so RED changed it (GREEN could
+  not - tests are frozen there). `gates.test.sh`, block "HARNESS-026
+  AC-1..AC-3", its AC-1 manifest (optional `mutation` gate, no evidence, no
+  `ondemand`) asserts `and the audit exits 0`; against a `gates.sh` carrying
+  C-2 it exits 1 (measured on a patched copy in a temp fixture: `rc=1`, one
+  C-3 line). RED added `ondemand | mutation | per-story cost the user declined`
+  to that one manifest; an on-request gate still gets its per-gate
+  `WARN … no evidence line` in the audit (`gates.sh:383-401` falls through to
+  `:525`), so every other assertion in that block is unchanged. No other
+  fixture in any suite has a `mutation` gate without the line under
+  `--audit` (`grep 'gate *| *mutation'` over `.claude/tests/*.sh` and the
+  `fixtures/manifest/*.conf` goldens, whose `project.conf` carries it at `:41`).
 - **C-10 Test-only dependencies.** None; bash, awk and coreutils.
 
 ## Deferred verifications
@@ -414,6 +434,7 @@ name, below the table.
 
 - PLANNED: `lead-po` dispatched as `/plan-story`, resolved to Fable 5.1
   (`claude-fable-5-1`), as planned; no override visible to the agent.
+- RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran gates.test.sh: 488 passed, 10 failed, matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
 - Oracle partition for the RED brief: every criterion is mechanical (C-5);
   nothing is settled-by-measurement, nothing is oracle-free. Brief RED to pin
   the C-3 message byte for byte and to invent no metric.
@@ -457,6 +478,44 @@ Everything else in issue #104, each a later story of its own:
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All tests are integration-level against the real `scripts/gates.sh --audit`,
+in a `make_project_fixture` with a `write_conf` manifest (C-9), in one new
+block of `.claude/tests/gates.test.sh`:
+`describe "ondemand: the audit refuses a mutation gate with no ondemand line (HARNESS-039)"`,
+placed after the HARNESS-015 AC-2 block and before `rm -f "$MARKER"`. Three
+needles are defined once at the top of the block:
+
+- `H39_MSG` - the C-3 text, `|` escaped, anchored with `$`;
+- `H39_LINE="^FAIL +mutation +$H39_MSG"` - the whole line, id `mutation`;
+- `H39_ANY="^FAIL +[^ ]+ +$H39_MSG"` - the same message under ANY id. The
+  controls count this, not `H39_LINE`: under DV-3's inversion the message is
+  printed under `unit`, which a mutation-anchored needle cannot see (measured,
+  see the control table in the handoff).
+
+| # | Assertion (name prefix) | Expects | AC |
+|---|---|---|---|
+| 1 | `AC-1: … exactly one whole-line FAIL naming it` | `count_re H39_LINE` = 1 | AC-1 |
+| 2 | `AC-1: and it is counted as the one manifest problem` | `^1 manifest problem\(s\)\.$` = 1 | AC-1 |
+| 3 | `AC-1: and the audit no longer says it passed` | `^Manifest audit passed\.$` = 0 | AC-1 |
+| 4 | `AC-1: and the audit exits 1` | rc 1 | AC-1 |
+| 5-7 | `AC-4a: …` empty command: line = 1, one problem, rc 1 | | AC-4a |
+| 8-10 | `C-4: a REQUIRED mutation gate …`: line = 1, one problem, rc 1 | | AC-1/C-4 (regardless of `required`) |
+| 11 | `AC-2 control: … new message appears under no id` | `H39_ANY` = 0 | AC-2 |
+| 12 | `AC-2 control: and no FAIL names mutation` | `^FAIL +mutation` = 0 | AC-2 |
+| 13 | `AC-2 control: and the audit says it passed` | passed = 1 | AC-2 |
+| 14 | `AC-2 control: and exits 0` | rc 0 | AC-2 |
+| 15-18 | `AC-3 control:` no mutation gate (unit/build/integration, none with `ondemand`): `H39_ANY` 0, `^FAIL ` 0, passed 1, rc 0 | | AC-3 |
+| 19-22 | `AC-3 control:` same three beside a `mutation` gate that has the line: same four | | AC-3 |
+| 23-25 | `AC-4b limit:` `gate | mutants | … | cargo mutants`: `H39_ANY` 0, passed 1, rc 0 | | AC-4b |
+| 26-28 | `AC-5:` this repository's own `.claude/harness/project.conf` copied into the fixture: `H39_ANY` 0, passed 1, rc 0 | | AC-5 |
+
+AC-5's second half (`bash scripts/selftest.sh profiles` unchanged at 50
+executed, 0 failed) is a suite run, not an assertion: measured at RED,
+`profiles` exit 0, `50 assertions executed, 50 declared`.
+
+Also changed: the HARNESS-026 AC-1 fixture gains an `ondemand | mutation` line
+(Contract C-9 amendment) so its `and the audit exits 0` stays about evidence.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -476,6 +535,141 @@ Everything else in issue #104, each a later story of its own:
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED ran on Opus 5.5 (`claude-opus-5-5`), as the agent definition declares; no
+override was visible to the agent.
+
+**Command.** `bash scripts/selftest.sh gates` (about 4 minutes locally; all
+timings here are local, none from CI). The run lock serialises suite runs.
+
+**Files touched (RED).** `.claude/tests/gates.test.sh` (new HARNESS-039 block,
+28 assertions; one `ondemand` line added to the HARNESS-026 AC-1 fixture),
+`.claude/tests/floors.conf` (`gates` 470 -> 498, plus the dated record at the
+end), `.claude/tests/selftest.test.sh` (COUNTS `gates 470` -> `gates 498`), and
+this story (Contract C-7 note, C-9 amendment, Test plan, Handoff). Not
+touched: `scripts/gates.sh`, `quality-gates/SKILL.md`, `project.conf`.
+
+**Counts.** Before: `gates` floored and recorded at 470. After RED:
+`gates: 488 passed, 10 failed` = 498 executed; floor and COUNTS both 498.
+After GREEN expect `gates: 498 passed, 0 failed`. `selftest` stays 268
+(passed at RED, 268/268, with the new COUNTS line); `profiles` stays 50.
+
+**Failure output (verbatim, the RED run after all edits):**
+
+    ondemand: the audit refuses a mutation gate with no ondemand line (HARNESS-039)
+      FAIL AC-1: a mutation gate with slow and no ondemand line fails the audit with exactly one whole-line FAIL naming it
+           expected: 1
+           actual:   0
+      FAIL AC-1: and it is counted as the one manifest problem
+           expected: 1
+           actual:   0
+      FAIL AC-1: and the audit no longer says it passed
+           expected: 0
+           actual:   1
+      FAIL AC-1: and the audit exits 1
+           expected: 1
+           actual:   0
+      FAIL AC-4a: an unconfigured (empty-command) mutation gate with no ondemand line is still flagged, whole line
+           expected: 1
+           actual:   0
+      FAIL AC-4a: and it is counted as the one manifest problem
+           expected: 1
+           actual:   0
+      FAIL AC-4a: and the audit exits 1
+           expected: 1
+           actual:   0
+      FAIL C-4: a REQUIRED mutation gate with no ondemand line is flagged too, whole line
+           expected: 1
+           actual:   0
+      FAIL C-4: and it is the one manifest problem
+           expected: 1
+           actual:   0
+      FAIL C-4: and the audit exits 1
+           expected: 1
+           actual:   0
+    gates: 488 passed, 10 failed
+    FAIL gates  did 488 units of work, below the floor of 498 in .claude/tests/floors.conf
+
+It is the right failure: every red assertion is a new-behaviour assertion,
+each fails on its own value (the audit prints `Manifest audit passed.` and
+exits 0 on a manifest that has the defect), and nothing else in the 488 went
+red. The floor line is expected (see the C-7 note: the floor counts PASSED).
+
+**What GREEN must produce (the shape the tests pin).** No module or function
+is imported. The tests pin one output line from `gates.sh --audit`, whole:
+
+    FAIL mutation     no `ondemand | mutation | <why>` line, so every full run executes it; `slow` alone only leaves it out of --fast
+
+i.e. `printf 'FAIL %-12s no `ondemand | mutation | <why>` line, so every full run executes it; `slow` alone only leaves it out of --fast\n' "$gid"`,
+counted in `fails` so the existing `1 manifest problem(s).` / exit 1 carries
+it, printed only under `--audit`. C-2's loop, placed per C-1, satisfies all 28
+(measured on a patched copy, below). Keep the comparison spelled
+`[ "$gid" = mutation ]` on one line - DV-1 and DV-3 `sed` exactly that.
+Not constrained by the tests: where in the audit output the line falls
+relative to other FAILs; whether an `ondemand | mutation |` line with an
+EMPTY reason also draws the C-3 line (with C-2 as written, `table_lookup`
+finds the entry, so only the existing "no reason" FAIL fires - the tests do
+not pin either way); behaviour of a full run (`--audit` only is the scope, and
+no test asserts a full run is unchanged).
+
+**Assertions that pass on arrival (18):** AC-2 (4), AC-3 (8), AC-4b (3), AC-5
+(3). They assert "nothing flagged" against a `gates.sh` that flags nothing, so
+they are earned only by DV-3 (GATES). Also passing on arrival and unchanged in
+claim: the HARNESS-026 AC-1 `exits 0` assertion with its new `ondemand` line.
+
+**Controls, measured outside the suite.** In RED the rule does not exist, so I
+applied C-2's loop to a COPY of `gates.sh` inside a temp `make_project_fixture`
+(outside the repository; the tree's `gates.sh` untouched) with an awk insert
+after `done <<< "$ONDEMANDS"`, then ran each test manifest through `--audit`.
+Columns: rc; `H39_LINE` count; `H39_ANY` count; `^1 manifest problem` count;
+`Manifest audit passed.` count; `^FAIL ` count. These are claims until GREEN
+re-runs the suite against its own `gates.sh`.
+
+| Manifest | expected by tests | C-2 (`= mutation`) measured | DV-3 inversion (`!= mutation`) measured |
+|---|---|---|---|
+| AC-1 | rc1 line1 prob1 passed0 | rc=1 line=1 any=1 prob=1 passed=0 fails=1 | rc=1 line=0 any=1 prob=1 passed=0 -> 1 red (line) |
+| AC-4a | rc1 line1 prob1 | rc=1 line=1 any=1 prob=1 passed=0 fails=1 | rc=1 line=0 -> 1 red |
+| C-4 (required) | rc1 line1 prob1 | rc=1 line=1 any=1 prob=1 passed=0 fails=1 | rc=1 line=0 -> 1 red |
+| AC-2 | any0 FAILmut0 passed1 rc0 | rc=0 any=0 passed=1 fails=0 | rc=1 any=1 passed=0 -> 3 red |
+| AC-3 no mutation gate | any0 fails0 passed1 rc0 | rc=0 any=0 passed=1 fails=0 | rc=1 any=3 fails=3 passed=0 -> 4 red |
+| AC-3 beside mutation+ondemand | same | rc=0 any=0 passed=1 fails=0 | rc=1 any=3 fails=3 passed=0 -> 4 red |
+| AC-4b (`mutants`) | any0 passed1 rc0 | rc=0 any=0 passed=1 fails=0 | rc=1 any=2 passed=0 -> 3 red |
+| AC-5 (this repo's conf) | any0 passed1 rc0 | rc=0 any=0 passed=1 fails=0 | rc=1 any=7 passed=0 -> 3 red |
+| HARNESS-026 AC-1, with new `ondemand` | rc0 | rc=0 fails=0 | rc=1 |
+| HARNESS-026 AC-1, as it WAS | (rc0 asserted) | **rc=1 line=1** - would have broken at GREEN; hence the C-9 amendment | - |
+| manga-translator's real conf (DV-2 preview, read-only) | - | rc=1 line=1 prob=1 | - |
+
+**Predictions for GATES.**
+
+- **DV-1** (`s/= mutation \]/= no-such-gate ]/`): the rule never fires, which
+  is today's behaviour, so expect exactly `gates: 488 passed, 10 failed`, the
+  same ten names as the RED output above (AC-1 x4, AC-4a x3, C-4 x3). At
+  least four, as DV-1 asks; exactly ten.
+- **DV-3** (`s/= mutation \]/!= mutation ]/`): within the HARNESS-039 block,
+  20 red - AC-1 1, AC-4a 1, C-4 1, AC-2 3, AC-3 4+4, AC-4b 3, AC-5 3 - per the
+  table. Outside it, more go red and I did not count them exactly: every
+  other `--audit` fixture with a non-`mutation` gate lacking `ondemand` now
+  FAILs (at least HARNESS-015 AC-2's control rc and "passed", its escalation
+  rc, HARNESS-026 AC-1's rc, and the HARNESS-024 audit goldens). The story
+  returns to RED only if the AC-3 assertions (`H39_ANY`, `^FAIL `) stay green.
+- **DV-2**: the preview above already shows the post-GREEN result on a patched
+  copy; GATES runs it against the real GREEN `gates.sh` as written in DV-2.
+
+**Verifications RED could not run.** DV-1 and DV-3 need the real
+implementation to mutate, which does not exist in RED; I declined both, and
+they stay with GATES. DV-2 likewise belongs to GATES; the preview row above
+is a patched copy, not the shipped `gates.sh`, and is not a substitute.
+
+**Other runs at RED (sequential):** `selftest.sh selftest` exit 0 (268/268,
+COUNTS check green with `gates 498`); `selftest.sh profiles` exit 0 (50/50);
+`check-sigpipe.sh` 0 findings over 47 files; `check-grep-count.sh` 0 findings;
+`gates.sh --fast` exit 0 (this repository's own gates are unconfigured, so
+`--fast` judges nothing here; the selftest suites are the real gate).
+
+**Discovered.** (1) The HARNESS-026 fixture collision, handled by the C-9
+amendment. (2) `selftest.sh`'s floor counts PASSED, not executed (C-7 note).
+(3) Line numbers: the new tests do not touch `sigpipe.test.sh`'s pins; C-8's
+constraints on `gates.sh` are GREEN's.
 
 ## Regressions
 
