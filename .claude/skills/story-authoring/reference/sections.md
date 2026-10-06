@@ -54,7 +54,11 @@ encoder, AC-1's property test **must** fail"), why the phase that wants it canno
 run it, **the phase that owns it by name**, and the pasted result once that phase
 runs it - what was mutated, what went red, that the file was restored - or the
 word `WAIVED` with a reason. `check-boundaries.sh` refuses a PR whose block names
-no phase, and one that reaches REVIEW with neither a result nor a waiver.
+no phase, and one that reaches REVIEW with neither a result nor a waiver. A
+result counts only as a block: a line beginning with three backticks or three
+tildes (a fence), or a line indented by exactly four spaces. Prose does not
+count, nor inline code in backticks, nor a tab, nor anything inside an HTML
+comment.
 
 Prefer GATES as the owner where you have the choice: source is writable there, so
 the mutation needs no exemption, and a story that bounced back to RED mid-cycle
@@ -139,7 +143,11 @@ command**, which is the instrumented one, not the plain test command.
 
 Paste the output. `check-boundaries.sh` refuses a PR whose `## Regressions` or
 `## Gate probes` describes a failure without showing one, because a description
-of red is the one thing an agent that skipped the probe would also write.
+of red is the one thing an agent that skipped the probe would also write. A
+result counts only as a block: a line beginning with three backticks or three
+tildes (a fence), or a line indented by exactly four spaces. Prose does not
+count, nor inline code in backticks, nor a tab, nor anything inside an HTML
+comment.
 
 Record too whether GREEN was a no-op, with the output proving the source was
 untouched and still passes. A no-op GREEN is a legitimate outcome that the
@@ -161,7 +169,8 @@ Required for any story that adds or changes a gate, its command, or its
 `evidence` line; omitted entirely otherwise. For each such gate: what was broken
 to make it fail, the failure output, and confirmation the probe was reverted.
 The output, not an account of it - `check-boundaries.sh` checks for a pasted
-block here for the same reason it does in `## Regressions`.
+block here for the same reason it does in `## Regressions`, and the same shape
+counts: a fence or a four-space-indented line, as that section says.
 
 This is RED applied to the gates. Without it a story can add a gate that has
 never been seen to do anything, and every story afterwards inherits it as proof.

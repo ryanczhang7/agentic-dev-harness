@@ -5,7 +5,7 @@ slug: boundaries-refusals-name-the-block-rule
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-037-boundaries-refusals-name-the-block-rule
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/harness/rules.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/sigpipe.test.sh, .claude/harness/VERSION, docs/wiki/audits/manga-translator-port-2026-10-02.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -433,6 +433,7 @@ name, below the table.
 - PLANNED, `lead-po`, resolved to Fable 5.1 (`claude-fable-5-1`), as planned;
   dispatched by the orchestrator with no model override stated.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran new-story (34/9) and boundaries (107/6), matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
+- GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the two message hunks and re-ran new-story (43/0).
 
 ## Out of scope
 
@@ -629,6 +630,56 @@ UNCONFIGURED (this repo's gate is the self-test).
 **Files touched:** `.claude/tests/boundaries.test.sh`,
 `.claude/tests/new-story.test.sh`, `.claude/tests/floors.conf`,
 `.claude/tests/selftest.test.sh`, this story (`## Test plan`, this handoff).
+
+## GREEN
+
+GREEN by `feature-developer`, 2026-10-06, on Opus 5.5 (`claude-opus-5-5`), no
+override stated in the dispatch. Nothing committed. No test file touched.
+
+**What changed.**
+
+- `scripts/check-boundaries.sh`: lines `:489` (3g) and `:526` (3h) edited in
+  place to C-1's text, each still one physical `problem "..."` line. Checked
+  byte-equal to story lines 220 and 229 (`3g MATCH`, `3h MATCH`). The optional
+  header sentence at `:82-85` was **not** added, so no line moved and the
+  sigpipe C-5 `:608` pin is untouched. `git diff -U0` hunks, the whole diff:
+
+      @@ -489 +489 @@ for sec in Regressions "Gate probes"; do
+      @@ -526 +526 @@ if printf '%s\n' "$dv" | has_content; then
+
+  `has_pasted_output` is byte-unchanged (C-2).
+- `scripts/new-story.sh`: C-3's sentence in the Deferred verifications,
+  Regressions and Gate probes template comments, wrapped, no backticks added.
+- `.claude/harness/rules.md`: the sentence once, in the "probed against the tree"
+  non-negotiable after "demands pasted output from either".
+- `.claude/skills/story-authoring/reference/sections.md`: the sentence in the
+  Deferred verifications paragraph and after the Regressions "Paste the output"
+  paragraph; Gate probes gets a cross-reference ("the same shape counts: a fence
+  or a four-space-indented line, as that section says").
+
+**Deviation from the Contract (orchestrator's decision).** `.claude/harness/VERSION`
+is NOT bumped to 81 and the audit doc is NOT edited in GREEN: in this repository
+both happen in the DONE commit on main after merge, as in HARNESS-031..036. Both
+paths stay in `touches:`/`**Writes:**` for that commit.
+
+**Runs (sequential):**
+
+    new-story: 43 passed, 0 failed
+    boundaries: 113 passed, 0 failed
+    sigpipe: 82 assertions executed, 82 declared - passed
+    selftest: 268 assertions executed, 268 declared - passed
+    check-sigpipe: scanned 47 shell file(s), 43 with pipefail, 0 finding(s)
+    check-grep-count: scanned 47 shell file(s), 0 finding(s)
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+Also run, because they read `rules.md`/`sections.md`: policy 17/0, reporting
+27/0, mutate 189/0.
+
+**Controls against the handoff's "After GREEN" column.** All confirmed by the
+113/0 run: (a) `~~~` accepted - pass; (b), (c), (d) refused - pass, and each
+whole-line pin - count 1 (pass); AC-1 (Regressions, Gate probes) and AC-2 pins -
+1. No divergence from RED's table. The "Under DV-1/2/3" columns are GATES' to
+confirm; not run here, per the dispatch.
 
 ## Regressions
 

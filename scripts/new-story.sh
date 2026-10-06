@@ -115,7 +115,11 @@ cat >> "$file" <<'TEMPLATE'
          whose block names no phase
        * the RESULT, pasted, once that phase runs it: what was mutated, what
          failed, and that the file was restored - or the word WAIVED with the
-         reason. check-boundaries.sh refuses a PR that has neither
+         reason. check-boundaries.sh refuses a PR that has neither. A result
+         counts only as a block: a line beginning with three backticks or
+         three tildes (a fence), or a line indented by exactly four spaces.
+         Prose does not count, nor inline code in backticks, nor a tab, nor
+         anything inside an HTML comment
      Schedule it into GATES rather than RED where you can: source is writable
      there, and a story that bounced back to RED mid-cycle gets its corrected
      assertions earned by the same mutation, for free. How many entries is the
@@ -224,7 +228,11 @@ cat >> "$file" <<'TEMPLATE'
          correctness, a BEFORE/AFTER measurement taken under the gate command -
          not the plain test command, which is the faster one.
          PASTE THE OUTPUT. check-boundaries.sh refuses a PR whose Regressions
-         or Gate probes section describes a failure without showing one
+         or Gate probes section describes a failure without showing one.
+         A result counts only as a block: a line beginning with three
+         backticks or three tildes (a fence), or a line indented by exactly
+         four spaces. Prose does not count, nor inline code in backticks, nor
+         a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
@@ -240,7 +248,11 @@ cat >> "$file" <<'TEMPLATE'
 <!-- REQUIRED if this story adds or changes a gate, its command, or its
      evidence line. Omit the section entirely otherwise.
      A gate that has never been observed to fail is not a gate: break the thing
-     it guards, run the gate, paste the failure, revert. One block per gate:
+     it guards, run the gate, paste the failure, revert. A result counts
+     only as a block: a line beginning with three backticks or three tildes
+     (a fence), or a line indented by exactly four spaces. Prose does not
+     count, nor inline code in backticks, nor a tab, nor anything inside an
+     HTML comment. One block per gate:
        * what was broken, and where
        * the gate output proving it failed
        * confirmation the probe was reverted -->
