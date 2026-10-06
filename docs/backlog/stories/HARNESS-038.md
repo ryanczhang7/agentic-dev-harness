@@ -5,7 +5,7 @@ slug: the-worktree-premises-compare-the-direct
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-038-the-worktree-premises-compare-the-direct
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/phase-guard.test.sh, .claude/tests/worktree.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
