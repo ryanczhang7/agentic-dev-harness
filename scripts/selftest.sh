@@ -6,7 +6,7 @@
 #   VERBOSE=1 bash scripts/selftest.sh  name every assertion, not just failures
 #   SELFTEST_JOBS=4 bash scripts/selftest.sh   up to 4 suites at once
 #
-# SELFTEST_JOBS (HARNESS-035) is opt-in, and unset means 1: one suite at a
+# SELFTEST_JOBS (HARNESS-036) is opt-in, and unset means 1: one suite at a
 # time, exactly as before. With 2 or more over a run of two or more suites, up
 # to that many run at once, each into its own buffer under
 # .claude/state/selftest.<pid>/, and their output is still printed in suite
@@ -15,7 +15,7 @@
 # or more is refused with exit 2 before anything runs. The self-test is
 # spawn-bound, and two spawn-heavy runs on one Windows machine is what hung
 # issue #97, so choose a value for a machine you know; CI leaves it unset.
-# Measured once on the Windows/Git Bash host this was built on (HARNESS-035
+# Measured once on the Windows/Git Bash host this was built on (HARNESS-036
 # DV-2, 2026-10-05): the full self-test took 1,135 s with it unset and 336 s
 # with SELFTEST_JOBS=4, with identical per-suite results. Suites start in suite
 # order, so the slowest one (phase-guard) still sets the floor.
@@ -78,7 +78,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ONLY="${1:-}"
 
 # SELFTEST_JOBS, read before anything else so that a bad value is refused
-# before the floors audit, the lock and any suite (HARNESS-035 C-3). Unset and
+# before the floors audit, the lock and any suite (HARNESS-036 C-3). Unset and
 # empty mean 1; leading zeros are refused rather than normalised.
 JOBS="${SELFTEST_JOBS-}"
 case "$JOBS" in
@@ -295,7 +295,7 @@ fi
 # what lets a suite that runs this tree's own selftest.sh through - and what
 # a fixture tree, whose lock path differs, ignores.
 #
-# One EXIT handler (HARNESS-035 C-4): with suites in the background the lock
+# One EXIT handler (HARNESS-036 C-4): with suites in the background the lock
 # may go only after the last of them has exited, so the handler waits for any
 # still running, removes this run's buffer directory if it made one, and only
 # then releases the lock. On a one-at-a-time run there is nothing to wait for
@@ -323,7 +323,7 @@ run_lock_acquire "$ROOT" "scripts/selftest.sh${*:+ $*}" || exit 2
 fails=0; ran=0; floored=0; met=0; executed=0; declared=0
 
 # The per-suite verdict, shared by both paths so that they cannot drift
-# (HARNESS-035 C-1). suite_header prints the block's first line; report_suite
+# (HARNESS-036 C-1). suite_header prints the block's first line; report_suite
 # prints the suite's output - the global $out, captured exactly as `$(...)`
 # captures it - and judges it: exit status, then the floor read back out of it.
 suite_header() { printf '\n=== %s ===\n' "$1"; }
@@ -393,7 +393,7 @@ if [ "$JOBS" -lt 2 ] || [ "$NSUITES" -lt 2 ]; then
     report_suite "$name" "$rc"
   done
 else
-  # Concurrently (HARNESS-035 C-2). Up to $JOBS suites alive at once, started
+  # Concurrently (HARNESS-036 C-2). Up to $JOBS suites alive at once, started
   # in glob order; a slot is refilled when ANY of them exits. bash 3.2 has no
   # way to wait for whichever job ends first, so the running pids are polled
   # with `kill -0` and a gone one's status is collected with suite_status.

@@ -1,12 +1,12 @@
 ---
-id: HARNESS-035
+id: HARNESS-036
 title: Opt-in concurrent self-test suites
 slug: opt-in-concurrent-self-test-suites
 epic: 
 type: feature
 status: in-review
 phase: REVIEW
-branch: story/HARNESS-035-opt-in-concurrent-self-test-suites
+branch: story/HARNESS-036-opt-in-concurrent-self-test-suites
 depends_on: [HARNESS-034]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/state/README.md]         # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
@@ -431,7 +431,7 @@ suffix of nothing wrong, but `FAILED.` lines differ only by their counts.
 **The floor.** `floors.conf`'s `selftest` line and `COUNTS`' `selftest` row
 record the suite's TOTAL assertion count at the end of RED - passed plus
 failed, which is what it will pass when green (HARNESS-033 and -034 did the
-same), with a HARNESS-035 note at the foot of `floors.conf`.
+same), with a HARNESS-036 note at the foot of `floors.conf`.
 
 ### C-7 Oracle partition
 
@@ -621,7 +621,7 @@ assertion floors: all 24 suite(s) met their declared floor (2715 assertions exec
 
 ## Model guidance
 
-Planned by `bash scripts/plan.sh write HARNESS-035` from `.claude/harness/models.conf`.
+Planned by `bash scripts/plan.sh write HARNESS-036` from `.claude/harness/models.conf`.
 A PLAN, not a record: a session setting or an explicit override can beat both
 this and the agent's own `model:` field, and nothing here can see which won.
 The orchestrator still writes down the model each dispatch **resolved** to, by
@@ -792,37 +792,37 @@ AC-4's loop is shown for `'0'` only; the other six values (`00 -1 abc 1.5 ' 2'
 2x`) fail the same four assertions each, 7 x 8 = 56 in all.
 
 ```
-  HARNESS-035 AC-1  SELFTEST_JOBS unset, empty or 1 runs today's sequential loop, byte for byte
-  HARNESS-035 AC-1  control: the same fixture at SELFTEST_JOBS=3 is concurrent
+  HARNESS-036 AC-1  SELFTEST_JOBS unset, empty or 1 runs today's sequential loop, byte for byte
+  HARNESS-036 AC-1  control: the same fixture at SELFTEST_JOBS=3 is concurrent
     FAIL SELFTEST_JOBS=3: suites were alive together (peak above 1)
     FAIL SELFTEST_JOBS=3: a suite saw a .claude/state/selftest.<pid> buffer directory while it ran
-  HARNESS-035 AC-2  concurrent output is the serial output, failures included
+  HARNESS-036 AC-2  concurrent output is the serial output, failures included
     FAIL SELFTEST_JOBS=3's last line counts the same three failures
     FAIL SELFTEST_JOBS=3's stdout is byte-identical to SELFTEST_JOBS=1's
     FAIL control: at SELFTEST_JOBS=3 the first suite in glob order finished last
     FAIL control: and b2-exits3 was neither the first nor the last to finish
-  HARNESS-035 AC-2  an all-passing fixture: the same totals, the same verdict
+  HARNESS-036 AC-2  an all-passing fixture: the same totals, the same verdict
     FAIL SELFTEST_JOBS=3 over the passing fixture exits 0
     FAIL SELFTEST_JOBS=3's stdout is byte-identical to SELFTEST_JOBS=1's
     FAIL SELFTEST_JOBS=3 prints the all-met floors line once
     FAIL SELFTEST_JOBS=3 ends with 4 harness suite(s) passed.
     FAIL control: at SELFTEST_JOBS=3 the first suite in glob order finished last
-  HARNESS-035 AC-2  one named suite at SELFTEST_JOBS=3 is the same single-suite run
-  HARNESS-035 AC-2  a name that matches nothing at SELFTEST_JOBS=3
-  HARNESS-035 AC-2  a finished suite is printed while a later one is still held
+  HARNESS-036 AC-2  one named suite at SELFTEST_JOBS=3 is the same single-suite run
+  HARNESS-036 AC-2  a name that matches nothing at SELFTEST_JOBS=3
+  HARNESS-036 AC-2  a finished suite is printed while a later one is still held
     FAIL precondition: at SELFTEST_JOBS=3, d2-held and d3-held are both running and held
     FAIL while both later suites are concurrently held, d1-quick's whole block is already on stdout
-  HARNESS-035 AC-3  at most SELFTEST_JOBS suites alive at once, and exactly that many
+  HARNESS-036 AC-3  at most SELFTEST_JOBS suites alive at once, and exactly that many
     FAIL SELFTEST_JOBS=2 over 4 held suites exits 0
     FAIL SELFTEST_JOBS=2 over 4: the most suites alive at once is exactly 2
     FAIL SELFTEST_JOBS=3 over 5 held suites exits 0
     FAIL SELFTEST_JOBS=3 over 5: the most suites alive at once is exactly 3
     FAIL SELFTEST_JOBS=10 over 4 held suites exits 0
     FAIL SELFTEST_JOBS=10 over 4: the most suites alive at once is exactly 4
-  HARNESS-035 AC-3  a free slot is refilled when ANY suite exits, not the oldest
+  HARNESS-036 AC-3  a free slot is refilled when ANY suite exits, not the oldest
     FAIL SELFTEST_JOBS=2: the run completes and exits 0
     FAIL SELFTEST_JOBS=2: w1-first's hold cleared, it did not time out
-  HARNESS-035 AC-4  a bad SELFTEST_JOBS is refused before anything runs
+  HARNESS-036 AC-4  a bad SELFTEST_JOBS is refused before anything runs
     FAIL SELFTEST_JOBS='0', full run: exits 2
     FAIL SELFTEST_JOBS='0', full run: stderr is exactly the one refusal line
     FAIL SELFTEST_JOBS='0', full run: nothing on stdout
@@ -831,20 +831,20 @@ AC-4's loop is shown for `'0'` only; the other six values (`00 -1 abc 1.5 ' 2'
     FAIL SELFTEST_JOBS='0', h1 run: stderr is exactly the one refusal line
     FAIL SELFTEST_JOBS='0', h1 run: nothing on stdout
     FAIL SELFTEST_JOBS='0', h1 run: no suite started
-  HARNESS-035 AC-4  the value is checked before the floors file
+  HARNESS-036 AC-4  the value is checked before the floors file
     FAIL SELFTEST_JOBS=abc over a malformed floors.conf: exits 2, not the floors audit's 1
     FAIL and stderr is the refusal line, alone
     FAIL and no floors fault is printed: stdout is empty
-  HARNESS-035 AC-4  control: a value above the number of suites is accepted
-  HARNESS-035 AC-5  buffers under .claude/state/selftest.<pid>/, the lock held to the end
+  HARNESS-036 AC-4  control: a value above the number of suites is accepted
+  HARNESS-036 AC-5  buffers under .claude/state/selftest.<pid>/, the lock held to the end
     FAIL SELFTEST_JOBS=3 over three passing suites exits 0
     FAIL every suite saw .claude/state/selftest.<pid>, <pid> being selftest.sh's own ($!)
     FAIL C-2: and its own buffer, <name>.out, already in it
     FAIL precondition: f1 finished last, after f2 and f3
-  HARNESS-035 AC-5  TERM drains the running suites, starts no more, and cleans up
+  HARNESS-036 AC-5  TERM drains the running suites, starts no more, and cleans up
     FAIL precondition: at SELFTEST_JOBS=2, t1-held and t2-held are both running and held
     FAIL t2-held wrote its finished marker before the run exited
-  HARNESS-035 AC-6  state, suite and portability hygiene, in this repository
+  HARNESS-036 AC-6  state, suite and portability hygiene, in this repository
     FAIL README has one selftest.<pid>/*.out row, hand-editable yes
     FAIL scripts/selftest.sh defines suite_status on exactly the one line DV-1 mutates
     FAIL and defines it nowhere else
@@ -865,7 +865,7 @@ missing helper.
 `summary`, the `COUNTS` row `selftest 268`, and an EXIT trap
 (`selftest_cleanup`: releases every hold, waits every background pid, then
 removes the fixture) replacing `trap 'rm -rf "$FIX"' EXIT`.
-`.claude/tests/floors.conf`: `selftest` 100 -> 268, with a HARNESS-035 note at
+`.claude/tests/floors.conf`: `selftest` 100 -> 268, with a HARNESS-036 note at
 the foot. This story file: `## Contract` C-6 (amendment below), `## Test plan`,
 and this section. Not touched: `scripts/selftest.sh`,
 `.claude/state/README.md`, `## Acceptance criteria`.
@@ -1076,7 +1076,7 @@ substitute for either entry.
 **PLANNED, 2026-10-05 (lead-po).** One story: the behaviour is "one run's
 suites run concurrently, opt-in", one RED->GREEN cycle over `selftest.sh` and
 its own suite. Left uncommitted at PLANNED: the orchestrator creates
-`story/HARNESS-035-opt-in-concurrent-self-test-suites` and commits the story
+`story/HARNESS-036-opt-in-concurrent-self-test-suites` and commits the story
 there at PLANNED, which is the criteria baseline (HARNESS-033).
 
 Decisions this plan took that the audit did not, each open to RED amending the
@@ -1106,7 +1106,7 @@ a marker touched at the start. Scratch script, not committed.
 - **All 24 suites exited 0, every summary line `..., 0 failed`.**
 - **The tree was unchanged except for this story file**, which was being
   written during the run: the status diff, the file-list diff and the
-  `-newer` list each name only `docs/backlog/stories/HARNESS-035.md`. Nothing
+  `-newer` list each name only `docs/backlog/stories/HARNESS-036.md`. Nothing
   appeared in `.claude/state`. So the static survey in `## Context` holds when
   measured: no suite writes the real tree, and no suite failed beside others.
   One run, which cannot rule out a rare race; DV-2 repeats the check through
@@ -1214,3 +1214,17 @@ self-test is DV-2 run 1: exit 0 in 1,135 s, `24 harness suite(s) passed.`
 (2,715 assertions executed, 2,488 declared). After the header comment edit,
 `gates.sh` was re-run (recorded) and so was a full self-test with
 `SELFTEST_JOBS=4`: exit 0 in 336 s, same last line.
+
+**Renumbered, 2026-10-06, orchestrator.** This story was planned, built and
+opened as PR #115 under the id HARNESS-035. While it was in review, another
+session merged a different story under the same id (#114, "the lock follows
+the session into a worktree", release 79), so the two `HARNESS-035.md` files
+conflicted. This one became HARNESS-036: the story file was moved, every
+`HARNESS-035` reference in this story's own files (`scripts/selftest.sh`
+comments, `selftest.test.sh` comments and `describe` labels, the `floors.conf`
+note, the state README paragraph) was changed to `HARNESS-036`, and the PR
+branch was renamed on GitHub so #115 follows it. No assertion, criterion or
+behaviour changed. Commit hashes quoted above (the PLANNED baseline `f42b1bb`
+and the rest) are this story's own history, unchanged by the move. Main was
+then merged in (releases 78 and 79), and the gates and a full self-test were
+re-run on the merged tree.

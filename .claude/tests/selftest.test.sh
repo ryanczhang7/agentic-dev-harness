@@ -40,7 +40,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
 FIX="$(make_project_fixture)"
-# HARNESS-035: the cases at the end background selftest.sh runs whose suites
+# HARNESS-036: the cases at the end background selftest.sh runs whose suites
 # hold on files. On any exit, release every hold and wait every background run
 # (each hold is bounded, so the wait is too) before the fixture is removed.
 BG=""
@@ -861,7 +861,7 @@ assert_eq "and the floor is counted as met" 1 \
 assert_not_contains "with no missing-floor warning" "WARNING: no floor line" "$out"
 
 # ===========================================================================
-# HARNESS-035: opt-in concurrent suites, SELFTEST_JOBS. Every case below runs
+# HARNESS-036: opt-in concurrent suites, SELFTEST_JOBS. Every case below runs
 # the fixture's copy of selftest.sh with SELFTEST_JOBS stated explicitly - a
 # value, empty, or removed with `env -u` - and with VERBOSE empty, so nothing
 # here depends on the caller's environment. The cases above are left alone
@@ -903,7 +903,7 @@ HW="$FIX/w"
 mkdir -p "$HW"
 
 cat > "$FIX/.claude/tests/_held.sh" <<'HELD'
-# Sourced by HARNESS-035's synthetic suites, after _lib.sh. Inputs, set by the
+# Sourced by HARNESS-036's synthetic suites, after _lib.sh. Inputs, set by the
 # suite before sourcing: S (name), N (cases), and optionally WAIT_REL (hold
 # until mk/release/<S> or mk/release/all), WAIT_FIN / WAIT_START (hold until
 # those suites have finished / started), WAIT_COUNT (hold until that many
@@ -1124,7 +1124,7 @@ h_same() {
 }
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-035 AC-1  SELFTEST_JOBS unset, empty or 1 runs today's sequential loop, byte for byte"
+describe "HARNESS-036 AC-1  SELFTEST_JOBS unset, empty or 1 runs today's sequential loop, byte for byte"
 
 # Five suites: one that holds until the second has started (pre-released for
 # the sequential runs, so it never blocks there), one that writes stderr and
@@ -1210,7 +1210,7 @@ for mode in unset empty 1; do
   assert_eq "SELFTEST_JOBS $mode: and none is left after it, nor a run.lock" "" "$(h_left)"
 done
 
-describe "HARNESS-035 AC-1  control: the same fixture at SELFTEST_JOBS=3 is concurrent"
+describe "HARNESS-036 AC-1  control: the same fixture at SELFTEST_JOBS=3 is concurrent"
 
 mk_reset
 jrun 3
@@ -1221,7 +1221,7 @@ assert_eq "SELFTEST_JOBS=3: a suite saw a .claude/state/selftest.<pid> buffer di
 assert_eq "SELFTEST_JOBS=3: and the same fixture still exits 1" 1 "$JRC"
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-035 AC-2  concurrent output is the serial output, failures included"
+describe "HARNESS-036 AC-2  concurrent output is the serial output, failures included"
 
 # b1 is first in glob order and finishes LAST (it holds until every other
 # suite has finished). b2 exits 3 with its floor met, and holds until b3 has
@@ -1264,7 +1264,7 @@ assert_eq "control: at SELFTEST_JOBS=3 the first suite in glob order finished la
 assert_eq "control: and b2-exits3 was neither the first nor the last to finish" yes \
   "$(yn grep -qxF b3-short "$MK/finbefore/b2-exits3")"
 
-describe "HARNESS-035 AC-2  an all-passing fixture: the same totals, the same verdict"
+describe "HARNESS-036 AC-2  an all-passing fixture: the same totals, the same verdict"
 
 reset_suites
 held c1-last   N=2 "WAIT_FIN='c2-plain c3-stderr c4-plain'" LONELY=30
@@ -1297,7 +1297,7 @@ assert_eq "SELFTEST_JOBS=3 ends with 4 harness suite(s) passed." \
 assert_eq "control: at SELFTEST_JOBS=3 the first suite in glob order finished last" 3 \
   "$(h_lines "$MK/finbefore/c1-last")"
 
-describe "HARNESS-035 AC-2  one named suite at SELFTEST_JOBS=3 is the same single-suite run"
+describe "HARNESS-036 AC-2  one named suite at SELFTEST_JOBS=3 is the same single-suite run"
 
 # A suite with no floor line, so the single-suite WARNING lines on stderr are
 # part of what must be identical.
@@ -1318,7 +1318,7 @@ assert_eq "SELFTEST_JOBS=3 c5-nofloor runs exactly one suite: one header, its ow
   "$(grep -E '^=== .* ===$' "$HW/out.ac2s-3")"
 assert_eq "and only that suite started" 1 "$(h_count started)"
 
-describe "HARNESS-035 AC-2  a name that matches nothing at SELFTEST_JOBS=3"
+describe "HARNESS-036 AC-2  a name that matches nothing at SELFTEST_JOBS=3"
 
 mk_reset
 jrun 3 nosuchsuite
@@ -1328,7 +1328,7 @@ assert_eq "with the shipped No suites matched line, alone, on stderr" \
 assert_eq "and nothing on stdout" "" "$(cat "$HW/out")"
 assert_eq "and no suite started" 0 "$(h_count started)"
 
-describe "HARNESS-035 AC-2  a finished suite is printed while a later one is still held"
+describe "HARNESS-036 AC-2  a finished suite is printed while a later one is still held"
 
 reset_suites
 held d1-quick N=1
@@ -1359,7 +1359,7 @@ wait "$HP"; rc="$?"
 assert_eq "released, the run exits 0" 0 "$rc"
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-035 AC-3  at most SELFTEST_JOBS suites alive at once, and exactly that many"
+describe "HARNESS-036 AC-3  at most SELFTEST_JOBS suites alive at once, and exactly that many"
 
 # Each suite holds until K suites have started, then 1 s more, so the first K
 # are alive together and an over-eager runner has time to start one more.
@@ -1382,7 +1382,7 @@ peak_case 2 4 2
 peak_case 3 5 3
 peak_case 10 4 4
 
-describe "HARNESS-035 AC-3  a free slot is refilled when ANY suite exits, not the oldest"
+describe "HARNESS-036 AC-3  a free slot is refilled when ANY suite exits, not the oldest"
 
 # w1 holds (20 s) until w4, the last in glob order, has started. With two
 # slots that needs w2 and w3 to come and go beside a w1 that is still
@@ -1414,7 +1414,7 @@ assert_eq "control: because w1-first reports that its hold timed out" 1 \
   "$(h_exact '    FAIL w1-first: its hold cleared before its bound' "$HW/out")"
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-035 AC-4  a bad SELFTEST_JOBS is refused before anything runs"
+describe "HARNESS-036 AC-4  a bad SELFTEST_JOBS is refused before anything runs"
 
 reset_suites
 held h1 N=1
@@ -1439,7 +1439,7 @@ for v in 0 00 -1 abc 1.5 ' 2' 2x; do
   done
 done
 
-describe "HARNESS-035 AC-4  the value is checked before the floors file"
+describe "HARNESS-036 AC-4  the value is checked before the floors file"
 
 floors <<'FLOORS'
 floor | h1 | 2
@@ -1452,7 +1452,7 @@ assert_eq "SELFTEST_JOBS=abc over a malformed floors.conf: exits 2, not the floo
 assert_eq "and stderr is the refusal line, alone" "$(refusal abc)" "$(cat "$HW/err")"
 assert_eq "and no floors fault is printed: stdout is empty" "" "$(cat "$HW/out")"
 
-describe "HARNESS-035 AC-4  control: a value above the number of suites is accepted"
+describe "HARNESS-036 AC-4  control: a value above the number of suites is accepted"
 
 floors <<'FLOORS'
 floor | h1 | 2
@@ -1464,7 +1464,7 @@ assert_eq "SELFTEST_JOBS=10 over two suites exits 0" 0 "$JRC"
 assert_eq "and both passed" 1 "$(h_exact '2 harness suite(s) passed.' "$HW/out")"
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-035 AC-5  buffers under .claude/state/selftest.<pid>/, the lock held to the end"
+describe "HARNESS-036 AC-5  buffers under .claude/state/selftest.<pid>/, the lock held to the end"
 
 # f1 holds until f2 and f3 have finished, so which suite finishes last is a
 # state the test controls (found in RED: picking "the suite whose finbefore
@@ -1498,7 +1498,7 @@ wait "$HP"; rc="$?"
 assert_eq "SELFTEST_JOBS=3 with one suite exiting 1 (floor met) exits 1" 1 "$rc"
 assert_eq "after exit 1: no selftest.* and no run.lock or run.lock.* remain" "" "$(h_left)"
 
-describe "HARNESS-035 AC-5  TERM drains the running suites, starts no more, and cleans up"
+describe "HARNESS-036 AC-5  TERM drains the running suites, starts no more, and cleans up"
 
 reset_suites
 held t1-held N=1 WAIT_REL=1 FINISH_DELAY=1
@@ -1527,7 +1527,7 @@ assert_eq "the queued t3-queued never started" absent "$(present "$MK/started/t3
 assert_eq "after TERM: no selftest.* and no run.lock or run.lock.* remain" "" "$(h_left)"
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-035 AC-6  state, suite and portability hygiene, in this repository"
+describe "HARNESS-036 AC-6  state, suite and portability hygiene, in this repository"
 
 README="$REPO_ROOT/.claude/state/README.md"
 # state_row <path cell>   Table rows with that path cell whose last cell is yes.

@@ -675,7 +675,7 @@ exact statuses; nothing is oracle-free.
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
 
-- **MT-042, `SELFTEST_JOBS` - the follow-up story (HARNESS-035, to be planned
+- **MT-042, `SELFTEST_JOBS` - the follow-up story (HARNESS-036 - first numbered HARNESS-035, renumbered when a concurrent story took that id; to be planned
   when this one closes).** Concurrent suites within ONE self-test run, opt-in,
   `SELFTEST_JOBS` defaulting to **1** locally (the audit's decision; downstream
   `053c58e` defaults to 4, which is not to be copied), with per-run output
