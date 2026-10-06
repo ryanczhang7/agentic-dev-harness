@@ -5,7 +5,7 @@ slug: the-manifest-audit-flags-a-mutation-gate
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-039-the-manifest-audit-flags-a-mutation-gate
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/skills/quality-gates/SKILL.md, .claude/harness/project.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -435,6 +435,7 @@ name, below the table.
 - PLANNED: `lead-po` dispatched as `/plan-story`, resolved to Fable 5.1
   (`claude-fable-5-1`), as planned; no override visible to the agent.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran gates.test.sh: 488 passed, 10 failed, matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
+- GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the gates.sh diff and ran `gates.sh --audit` on this repo (passed).
 - Oracle partition for the RED brief: every criterion is mechanical (C-5);
   nothing is settled-by-measurement, nothing is oracle-free. Brief RED to pin
   the C-3 message byte for byte and to invent no metric.
@@ -670,6 +671,77 @@ COUNTS check green with `gates 498`); `selftest.sh profiles` exit 0 (50/50);
 amendment. (2) `selftest.sh`'s floor counts PASSED, not executed (C-7 note).
 (3) Line numbers: the new tests do not touch `sigpipe.test.sh`'s pins; C-8's
 constraints on `gates.sh` are GREEN's.
+
+## GREEN
+
+GREEN ran on Opus 5.5 (`claude-opus-5-5`), as the agent definition declares; no
+override was visible to the agent.
+
+**Starting point.** `selftest.sh gates` before any edit was the RED commit,
+whose failure the orchestrator had already re-run (488/10); GREEN did not
+re-run it first and went straight to C-2.
+
+**What changed.**
+
+- `scripts/gates.sh`: C-2's loop, exactly as written, inside the `--audit`
+  block after the `ondemand`-orphan loop (`done <<< "$ONDEMANDS"`) and before
+  the `ci-factor` comment, with a six-line comment. `grep -c '= mutation \]'
+  scripts/gates.sh` prints `1`. Header (C-6): the five existing lines
+  `:38-42` re-wrapped to carry the new half-line without adding a line, so
+  `:74` (`BOOTSTRAPPED="$(grep`) and `:580` (`why="could not launch: $(`) are
+  unmoved and `sigpipe.test.sh` is untouched (C-8). The clause dropped to make
+  room: "- every story's GATES, every PR's CI job" after "every full run".
+- `.claude/skills/quality-gates/SKILL.md:58`: "and refuses a `mutation` gate
+  that has no `ondemand` line" (one line longer after re-wrap).
+- `.claude/harness/project.conf:135`: one added comment line - "`gates.sh
+  --audit` refuses a `mutation` gate that lacks the `ondemand` line." It sits
+  above `gate | mutation` (now `:272`) and `ondemand | mutation` (now `:283`),
+  so AC-5's cited line numbers each move by one; no test pins them (`grep
+  'project\.conf:[0-9]' .claude/tests/*.sh` is empty).
+- No test file touched.
+
+**Runs (sequential, all local):**
+
+    selftest.sh gates     gates: 498 passed, 0 failed   (floor 498 met)
+    selftest.sh sigpipe   82 executed, 82 declared, exit 0
+    selftest.sh selftest  268 executed, 268 declared, exit 0
+    selftest.sh profiles  50 executed, 50 declared, exit 0   (AC-5 second half)
+    gates.sh --audit      Manifest audit passed.  exit 0     (AC-5, this repo)
+    check-sigpipe.sh      scanned 47 shell file(s), 43 with pipefail, 0 finding(s)
+    check-grep-count.sh   scanned 47 shell file(s), 0 finding(s)
+    gates.sh --fast       All required gates passed (0 ran, 5 unconfigured, 0 known). exit 0
+
+The full `bash scripts/gates.sh` was not run in GREEN, per the dispatch: it is
+GATES' run and it writes `## Gate results`.
+
+**Controls confirmed against the shipped `gates.sh`.** Each test manifest
+copied from `gates.test.sh`'s HARNESS-039 block into a `make_project_fixture`,
+audited with the real script, counted with `gates.test.sh`'s own `count_re`
+(columns as in the handoff table):
+
+    AC-1                   rc=1 line=1 any=1 prob=1 passed=0 fails=1
+    AC-4a                  rc=1 line=1 any=1 prob=1 passed=0 fails=1
+    C-4                    rc=1 line=1 any=1 prob=1 passed=0 fails=1
+    AC-2                   rc=0 line=0 any=0 prob=0 passed=1 fails=0
+    AC-3-no-mutation       rc=0 line=0 any=0 prob=0 passed=1 fails=0
+    AC-3-beside-mutation   rc=0 line=0 any=0 prob=0 passed=1 fails=0
+    AC-4b                  rc=0 line=0 any=0 prob=0 passed=1 fails=0
+    AC-5                   rc=0 line=0 any=0 prob=0 passed=1 fails=0
+
+Identical to RED's "C-2 (`= mutation`) measured" column on every row; no
+divergence. (RED measured a patched copy of the same loop; GREEN shipped that
+loop verbatim, so this is the expected result.) The DV-3 inversion column was
+not re-measured: that is DV-3, owned by GATES, and the dispatch excluded it.
+
+**Instrument note.** A first attempt at the table above counted with
+`awk -v re=...`, which un-escapes backslashes: `\|` became alternation and the
+counts were wrong (AC-2 `line=1`, AC-1 `prob=0`). Discarded and re-run with
+`count_re`'s `ARGV` form, which passes the pattern unprocessed. Recorded
+because the suite's own needles are correct for exactly this reason, and a
+future control re-measurement should reuse `count_re` rather than re-derive it.
+
+**Not done here (GATES):** DV-1, DV-2, DV-3, the full `gates.sh` run, and the
+full selftest before REVIEW.
 
 ## Regressions
 

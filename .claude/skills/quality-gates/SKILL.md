@@ -55,8 +55,9 @@ waivers are refused on required gates for the same reason.
 `slow` keeps a gate out of `--fast` and nothing else: it still runs on every
 full run. A gate that should not run per story at all takes an `ondemand` line
 instead, reason required, and runs only with `--gate <id>` or when a story
-escalates it; `--audit` refuses one on a required gate. The `mutation` gate
-below carries both.
+escalates it; `--audit` refuses one on a required gate, and refuses a
+`mutation` gate that has no `ondemand` line. The `mutation` gate below carries
+both.
 
 A `--fast` run is never recorded in a story. It is not a full run, and only a
 full run is evidence.
