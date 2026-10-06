@@ -15,6 +15,10 @@
 # or more is refused with exit 2 before anything runs. The self-test is
 # spawn-bound, and two spawn-heavy runs on one Windows machine is what hung
 # issue #97, so choose a value for a machine you know; CI leaves it unset.
+# Measured once on the Windows/Git Bash host this was built on (HARNESS-035
+# DV-2, 2026-10-05): the full self-test took 1,135 s with it unset and 336 s
+# with SELFTEST_JOBS=4, with identical per-suite results. Suites start in suite
+# order, so the slowest one (phase-guard) still sets the floor.
 #
 # These test the harness, not the project built with it: the phase lock, the
 # path classifier, the hooks. They need bash, git and coreutils and nothing

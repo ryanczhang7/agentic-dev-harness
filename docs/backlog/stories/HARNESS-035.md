@@ -4,8 +4,8 @@ title: Opt-in concurrent self-test suites
 slug: opt-in-concurrent-self-test-suites
 epic: 
 type: feature
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-035-opt-in-concurrent-self-test-suites
 depends_on: [HARNESS-034]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/state/README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -559,6 +559,53 @@ whether the feature is worth recommending here. Its cost is one extra full run
 (the `SELFTEST_JOBS=1` run is step 1's, which GATES -> REVIEW makes anyway).
 RED cannot run it: there is nothing concurrent to run.
 
+### Results, run at GATES (2026-10-05) by the orchestrator
+
+**DV-1, the defect put back (a concurrent run loses a suite's exit status): red as required.** `selftest: 264 passed, 4 failed`. AC-2's failing-fixture comparison went red (wrong failure count, stdout no longer byte-identical) and so did AC-5's exit-1 case; the fourth is the one-line pin, which the mutation itself changes. Every AC-1 case and every `SELFTEST_JOBS=1` half stayed green. As RED and GREEN both noted, the entry's wording "exits 0 ... `<N> harness suite(s) passed.`" does not fit this fixture: two of its six suites fail without involving an exit status, so the mutant still exits 1, with a visibly wrong count. The substance of the entry holds. Passing lines elided; restore verified; green re-run below.
+
+```
+=== mutate: scripts/selftest.sh (1 line(s) changed by s|suite_status() { wait "\$1"; }|suite_status() { wait "$1"; return 0; }|) ===
+  367 - suite_status() { wait "$1"; }
+  367 + suite_status() { wait "$1"; return 0; }
+=== mutate: running bash scripts/selftest.sh selftest ===
+    FAIL SELFTEST_JOBS=3's last line counts the same three failures
+    FAIL SELFTEST_JOBS=3's stdout is byte-identical to SELFTEST_JOBS=1's
+    FAIL SELFTEST_JOBS=3 with one suite exiting 1 (floor met) exits 1
+    FAIL scripts/selftest.sh defines suite_status on exactly the one line DV-1 mutates
+selftest: 264 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/scripts_selftest.sh.20261005T233657Z.43.bak) ===
+--- re-run, unmutated:
+assertion floors: all 1 suite(s) met their declared floor (268 assertions executed, 268 declared).
+1 harness suite(s) passed.
+```
+
+**DV-2, the real full self-test, unset then `SELFTEST_JOBS=4`, one after the other: all four conditions hold.**
+
+1. Both exit 0: run 1 (`env -u SELFTEST_JOBS`) `rc=0 wall=1135s`; run 2 (`SELFTEST_JOBS=4`) `rc=0 wall=336s`.
+2. The 26 summary lines (24 suite lines, `assertion floors:`, `harness suite(s) passed.`) are identical in order (`diff` empty).
+3. `git status --porcelain --ignored` and `ls -A .claude/state` are identical before run 1 and after run 2: no buffer directory, no lock.
+4. Speed: run 2 took 336 s against 1,135 s, a ratio of 0.30 (3.4 times faster), on this Windows/Git Bash host, with no other run in this worktree. Start order is suite (glob) order, as GREEN built it. The `selftest.sh` header now records this measurement (a comment-only edit at GATES); `gates.sh` and a full `SELFTEST_JOBS=4` self-test were re-run after it: `rc=0 wall=336s`, `24 harness suite(s) passed.`
+
+```
+### DV-1 23:36:57
+dv1 rc=1
+dv1 rerun rc=0
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+### GATES 23:39:12
+gates rc=0
+### DV-2 run1 23:39:14
+run1 rc=0 wall=1135s
+### DV-2 run2 23:58:09
+run2 rc=0 wall=336s
+### ALL-DONE 00:03:45
+--- run 1 last lines:
+assertion floors: all 24 suite(s) met their declared floor (2715 assertions executed, 2488 declared).
+24 harness suite(s) passed.
+--- run 2 last lines:
+assertion floors: all 24 suite(s) met their declared floor (2715 assertions executed, 2488 declared).
+24 harness suite(s) passed.
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -598,6 +645,7 @@ name, below the table.
 - PLANNED, `lead-po`, resolved to Opus 5.5 (`claude-opus-5-5`), dispatched without a model override.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Interrupted by a Claude session restart and resumed via SendMessage (same agent). Orchestrator re-ran selftest.test.sh: 179 passed, 89 failed, matching the handoff; ## Acceptance criteria byte-identical to the PLANNED commit.
 - GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator read the selftest.sh diff and re-ran `selftest.sh selftest` (268/268, floor met).
+- GATES: no dispatch. The orchestrator (`claude-opus-5-5`) ran DV-1, DV-2, `gates.sh`, the full selftest (DV-2 run 1 is step 1's run), and made the one comment-only header edit DV-2 condition 4 asks for.
 
 **Oracle partition for the RED brief:** `## Contract` C-7. In short: opt-in,
 the name, default 1 and per-run buffers are settled (audit `## Decided` 6 C,
@@ -985,10 +1033,21 @@ substitute for either entry.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-06T00:04:21Z
+    commit: e6d2345 (working tree had uncommitted changes)
+    tree:   cebe14325f13924dd98ebd41c95ab9ede1bcf6ae
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -1148,3 +1207,10 @@ control's `jrun 3`.
 
 No divergence from RED's numbers. The AC-1 peak is 3, not merely 2: the
 fixture's five suites at J=3 fill all three slots.
+
+**GATES (2026-10-05), orchestrator.** DV-1 and DV-2 came out as required
+(results under `## Deferred verifications`). GATES -> REVIEW step 1's full
+self-test is DV-2 run 1: exit 0 in 1,135 s, `24 harness suite(s) passed.`
+(2,715 assertions executed, 2,488 declared). After the header comment edit,
+`gates.sh` was re-run (recorded) and so was a full self-test with
+`SELFTEST_JOBS=4`: exit 0 in 336 s, same last line.
