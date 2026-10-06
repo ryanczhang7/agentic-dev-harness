@@ -4,8 +4,8 @@ title: Opt-in concurrent self-test suites
 slug: opt-in-concurrent-self-test-suites
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-036-opt-in-concurrent-self-test-suites
 depends_on: [HARNESS-034]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/state/README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1244,3 +1244,13 @@ different name at PLANNED. So the move reset the freeze. Checked by hand
 instead: `## Acceptance criteria` here is byte-identical to the PLANNED commit's
 `HARNESS-035.md` (f42b1bb). A rename resetting the 3d baseline is a gap in
 HARNESS-033's rule. It is not fixed here.
+
+**DONE, 2026-10-06.** Merged in #116 (merge commit 065c44c), release 80; #115
+was its first PR, closed by the branch rename. The VERSION bump lands in this
+DONE commit. `phase.sh set DONE --force` was run on `main` (a detached checkout
+of `origin/main` in the worktree), overriding the branch check. PR CI: `gates`
+passed in 2m46s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37484852957),
+`boundaries` in 11s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37484852945).
+No epic. Group 6 finding C (with MT-042) is complete; next is finding D.

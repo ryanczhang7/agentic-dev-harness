@@ -30,7 +30,7 @@ it closes, because every port changes the code the next one builds on.
 | 6 Process | A: GATES -> REVIEW runs `ci-local.sh`/full selftest | HARNESS-032 | **done**, #109, release 75 |
 | 6 Process | B: check-boundaries 3d baseline at the last committed PLANNED | HARNESS-033 | **done**, #110, release 76 |
 | 6 Process | C: run lock | HARNESS-034 | **done**, #111, release 77 |
-| 6 Process | MT-042: opt-in `SELFTEST_JOBS` | - | **next**; not yet planned |
+| 6 Process | MT-042: opt-in `SELFTEST_JOBS` | HARNESS-036 | **done**, #116, release 80 |
 | 6 Process | D: 3h/3g messages name the fenced-block rule | - | to do |
 | - | Refresh manga-translator from the release that carries them | - | after group 6 |
 
