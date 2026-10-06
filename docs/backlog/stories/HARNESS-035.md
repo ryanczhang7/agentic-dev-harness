@@ -4,8 +4,8 @@ title: The lock follows the session into a worktree and judges a write by the wo
 slug: the-lock-follows-the-session-into-a-work
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-035-the-lock-follows-the-session-into-a-work
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/hooks/phase-guard.sh, .claude/tests/_lib.sh, .claude/tests/_spawns.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/spawns.test.sh, .claude/tests/fixtures/classify/classify.golden, CLAUDE.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -495,4 +495,17 @@ inline lost one level of `\\` on the way in, which produced
 `D:adh-HARNESS-034\testsx.test.ts`. That was the first false "it still allows"
 here, and it is also how the regex in Return 1 lost its backslashes. Write the
 input to a file with an editor.
+
+**DONE, 2026-10-06.** Merged in #114 (merge commit b07e643), release 79. The
+VERSION bump lands in this DONE commit. 78 had already gone to #113, the model
+policy change, which merged alongside. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI passed on the first attempt: `gates`
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37387807138)
+and `boundaries`
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37387808742).
+The first PR, #112, was closed by the branch rename and superseded by #114 (see
+the renumber note above). No epic. Follow-ups: refresh fantasy-world-builder
+(release 64) so that WORLD-113's D-7 compensation can be retired. Open a story
+for `new-story.sh` choosing colliding ids across worktrees.
 
