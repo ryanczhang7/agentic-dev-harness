@@ -4,8 +4,8 @@ title: check-boundaries 3g/3h refusals name the block rule a result must take
 slug: boundaries-refusals-name-the-block-rule
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-037-boundaries-refusals-name-the-block-rule
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/harness/rules.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/sigpipe.test.sh, .claude/harness/VERSION, docs/wiki/audits/manga-translator-port-2026-10-02.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -816,3 +816,14 @@ confirm; not run here, per the dispatch.
 required gates passed (0 ran, 7 unconfigured), recorded. GATES -> REVIEW step
 1's full self-test, run with `SELFTEST_JOBS=4` (HARNESS-036): exit 0 in 444 s,
 `24 harness suite(s) passed.` (2,814 assertions executed, 2,514 declared).
+
+**DONE, 2026-10-06.** Merged in #117 (merge commit 9b31fae), release 81. The
+VERSION bump lands in this DONE commit, along with the audit's progress row,
+as GREEN's recorded deviation said. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI: `gates` passed in 2m55s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37496644107),
+`boundaries` in 9s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37496644049).
+No epic. Group 6 is complete, and with it every port the audit decided on; next
+is refreshing manga-translator from release 81.

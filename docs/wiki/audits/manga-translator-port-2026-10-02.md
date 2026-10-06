@@ -13,9 +13,9 @@ scratch tree. Downstream commits are in `ryanczhang7/manga-translator`.
 
 ## Progress
 
-Updated 2026-10-05, paused at the user's request. Each port is one story, driven
-by `/complete-story`, and each later story is planned only when the one before
-it closes, because every port changes the code the next one builds on.
+Updated 2026-10-06: every port decided below has merged (releases 67-81). Each port
+was one story, driven by `/complete-story`, planned only when the one before it
+closed, because every port changed the code the next one built on.
 
 | Group (order in "Decided") | Downstream change | Story | State |
 |---|---|---|---|
@@ -31,20 +31,18 @@ it closes, because every port changes the code the next one builds on.
 | 6 Process | B: check-boundaries 3d baseline at the last committed PLANNED | HARNESS-033 | **done**, #110, release 76 |
 | 6 Process | C: run lock | HARNESS-034 | **done**, #111, release 77 |
 | 6 Process | MT-042: opt-in `SELFTEST_JOBS` | HARNESS-036 | **done**, #116, release 80 |
-| 6 Process | D: 3h/3g messages name the fenced-block rule | - | to do |
-| - | Refresh manga-translator from the release that carries them | - | after group 6 |
+| 6 Process | D: 3h/3g messages name the fenced-block rule | HARNESS-037 | **done**, #117, release 81 |
+| - | Refresh manga-translator from the release that carries them (81) | - | **next**; the user runs it |
 
-**To resume:** plan the group 5 story with `/plan-story`, citing this audit and
-issue #97, then `/complete-story <id>`. Lessons the later stories rely on are in
-each story's `## Notes`. The main ones:
+**What is left:** refresh manga-translator from release 81 (the user runs it
+between stories), then run its FULL selftest before committing. Lessons the
+stories relied on are in each story's `## Notes`. The main ones:
 - a Linux-only awk difference passed every local run (HARNESS-025);
 - `mutate.sh` takes one expression;
 - run deferred verifications detached (`nohup`), so a tool limit cannot kill a
   mutation mid-run (HARNESS-024).
-
-**If manga-translator is refreshed before group 5 lands,** add `test |
-fixtures` to its merged `paths.conf`. Until MT-034 is ported, upstream lets
-GREEN delete a project-added test directory named by a bare path.
+- story ids can collide when two sessions cut stories at once: HARNESS-036 was
+  first numbered HARNESS-035 (see its `## Notes`).
 
 ## Decided
 
