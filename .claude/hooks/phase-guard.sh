@@ -18,13 +18,55 @@ HOOK_INPUT="$(cat)"
 
 
 load_state
-[ "$PHASE" = "IDLE" ] && exit 0
+# An idle root is not the end of it when another worktree of this repository
+# has a story active: an absolute path into that worktree is ITS lock's
+# business, whichever tree the session happens to be rooted in (HARNESS-035).
+# Pure bash, so the ordinary idle call still costs no process.
+if [ "$PHASE" = "IDLE" ]; then any_active_worktree || exit 0; fi
 [ -f "$HARNESS_DIR/paths.conf" ] || exit 0
 
 TOOL="$(json_get_string tool_name || true)"
 
+# JUDGED_IN   The worktree a judgement was borrowed from, for the denial's
+# `worktree:` line; empty while judging the session's own tree.
+JUDGED_IN=""
+
+# check_path <path> [role]   Judges one target by the lock of the worktree that
+# owns it. Relative paths are relative to the root.
+#
+# The owner is the nearest ancestor holding `.git` (lib.sh, worktree_top). When
+# that is ANOTHER worktree of this repository - a linked one beside the root, or
+# one nested under it as `.claude/worktrees/<name>` - the path is classified by
+# that tree's paths.conf and judged by that tree's current-story.env, and the
+# root's own state is put back afterwards. Anything else is judged here, as it
+# always was: a nested repository that is not a worktree of this one is still
+# this root's path, and a path outside the root is still outside.
 check_path() {
-  local raw="$1" role="${2:-}" rel cat operand
+  local raw="$1" role="${2:-}" abs owner sv_root sv_id sv_slug sv_phase sv_type sv_branch
+  [ -z "$raw" ] && return 0
+  if path_is_absolute "$raw"; then abs=$__lib_fs; else _to_slashes "$HARNESS_ROOT/$raw"; abs=$__lib_fs; fi
+  if worktree_top "$abs" && ! is_root "$__lib_wt"; then
+    owner=$__lib_wt
+    if same_repo "$owner" "$HARNESS_ROOT"; then
+      sv_root=$HARNESS_ROOT; sv_id=$STORY_ID; sv_slug=$STORY_SLUG
+      sv_phase=$PHASE; sv_type=$STORY_TYPE; sv_branch=$BRANCH
+      set_harness_root "$owner"; load_state; JUDGED_IN="$owner"
+      if [ "$PHASE" != "IDLE" ] && [ -f "$HARNESS_DIR/paths.conf" ]; then
+        judge_path "$abs" "$role"
+      fi
+      set_harness_root "$sv_root"; JUDGED_IN=""
+      STORY_ID=$sv_id; STORY_SLUG=$sv_slug; PHASE=$sv_phase
+      STORY_TYPE=$sv_type; BRANCH=$sv_branch
+      return 0
+    fi
+  fi
+  judge_path "$raw" "$role"
+}
+
+# judge_path <path> [role]   Classifies one path against the CURRENT root and
+# denies it if the current phase forbids that category.
+judge_path() {
+  local raw="$1" role="${2:-}" rel cat operand tree
   [ -z "$raw" ] && return 0
   rel="$(to_rel "$raw")"
   [ -z "$rel" ] && return 0
@@ -36,12 +78,17 @@ check_path() {
     operand=""
     [ -n "$role" ] && operand="
   operand:  $role"
+    # A judgement borrowed from another worktree says so: the story and phase
+    # above are that tree's, and phase.sh has to be run there to change them.
+    tree=""
+    [ -n "$JUDGED_IN" ] && tree="
+  worktree: $JUDGED_IN"
     deny "BLOCKED by the harness phase lock.
 
   story:    ${STORY_ID:-unknown}
   phase:    $PHASE
   path:     $rel$operand
-  category: $cat
+  category: $cat$tree
 
 $(phase_message)
 
@@ -136,9 +183,10 @@ $(resolve_vars "$m" "$ASSIGNMENTS")"
     # Where the shell will actually be when those targets are written. A
     # relative path means nothing without it: `cd /tmp/scratch && rm -rf
     # gate-logs` names no repo path at all. An unaccountable cwd skips relative
-    # candidates rather than blocking them - fail open.
+    # candidates rather than blocking them - fail open. The shell starts in the
+    # session's cwd, which is not always the root (HARNESS-035).
     CWD_PREFIX=""; CWD_KNOWN=1
-    CWD_PREFIX="$(command_cwd "$MASKED")" || CWD_KNOWN=0
+    CWD_PREFIX="$(command_cwd "$MASKED" "$SESSION_CWD")" || CWD_KNOWN=0
     while IFS= read -r candidate; do
       [ -z "$candidate" ] && continue
       # The ROLE comes off FIRST - before resolution, before the exemption test
@@ -171,6 +219,12 @@ $target"*) continue ;; esac
       SLASH=""; case "$target" in */) SLASH="/" ;; esac
       if path_is_absolute "$target"; then
         check_path "$target" "$role"
+      elif [ "$CWD_KNOWN" = 1 ] && path_is_absolute "$CWD_PREFIX"; then
+        # The shell is somewhere outside the root that the guard can name - a
+        # sibling worktree, a scratch directory. The target is judged as the
+        # absolute path it is, by whichever lock owns it (HARNESS-035).
+        abs_norm "$CWD_PREFIX/$target" || continue
+        check_path "$__lib_abs$SLASH" "$role"
       elif [ "$CWD_KNOWN" = 1 ]; then
         target="$(normalize_rel "${CWD_PREFIX:+$CWD_PREFIX/}$target")" || continue
         [ -n "$target" ] && target="$target$SLASH"

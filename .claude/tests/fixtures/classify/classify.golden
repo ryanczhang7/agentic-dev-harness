@@ -33,7 +33,7 @@ ignored	@ROOTBS@\.vitest
 ignored	@ROOTBS@\playwright-report
 ignored	@ROOTBS@\bareonly
 vendor	@ROOT@/dist
-ignored	C:\elsewhere\@BASE@\.vitest
-source	C:\elsewhere\@BASE@\src\main.ts
+outside	C:\elsewhere\@BASE@\.vitest
+outside	C:\elsewhere\@BASE@\src\main.ts
 outside	C:\elsewhere\other\x.ts
 outside	/tmp/elsewhere/x.ts

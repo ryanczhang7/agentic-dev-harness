@@ -1,5 +1,6 @@
 ---
 description: Add a single story to the backlog without re-planning the product
+model: fable
 argument-hint: "<description of the feature, bug or chore>"
 ---
 

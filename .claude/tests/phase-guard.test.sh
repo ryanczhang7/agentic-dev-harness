@@ -1307,4 +1307,174 @@ set_phase "$FIX" REVIEW
 assert_allowed "$FIX" 'cp docs/notes.md docs/' 'AC-2: cp into docs/ in REVIEW'
 assert_blocked "$FIX" 'cp docs/notes.md src/' src/ \
   'AC-2 control: cp into src/ in REVIEW is refused, on src/'
+
+# ---------------------------------------------------------------------------
+# HARNESS-035 - the lock of the worktree that owns the file.
+#
+# Field report: fantasy-world-builder WORLD-113, D-7. A desktop session started
+# in the main checkout moved into a linked worktree. CLAUDE_PROJECT_DIR kept
+# naming the main checkout, so every hook read ITS story; and an absolute path
+# into the worktree came back from to_rel as "outside", so a Write there was
+# never judged at all.
+#
+# REAL WORKTREES, as in worktree.test.sh: the claim is about what git does with
+# `.git`, and a copied directory would pass while proving nothing. A is the main
+# checkout and is what CLAUDE_PROJECT_DIR names in every case below, as it did
+# in the field. B is a linked worktree in a directory with a DIFFERENT folder
+# name, which is the shape to_rel's folder-name fallback could not see. W is a
+# linked worktree nested under A, where Claude Code puts its own. C is a
+# separate repository, not a worktree of A's at all.
+H035_A="$(make_fixture)"
+H035_WT="$(mktemp -d 2>/dev/null || mktemp -d -t harness.XXXXXX)"
+H035_C="$(make_fixture)"
+H035_FIXES="$H035_A $H035_WT $H035_C"
+trap 'rm -rf "$FIX" $H031_FIXES $H035_FIXES' EXIT
+H035_B="$H035_WT/b-tree"
+H035_W="$H035_A/.claude/worktrees/w"
+printf '.claude/state/*\n.claude/worktrees/\n' >> "$H035_A/.gitignore"
+git -C "$H035_A" add -A >/dev/null 2>&1
+git -C "$H035_A" -c user.email=t@t -c user.name=t commit -qm fixture >/dev/null 2>&1
+git -C "$H035_A" worktree add -q -b story/T-B "$H035_B" HEAD >/dev/null 2>&1
+git -C "$H035_A" worktree add -q -b story/T-W "$H035_W" HEAD >/dev/null 2>&1
+mkdir -p "$H035_B/.claude/state" "$H035_W/.claude/state"
+
+# h035_state <tree> <id> <phase>   A story in that tree's own state file. An
+# empty phase clears it. Each tree gets its own id so a denial can be traced to
+# the lock that issued it.
+h035_state() {
+  if [ -z "${3:-}" ]; then rm -f "$1/.claude/state/current-story.env"; return 0; fi
+  printf 'STORY_ID=%s\nSTORY_SLUG=fixture\nSTORY_TYPE=feature\nPHASE=%s\nBRANCH=story/%s\n' "$2" "$3" "$2" \
+    > "$1/.claude/state/current-story.env"
+}
+
+# h035_reason <tool> <key> <value>   The denial reason with CLAUDE_PROJECT_DIR=A,
+# and GUARD_CWD as the caller sets it.
+h035_reason() { guard "$H035_A" "$1" "$2" "$3"; }
+
+describe "HARNESS-035 premise: B and W are linked worktrees of A, C is not"
+
+_common() { (cd "$1" && cd "$(git rev-parse --git-common-dir)" && pwd); }
+assert_eq "B shares A's .git" "$(_common "$H035_A")" "$(_common "$H035_B")"
+assert_eq "W shares A's .git" "$(_common "$H035_A")" "$(_common "$H035_W")"
+case "$(_common "$H035_C")" in
+  "$(_common "$H035_A")") _bad "C is a separate repository" "C shares A's .git" ;;
+  *) _ok "C is a separate repository" ;;
+esac
+assert_eq "B's folder name is not A's" "no" "$([ "${H035_B##*/}" = "${H035_A##*/}" ] && echo yes || echo no)"
+
+describe "HARNESS-035 AC-1: the session's tree follows the hook input's cwd"
+
+h035_state "$H035_A" T-A RED
+h035_state "$H035_B" T-B GREEN
+r="$(GUARD_CWD="$H035_B" h035_reason Bash command 'echo x > src/main.ts')"
+assert_eq "AC-1: in B (GREEN) a relative source write is allowed although A is in RED" "" "$r"
+r="$(GUARD_CWD="$H035_B" h035_reason Bash command 'echo x > tests/main.test.ts')"
+assert_contains "AC-1: in B a relative test write is refused" "path:     tests/main.test.ts" "$r"
+assert_contains "AC-1: by B's story" "story:    T-B" "$r"
+assert_contains "AC-1: in B's phase" "phase:    GREEN" "$r"
+r="$(GUARD_CWD="$H035_B" h035_reason Write file_path "$H035_B/tests/main.test.ts")"
+assert_contains "AC-1: Write into B's tests with cwd B is refused by B's story" "story:    T-B" "$r"
+
+# The prompt hook: what the field saw report WORLD-018 from inside WORLD-113.
+r="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit","prompt":"x"}' "$(json_str "$H035_B")" \
+  | CLAUDE_PROJECT_DIR="$H035_A" bash "$REPO_ROOT/.claude/hooks/inject-state.sh" 2>&1)"
+assert_contains "AC-1: the prompt hook reports B's story" "Active story: T-B" "$r"
+assert_not_contains "AC-1: and not A's" "T-A" "$r"
+
+# A IDLE: the root used to be read as A, found idle, and the guard exited
+# before judging anything.
+h035_state "$H035_A" T-A ""
+r="$(GUARD_CWD="$H035_B" h035_reason Bash command 'echo x > tests/main.test.ts')"
+assert_contains "AC-1: with A IDLE, B's GREEN still refuses a test write" "story:    T-B" "$r"
+
+# The field's spelling. The host sends Windows paths, so `cwd` arrives as a
+# JSON string full of escaped backslashes. Spelled here by turning the fixture's
+# slashes into backslashes, which slash back to the same path on every platform
+# (as lib.test.sh's "a backslash path" does). Added on returning to RED: every
+# case above passed while a real `"cwd":"D:\\adh-HARNESS-035"` was not read at
+# all - see ## Regressions.
+H035_BBS="$(printf '%s' "$H035_B" | tr '/' '\134')"
+H035_ABS="$(printf '%s' "$H035_A" | tr '/' '\134')"
+h035_state "$H035_A" T-A RED
+r="$(printf '{"cwd":"%s","hook_event_name":"UserPromptSubmit","prompt":"x"}' "$(json_str "$H035_BBS")" \
+  | CLAUDE_PROJECT_DIR="$H035_A" bash "$REPO_ROOT/.claude/hooks/inject-state.sh" 2>&1)"
+assert_contains "AC-1: a backslash-spelled cwd is read: the prompt hook reports B's story" "Active story: T-B" "$r"
+r="$(GUARD_CWD="$H035_BBS" h035_reason Bash command 'echo x > src/main.ts')"
+assert_eq "AC-1: with a backslash-spelled cwd, B (GREEN) allows a relative source write" "" "$r"
+
+# Control: no cwd in the input is today's behaviour - A's lock.
+h035_state "$H035_A" T-A RED
+r="$(h035_reason Bash command 'echo x > src/main.ts')"
+assert_contains "AC-1 control: without cwd the root is CLAUDE_PROJECT_DIR (A refuses)" "story:    T-A" "$r"
+
+describe "HARNESS-035 AC-2: an absolute path into a sibling worktree is judged by its lock"
+
+h035_state "$H035_A" T-A RED
+h035_state "$H035_B" T-B RED
+for tool in Write Edit; do
+  r="$(h035_reason "$tool" file_path "$H035_B/src/main.ts")"
+  assert_contains "AC-2: $tool <B>/src/main.ts from A is refused, on B's relative path" "path:     src/main.ts" "$r"
+  assert_contains "AC-2: $tool names B's story" "story:    T-B" "$r"
+  assert_contains "AC-2: $tool names B as the worktree" "worktree: $H035_B" "$r"
+done
+r="$(h035_reason Bash command "echo x > $H035_B/src/main.ts")"
+assert_contains "AC-2: a Bash redirect to <B>/src/main.ts is refused by B" "story:    T-B" "$r"
+r="$(h035_reason Bash command ": >> $H035_B/src/main.ts")"
+assert_contains "AC-2: the field's own probe, : >>, by absolute path" "story:    T-B" "$r"
+r="$(h035_reason Bash command "cd $H035_B && echo x > src/main.ts")"
+assert_contains "AC-2: cd <B> && echo x > src/main.ts is refused by B" "story:    T-B" "$r"
+assert_contains "AC-2: on B's relative path" "path:     src/main.ts" "$r"
+
+# A IDLE: the guard must still look, because B is not.
+h035_state "$H035_A" T-A ""
+r="$(h035_reason Write file_path "$H035_B/src/main.ts")"
+assert_contains "AC-2: with A IDLE, Write <B>/src/main.ts is refused by B" "story:    T-B" "$r"
+r="$(h035_reason Bash command "echo x > $H035_B/src/main.ts")"
+assert_contains "AC-2: with A IDLE, a Bash redirect into B is refused by B" "story:    T-B" "$r"
+# CLAUDE_PROJECT_DIR as the host spells it on Windows, with backslashes. Added
+# on returning to RED: the IDLE root's worktree listing globbed through a
+# backslash, which a glob reads as an escape, and found no worktree at all.
+r="$(guard "$H035_ABS" Write file_path "$H035_B/src/main.ts")"
+assert_contains "AC-2: with A IDLE and spelled with backslashes, Write <B>/src/main.ts is refused by B" "story:    T-B" "$r"
+
+# Controls: B's lock, not a blanket refusal.
+h035_state "$H035_A" T-A RED
+h035_state "$H035_B" T-B ""
+assert_eq "AC-2 control: B IDLE allows <B>/src/main.ts though A is in RED" "" \
+  "$(h035_reason Write file_path "$H035_B/src/main.ts")"
+h035_state "$H035_B" T-B GREEN
+assert_eq "AC-2 control: B GREEN allows <B>/src/main.ts though A is in RED" "" \
+  "$(h035_reason Write file_path "$H035_B/src/main.ts")"
+r="$(h035_reason Write file_path "$H035_B/tests/main.test.ts")"
+assert_contains "AC-2 control: and B GREEN refuses <B>/tests/main.test.ts, as GREEN" "phase:    GREEN" "$r"
+# And A's own lock is untouched by all of this.
+r="$(h035_reason Write file_path "$H035_A/src/main.ts")"
+assert_contains "AC-2 control: <A>/src/main.ts is still refused by A" "story:    T-A" "$r"
+assert_not_contains "AC-2 control: with no worktree line for the session's own tree" "worktree:" "$r"
+
+describe "HARNESS-035 AC-3: a worktree nested under the root is its own tree"
+
+h035_state "$H035_A" T-A GREEN
+h035_state "$H035_W" T-W RED
+r="$(h035_reason Write file_path "$H035_W/src/main.ts")"
+assert_contains "AC-3: Write <A>/.claude/worktrees/w/src/main.ts is refused by W" "story:    T-W" "$r"
+assert_contains "AC-3: on W's relative path" "path:     src/main.ts" "$r"
+r="$(h035_reason Bash command 'cd .claude/worktrees/w && echo x > src/main.ts')"
+assert_contains "AC-3: cd .claude/worktrees/w && echo x > src/main.ts is refused by W" "story:    T-W" "$r"
+h035_state "$H035_W" T-W GREEN
+h035_state "$H035_A" T-A RED
+assert_eq "AC-3 control: W GREEN allows its src/main.ts though A is in RED" "" \
+  "$(h035_reason Write file_path "$H035_W/src/main.ts")"
+
+describe "HARNESS-035 AC-4: another repository, or a same-named folder, is still outside"
+
+h035_state "$H035_A" T-A RED
+h035_state "$H035_C" T-C RED
+assert_eq "AC-4: Write into a separate repository's src from A is allowed" "" \
+  "$(h035_reason Write file_path "$H035_C/src/main.ts")"
+assert_eq "AC-4: so is a Bash redirect into it" "" \
+  "$(h035_reason Bash command "echo x > $H035_C/src/main.ts")"
+# The folder-name fallback: a directory elsewhere that merely shares A's name.
+assert_eq "AC-4: C:\\elsewhere\\<A's name>\\src\\main.ts is not A's src" "" \
+  "$(h035_reason Write file_path "C:\\elsewhere\\${H035_A##*/}\\src\\main.ts")"
 summary "phase-guard"

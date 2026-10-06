@@ -1,5 +1,6 @@
 ---
 description: Turn the product brief into a stack, an architecture and a backlog
+model: fable
 argument-hint: [optional focus or constraint]
 ---
 
