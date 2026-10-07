@@ -5,7 +5,7 @@ slug: gate-tree-hash-keeps-the-index-mtime
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-042-gate-tree-hash-keeps-the-index-mtime
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/lib.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -312,3 +312,7 @@ case pass against the defect there.
 
 ## Notes
 
+
+**GREEN (2026-10-07).** `cp "$real" "$idx"` -> `cp -p "$real" "$idx"` in
+`gate_tree_hash`, plus a header-comment paragraph saying why. No other source
+changed. `bash scripts/selftest.sh lib`: `lib: 247 passed, 0 failed`.
