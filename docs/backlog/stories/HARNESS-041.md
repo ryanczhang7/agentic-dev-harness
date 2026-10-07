@@ -4,8 +4,8 @@ title: Mutation gates need a killed count
 slug: mutation-gates-need-a-killed-count
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-041-mutation-gates-need-a-killed-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/stack-profiles/reference/node-typescript.md, .claude/skills/stack-profiles/reference/python-uv.md, .claude/skills/stack-profiles/reference/rust-cargo.md, .claude/skills/stack-profiles/reference/new-profile.md, .claude/skills/stack-profiles/SKILL.md, .claude/skills/quality-gates/SKILL.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -466,6 +466,40 @@ proves it.
   line shape as the rule, and only a real profile line says the rule can see
   the spelling the tree uses.
 
+### Results, run at GATES (2026-10-06) by the orchestrator
+
+Both through `scripts/mutate.sh` with the one expression written above, detached, one at a time, against the GREEN commit; each restore verified. Both match the handoff exactly (DV-2 at 7 because GREEN added no `floor | mutation` to rust-cargo.md).
+
+**DV-1, the defect put back (0 killed matches): `profiles: 100 passed, 2 failed`, the two node-typescript negatives only.**
+
+```
+=== mutate: .claude/skills/stack-profiles/reference/node-typescript.md (1 line(s) changed by s/\[1-9\]\[0-9\]\* \[|\]/[0-9]* [|]/) ===
+  42 -     evidence | mutation    | All files *[|][^|]*[|][^|]*[|] *[1-9][0-9]* [|]
+  42 +     evidence | mutation    | All files *[|][^|]*[|][^|]*[|] *[0-9]* [|]
+=== mutate: running bash scripts/selftest.sh profiles ===
+    FAIL AC-2: node-typescript.md: the All files row with 0 killed (0 of 19, issue #104) fails the mutation gate as no evidence of work
+    FAIL AC-2: node-typescript.md: the All files row of a run with nothing in it fails the mutation gate as no evidence of work
+profiles: 100 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_skills_stack-profiles_referenc
+```
+
+**DV-2, the real-tree probe (rust-cargo.md's real evidence line deleted): `profiles: 95 passed, 7 failed`, including the presence rule's message.**
+
+```
+=== mutate: .claude/skills/stack-profiles/reference/rust-cargo.md (1 line(s) changed by /^ *evidence *| *mutation *|/d) ===
+  49 -     evidence | mutation | [1-9][0-9]* caught
+=== mutate: running bash scripts/selftest.sh profiles ===
+    FAIL AC-3: rust-cargo.md has exactly one evidence | mutation line
+    FAIL AC-3: the regex the suite extracts from rust-cargo.md is byte-identical to the line
+    FAIL AC-2: rust-cargo.md: 4 caught (measured, cargo-mutants 27.1.0) passes the mutation gate
+    FAIL AC-2: rust-cargo.md: 3 caught among missed and unviable passes the mutation gate
+    FAIL AC-2: rust-cargo.md: a summary with no caught outcome fails the mutation gate as no evidence of work
+    FAIL AC-2: rust-cargo.md: a verbose per-mutant 'caught in' line fails the mutation gate as no evidence of work
+    FAIL rust-cargo.md: its mutation gate has an evidence line
+profiles: 95 passed, 7 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nostalgic-williams-fcf700/.claude/state/mutations/.claude_skills_stack-profiles_referenc
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -506,6 +540,7 @@ name, below the table.
   planned; no override was reported to the dispatcher.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran profiles (55/47) and selftest (268/0), matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
 - GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran profiles (102/0). The orchestrator also corrected the matching out-of-date waiver example in `.claude/harness/project.conf:219` (a comment, the Lead PO's file), which GREEN found but correctly left, since it was outside `touches:`.
+- GATES: no dispatch. The orchestrator (`claude-opus-5-5`) ran DV-1, DV-2, `gates.sh` and the full selftest.
 
 ## Out of scope
 
@@ -863,10 +898,21 @@ files through `scripts/mutate.sh`; expected 100/2 and 95/7.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-07T01:53:45Z
+    commit: 517f072
+    tree:   8ca8902e2193b7ee4d8005014027d3e217c5e126
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -902,3 +948,9 @@ files through `scripts/mutate.sh`; expected 100/2 and 95/7.
   SKILL.md:56-57`; `new-profile.md:51-55`; `quality-gates/SKILL.md:325-326`;
   `gates.sh:157-158`, `:263-266`, `:279-283`, `:560`, `:580-584`;
   `selftest.test.sh:545`; `floors.conf` `floor | profiles | 50`.
+
+**GATES (2026-10-06), orchestrator.** DV-1 and DV-2 came out as required
+(results under `## Deferred verifications`). `bash scripts/gates.sh`: all
+required gates passed (0 ran, 7 unconfigured), recorded. GATES -> REVIEW step
+1's full self-test with `SELFTEST_JOBS=4`: exit 0 in 958 s, `25 harness
+suite(s) passed.` (2,941 assertions executed, 2,651 declared).
