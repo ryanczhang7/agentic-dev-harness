@@ -5,7 +5,7 @@ slug: a-security-audit-command-wrapping-cloudf
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-043-a-security-audit-command-wrapping-cloudf
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/security-audit.md, .claude/skills/security-audit/UPSTREAM, .claude/skills/security-audit/LICENSE, .claude/skills/security-audit/*.md, .claude/skills/security-audit/*.cjs, .claude/skills/security-audit/report-schema.json, .claude/tests/security-audit.test.sh, .claude/tests/reporting.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -406,6 +406,7 @@ name, below the table.
 
 - PLANNED - `lead-po` - resolved `fable` (reported by the agent; no override in the dispatch). As planned.
 - RED - `test-developer` - resolved `opus` (reported by the agent; no override in the dispatch). As planned.
+- GREEN - `feature-developer` - resolved `opus` (reported by the agent; no override in the dispatch). As planned.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -719,6 +720,53 @@ portability): `247 passed, 0 failed`.
 <!-- Not used: this is a feature story; nothing is written under SCAFFOLD. -->
 
 ## Notes
+
+**GREEN (2026-10-07, feature-developer; resolved `opus` per its definition,
+dispatched with no override).**
+
+- *How the files were obtained.* `git fetch --depth 1
+  https://github.com/cloudflare/security-audit-skill
+  c1c8a8c1471069fb0e188eeaff69b8e8db6564a8` into an empty scratch repository
+  (with `core.autocrlf=false`); `git ls-tree -r FETCH_HEAD` matched C-1 line
+  for line (plus upstream's `README.md`, skipped). Each blob was written with
+  `git cat-file blob <sha>` (raw bytes, no filters) flat into
+  `.claude/skills/security-audit/`, `skills/security-audit/` dropped.
+  `UPSTREAM` was generated from the same `ls-tree` by awk, C-2's first line
+  prepended - no SHA hand-typed. Validators staged `100755` with
+  `git update-index --chmod=+x`.
+- *Hash verification.* `git hash-object <path>` from inside the directory
+  against every `UPSTREAM` line: 21 of 21 `ok`, 0 mismatches. The staged
+  index blobs (`git ls-files -s`) are the same 21 SHAs, so `.gitattributes`
+  normalisation changed nothing on add.
+- *Command.* `.claude/commands/security-audit.md`, 54 lines, every C-3 needle
+  on one line, the Defaults line exactly C-3's literal; the summary path
+  spelled `docs/wiki/audits/<scope>-<date>.md` and no other `docs/` path but
+  `TEMPLATE.md`.
+- *Results.*
+
+      $ bash scripts/selftest.sh security-audit
+      security-audit: 51 passed, 0 failed
+      assertion floors: all 1 suite(s) met their declared floor (51 assertions executed, 51 declared).
+      $ bash scripts/selftest.sh reporting
+      reporting: 27 passed, 0 failed
+      $ bash scripts/selftest.sh shipped-docs
+      shipped-docs: 14 passed, 0 failed
+      $ bash scripts/check-sigpipe.sh
+      check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+      $ bash scripts/check-grep-count.sh
+      check-grep-count: scanned 49 shell file(s), 0 finding(s)
+      $ bash scripts/gates.sh --fast
+      All required gates passed (0 ran, 5 unconfigured, 0 known).
+      $ bash scripts/selftest.sh            # every suite, ~25 min here
+      assertion floors: all 26 suite(s) met their declared floor (2993 assertions executed, 2702 declared).
+      26 harness suite(s) passed.
+
+- *Controls.* Every control in the handoff table is a fixture built by the
+  suite itself, so nothing GREEN wrote is an input to any of them; all ran
+  and passed again (51 of 51), with the same expected strings. No divergence
+  from RED to report. The one real-tree precondition ("the refresh from this
+  checkout exits 0") still passes, and the three AC-4 assertions after it
+  that were red in RED are now green.
 
 **PLANNED → RED checks (orchestrator on fable, 2026-10-07, against `5c200f3`).**
 
