@@ -4,8 +4,8 @@ title: The refresh adds missing harness-shipped docs files and never overwrites 
 slug: the-refresh-adds-missing-harness-shipped
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-040-the-refresh-adds-missing-harness-shipped
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/harness/docs-shipped.conf, .claude/tests/refresh.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1111,3 +1111,12 @@ those.
 required gates passed (0 ran, 7 unconfigured), recorded. GATES -> REVIEW step
 1's full self-test with `SELFTEST_JOBS=4`: exit 0 in 899 s, `25 harness
 suite(s) passed.` (2,889 assertions executed, 2,599 declared).
+
+**DONE, 2026-10-06.** Merged in #120 (merge commit 3a879f0), release 84. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI: `gates` passed in 2m36s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37548130885),
+`boundaries` in 9s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37548130859).
+Issue #104 item 1A is done; section 2 and the combining-profiles note remain.
