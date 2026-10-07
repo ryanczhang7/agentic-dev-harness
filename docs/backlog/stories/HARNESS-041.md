@@ -4,8 +4,8 @@ title: Mutation gates need a killed count
 slug: mutation-gates-need-a-killed-count
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-041-mutation-gates-need-a-killed-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/stack-profiles/reference/node-typescript.md, .claude/skills/stack-profiles/reference/python-uv.md, .claude/skills/stack-profiles/reference/rust-cargo.md, .claude/skills/stack-profiles/reference/new-profile.md, .claude/skills/stack-profiles/SKILL.md, .claude/skills/quality-gates/SKILL.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -954,3 +954,12 @@ files through `scripts/mutate.sh`; expected 100/2 and 95/7.
 required gates passed (0 ran, 7 unconfigured), recorded. GATES -> REVIEW step
 1's full self-test with `SELFTEST_JOBS=4`: exit 0 in 958 s, `25 harness
 suite(s) passed.` (2,941 assertions executed, 2,651 declared).
+
+**DONE, 2026-10-06.** Merged in #121 (merge commit 567e0b9), release 85. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI: `gates` passed in 2m56s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37560755411),
+`boundaries` in 10s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37560755378).
+This closes the last open item of issue #104.
