@@ -74,7 +74,7 @@ and the existing `reporting` and `shipped-docs` suites (AC-3). No
   security-audit` runs, then: (a) `UPSTREAM` exists and its first line names
   `cloudflare/security-audit-skill` and a 40-hex commit; (b) every path
   `UPSTREAM` lists exists and `git hash-object` of it equals the blob SHA
-  listed (22 files: 21 skill files plus `LICENSE`); (c) no file exists in the
+  listed (21 files: 20 skill files plus `LICENSE`; upstream's 22nd blob is its `README.md`, not vendored); (c) no file exists in the
   directory that `UPSTREAM` does not list, other than `UPSTREAM` itself.
   *Control:* with one byte of one listed file changed, or `LICENSE` emptied,
   the check prints exactly one line naming that file; with an extra file
@@ -163,7 +163,7 @@ the amended block says.**
   Upstream's `README.md` is **not** vendored (it describes the repository, not
   the skill; nothing instructs an agent to read it). `LICENSE` sits at
   upstream's root and is vendored into the skill directory because MIT
-  requires the notice to travel with the copy. GREEN copies the 21 skill files
+  requires the notice to travel with the copy. GREEN copies the 20 skill files
   flat into `.claude/skills/security-audit/` and sets the executable bit on
   the two `100755` validators with `git update-index --chmod=+x` (Windows
   `core.filemode` is false, so the bit does not come from the filesystem).
@@ -315,7 +315,7 @@ the amended block says.**
   needles and the provisional 16, C-7's measurements, and Cloudflare's
   "roughly half" claim. Nothing is oracle-free.
 - **C-9 Baseline: the vendored documents name no `docs/` path.** `grep -rn
-  'docs/'` over the 21 skill files and `LICENSE` at the pinned commit: 0
+  'docs/'` over the 20 skill files and `LICENSE` at the pinned commit: 0
   hits (PLANNED). So `shipped-docs`, which scans every `.md` under
   `.claude/skills`, has nothing new to judge there; the command is the only
   new site, and its two paths are a `ship` entry and a `/`-terminated pattern.
@@ -385,7 +385,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
-- Editing any of Cloudflare's 21 files or `LICENSE` - including making the
+- Editing any of Cloudflare's 20 skill files or `LICENSE` - including making the
   validators work on Windows (C-7). Updating is a re-copy plus a regenerated
   `UPSTREAM`; a harness-side fix goes upstream as a PR, never into the copy.
 - Vendoring upstream's `README.md`.
@@ -445,6 +445,26 @@ name, below the table.
 <!-- Not used: this is a feature story; nothing is written under SCAFFOLD. -->
 
 ## Notes
+
+**PLANNED → RED checks (orchestrator on fable, 2026-10-07, against `5c200f3`).**
+
+- *Count corrected before leaving PLANNED.* AC-1, C-1, C-9 and Out of scope
+  said "21 skill files" / "22 files"; C-1's own listing has 21 entries, 20
+  under `skills/security-audit/` plus `LICENSE`. Upstream's 22 blobs include
+  `README.md`, which is not vendored. Corrected in place and committed at
+  PLANNED, so no `## Amendments` entry is owed.
+- *Line endings cannot move a blob SHA.* `.gitattributes` sets `* text=auto
+  eol=lf` and this host has `core.autocrlf=true`, so a vendored file containing
+  CR would be normalised on commit and its blob would stop matching upstream's.
+  Measured: none of the 21 upstream files at `c1c8a8c` contains a `\r` (raw
+  bytes via the GitHub contents API, `tr -cd '\r' | wc -c` = 0 for each). And a
+  CRLF file written under `.claude/skills/` hashes, through `git hash-object
+  <path>`, to the same SHA as its LF form (filters apply), so AC-1's check is
+  stable across checkouts.
+- *Gate.* `gates.sh --list`: every gate in this repository is
+  `<unconfigured>`; the binding check is `selftest.sh` in CI, as Context says.
+  `required_gates: []` stays.
+- *Callers:* none (no signature changes). *Epic:* none.
 
 **PLANNED (2026-10-07, Lead PO on fable, dispatched with no override).**
 
