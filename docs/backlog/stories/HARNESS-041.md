@@ -4,8 +4,8 @@ title: Mutation gates need a killed count
 slug: mutation-gates-need-a-killed-count
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-041-mutation-gates-need-a-killed-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/stack-profiles/reference/node-typescript.md, .claude/skills/stack-profiles/reference/python-uv.md, .claude/skills/stack-profiles/reference/rust-cargo.md, .claude/skills/stack-profiles/reference/new-profile.md, .claude/skills/stack-profiles/SKILL.md, .claude/skills/quality-gates/SKILL.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -191,6 +191,19 @@ the amended block says.**
   suite's existing `assert_contains`/`assert_eq` on the grep'd line. The
   `printf '%s\n'` with the canned line single-quoted is what keeps `|`, `*`
   and the emoji literal through `eval` (`gates.sh:560`).
+
+  **RED amendment (2026-10-07): the fixture conf has NO `ondemand` line.**
+  As written above, every verdict came back `FAIL mutation (an on-request
+  gate cannot be required: no full run would ever judge it)` - `gates.sh:388`
+  refuses a gate that is both `ondemand` and `required`, before the command
+  runs. The PLANNED measurement in `## Notes` used ids `mutation0`/`mm`/`cm`
+  with no `ondemand` line, which is why it did not meet this. `--gate`
+  runs a gate by name whether or not it is on request, so the conf is the
+  first two lines only. Also measured: a failing gate's results line ends in
+  ` -> .claude/state/gate-logs/mutation.log`; the suite strips that suffix and
+  the duration and compares the rest of the line exactly (`FAIL mutation, ran
+  but produced no evidence of work: expected /<regex>/`), which is stricter
+  than C-2's floating needle.
 - **C-3 Message**, pinned byte for byte so RED's needle and GREEN's print
   cannot drift (as HARNESS-039 C-3 did). The text after the tab:
 
@@ -331,6 +344,32 @@ the amended block says.**
   is 1 and each of `testRunner`, `commandRunner`, `coverageAnalysis`,
   `timeoutMS`, `tsconfigFile`, `plugins` has `grep -c` >= 1 in the file;
   AC-4(c): `grep -c 'not re-measured'` is 1.
+
+  **RED amendment (2026-10-07): the needles are counted per PARAGRAPH, not
+  per line.** A paragraph is a run of non-blank lines joined with single
+  spaces (a leading `#` on a joined comment line dropped). Reason: a
+  per-line `grep -c` counts one wrapped sentence twice, or misses a needle
+  split by the wrap, so it would pin GREEN's line breaks rather than its
+  words. What the suite asserts, exactly:
+  (a) the ten lines after the `gate | mutation` line (located, not assumed to
+  be `:15`), joined, contain `The mutation gate on TypeScript 7 / Vitest 5`
+  exactly once - so C-6(a)'s pointer must quote the section title in that
+  spelling, and the window must hold it once (the `Combining this with` line
+  of C-7 does not contain it);
+  (b) heading line exact, count 1; the heading's line number is after
+  `## What \`--fast\` should leave out` and before `## The 5,000 ms default`;
+  and the FIRST indented (4-space) or fenced block in the section that
+  contains `testRunner` also contains each of `commandRunner`,
+  `coverageAnalysis`, `timeoutMS`, `tsconfigFile`, `plugins` (AC-4(b)'s "in
+  one block", not merely somewhere in the file);
+  (c) exactly one paragraph of the section contains `not re-measured`, and
+  the section contains `issue #104`;
+  (d) no paragraph of the file contains `Verified against vitest 5 and
+  typescript 5 on Windows.`; exactly one contains ``The `unit` and
+  `coverage` lines were verified``; and THAT paragraph also contains
+  ``  `mutation` line was not run`` and `reporter source` (AC-4(d)'s "derived
+  from the reporter source and not run"; C-6(c)'s replacement text satisfies
+  all three).
 - **C-7 SKILL.md and the pointers.** After `stack-profiles/SKILL.md:57`
   ("…two sets of gates with distinct ids, and one `paths.conf`.") a paragraph
   whose needles are `rust-mutation`, `--gate rust-mutation`, `HARNESS-039`
@@ -342,6 +381,21 @@ the amended block says.**
   id **ends in `mutation`** (`rust-mutation`, `python-mutation`) so a later
   story can key the audit on the suffix; `mutation` itself stays the one
   `/audit-mutations` runs by default.
+
+  **RED amendment (2026-10-07): counted per paragraph, and in one
+  paragraph.** As pinned above, `grep -c rust-mutation` is 1 is
+  unsatisfiable by any paragraph that also contains `--gate rust-mutation` on
+  a different line (that line contains `rust-mutation` too). The suite takes
+  the text from the `Mixed-stack projects are normal` line to the next `## `
+  heading, joins it into paragraphs, and asserts that exactly ONE paragraph
+  contains each of `rust-mutation`, `--gate rust-mutation`, `HARNESS-039` and
+  ``judge the id `mutation` only``; and that the paragraph containing `--gate
+  rust-mutation` also contains `evidence`, `slow`, `ondemand`,
+  `/audit-mutations`, `gates.sh --audit` and `profiles.test.sh` (AC-5's
+  list). So GREEN writes it as ONE paragraph - no blank line, no code block
+  inside it. The pointers: `Combining this with` is on exactly one line of
+  each of `node-typescript.md` and `rust-cargo.md`, within 4 lines of that
+  file's `ondemand | mutation` line.
 - **C-8 Two one-line document edits.** `new-profile.md:51-55`: the rule list
   gains "a `mutation` gate has an `ondemand` line and an `evidence` line
   whose regex requires a non-zero killed count". `quality-gates/SKILL.md:326`:
@@ -359,6 +413,12 @@ the amended block says.**
   + per-profile 3, AC-2 three profiles x (one positive + one or two
   negatives) 7-9, AC-3 3, AC-4 ~10, AC-5 ~6 - roughly 32-35 new, so about
   82-85. The number RED records is the measured one.
+
+  **RED amendment (2026-10-07): there is a third copy.**
+  `selftest.test.sh:563-564` names the profiles floor in an assertion of its
+  own ("profiles is floored at its 50 executed assertions"); `bash
+  scripts/selftest.sh selftest` failed on it after the first two were raised.
+  RED raised all three to the measured 102.
 - **C-10 Test-only dependencies.** None. The suite is bash + awk + the
   existing `_lib.sh`.
 
@@ -444,6 +504,7 @@ name, below the table.
 
 - PLANNED, `lead-po`, resolved to **Fable 5.1** (`claude-fable-5-1`), as
   planned; no override was reported to the dispatcher.
+- RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran profiles (55/47) and selftest (268/0), matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
 
 ## Out of scope
 
@@ -484,6 +545,22 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All in `.claude/tests/profiles.test.sh`; level is the suite's own: awk over
+fixtures and real profile files, and the real `scripts/gates.sh` run in a
+`make_project_fixture` for AC-2. 52 new executed assertions (50 -> 102).
+
+| Block (describe) | Assertions | AC |
+|---|---|---|
+| the checker requires a mutation gate's evidence line | 5: no evidence line -> C-3 message; `-` -> same; empty regex -> same; control `[1-9][0-9]* caught` -> silent; control: no mutation gate -> silent | AC-1 |
+| per-profile loop, `check mutation-evidence` | 3: node-typescript, python-uv, rust-cargo each report nothing | AC-1 (DV-2's target) |
+| each profile's mutation evidence regex is read off the line, once | 6: per profile, exactly one `evidence \| mutation` line; `mutation_regex` (the shared `rest(3)`) equals the grep view of the line | AC-3 |
+| each profile's mutation regex requires a killed count, judged by the real gates.sh | 9: node positive PASS, two negatives FAIL; rust two positives PASS, two negatives FAIL; python positive PASS, negative FAIL - C-4's lines verbatim, regex fed from `mutation_regex` | AC-2 (DV-1's target) |
+| node-typescript says how stryker runs on TypeScript 7 / Vitest 5 | 15: (a) pointer in the window, once; (b) heading once, placement, six keys in one block; (c) `not re-measured` once, `issue #104`; (d) old sentence gone, new one present once, names the `mutation` line as not run, names the reporter source | AC-4 |
+| combining two profiles' mutation gates is written down | 14: four C-7 needles each in exactly one paragraph after "Mixed-stack"; that paragraph names `evidence`, `slow`, `ondemand`, `/audit-mutations`, `gates.sh --audit`, `profiles.test.sh`; per pointer file, `Combining this with` once and within 4 lines of `ondemand \| mutation` | AC-5 |
+
+Not covered by a test, by the Contract's design: C-8's two one-line edits
+(`new-profile.md`, `quality-gates/SKILL.md`) - review pins them.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -503,6 +580,173 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED by `test-developer`, resolved model **Opus 5.5** (`claude-opus-5-5`), as
+planned; no override reported.
+
+**Command:** `bash scripts/selftest.sh profiles` (or `bash
+.claude/tests/profiles.test.sh` for the suite alone). About 11 s here, most of
+it the nine `gates.sh` runs.
+
+**Files touched in RED:** `.claude/tests/profiles.test.sh`,
+`.claude/tests/floors.conf` (profiles 50 -> 102, comment block),
+`.claude/tests/selftest.test.sh` (COUNTS row `profiles 102`, and the
+`profiles is floored at its 102 executed assertions` assertion at :563-564 -
+see C-9's amendment), and this story (Contract amendments to C-2, C-6, C-7,
+C-9; Test plan; this handoff). Nothing under `.claude/skills/`.
+
+**Failure output on this tree (2026-10-07, the six documents unchanged):**
+
+    profiles: 55 passed, 47 failed
+
+    FAIL AC-3: node-typescript.md has exactly one evidence | mutation line          (expected 1, actual 0)
+    FAIL AC-3: the regex the suite extracts from node-typescript.md is byte-identical to the line
+    FAIL AC-3: python-uv.md has exactly one evidence | mutation line
+    FAIL AC-3: the regex the suite extracts from python-uv.md is byte-identical to the line
+    FAIL AC-3: rust-cargo.md has exactly one evidence | mutation line
+    FAIL AC-3: the regex the suite extracts from rust-cargo.md is byte-identical to the line
+    FAIL AC-2: node-typescript.md: the All files row with 156 killed passes the mutation gate
+    FAIL AC-2: node-typescript.md: the All files row with 0 killed (0 of 19, issue #104) fails the mutation gate as no evidence of work
+             expected: FAIL mutation, ran but produced no evidence of work: expected /<no regex>/
+             actual:   <no evidence | mutation regex in node-typescript.md>
+    FAIL AC-2: node-typescript.md: the All files row of a run with nothing in it fails the mutation gate as no evidence of work
+    FAIL AC-2: rust-cargo.md: 4 caught (measured, cargo-mutants 27.1.0) passes the mutation gate
+    FAIL AC-2: rust-cargo.md: 3 caught among missed and unviable passes the mutation gate
+    FAIL AC-2: rust-cargo.md: a summary with no caught outcome fails the mutation gate as no evidence of work
+    FAIL AC-2: rust-cargo.md: a verbose per-mutant 'caught in' line fails the mutation gate as no evidence of work
+    FAIL AC-2: python-uv.md: 1000 killed of 1234 passes the mutation gate
+    FAIL AC-2: python-uv.md: 0 killed of 19 fails the mutation gate as no evidence of work
+    FAIL node-typescript.md: its mutation gate has an evidence line
+             actual:   - configures a `mutation` gate with no `evidence | mutation | <regex>` line, so a runner that tests nothing passes it
+    FAIL python-uv.md: its mutation gate has an evidence line
+    FAIL rust-cargo.md: its mutation gate has an evidence line
+    FAIL AC-4(a): within ten lines of its mutation gate, node-typescript points at the TypeScript 7 / Vitest 5 section, once
+    FAIL AC-4(b): node-typescript has the heading '## The mutation gate on TypeScript 7 / Vitest 5', once
+    FAIL AC-4(b): the section sits after 'What --fast should leave out' and before 'The 5,000 ms default'
+    FAIL AC-4(b): the section's configuration block sets testRunner   (and commandRunner, coverageAnalysis, timeoutMS, tsconfigFile, plugins)
+    FAIL AC-4(c): the section says 'not re-measured', once
+    FAIL AC-4(c): the section attributes its measurements to issue #104
+    FAIL AC-4(d): 'Verified against vitest 5 and typescript 5 on Windows.' no longer appears in that spelling   (expected 0, actual 1)
+    FAIL AC-4(d): one paragraph says the `unit` and `coverage` lines were verified
+    FAIL AC-4(d): and that the `mutation` line was not run
+    FAIL AC-4(d): and that its shape is derived from the reporter source
+    FAIL AC-5: one paragraph after 'Mixed-stack projects are normal' in Choosing names 'rust-mutation'   (and '--gate rust-mutation', 'HARNESS-039', 'judge the id `mutation` only')
+    FAIL AC-5: the combining paragraph names evidence   (and slow, ondemand, /audit-mutations, gates.sh --audit, profiles.test.sh)
+    FAIL AC-5: node-typescript.md says 'Combining this with', once
+    FAIL AC-5: node-typescript.md's pointer sits beside its ondemand | mutation line
+    FAIL AC-5: rust-cargo.md says 'Combining this with', once
+    FAIL AC-5: rust-cargo.md's pointer sits beside its ondemand | mutation line
+
+(Abridged: one line per failing name, grouped where marked; the run prints
+all 47 with expected/actual.) **Why it is the right failure:** every red is
+an absence in one of the documents GREEN writes - no `evidence | mutation`
+line in the three profiles, no section/sentence/paragraph/pointer. None is a
+harness error: the suite loads, the `gates.sh` fixture builds, and AC-2's
+verdicts report the missing regex by name rather than reaching `gates.sh`
+with an empty one.
+
+`selftest.sh`'s floor line reads `55 assertions executed, 50 declared` on a
+single-suite run with the old floor; with the new floor of 102 the suite sits
+below its floor until GREEN turns the 47 green - the HARNESS-015/-040
+precedent ("the count is the floor, the failures are the story").
+
+**What GREEN writes, as the tests pin it** (the "export shape" of a docs
+story - the lines the suite reads):
+
+- One `evidence | mutation | <regex>` line in each of the three profiles,
+  4-space indented like its neighbours, **no trailing comment on the same
+  line** (`rest(3)` - in the suite AND in `gates.sh` - would make the comment
+  part of the regex; put comments on the lines above). The regex is C-4's,
+  verbatim. In node-typescript.md, `[1-9][0-9]* [|]` must occur exactly once
+  (DV-1's `sed` target).
+- node-typescript.md: per C-6 and its RED amendment - the pointer quoting
+  `The mutation gate on TypeScript 7 / Vitest 5` once within ten lines after
+  the gate line; the heading between the two named sections; the config as
+  one indented or fenced block containing all six keys; `not re-measured` in
+  exactly one paragraph of the section, `issue #104` in it; C-6(c)'s
+  replacement sentence (its wording satisfies all three (d) needles - keep
+  ``The `unit` and `coverage` lines were verified``, ``the `mutation` line
+  was not run`` and `reporter source` in that one paragraph).
+- stack-profiles/SKILL.md: ONE paragraph (no blank line, no code block
+  inside) after the "Mixed-stack" paragraph and before `## Guards that scan
+  the source tree`, per C-7's RED amendment.
+- `Combining this with` on one line in each of node-typescript.md and
+  rust-cargo.md, within 4 lines of the `ondemand | mutation` line.
+
+Not constrained: wording beyond the needles; where in the evidence block the
+new line sits; whether rust-cargo.md adds `floor | mutation` (allowed by C-4,
+but it changes DV-2's count - below); C-8's two edits.
+
+**The rule itself is RED's and is written** (C-1): `evre[t($2)] = rest(3)` at
+the evidence parse, and the `mutation-evidence` rule in `END` with C-3's
+message. The awk helpers `t()`/`rest()` were lifted into one shell variable,
+`PROFILE_FIELDS`, prepended to both `profile_problems` and the new
+`mutation_regex`, so AC-3's "one extraction" is structural.
+
+**Passed on arrival, and what earns each:**
+
+- AC-1's five fixture checks. The three that expect C-3's message were
+  watched fail before the `END` rule existed (parse change in, rule not yet
+  written):
+
+      the checker requires a mutation gate's evidence line (HARNESS-041, AC-1)
+        FAIL AC-1: a mutation gate with no evidence line is reported, once, in C-3's words
+             expected: configures a `mutation` gate with no `evidence | mutation | <regex>` line, so a runner that tests nothing passes it
+             actual:
+        FAIL AC-1: an evidence line of '-' for the mutation gate is reported the same way
+        FAIL AC-1: an evidence line with an empty regex for the mutation gate is reported the same way
+      profiles: 52 passed, 3 failed
+
+  The two silent controls pass with or without the rule; they are earned by
+  those three firing on the same `base_profile`, and by the candidate run
+  below where `-` on a real profile line fires the per-profile check.
+- Everything else new is red now.
+
+**Negative controls - expected values.** No assertion against a real
+mutation line has run, because no such line exists. I measured them on a
+**candidate GREEN** outside the tree: copies of the six documents in the
+scratchpad with C-4's three lines and minimal prose added, the suite copied
+with `PROFILE_DIR`/`STACK_SKILL` pointed at them (`_lib.sh` and `gates.sh`
+the real ones). Clean candidate: `profiles: 102 passed, 0 failed`, identical
+under `LC_ALL` unset, `C`, `C.UTF-8` and `en_US.UTF-8` (MSYS bash, gawk
+5.4.1). Then one change each:
+
+| Candidate change | Threshold the suite holds | Expected failing | Measured |
+|---|---|---|---|
+| none | - | 0 | `102 passed, 0 failed` |
+| DV-1: node `[1-9][0-9]* [|]` -> `[0-9]* [|]` | killed column must start 1-9 | exactly the 2 node negatives (0-killed row, n/a row) | `100 passed, 2 failed`, those two |
+| node regex -> `[0-9]` (matches any digit) | negatives are real shapes | the same 2 node negatives | `100 passed, 2 failed` |
+| node regex -> `-` | `-` is not an evidence regex | 2 node negatives + node per-profile `mutation-evidence` | `99 passed, 3 failed` |
+| python `🎉 [1-9][0-9]*` -> `🎉 [0-9]*` | killed count after the emoji must start 1-9 | python 0-of-19 negative | `101 passed, 1 failed` |
+| rust `[1-9][0-9]* caught` -> `[0-9]* caught` | a digit run directly before ` caught` | rust verbose `caught in` negative (the `3 missed` line has no `caught`, so it stays FAIL either way) | `101 passed, 1 failed` |
+| DV-2: rust `evidence \| mutation` line deleted | presence rule on a real line | AC-3 rust x2, AC-2 rust x4, per-profile rust `mutation-evidence` = 7 (8 if GREEN adds `floor \| mutation` to rust-cargo.md: the `floor` check fires too) | `95 passed, 7 failed` |
+
+These are claims about the candidate, not the shipped documents: GREEN
+confirms the clean `102 passed, 0 failed` on the real tree, and GATES runs
+DV-1 and DV-2 through `scripts/mutate.sh` against the real files and checks
+the counts above (DV-1: `100 passed, 2 failed`, the two node negatives only;
+DV-2: 7, or 8 with a rust floor).
+
+**Deferred verifications:** DV-1 and DV-2 are owned by GATES and I did not
+run them: in RED the lines they mutate do not exist. The table above is the
+prediction, measured on a candidate, not the verification.
+
+**Discovered, changes the approach:**
+
+- C-2 as planned could not work (`ondemand` + `required` is refused); amended.
+- MSYS `sed` under `LC_ALL=C.UTF-8` does not match `.` across a 4-byte emoji
+  (16-bit `wchar_t`), so the verdict normaliser touches only ASCII prefixes
+  and suffixes. Relevant if anyone "simplifies" it to `(.*)`.
+- `awk -v re=...` processes escapes, so the suite's line-locating regexes use
+  `[|]`, never `\|` - the same reason C-4 gives for the profile regexes.
+- A failing gate's results line ends in ` -> .claude/state/gate-logs/<id>.log`;
+  the suite strips it.
+- `bash scripts/gates.sh --fast` in this repo configures no gate (`0 ran, 5
+  unconfigured`, exit 0); the gate that judges this story is the `selftest`
+  CI job. `check-sigpipe.sh` (48 files, 0 findings) and
+  `check-grep-count.sh` (48 files, 0 findings) are clean;
+  `bash scripts/selftest.sh selftest` is `268 passed` with the raised
+  floors.
 
 ## Regressions
 
