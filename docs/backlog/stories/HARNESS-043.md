@@ -1,0 +1,469 @@
+---
+id: HARNESS-043
+title: A /security-audit command wrapping Cloudflare's vendored skill
+slug: a-security-audit-command-wrapping-cloudf
+epic: 
+type: feature
+status: todo
+phase: PLANNED
+branch: story/HARNESS-043-a-security-audit-command-wrapping-cloudf
+depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
+touches: [.claude/commands/security-audit.md, .claude/skills/security-audit/UPSTREAM, .claude/skills/security-audit/LICENSE, .claude/skills/security-audit/*.md, .claude/skills/security-audit/*.cjs, .claude/skills/security-audit/report-schema.json, .claude/tests/security-audit.test.sh, .claude/tests/reporting.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
+required_gates: []  # gate ids that are optional for the repo but binding for THIS story
+---
+
+## Context
+
+The user decided (2026-10-07, in conversation) to give the harness an
+on-request security audit: a thin `/security-audit [scope]` command that
+wraps a **vendored, unmodified** copy of Cloudflare's `security-audit` skill
+(https://github.com/cloudflare/security-audit-skill, MIT), pinned to one
+commit. The command is modelled on `/audit-mutations`: optional, above the
+bar, never a gate, never part of the story loop; it writes an audit under
+`docs/wiki/audits/` to `docs/wiki/audits/TEMPLATE.md`'s structure and files a
+story per confirmed finding or cluster. It fixes nothing.
+
+Three facts about this environment shape the command and are stated in it
+rather than discovered by the next agent:
+
+- **No subagent here can spawn a subagent.** Cloudflare's skill has a
+  "parent" that launches hunters, critics and verifiers through the platform's
+  Task tool. So the command runs **in the orchestrating session itself**, like
+  `/plan-product`, not by delegating to one agent.
+- **No OS-enforced sandbox.** The skill's own rule is that without one it
+  executes no target code and keeps execution-dependent leads as
+  `needs_validation`. The summary must say so.
+- **Node cannot be assumed** (`rules.md`, "Portability"), and on this host it
+  is not enough anyway: Cloudflare's `validate-findings.cjs` refuses to read
+  any file on Windows (measured at PLANNED, see Contract C-7). "Validators not
+  run" is therefore a normal outcome the command reports, never a failure.
+
+`docs/wiki/architecture.md` does not exist in this repository (the harness
+has no product architecture page; `/plan-story` step 1 is satisfied by
+`CLAUDE.md`, `rules.md` and the two most recent stories, HARNESS-041 and
+HARNESS-042). The id scheme is `HARNESS-NNN`, and 043 was free at creation.
+
+**Type: `feature`, not `chore`.** `story-authoring` defines a chore as
+"tooling or migrations with no behaviour change". This story adds a new
+command - new behaviour a user invokes - and every criterion below can be
+written as a failing test under RED before any file exists, so the chore's
+one privilege (SCAFFOLD) is neither needed nor justified. The vendored
+documents are the bulk of the diff by bytes, but a diff's byte count is not
+the kind of work it is.
+
+**Not split.** Vendoring, the command, the pin test and the refresh coverage
+are one RED→GREEN cycle: four mechanical criteria, one new suite plus one row
+in an existing one, and GREEN is a copy plus one ~50-line file. The one piece
+that cannot be a test - the first trial run, which sets the budget default -
+is a `## Deferred verifications` entry owned by GATES (DV-1), per the
+dispatcher's recommendation. Splitting it off as a story of its own would
+make a story whose only artifact is one number in one line.
+
+**The gate that fails if this breaks** is the harness's own `selftest`,
+which CI runs on every PR: the new `security-audit` suite (AC-1, AC-2, AC-4),
+and the existing `reporting` and `shipped-docs` suites (AC-3). No
+`required_gates` entry is needed.
+
+## Acceptance criteria
+
+<!-- Each AC is independently testable and phrased as observable behaviour.
+     The Test Developer writes at least one failing test per AC. -->
+
+- **AC-1 (the vendored skill is pinned, complete and unmodified)** — Given
+  `.claude/skills/security-audit/`, when `bash scripts/selftest.sh
+  security-audit` runs, then: (a) `UPSTREAM` exists and its first line names
+  `cloudflare/security-audit-skill` and a 40-hex commit; (b) every path
+  `UPSTREAM` lists exists and `git hash-object` of it equals the blob SHA
+  listed (22 files: 21 skill files plus `LICENSE`); (c) no file exists in the
+  directory that `UPSTREAM` does not list, other than `UPSTREAM` itself.
+  *Control:* with one byte of one listed file changed, or `LICENSE` emptied,
+  the check prints exactly one line naming that file; with an extra file
+  dropped in, one line naming it.
+- **AC-2 (the command carries the harness-specific defaults and the honesty
+  statements)** — Given `.claude/commands/security-audit.md`, when the suite
+  reads it, then it finds, as the exact needles in Contract C-3: frontmatter
+  `model: fable`; the default scope repo-wide; the default profile `quick`;
+  a strict budget stated as a whole number of agent invocations; that it runs
+  in the session and not in a subagent; hunters, critics and verifiers on
+  `opus`; the three honesty statements (no OS-enforced sandbox so no target
+  code runs and such leads stay `needs_validation`; "validators not run" when
+  `node` is absent or the validator refuses; a clean run is "nothing found
+  this run", never "clean"); that it is never a gate and not part of the
+  story loop; the summary path `docs/wiki/audits/<scope>-<date>.md` written
+  to `docs/wiki/audits/TEMPLATE.md`; and `new-story.sh` for findings.
+  *Control:* a fixture copy with any one needle removed prints one line
+  naming that needle.
+- **AC-3 (the existing tree rules accept the new command)** — Given the new
+  command file in the tree, when `bash scripts/selftest.sh reporting` and
+  `bash scripts/selftest.sh shipped-docs` run, then both pass: `reporting`
+  has a `security-audit|bash scripts/plan.sh after` row in its next-action
+  table and the command's last paragraph carries ``rules.md``, "Reporting to
+  the user" and that needle; `shipped-docs` finds every `docs/` path the
+  command and the vendored skill name either shipped or declared written.
+  *Control:* in RED the row exists and the command does not, so `reporting`
+  is red with `.claude/commands/security-audit.md: is in the next-action
+  table but does not exist`.
+- **AC-4 (the refresh ships it)** — Given a fixture project with no
+  `.claude/skills/security-audit/` and no `.claude/commands/security-audit.md`,
+  when `bash scripts/refresh-harness.sh <this checkout>` runs in it, then the
+  project has both, and AC-1's check over the project's copy of the skill
+  directory prints nothing.
+  *Control:* the same refresh from an upstream fixture lacking the directory
+  leaves the project without it (the directory arrives from upstream, not
+  from the script).
+
+## Contract
+
+<!-- Written by the Lead PO BEFORE RED, and AMENDABLE BY RED IN PLACE with a
+     reason - GREEN then builds what the amended block says. -->
+
+**Writes:** `.claude/commands/security-audit.md`, `.claude/skills/security-audit/UPSTREAM`, `.claude/skills/security-audit/LICENSE`, `.claude/skills/security-audit/*.md`, `.claude/skills/security-audit/*.cjs`, `.claude/skills/security-audit/report-schema.json`, `.claude/tests/security-audit.test.sh`, `.claude/tests/reporting.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+
+Every path classifies as `harness` (`bash scripts/classify.sh` at PLANNED on
+the command, `SKILL.md`, `LICENSE`, `report-schema.json`, both `.cjs` kinds:
+all print `harness`), so the phase lock freezes none of them and
+`check-boundaries.sh` counts none as source. The role boundary is honoured by
+the agents: RED writes the four test files only; GREEN writes the command and
+the vendored directory only. No existing export changes signature; there is
+no caller list.
+
+**RED may amend any block below in place, with a reason; GREEN builds what
+the amended block says.**
+
+- **C-1 The pinned upstream (settled - read out, never re-derived).**
+  Repository `cloudflare/security-audit-skill`, commit
+  `c1c8a8c1471069fb0e188eeaff69b8e8db6564a8` ("Clarify guidance and full
+  audit modes", 2026-09-14), licence MIT. Its `git ls-tree -r` at that commit,
+  measured at PLANNED by fetching the commit into an empty repository, and
+  confirmed byte-for-byte against the release tarball (22 of 22 blobs match
+  `git hash-object`):
+
+      100644 6dbc9ecb3a5b9080e95b962869e8c7ab16cfdc20  LICENSE
+      100644 02ba9039eca4cec811fefc77bce0d7349b379aae  skills/security-audit/AI-AND-LLM.md
+      100644 18a2beb4dbb554fb52b0a0293b8bd9108207f8fa  skills/security-audit/ATTACK-CLASSES.md
+      100644 8ba673e9e7e3d02f5518aa0219bcbeec7957531b  skills/security-audit/CLIENT-SIDE.md
+      100644 5569f76c7740744aa3f60aaa89eaefe275f2e6c9  skills/security-audit/CLOUD-AND-DEPLOYMENT.md
+      100644 0cba1fa463b62c9b0caba710a201e29c1eecd0ec  skills/security-audit/DATA-ISOLATION-AND-LIFECYCLE.md
+      100644 d6230098651bff6348d3868c11f566bfb1306e7f  skills/security-audit/DESKTOP-MOBILE-AND-LOCAL-IPC.md
+      100644 377d4dcfbe88a049379448cd7892717185401597  skills/security-audit/HUNTING.md
+      100644 86ff4920752661fc4a31a35ca4f962ace5dd5f48  skills/security-audit/MEMORY-SAFETY-AND-BINARY.md
+      100644 b04ab88f852224838fdc9683d9fcccd858b0778a  skills/security-audit/PROTOCOLS-RPC-AND-MESSAGING.md
+      100644 1a170a93ab76b93dc5ac268a5b690beb423a8aa9  skills/security-audit/RECONNAISSANCE.md
+      100644 6cbbd1e2cfa482068c8279c2f7da9db43d3f54b8  skills/security-audit/RESOURCE-EXHAUSTION-AND-AVAILABILITY.md
+      100644 92178dad304d3f63e37582a297026a7874e12c62  skills/security-audit/SKILL.md
+      100644 bf96aed0803bc07471483ab129dea86759c3e305  skills/security-audit/SUPPLY-CHAIN-AND-RELEASE.md
+      100644 5e200d7387e665e53e0e4190fa4a5814c334c507  skills/security-audit/VALIDATION-AND-REPORTING.md
+      100644 1a099fa575cf52a61e9a627f91b61015120fa517  skills/security-audit/WEB-PROTOCOL-AND-AUTH.md
+      100644 55815a3687a45fff63d8ebf20068611bd6ad6d9a  skills/security-audit/report-schema.json
+      100755 0ef58657bef18b26a92321df6c8e3d31bc8e6659  skills/security-audit/validate-coverage-ledger.cjs
+      100644 b1444f57e1b021a61175733b8c356171861c8701  skills/security-audit/validate-coverage-ledger.test.cjs
+      100755 2843feceddb7e30bf10d6e4f7bbe6640e4c57799  skills/security-audit/validate-findings.cjs
+      100644 8d245b226bbe2fdf28b46b3203b99c2824039d2d  skills/security-audit/validate-findings.test.cjs
+
+  Upstream's `README.md` is **not** vendored (it describes the repository, not
+  the skill; nothing instructs an agent to read it). `LICENSE` sits at
+  upstream's root and is vendored into the skill directory because MIT
+  requires the notice to travel with the copy. GREEN copies the 21 skill files
+  flat into `.claude/skills/security-audit/` and sets the executable bit on
+  the two `100755` validators with `git update-index --chmod=+x` (Windows
+  `core.filemode` is false, so the bit does not come from the filesystem).
+  The pin test checks content, not mode.
+- **C-2 `.claude/skills/security-audit/UPSTREAM`** - the pin record, one
+  file, extensionless so no skill-document scanner reads it as prose. Lines
+  beginning `#` are comments; every other line is `<40 hex>` + two spaces +
+  `<path relative to the directory>`. The first line is exactly
+
+      # cloudflare/security-audit-skill @ c1c8a8c1471069fb0e188eeaff69b8e8db6564a8 (2026-09-14, MIT) - git blob SHAs; verify with `git hash-object`
+
+  followed by one line per file of C-1 with the `skills/security-audit/`
+  prefix dropped (so `LICENSE` and `SKILL.md` are siblings). Blob SHAs rather
+  than sha256 because `git` is the one tool every harness host has, the
+  values are upstream's own `ls-tree` so a later refresh is "compare against
+  `git ls-tree -r <new commit>`", and `scripts/refresh-harness.sh` already
+  judges files by `git hash-object`. A refresh of the vendored copy is: copy
+  the files, regenerate this file from upstream's `ls-tree`, nothing else.
+- **C-3 `.claude/commands/security-audit.md`** - about 50 lines
+  (`audit-mutations.md` is 44), carrying only the harness-specific parts; all
+  method stays in the skill's own files. The lines below are the needles the
+  AC-2 test matches **exactly** (fixed strings, `grep -F`), so GREEN writes
+  them byte for byte; everything around them is GREEN's prose.
+
+  Frontmatter:
+
+      description: Audit the code for security defects with Cloudflare's vendored security-audit skill (optional, on request)
+      model: fable
+      argument-hint: [path | subsystem | <ref>..<ref>]
+
+  Body needles, one per fact, each on a line of its own or inside one line:
+
+      Runs in the session that reads this file, not in a subagent
+      Load `.claude/skills/security-audit/SKILL.md` in full audit mode
+      Defaults: scope repo-wide; profile `quick`; budget 16 agent invocations (strict, provisional until HARNESS-043 DV-1)
+      hunters, critics and verifiers: `subagent_type: general-purpose`, `model: opus`
+      `research` agents: `subagent_type: Explore`, `model: opus`
+      this environment has no OS-enforced sandbox, so the skill executes no target code; every finding is source-traced and anything that needs execution stays `needs_validation`
+      validators not run
+      nothing found this run
+      never a gate, and nothing in the story loop runs it
+      ~/security-audit-skill/<repo>/run-<N>
+      docs/wiki/audits/<scope>-<date>.md
+      docs/wiki/audits/TEMPLATE.md
+      bash scripts/new-story.sh
+      Report as `rules.md`, "Reporting to the user" says
+      bash scripts/plan.sh after
+
+  The AC-2 test is `grep -F` per needle over the whole file except the last
+  two, which must be in the **last paragraph** (the `reporting` suite's AC-4
+  checks that too; this suite only names the needle it missed). The budget
+  needle is matched as the regex `budget [0-9]+ agent invocations \(strict`
+  so DV-1 can set the number and drop the "provisional" clause without
+  touching a test. Semantics behind each line:
+  - *scope*: the argument is a repository path (exists under the root), a
+    subsystem name (free text the parent maps onto Cloudflare's coverage
+    units and companion domains), or `<ref>..<ref>` (contains `..`, both
+    sides `git rev-parse` cleanly) for the diff between two refs. Empty means
+    the whole repository.
+  - *profile `quick`*: Cloudflare's `quick` - one hunter wave, one final
+    critic, one fresh verifier per candidate for both validation and final
+    record verification. Their own default is `standard`; this harness
+    defaults to `quick` because a run is on request and repeatable, and the
+    skill's own measurement is that repeated runs find more than a longer
+    single one.
+  - *budget*: Cloudflare's strict total-agent budget, written into
+    `run-metadata.json` as `budget`. The minimum a `quick` run can fund is 4
+    reconnaissance + 1 critic + 1 verifier = 6; 16 is a provisional number
+    chosen to leave about 10 hunter-or-verifier calls for a repository of
+    this size. **DV-1 replaces it with a measured default**; until then the
+    line says so.
+  - *models*: the parent is the session (`fable`, the planning model per
+    `models.conf`); every delegated agent is `opus`, the model judged
+    stronger at reading code. Cloudflare's `general` role maps to
+    `general-purpose` (hunters need Read/Grep/Glob/Bash and a scratch
+    directory to write in); its `research` role maps to `Explore` (read-only
+    by definition, which is what that role is). **No new agent definition**
+    - see C-6.
+  - *honesty (a)*: the exact sentence above; the summary's `## What was not
+    checked` repeats it.
+  - *honesty (b)*: before Phase 4 the command runs `command -v node`; if
+    absent, or if either validator exits non-zero with a message that is not
+    a schema error (on this host: C-7), the summary's `## Evidence` carries
+    `validators not run: <first line of the validator's stderr, verbatim>`
+    and the run continues. Never a failure, never silent.
+  - *honesty (c)*: a run with no confirmed finding is reported as `nothing
+    found this run`; the words "clean" or "secure" do not appear as a
+    verdict. Cloudflare's README: one run found roughly half of what repeated
+    runs found - read out, not re-measured.
+  - *outputs*: raw run output stays in the skill's default directory outside
+    the repository (`~/security-audit-skill/<repo>/run-<N>`); the harness
+    writes one summary to `docs/wiki/audits/<scope>-<date>.md` in
+    `TEMPLATE.md`'s structure, `<scope>` being `security` for a repo-wide run
+    and `security-<slug of the argument>` otherwise, `<date>` `YYYY-MM-DD`;
+    and one story per confirmed finding or cluster via `new-story.sh`, type
+    `fix`. The summary's `## Decided` holds the verdicts, `## Evidence` the
+    agents spent, wall-clock, validator status and the resolved model of
+    every dispatch by name, `## What was not checked` the sandbox statement
+    and the profile/scope/budget partiality.
+  - **Spelling that `shipped-docs` requires:** the summary path must be
+    written `docs/wiki/audits/<scope>-<date>.md`, the `audit-mutations`
+    spelling. `shipped-docs.test.sh` extracts `docs/[A-Za-z0-9_./-]*` and
+    skips a token ending in `/`; `docs/wiki/audits/security-<date>.md` would
+    extract as `docs/wiki/audits/security-` and fail the real-tree assertion
+    (measured at PLANNED by reading the extractor at `:66-67`).
+- **C-4 `.claude/tests/security-audit.test.sh`** - a new suite, modelled on
+  `shipped-docs.test.sh`: a function `vendor_problems <dir>` printing one
+  `<path>: <reason>` line per violation of AC-1's (a)-(c) and nothing when
+  clean, run over `$REPO_ROOT/.claude/skills/security-audit` (must print
+  nothing) and over fixtures built compliant by construction with one defect
+  each (must print exactly the one line); a function `command_problems
+  <file>` doing the same for C-3's needles; and AC-4's refresh case using
+  `refresh.test.sh`'s `new_project` shape with `UP="$REPO_ROOT"` (a git
+  checkout on `main`, so the LOCAL check runs rather than reporting
+  unknown). Portable awk and bash only; no `sha256sum` (absent on some
+  hosts), `git hash-object` instead. Register it in `.claude/tests/floors.conf`
+  AND the hand-copied table in `.claude/tests/selftest.test.sh` (`:525-560`)
+  in the same commit, with the executed count read off its own summary line.
+- **C-5 `.claude/tests/reporting.test.sh`** - one row added to `NEXT_TABLE`
+  (`:59-69`): `security-audit|bash scripts/plan.sh after`. The fixture at
+  `:313-375` generates a command per row, so no other edit is needed. In RED
+  the real-tree assertion goes red with `is in the next-action table but
+  does not exist`; that is AC-3's control.
+- **C-6 No new agent definition, and why.** `rules.md`, "The model each agent
+  runs on", wants the model a role runs on to be a fact of the harness
+  rather than of the session. For Cloudflare's roles that fact is written in
+  the command (C-3: `model: opus` on every dispatch) and recorded by name in
+  the summary, which is the same two things `lead-po` does for every story
+  dispatch. A `security-hunter.md` agent would add a third copy of prompts
+  that already exist verbatim in `HUNTING.md` and
+  `VALIDATION-AND-REPORTING.md`, and a copy is the one thing vendoring
+  unmodified exists to avoid. `models.conf` is not touched: it plans story
+  phases, and this command is not a story phase.
+- **C-7 Baseline: Cloudflare's validators on this host (measured at PLANNED,
+  2026-10-07, Windows 11, Git Bash, Node v24.19.0).** `node
+  validate-findings.cjs <any path>` exits 1 with `Failed to read findings
+  JSON: OS no-follow and nonblocking input protection is unavailable` -
+  Windows has no `O_NOFOLLOW`, and the validator refuses rather than
+  degrades. Its own `validate-findings.test.cjs`: 34 tests, 22 pass, 7 fail,
+  5 skipped. `validate-coverage-ledger.test.cjs`: 31 tests, 24 pass, 0 fail,
+  7 skipped. So on Windows the findings validator never runs and honesty
+  constraint (b) is the normal path, which DV-1 will exercise. On Linux/macOS
+  it is expected to run; not measured here. Nothing in this story changes
+  Cloudflare's files to work around it (Out of scope).
+- **C-8 Oracle partition.** Every criterion is **mechanical** - file
+  presence, blob equality, fixed-string needles, a refresh's output tree -
+  so RED pins exactly and leaves nothing open-ended. **Settled** values RED
+  reads out and does not re-derive: C-1's commit and blob list, C-3's
+  needles and the provisional 16, C-7's measurements, and Cloudflare's
+  "roughly half" claim. Nothing is oracle-free.
+- **C-9 Baseline: the vendored documents name no `docs/` path.** `grep -rn
+  'docs/'` over the 21 skill files and `LICENSE` at the pinned commit: 0
+  hits (PLANNED). So `shipped-docs`, which scans every `.md` under
+  `.claude/skills`, has nothing new to judge there; the command is the only
+  new site, and its two paths are a `ship` entry and a `/`-terminated pattern.
+- **C-10 Test-only dependencies.** None. The suite needs bash, git, awk.
+
+## Deferred verifications
+
+- **DV-1 (first trial run sets the budget default)** — One `quick`,
+  repo-wide `/security-audit` run against this repository with the
+  provisional budget of 16, executed **by the orchestrating session** (the
+  `feature-developer` subagent cannot spawn the hunters; this is the one DV
+  the orchestrator runs itself, between the GATES dispatch and the gate run).
+  It cannot run before GATES because until GREEN there is no command and no
+  vendored skill. Record here, as a block: agent invocations spent by phase
+  (reconnaissance / hunters / critic / verifiers), wall-clock, findings by
+  verdict (`confirmed` / `needs_validation` / `rejected`, and "nothing found
+  this run" if none confirmed), the validator status line the summary
+  carried (C-7 predicts `validators not run: Failed to read findings JSON:
+  OS no-follow and nonblocking input protection is unavailable`), the
+  resolved model of the parent and of each dispatch by name, the path of the
+  summary written, and the stories filed. Then set the budget default in the
+  command from it - the number spent, rounded up to leave one reserve verifier
+  - and drop the "provisional" clause. The AC-2 regex accepts any whole
+  number, so the edit changes no test. A run that the budget cannot fund
+  (Cloudflare's `budget_cannot_fund_reconnaissance_and_reserves`) is a
+  result too: record it, raise the number, run once more. Owner: GATES
+
+- **DV-2 (defect put back: a vendored file altered)** — With the first line
+  of `.claude/skills/security-audit/LICENSE` deleted, AC-1's real-tree
+  assertion MUST go red in the `security-audit` suite with exactly one line
+  naming `LICENSE`, and nothing else in the suite may move. RED cannot run it:
+  there is no vendored tree to mutate. Through `scripts/mutate.sh`, against
+  the one suite:
+
+      bash scripts/mutate.sh .claude/skills/security-audit/LICENSE '1d' -- bash scripts/selftest.sh security-audit
+
+  Paste the red and the `restored (verified byte-for-byte ...)` line.
+  Owner: GATES
+
+## Amendments
+
+<!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
+     out to be wrong or unsatisfiable, stop, put it to the product owner, and
+     record the change here. Omit the section if unused. -->
+
+## Model guidance
+
+Planned by `bash scripts/plan.sh write HARNESS-043` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
+
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
+
+**Resolved:**
+
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
+## Out of scope
+
+- Editing any of Cloudflare's 21 files or `LICENSE` - including making the
+  validators work on Windows (C-7). Updating is a re-copy plus a regenerated
+  `UPSTREAM`; a harness-side fix goes upstream as a PR, never into the copy.
+- Vendoring upstream's `README.md`.
+- Making `/security-audit` a gate, putting it in `project.conf`, running it
+  from `/advance-story`, `/complete-story` or `plan.sh after`, or having
+  anything run it other than the user typing it.
+- `standard` or `deep` as the default profile. Both remain available by
+  asking; only the default is decided here.
+- Fixing, mitigating or triaging any finding the trial run produces. Findings
+  become `fix` stories through `new-story.sh` and go through RED→GREEN like
+  anything else. DV-1 files them; nothing here acts on them.
+- Providing, emulating or documenting a sandbox. The command states there is
+  none; building one is a different story.
+- A new agent definition under `.claude/agents/` for hunters or verifiers
+  (C-6), and any change to `.claude/harness/models.conf`.
+- Running it against downstream projects (fantasy-world-builder,
+  manga-translator). They receive the command and the skill on their next
+  `refresh-harness.sh` and run it themselves.
+- A `doctor.sh` row for `node`. The command checks `command -v node` at run
+  time and reports; the environment page is `/setup-environment`'s.
+- Any change to `scripts/refresh-harness.sh`: the skill directory lands
+  through the existing `.claude/skills` replace (AC-4 proves it; it does not
+  build it).
+
+## Design notes
+
+<!-- Omitted: no user interface. -->
+
+## Test plan
+
+<!-- Filled by the Test Developer during RED: which tests, at which level,
+     and which AC each one covers. -->
+
+## Handoff: RED -> GREEN
+
+<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
+     to the Feature Developer, whose context is fresh. Must contain:
+       * the exact command that runs the new tests
+       * the failure output, and why it is the RIGHT failure
+       * every file touched, and which AC each test covers
+       * the EXPORT SHAPE the tests already pin
+       * any test that passed on arrival, and the probe or negative control
+         that earns it
+       * anything discovered that changes the approach -->
+
+## Regressions
+
+<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
+     otherwise. -->
+
+## Gate results
+
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+## Scaffold inventory
+
+<!-- Not used: this is a feature story; nothing is written under SCAFFOLD. -->
+
+## Notes
+
+**PLANNED (2026-10-07, Lead PO on fable, dispatched with no override).**
+
+- Upstream fetched into an empty repository with `git fetch --depth 1
+  https://github.com/cloudflare/security-audit-skill
+  c1c8a8c1471069fb0e188eeaff69b8e8db6564a8`; `git ls-tree -r FETCH_HEAD` is
+  C-1. The release tarball of the same commit matched 22 of 22 blobs by
+  `git hash-object`. GREEN may take the files from either; the SHAs decide.
+- Once vendored, `security-audit` appears in every session's skill list with
+  Cloudflare's own description, and its *guidance mode* (answering a
+  security question without a run) is reachable by loading the skill
+  directly. That is Cloudflare's design and is untouched; `/security-audit`
+  is the harness's entry to *full audit mode* only.
+- `.claude/harness/VERSION` is bumped in the DONE commit, as HARNESS-042 did
+  (release 87), not in `touches:`.
+- DV-1 is the orchestrator's own run, on the session's model, and will take
+  real wall-clock: up to 16 `opus` agents plus a fable parent. Budget an hour
+  for the GATES phase and say so when reporting.
+- `bash scripts/plan.sh conflicts` has nothing to compare against: the
+  board holds no other open story. `touches:` is filled anyway, with globs
+  only for the two real families (`*.md`, `*.cjs`) the vendored copy edits as
+  one.
