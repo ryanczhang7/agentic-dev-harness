@@ -403,6 +403,45 @@ assert_eq "an untracked hook does not move the hash" "$h2" "$(gate_tree_hash)"
 rm -f "$FIX/.claude/hooks/other.sh"
 
 # ---------------------------------------------------------------------------
+describe "gate_tree_hash: a same-size edit in the index's own second is seen (HARNESS-042)"
+
+# Racy git. `add -u` skips a file whose stat data matches its index entry,
+# unless the entry is "racily clean": its mtime is not older than the INDEX
+# FILE's mtime, in which case git compares content. The temporary index was
+# seeded with a plain `cp`, which stamps it NOW - so an entry written in the
+# same second as the real index stopped being racy, and a rewrite of that file
+# with the same size in that second kept matching stat data and was skipped.
+# The hash missed a real edit. It showed up on CI as the block above going red
+# by timing alone (fantasy-world-builder#76: "an untracked hook does not move
+# the hash", lib 216/217), because the fixture's rewrites there are same-size.
+#
+# Here the race is FORCED rather than waited for: the file and the real index
+# are both pinned to one second with `touch -t` (POSIX; BSD touch has no GNU
+# date strings). ctime cannot be pinned, and on Linux a rewrite moves it, which
+# would make git see the edit through ctime alone and this case pass against
+# the defect. trustctime=false and checkStat=minimal take ctime, inode and
+# sub-second time out of the comparison, leaving the whole-second mtime and the
+# size - exactly the two the race is about. Unset afterwards.
+fix_commit "before the racy case"
+git -C "$FIX" config core.trustctime false
+git -C "$FIX" config core.checkStat minimal
+printf 'p() { :; }\n' > "$FIX/.claude/hooks/lib.sh"
+touch -t 202601010000.00 "$FIX/.claude/hooks/lib.sh"
+fix_commit "a hook, stamped in the index's second"
+touch -t 202601010000.00 "$FIX/.git/index"
+h0="$(gate_tree_hash)"
+printf 'q() { :; }\n' > "$FIX/.claude/hooks/lib.sh"      # same size, new bytes
+touch -t 202601010000.00 "$FIX/.claude/hooks/lib.sh"     # ...in the same second
+h1="$(gate_tree_hash)"
+if [ "$h1" = "$h0" ]; then
+  _bad "a same-size edit in the index's second moves the hash" "unchanged: $h0 - the temporary index lost the real one's mtime, so add -u trusted stale stat data"
+else
+  _ok "a same-size edit in the index's second moves the hash"
+fi
+git -C "$FIX" config --unset core.trustctime
+git -C "$FIX" config --unset core.checkStat
+
+# ---------------------------------------------------------------------------
 describe "gate_tree_hash: the tree the commit would have, not the working directory (HARNESS-014)"
 
 # The stamp is recomputed by CI from the PR head commit, which contains no
