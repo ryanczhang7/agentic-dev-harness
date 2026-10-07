@@ -13,6 +13,7 @@ that a JavaScript or Godot front end drives.
     gate | build     | required | . | cargo build --release --workspace
     gate | mutation  | optional | . | cargo mutants
     ondemand | mutation | cargo mutants re-runs the suite once per mutant; run it with /audit-mutations, not per story
+    # Combining this with another profile's `mutation` gate: see the stack-profiles skill, *Choosing*.
 
     task | install | - | . | cargo fetch
     task | dev     | - | . | cargo run
@@ -42,7 +43,18 @@ work, not that it succeeded.
     # The bootstrap story must run the coverage gate and correct this line.
     evidence | coverage | TOTAL
 
-All but the coverage line were run against cargo 1.98 on Windows.
+    # cargo-mutants prints one summary line, `N mutants tested in T: ...`,
+    # listing only the non-zero outcomes. A run that killed nothing has no
+    # `caught` in it at all, so there is nothing for this to match.
+    evidence | mutation | [1-9][0-9]* caught
+
+All but the coverage line were run against cargo 1.98 on Windows. The mutation
+line was checked against cargo-mutants 27.1.0's real summary lines
+(`4 mutants tested in 4s: 4 caught`, `4 mutants tested in 3s: 3 missed, 1
+caught`). A `floor | mutation` would be meaningful here - `gates.sh` reads the
+number directly before `caught`, which is the kill count - but no profile can
+know how many mutants your crate has, so none is set; add one in the story that
+gives the gate a number worth defending.
 
 `cargo test` re-executes the test binaries on every run, warm cache or cold, so
 the `unit` regex is strong: it fails on precisely the vacuous-workspace bug
