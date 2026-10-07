@@ -5,7 +5,7 @@ slug: mutation-gates-need-a-killed-count
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-041-mutation-gates-need-a-killed-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/stack-profiles/reference/node-typescript.md, .claude/skills/stack-profiles/reference/python-uv.md, .claude/skills/stack-profiles/reference/rust-cargo.md, .claude/skills/stack-profiles/reference/new-profile.md, .claude/skills/stack-profiles/SKILL.md, .claude/skills/quality-gates/SKILL.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -505,6 +505,7 @@ name, below the table.
 - PLANNED, `lead-po`, resolved to **Fable 5.1** (`claude-fable-5-1`), as
   planned; no override was reported to the dispatcher.
 - RED, `test-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran profiles (55/47) and selftest (268/0), matching the handoff; ## Acceptance criteria unchanged since the PLANNED commit.
+- GREEN, `feature-developer`, resolved to Opus 5.5 (`claude-opus-5-5`), as planned; no override. Orchestrator re-ran profiles (102/0). The orchestrator also corrected the matching out-of-date waiver example in `.claude/harness/project.conf:219` (a comment, the Lead PO's file), which GREEN found but correctly left, since it was outside `touches:`.
 
 ## Out of scope
 
@@ -747,6 +748,93 @@ prediction, measured on a candidate, not the verification.
   `check-grep-count.sh` (48 files, 0 findings) are clean;
   `bash scripts/selftest.sh selftest` is `268 passed` with the raised
   floors.
+
+## GREEN
+
+GREEN by `feature-developer`, resolved model **Opus 5.5** (`claude-opus-5-5`),
+as planned; no override reported. Tests untouched: nothing under
+`.claude/tests/` is in the diff.
+
+**Files written (the six the Contract assigns, nothing else):**
+
+- `node-typescript.md`: two comment lines after `ondemand | mutation` (the
+  `Combining this with` pointer, then the C-6(a) pointer quoting *The mutation
+  gate on TypeScript 7 / Vitest 5*); `evidence | mutation | All files
+  *[|][^|]*[|][^|]*[|] *[1-9][0-9]* [|]` with its comment above it (no
+  trailing comment; `# killed` column; no `floor`, it would read the score);
+  C-6(c)'s replacement sentence verbatim in place of "Verified against…"; the
+  new section between `What --fast should leave out` and `The 5,000 ms
+  default` with the reporter's toolchain, the `not re-measured` sentence, both
+  failure modes, the config in one indented block, the reporter's results,
+  the `extends`/`references` caveat, C-4's honest limit, and the `Ran N tests
+  per mutant` line as an unverified second needle (Out of scope permits the
+  mention; no evidence line built on it). `grep -cF '[1-9][0-9]* [|]'` is `1`
+  (DV-1's precondition).
+- `rust-cargo.md`: the pointer beside `ondemand | mutation`;
+  `evidence | mutation | [1-9][0-9]* caught` with a comment above it; prose
+  naming the measured cargo-mutants 27.1.0 lines.
+- `python-uv.md`: `evidence | mutation | 🎉 [1-9][0-9]*` under an
+  `# UNVERIFIED against a mutmut run` comment (the file is now UTF-8).
+- `stack-profiles/SKILL.md`: one paragraph (no blank line, no block) after
+  "Mixed-stack projects are normal", with the convention (`<stack>-mutation`,
+  ids end in `mutation`, `mutation` stays `/audit-mutations`' default), copy
+  `evidence`/`slow`/`ondemand`, `--gate rust-mutation`, and the limit
+  (`gates.sh --audit` and `profiles.test.sh` judge the id `mutation` only,
+  HARNESS-039 AC-4b).
+- `new-profile.md` (C-8): the enforced-rules list gains "and an `evidence`
+  line whose regex requires a non-zero killed count".
+- `quality-gates/SKILL.md` (C-8): the waiver example reason is now
+  "stryker's vitest runner tests nothing under vitest 5; command runner not
+  wired yet - node-typescript.md".
+
+**Rust floor decision: no `floor | mutation` in rust-cargo.md.** The floor
+would be meaningful (the number before `caught` is the kill count, and the
+prose says so), but a profile cannot know how many mutants a consumer's crate
+has; the profile says to add one in the story that gives it a number. So
+**DV-2's expected count is 7, not 8.**
+
+**Found, not fixed (outside the Contract's writes):**
+`.claude/harness/project.conf:219` carries the same stale waiver example as a
+comment (`#   waiver | mutation | stryker needs a TS compiler API TS 7 lacks;
+stack.md s4`). It is the Lead PO's file and not in `touches:`; C-8's reason
+for changing the quality-gates copy applies to it too.
+
+**Runs (sequential, this tree):**
+
+    profiles: 102 passed, 0 failed     (LC_ALL unset; also LC_ALL=C and LC_ALL=C.UTF-8: 102 / 0)
+    assertion floors: all 1 suite(s) met their declared floor (102 assertions executed, 102 declared).
+    selftest: 268 passed, 0 failed
+    reporting: 27 passed, 0 failed
+    procedure: 37 passed, 0 failed
+    shipped-docs: 14 passed, 0 failed
+    check-sigpipe: scanned 48 shell file(s), 44 with pipefail, 0 finding(s)
+    check-grep-count: scanned 48 shell file(s), 0 finding(s)
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+`gates.sh --fast` configures no gate in this repository, as RED reported; the
+judging gate is the `selftest` CI job. No full `gates.sh` run yet - that is
+GATES'.
+
+**Negative controls, confirmed against the shipped documents.** Not through
+`mutate.sh` and not in the tree (the DVs remain GATES'): the six shipped
+documents were copied to the scratchpad, the suite copied with `PROFILE_DIR`
+pointed at the copy and the real `_lib.sh` sourced by absolute path (so
+`REPO_ROOT`, `gates.sh` and `stack-profiles/SKILL.md` are the real ones), and
+one `sed` applied to the copy per row. Every row matches RED's candidate
+measurement exactly, failing names included:
+
+| Change (on the copy) | RED measured | GREEN measured | Failing |
+|---|---|---|---|
+| none | 102 / 0 | `102 passed, 0 failed` | - |
+| DV-1 `sed` (node `[0-9]* [|]`) | 100 / 2 | `100 passed, 2 failed` | node 0-killed row; node n/a row |
+| node regex -> `[0-9]` | 100 / 2 | `100 passed, 2 failed` | the same two |
+| node regex -> `-` | 99 / 3 | `99 passed, 3 failed` | the same two + `node-typescript.md: its mutation gate has an evidence line` |
+| python `🎉 [0-9]*` | 101 / 1 | `101 passed, 1 failed` | `0 killed of 19` |
+| rust `[0-9]* caught` | 101 / 1 | `101 passed, 1 failed` | verbose `caught in` line |
+| DV-2 `sed` (rust line deleted) | 7 (8 with a floor) | `95 passed, 7 failed` | AC-3 rust x2, AC-2 rust x4, rust `mutation-evidence` |
+
+No divergence to explain. GATES still owes DV-1 and DV-2 against the real
+files through `scripts/mutate.sh`; expected 100/2 and 95/7.
 
 ## Regressions
 

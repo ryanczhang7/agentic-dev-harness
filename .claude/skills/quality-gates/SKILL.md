@@ -323,7 +323,7 @@ been noise for sixty stories.
 So a known failure is declared, with its reason, in `project.conf`:
 
     gate   | mutation | optional | . | pnpm exec stryker run
-    waiver | mutation | stryker needs a TS compiler API TS 7 lacks; stack.md s4
+    waiver | mutation | stryker's vitest runner tests nothing under vitest 5; command runner not wired yet - node-typescript.md
 
 `gates.sh` then reports it as `KNOWN`, with the reason inline, and `WARN` is
 reserved for a failure nobody declared. A waived gate still runs; when it

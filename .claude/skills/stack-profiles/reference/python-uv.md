@@ -33,6 +33,11 @@ work, not that it succeeded.
     evidence | typecheck | Success: no issues found in [1-9][0-9]* source file
     evidence | build     | Successfully built
 
+    # UNVERIFIED against a mutmut run - derived from mutmut 3's final status
+    # line (`print_stats()`, src/mutmut/stats.py), where the killed count is
+    # the only number after the 🎉. A run that killed nothing prints `🎉 0`.
+    evidence | mutation  | 🎉 [1-9][0-9]*
+
 `pytest` exits 5 when it collects no tests, so the bare vacuous case is already
 loud - **unless someone adds `--passWithNoTests` or an `addopts` that sets it**,
 which converts a safe gate into an unsafe one. Do not. The `unit` regex is the

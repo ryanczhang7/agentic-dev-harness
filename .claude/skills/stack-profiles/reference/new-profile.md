@@ -51,7 +51,8 @@ a profile is copied verbatim into one: every required gate is configured; every
 required gate with a command has an `evidence` line; no `evidence`, `floor`,
 `slow` or `ondemand` line names a gate the profile does not configure; every
 `floor` has an evidence line to measure out of; every `slow` and `ondemand`
-line carries a reason; a `mutation` gate has an `ondemand` line; the
+line carries a reason; a `mutation` gate has an `ondemand` line and an
+`evidence` line whose regex requires a non-zero killed count; the
 `## What --fast should leave out` section exists; and there is at least one
 `discovery` line.
 
