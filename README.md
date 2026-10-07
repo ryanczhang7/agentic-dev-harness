@@ -476,7 +476,7 @@ bug you were trying to remove:
 | Upstream-owned — replace wholesale | Project-owned — never overwrite |
 |---|---|
 | `.claude/agents/`, `.claude/commands/`, `.claude/skills/` | `.claude/harness/project.conf` — gates, tasks, the whole stack indirection |
-| `.claude/hooks/`, `.claude/tests/` | `docs/**` — wiki, backlog, stories, audits |
+| `.claude/hooks/`, `.claude/tests/` | `docs/**` — wiki, backlog, stories, audits; files `docs-shipped.conf` lists are added when missing, never overwritten |
 | `scripts/*.sh` | `.gitignore` — the project adds its stack's output |
 | `.claude/harness/phases.conf`, `rules.md`, `VERSION` | `.github/workflows/gates.yml` — the project adds its toolchain setup steps |
 | `.claude/settings.json` — the deny rules are read as evidence by `settings.test.sh` | |

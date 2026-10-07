@@ -543,11 +543,12 @@ plan 42
 policy 17
 procedure 37
 profiles 50
-refresh 122
+refresh 165
 reporting 27
 run-lock 140
 selftest 268
 settings 27
+shipped-docs 14
 sigpipe 82
 spawns 69
 worktree 73
