@@ -163,13 +163,13 @@ from the one the gates judged - the record would claim code it never saw.
 
   Result (GATES, 2026-10-07): red, restored.
 
-      $ bash scripts/mutate.sh .claude/hooks/lib.sh 's/cp -p "\$real" "\$idx"/cp "$real" "$idx"/' -- bash scripts/selftest.sh lib
-      === mutate: .claude/hooks/lib.sh (1 line(s) changed by s/cp -p "\$real" "\$idx"/cp "$real" "$idx"/) ===
-      === mutate: running bash scripts/selftest.sh lib ===
+    $ bash scripts/mutate.sh .claude/hooks/lib.sh 's/cp -p "\$real" "\$idx"/cp "$real" "$idx"/' -- bash scripts/selftest.sh lib
+    === mutate: .claude/hooks/lib.sh (1 line(s) changed by s/cp -p "\$real" "\$idx"/cp "$real" "$idx"/) ===
+    === mutate: running bash scripts/selftest.sh lib ===
           FAIL a same-size edit in the index's second moves the hash
-      lib: 246 passed, 1 failed
-      1 of 1 harness suite(s) FAILED.
-      === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/.claude_hooks_lib.sh.20261007T130328Z.9108.bak) ===
+    lib: 246 passed, 1 failed
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/.claude_hooks_lib.sh.20261007T130328Z.9108.bak) ===
 
 ## Amendments
 
