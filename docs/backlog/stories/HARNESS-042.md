@@ -4,8 +4,8 @@ title: gate_tree_hash keeps the index mtime
 slug: gate-tree-hash-keeps-the-index-mtime
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-042-gate-tree-hash-keeps-the-index-mtime
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/lib.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -161,6 +161,16 @@ from the one the gates judged - the record would claim code it never saw.
   run is against the defect, so it is this mutation's first half; GATES runs
   it once more against the fixed tree through `scripts/mutate.sh`. Owner: GATES
 
+  Result (GATES, 2026-10-07): red, restored.
+
+      $ bash scripts/mutate.sh .claude/hooks/lib.sh 's/cp -p "\$real" "\$idx"/cp "$real" "$idx"/' -- bash scripts/selftest.sh lib
+      === mutate: .claude/hooks/lib.sh (1 line(s) changed by s/cp -p "\$real" "\$idx"/cp "$real" "$idx"/) ===
+      === mutate: running bash scripts/selftest.sh lib ===
+          FAIL a same-size edit in the index's second moves the hash
+      lib: 246 passed, 1 failed
+      1 of 1 harness suite(s) FAILED.
+      === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/.claude_hooks_lib.sh.20261007T130328Z.9108.bak) ===
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -279,10 +289,21 @@ case pass against the defect there.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-07T13:22:37Z
+    commit: cf1f9d7
+    tree:   7ef521275cf4ee42ca0036414d80c08664f3f7ef
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -316,3 +337,12 @@ case pass against the defect there.
 **GREEN (2026-10-07).** `cp "$real" "$idx"` -> `cp -p "$real" "$idx"` in
 `gate_tree_hash`, plus a header-comment paragraph saying why. No other source
 changed. `bash scripts/selftest.sh lib`: `lib: 247 passed, 0 failed`.
+
+**GATES (2026-10-07).** DV-1 run and recorded above. Full self-test with
+`SELFTEST_JOBS=4`, while the story was at GATES, about 13 minutes:
+
+    exit 0
+    assertion floors: all 25 suite(s) met their declared floor (2942 assertions executed, 2651 declared).
+    25 harness suite(s) passed.
+
+`bash scripts/gates.sh`: recorded under `## Gate results`.
