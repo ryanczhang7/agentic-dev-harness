@@ -4,8 +4,8 @@ title: A /security-audit command wrapping Cloudflare's vendored skill
 slug: a-security-audit-command-wrapping-cloudf
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-043-a-security-audit-command-wrapping-cloudf
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/security-audit.md, .claude/skills/security-audit/UPSTREAM, .claude/skills/security-audit/LICENSE, .claude/skills/security-audit/*.md, .claude/skills/security-audit/*.cjs, .claude/skills/security-audit/report-schema.json, .claude/tests/security-audit.test.sh, .claude/tests/reporting.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -217,7 +217,20 @@ the amended block says.**
   checks that too; this suite only names the needle it missed). The budget
   needle is matched as the regex `budget [0-9]+ agent invocations \(strict`
   so DV-1 can set the number and drop the "provisional" clause without
-  touching a test. Semantics behind each line:
+  touching a test.
+
+  *Amended in RED (test-developer, 2026-10-07).* The Defaults line is matched
+  as the single ERE, within one line,
+  ``Defaults: scope repo-wide; profile `quick`; budget [0-9]+ agent invocations \(strict``
+  - the regex above with the line's fixed prefix in front of it. Reason: the
+  regex alone leaves AC-2's "default scope repo-wide" and "default profile
+  `quick`" with no needle at all, since the Defaults line is the only place
+  C-3 states either; matching the budget clause alone would pass a command
+  whose default profile is `standard`. The literal line above satisfies the
+  ERE, and so does DV-1's edit (a different whole number, the "provisional"
+  clause dropped), so GREEN writes the line exactly as given and DV-1 still
+  touches no test. Every needle, fixed or regex, must sit **within one line**
+  of the file. Semantics behind each line:
   - *scope*: the argument is a repository path (exists under the root), a
     subsystem name (free text the parent maps onto Cloudflare's coverage
     units and companion domains), or `<ref>..<ref>` (contains `..`, both
@@ -282,6 +295,17 @@ the amended block says.**
   hosts), `git hash-object` instead. Register it in `.claude/tests/floors.conf`
   AND the hand-copied table in `.claude/tests/selftest.test.sh` (`:525-560`)
   in the same commit, with the executed count read off its own summary line.
+
+  *Amended in RED (test-developer, 2026-10-07), the refresh clause.*
+  Measured by reading `scripts/refresh-harness.sh` (`:379-384`, `rm -rf` then
+  `cp -r "$UP/.claude/$d"`) and confirmed by the AC-4 control, whose upstream
+  is not a git repository at all and still delivers its skill: the refresh
+  copies upstream's **working tree**, not its git objects. So AC-4 goes green
+  on GREEN's uncommitted files; nothing has to be committed first. The LOCAL
+  check (which does read the object store) only prints; the suite asserts
+  nothing about it, so the parenthetical "on `main`, so the LOCAL check runs"
+  is not load-bearing - on a CI checkout (detached, shallow) the refresh may
+  print its "could not check" note instead, and the assertions are unchanged.
 - **C-5 `.claude/tests/reporting.test.sh`** - one row added to `NEXT_TABLE`
   (`:59-69`): `security-audit|bash scripts/plan.sh after`. The fixture at
   `:313-375` generates a command per row, so no other edit is needed. In RED
@@ -380,6 +404,9 @@ name, below the table.
 
 **Resolved:**
 
+- PLANNED - `lead-po` - resolved `fable` (reported by the agent; no override in the dispatch). As planned.
+- RED - `test-developer` - resolved `opus` (reported by the agent; no override in the dispatch). As planned.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -419,6 +446,64 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All four criteria are mechanical (C-8), so every test is a static check of a
+file or a tree, run as a harness suite; the one integration-level case is
+AC-4, which runs the real `scripts/refresh-harness.sh` into a fixture project.
+Each rule runs over the real tree (must print nothing) and over fixtures built
+compliant by construction with exactly one defect (must print exactly the one
+line naming it) - the second is what makes the first mean anything.
+
+**New suite `.claude/tests/security-audit.test.sh`** (`bash scripts/selftest.sh security-audit`):
+
+- **AC-1, the rule** (`vendor_problems <dir>`, `vendor_listed <dir>`), 12
+  fixture assertions: compliant fixture silent; listing parsed (4 lines);
+  one byte changed in `SKILL.md` -> one line naming it; `LICENSE` emptied ->
+  one line naming it; extra file -> one line; extra file one directory down
+  -> one line; listed file deleted -> one line; no `UPSTREAM` -> one line
+  (not one per file); first line naming another repo; first line with a
+  39-hex commit; a one-space listing line (exact two-line output: malformed,
+  then the file it meant is unlisted); missing directory -> one line.
+- **AC-1, the real tree**, 3 assertions: `vendor_problems` over
+  `.claude/skills/security-audit` prints nothing; `UPSTREAM`'s first line is
+  exactly C-2's; the listing, sorted, is exactly C-1's 21 `<sha>  <path>`
+  pairs, held in the suite as settled data. The third is how "pinned to
+  C-1's commit" is enforced: `vendor_problems` alone only checks that the
+  directory agrees with its own `UPSTREAM`, so a GREEN that vendored a
+  different commit with a self-consistent `UPSTREAM` would satisfy it. The
+  comparison is of the **set** (both sides sorted), so GREEN may order the
+  lines as it likes; C-1's order is the natural one.
+- **AC-2, the rule** (`command_problems <file>`), 27 fixture assertions: the
+  all-needles fixture is silent; the needle table has 18 rows; **each of the
+  18 needles removed in turn** prints exactly the one line naming it (a loop,
+  one assertion per needle); the budget at 23 with no provisional clause
+  passes (DV-1's edit); a non-numeric budget, a non-repo-wide scope and a
+  non-`quick` profile are each reported; the next-action needle moved to an
+  earlier paragraph is reported as missing from the last; a closing paragraph
+  added after both last-paragraph needles reports both (trailing blank lines
+  ignored); a missing file is one line.
+- **AC-2, the real tree**, 1 assertion: `command_problems` over
+  `.claude/commands/security-audit.md` prints nothing.
+- **AC-4, control**, 4 assertions: a refresh from a stand-in upstream with no
+  security-audit (not even a git repo) exits 0, delivers the skill it does
+  hold, and leaves the project with neither the skill directory nor the
+  command.
+- **AC-4, this checkout**, 4 assertions: the refresh from `$REPO_ROOT` exits 0;
+  the project's command is byte-identical to this checkout's; `vendor_problems`
+  over the project's copy prints nothing; its listing is still C-1's 21.
+
+**AC-3, existing suites:** one row `security-audit|bash scripts/plan.sh after`
+in `reporting.test.sh`'s `NEXT_TABLE` (C-5). `shipped-docs` needs no edit:
+C-9 measured the vendored files name no `docs/` path, and the command's two
+are a `ship` entry and a `/`-terminated pattern.
+
+**Not tested, deliberately:** the executable bit on the two validators (C-1:
+the pin checks content, not mode); anything about the LOCAL report the
+refresh prints (it only prints, and differs between a full clone and a CI
+checkout); the semantics behind the needles (C-3's "Semantics" bullets are
+prose a model follows, not something a static check can see - the same limit
+`reporting.test.sh` states for itself). DV-1 is the trial run that exercises
+them.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -430,6 +515,195 @@ name, below the table.
        * any test that passed on arrival, and the probe or negative control
          that earns it
        * anything discovered that changes the approach -->
+
+**Written by the test-developer (dispatched on `opus` per its definition; no
+override was given in the brief), 2026-10-07, RED.**
+
+**Commands.**
+
+    bash scripts/selftest.sh security-audit   # AC-1, AC-2, AC-4  (~15 s here)
+    bash scripts/selftest.sh reporting        # AC-3
+    bash scripts/selftest.sh shipped-docs     # AC-3
+    bash scripts/selftest.sh selftest         # the hand-copied floor table (~2.5 min)
+
+**RED output, verbatim** (`bash scripts/selftest.sh security-audit`, exit 1;
+the two 21-line expected listings are cut to their first line here, nothing
+else is):
+
+    === security-audit ===
+
+      AC-1 the rule itself: a compliant fixture, then exactly one defect each
+
+      AC-1 the real tree: .claude/skills/security-audit is C-1's commit, complete and unmodified
+        FAIL vendor_problems over the real directory prints nothing
+             expected: 
+             actual:   ./: directory does not exist
+        FAIL UPSTREAM's first line is exactly C-2's
+             expected: # cloudflare/security-audit-skill @ c1c8a8c1471069fb0e188eeaff69b8e8db6564a8 (2026-09-14, MIT) - git blob SHAs; verify with `git hash-object`
+             actual:   
+        FAIL UPSTREAM lists exactly C-1's 21 blobs - so a self-consistent copy of another commit is still red
+             expected: 02ba9039eca4cec811fefc77bce0d7349b379aae  AI-AND-LLM.md
+             [... 20 more lines of C-1 ...]
+             actual:   
+
+      AC-2 the rule itself: every needle present, then each one removed in turn
+
+      AC-2 the real tree: .claude/commands/security-audit.md carries every C-3 needle
+        FAIL command_problems over the real command prints nothing
+             expected: 
+             actual:   security-audit.md: file is missing
+
+      AC-4 control: an upstream without the skill does not grow one
+
+      AC-4 the refresh from this checkout delivers the command and the skill
+        FAIL the project now has .claude/commands/security-audit.md, byte-identical to this checkout's
+             project copy: absent; this checkout's: absent
+        FAIL and vendor_problems over the project's copy of the skill prints nothing
+             expected: 
+             actual:   ./: directory does not exist
+        FAIL and the project's UPSTREAM is still C-1's 21 blobs
+             expected: 02ba9039eca4cec811fefc77bce0d7349b379aae  AI-AND-LLM.md
+             [... 20 more lines of C-1 ...]
+             actual:   
+
+    security-audit: 44 passed, 7 failed
+    FAIL security-audit  did 44 units of work, below the floor of 51 in .claude/tests/floors.conf
+
+**Why it is the right failure.** Every one of the 7 is a real-tree assertion,
+and each fails on the named absence and nothing else: the directory and the
+command do not exist, in this checkout and therefore in the refreshed
+project. The suite loads and runs to the end - this is not an import-style
+dark RED: all 44 fixture and control assertions executed and passed, so the
+two rules are observed working before GREEN writes a byte. The real refresh
+itself already exits 0; only what it delivers is missing.
+
+    $ bash scripts/selftest.sh reporting
+        FAIL reporting_problems over the real tree prints nothing: every site that speaks to the user carries the reporting rule
+             expected: 
+             actual:   .claude/commands/security-audit.md: is in the next-action table but does not exist
+    reporting: 26 passed, 1 failed
+    FAIL reporting  did 26 units of work, below the floor of 27 in .claude/tests/floors.conf
+
+That is AC-3's control, with exactly the wording AC-3 quotes (the suite's
+`printf` at `reporting.test.sh:275`). The row adds no assertion, so the
+floor stays 27.
+
+    $ bash scripts/selftest.sh shipped-docs
+    shipped-docs: 14 passed, 0 failed
+
+    $ bash scripts/selftest.sh selftest
+    selftest: 268 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (268 assertions executed, 268 declared).
+
+**Files touched.**
+
+| File | Change | AC |
+|---|---|---|
+| `.claude/tests/security-audit.test.sh` | new suite, 51 executed assertions | AC-1, AC-2, AC-4 |
+| `.claude/tests/reporting.test.sh` | one `NEXT_TABLE` row, `security-audit\|bash scripts/plan.sh after`, after `audit-mutations` | AC-3 |
+| `.claude/tests/floors.conf` | `floor \| security-audit \| 51`, and a HARNESS-043 note at the foot | - |
+| `.claude/tests/selftest.test.sh` | `security-audit 51` in the hand-copied table (`:549`) | - |
+| this story | C-3 and C-4 amended in place (below), `## Test plan`, this handoff | - |
+
+**Contract amendments made in RED (read them in the Contract).**
+
+1. **C-3: the Defaults line is one ERE**,
+   ``Defaults: scope repo-wide; profile `quick`; budget [0-9]+ agent invocations \(strict``,
+   not the bare budget regex - otherwise AC-2's default scope and default
+   profile have no needle. C-3's literal line satisfies it; write it byte
+   for byte.
+2. **C-4: the refresh copies the working tree.** `refresh-harness.sh:379-384`
+   is `rm -rf` + `cp -r "$UP/.claude/$d"`, and the AC-4 control proves it:
+   its upstream is not a git repository and its skill still arrives. **GREEN
+   does not have to commit for AC-4 to pass.**
+
+**What GREEN must satisfy - the shape the tests pin, stated as fact.**
+
+- `.claude/skills/security-audit/UPSTREAM`: line 1 exactly
+  `# cloudflare/security-audit-skill @ c1c8a8c1471069fb0e188eeaff69b8e8db6564a8 (2026-09-14, MIT) - git blob SHAs; verify with `git hash-object``
+  (C-2, compared whole-line). Then the 21 lines of C-1 with
+  `skills/security-audit/` dropped, `<40 lowercase hex>` + **two spaces** +
+  `<path>`, any order. Further `#` lines and blank lines are tolerated; any
+  other line not of that shape is reported.
+- Exactly those 21 files in the directory, at the top level, with exactly
+  those blobs as `git hash-object <path>` computes them from inside the
+  directory (so `.gitattributes` applies). **Nothing else** in the directory
+  but `UPSTREAM` - no README, no `.gitkeep`, no notes file; anything else is
+  `<path>: not listed in UPSTREAM`.
+- `.claude/commands/security-audit.md`: all 18 needles of C-3, each **within
+  one line** (do not wrap a needle across lines; markdown will want to). 15
+  fixed strings anywhere in the file (the three frontmatter lines included -
+  the test does not require them to be inside the `---` block, but they
+  belong there); the Defaults ERE above anywhere; and
+  ``Report as `rules.md`, "Reporting to the user" says`` and
+  `bash scripts/plan.sh after` both in the **last paragraph** (the lines
+  after the last blank line, trailing blank lines ignored). Nothing may
+  follow that paragraph but blank lines.
+- `shipped-docs` must stay green: write the summary path as
+  `docs/wiki/audits/<scope>-<date>.md` (C-3, "Spelling"), and name no other
+  `docs/` path that `docs-shipped.conf` does not cover.
+- **Not constrained:** the order of `UPSTREAM`'s listing lines, any comment
+  lines after the first, the executable bit, every word of the command
+  outside the needles, where in the body each needle sits.
+
+**Fixture controls, observed now** (they test the two rules themselves, so
+they run and pass in RED; none is a threshold, each asserts an exact string):
+
+| Control | Expected output | Observed in RED |
+|---|---|---|
+| compliant vendor fixture | (nothing) | nothing - pass |
+| one byte of `SKILL.md` changed | `SKILL.md: blob <new> does not match UPSTREAM's <old>` | exactly that - pass |
+| `LICENSE` emptied | `LICENSE: blob e69de29bb2d1d6434b8b29ae775ad8c2e48c5391 does not match UPSTREAM's <old>` | exactly that - pass |
+| extra `NOTES.md` | `NOTES.md: not listed in UPSTREAM` | pass |
+| extra `reference/extra.md` | `reference/extra.md: not listed in UPSTREAM` | pass |
+| listed `HUNTING.md` deleted | `HUNTING.md: listed in UPSTREAM but does not exist` | pass |
+| no `UPSTREAM` | `UPSTREAM: file is missing` (one line) | pass |
+| first line names another repo / a 39-hex commit | `UPSTREAM: first line does not name cloudflare/security-audit-skill and a 40-hex commit` | pass, both |
+| a one-space listing line | that line reported, then `HUNTING.md: not listed in UPSTREAM` | pass |
+| all 18 needles present | (nothing) | pass |
+| each needle removed, 18 cases | exactly the one line naming it | 18 of 18 pass |
+| budget `23`, no provisional clause | (nothing) | pass |
+| budget `sixteen` / scope not repo-wide / profile `standard` | `security-audit.md: has no line matching /<the Defaults ERE>/` | pass, all three |
+| next-action needle only in an earlier paragraph | one `its last paragraph does not carry` line | pass |
+| a paragraph after both last-paragraph needles | two such lines | pass |
+| refresh from an upstream without the skill | exit 0, its own skill delivered, no security-audit dir, no command | pass, all four |
+
+**Passed on arrival against the real tree:** one assertion, "the refresh
+from this checkout exits 0". It is a precondition of AC-4 rather than AC-4
+itself - the AC-4 assertions are the three after it, all red - and it is
+earned by the control above it: the same script, the same fixture project,
+and there the delivered/not-delivered assertions do discriminate.
+
+**Guard against a vacuous "prints nothing".** Both rules return 0 always, so
+the exit status says nothing; what stops a broken rule passing the real-tree
+checks is that the same function, in the same run, prints the exact expected
+line for every fixture defect above. A `vendor_problems` that silently read
+an empty listing is caught twice more: the fixture asserts `vendor_listed`
+returns 4 lines, and the real tree asserts it returns C-1's 21.
+
+**Deferred verifications.** DV-1 and DV-2 are GATES-owned and could not run in
+RED: there is no vendored tree to mutate and no command to run. I did not run
+either. DV-2's command in the story targets the right suite, and the
+assertion it should turn red is "vendor_problems over the real directory
+prints nothing", with exactly `LICENSE: blob <sha> does not match UPSTREAM's
+6dbc9ecb3a5b9080e95b962869e8c7ab16cfdc20`; note the AC-4 assertion "vendor_problems
+over the project's copy" will go red with it too, since the refresh copies the
+mutated working tree - so "nothing else in the suite may move" will see **two**
+red assertions, both naming `LICENSE`, plus the floor line. That is expected,
+not a second defect; GATES should record it as such rather than read DV-2 as
+failed.
+
+**Timings** (all local, Windows 11, Git Bash; none from CI): the suite took
+15 s through `selftest.sh` after removing per-needle forks from
+`command_problems` (33 s before); one refresh from this checkout is ~3 s.
+Neither suite has a timeout to budget.
+
+**`gates.sh --fast`:** every gate `UNCONFIGURED` (format, lint, typecheck,
+unit, coverage), mutation ON REQUEST, "All required gates passed (0 ran, 5
+unconfigured, 0 known)"; it notes `security-audit.test.sh` is untracked -
+stage it with the commit. `check-sigpipe.sh` and `check-grep-count.sh` over
+the new suite: 0 findings each. `lib` (which greps every suite for
+portability): `247 passed, 0 failed`.
 
 ## Regressions
 
