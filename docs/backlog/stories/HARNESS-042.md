@@ -4,8 +4,8 @@ title: gate_tree_hash keeps the index mtime
 slug: gate-tree-hash-keeps-the-index-mtime
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-042-gate-tree-hash-keeps-the-index-mtime
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/lib.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -346,3 +346,11 @@ changed. `bash scripts/selftest.sh lib`: `lib: 247 passed, 0 failed`.
     25 harness suite(s) passed.
 
 `bash scripts/gates.sh`: recorded under `## Gate results`.
+
+**DONE, 2026-10-07.** Merged in #122 (merge commit b21ca4a), release 86. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main` (a detached checkout of `origin/main` in the worktree), overriding the
+branch check. PR CI: `gates` passed in 2m39s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37628147596),
+`boundaries` in 6s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37628147522).
