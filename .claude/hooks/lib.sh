@@ -1309,6 +1309,13 @@ _hash_blob_listing() {
 # before .gitattributes pinned LF the hash would disagree with CI's. With no
 # real index at all (a fresh clone that never populated one), HEAD's tree is
 # the seed instead.
+#
+# The copy is `cp -p`, and the -p is load-bearing (HARNESS-042). `add -u`
+# re-reads a file whose stat data matches its entry only when the entry is
+# "racily clean" - not older than the INDEX FILE's own mtime. A plain `cp`
+# stamps the copy now, so an entry written in the same second as the real index
+# stops being racy, and a same-size rewrite in that second is skipped: the hash
+# misses a real edit. It surfaced as a timing-dependent `lib` failure on CI.
 gate_tree_hash() {
   local idx real
   idx="$HARNESS_ROOT/.claude/state/.tree-index.$$"
@@ -1316,7 +1323,7 @@ gate_tree_hash() {
   real="$(cd "$HARNESS_ROOT" && git rev-parse --git-path index 2>/dev/null)"
   case "$real" in ''|/*|[A-Za-z]:*) ;; *) real="$HARNESS_ROOT/$real" ;; esac
   ( cd "$HARNESS_ROOT" \
-      && { { [ -n "$real" ] && [ -f "$real" ] && cp "$real" "$idx"; } \
+      && { { [ -n "$real" ] && [ -f "$real" ] && cp -p "$real" "$idx"; } \
            || { GIT_INDEX_FILE="$idx" git read-tree HEAD >/dev/null 2>&1 || :; }; } \
       && GIT_INDEX_FILE="$idx" git add -u . >/dev/null 2>&1 \
       && GIT_INDEX_FILE="$idx" git ls-files -s ) \
