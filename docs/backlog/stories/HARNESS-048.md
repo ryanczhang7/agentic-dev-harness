@@ -4,8 +4,8 @@ title: The audit check judges the real tree
 slug: the-audit-check-judges-the-real-tree
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-048-the-audit-check-judges-the-real-tree
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -179,6 +179,19 @@ in `.claude/tests/`, and any consumer with a subdirectory gate fails it.
   release-87 refresh is uncommitted on its `main`) is refreshed from this
   branch and its `gates` suite shows 0 failed. Owner: GATES
 
+  Result (GATES, 2026-10-08): the refresh from this branch was refused -
+  `refresh-harness: this tree has uncommitted changes` - because the
+  release-87 refresh is still uncommitted there. So the rewritten block's
+  three checks were run by hand in fantasy-world-builder's real tree, with
+  `H39_MSG` read from this branch's `gates.test.sh`; they give the values the
+  assertions expect (0, 1, 0). Its suite run after the release-88 refresh is
+  the confirmation, recorded under `## Notes` at DONE.
+
+    $ cd /d/fantasy-world-builder && out="$(bash scripts/gates.sh --audit 2>&1)"; rc=$?
+    H39 hits: 0
+    passed lines: 1
+    rc=0
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -285,10 +298,21 @@ the suite still passes and that no source file changed.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-08T22:38:14Z
+    commit: dcc38c3
+    tree:   1245a7d90736a3a3156fd9c69cf0c2054ad3d9ba
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -322,3 +346,12 @@ the suite still passes and that no source file changed.
 **GREEN (2026-10-08), no-op.** A test-only story: no source or config file
 changed (`git diff --stat f235dab -- scripts .claude/hooks .claude/harness`
 is empty), and `bash scripts/selftest.sh gates` passed in RED's run above.
+
+**GATES (2026-10-08).** DV-1 run in RED, DV-2 here; both pasted above.
+`bash scripts/gates.sh`: recorded under `## Gate results`. Full self-test with
+`SELFTEST_JOBS=4`, at GATES, 2939 s (fantasy-world-builder's self-test was
+running beside it for part of that):
+
+    exit 0 in 2939 s
+    assertion floors: all 26 suite(s) met their declared floor (2993 assertions executed, 2702 declared).
+    26 harness suite(s) passed.
