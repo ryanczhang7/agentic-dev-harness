@@ -4,8 +4,8 @@ title: A /security-audit command wrapping Cloudflare's vendored skill
 slug: a-security-audit-command-wrapping-cloudf
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-043-a-security-audit-command-wrapping-cloudf
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/security-audit.md, .claude/skills/security-audit/UPSTREAM, .claude/skills/security-audit/LICENSE, .claude/skills/security-audit/*.md, .claude/skills/security-audit/*.cjs, .claude/skills/security-audit/report-schema.json, .claude/tests/security-audit.test.sh, .claude/tests/reporting.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -886,3 +886,11 @@ dispatched with no override).**
   board holds no other open story. `touches:` is filled anyway, with globs
   only for the two real families (`*.md`, `*.cjs`) the vendored copy edits as
   one.
+
+**DONE, 2026-10-08.** Merged in #123 (merge commit 96fd493), release 87. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check, as HARNESS-042 did. PR CI: `gates` passed in
+2m47s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37722247270),
+`boundaries` in 4s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37722247267).
