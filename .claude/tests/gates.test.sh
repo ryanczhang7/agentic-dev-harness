@@ -1068,8 +1068,14 @@ assert_eq "AC-4b limit: and exits 0" 0 "$rc"
 
 # AC-5: this repository's own project.conf - what the CI step at gates.yml's
 # `--audit` judges on this tree - still passes: it carries `ondemand | mutation`.
-cp "$REPO_ROOT/.claude/harness/project.conf" "$FIX/.claude/harness/project.conf"
-out="$(gates --audit)"; rc=$?
+#
+# So it is audited IN this tree, as CI does it (HARNESS-048). It used to be
+# copied into $FIX and audited there, and --audit checks that every gate's cwd
+# exists: a consuming project whose gates run in a subdirectory (`src-tauri`)
+# failed this on a fixture that has no such directory, while its real audit -
+# the one CI runs - passed. --audit runs no gate and takes no run lock, so it is
+# safe here beside a gate run in flight.
+out="$( cd "$REPO_ROOT" && bash scripts/gates.sh --audit 2>&1 )"; rc=$?
 assert_eq "AC-5: this repository's own project.conf draws the new message under no id" \
   0 "$(count_re "$H39_ANY" "$out")"
 assert_eq "AC-5: and its audit says it passed" 1 "$(count_re '^Manifest audit passed\.$' "$out")"

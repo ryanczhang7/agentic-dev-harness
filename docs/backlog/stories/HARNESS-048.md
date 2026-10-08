@@ -4,8 +4,8 @@ title: The audit check judges the real tree
 slug: the-audit-check-judges-the-real-tree
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-048-the-audit-check-judges-the-real-tree
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -162,8 +162,22 @@ in `.claude/tests/`, and any consumer with a subdirectory gate fails it.
   through `scripts/mutate.sh`, the AC-5 assertions MUST go red in the `gates`
   suite. RED has no production change to wait for, so RED runs it.
   Owner: RED
-- **DV-2 (the consumer)** — After this ships, fantasy-world-builder refreshes
-  to it and its full self-test shows `gates` with 0 failed. Owner: REVIEW
+
+  Result (RED, 2026-10-08): red on all three AC-5 assertions, restored.
+
+    $ bash scripts/selftest.sh gates
+    gates: 498 passed, 0 failed
+    $ bash scripts/mutate.sh .claude/harness/project.conf '/^ondemand | mutation/d' -- bash scripts/selftest.sh gates
+    === mutate: .claude/harness/project.conf (1 line(s) changed by /^ondemand | mutation/d) ===
+    === mutate: running bash scripts/selftest.sh gates ===
+        FAIL AC-5: this repository's own project.conf draws the new message under no id
+        FAIL AC-5: and its audit says it passed
+        FAIL AC-5: and exits 0
+    gates: 495 passed, 3 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/.claude_harness_project.conf.20261008T220954Z.1347038.bak) ===
+- **DV-2 (the consumer)** — Before the PR, fantasy-world-builder (whose
+  release-87 refresh is uncommitted on its `main`) is refreshed from this
+  branch and its `gates` suite shows 0 failed. Owner: GATES
 
 ## Amendments
 
@@ -214,6 +228,10 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+- AC-1: `.claude/tests/gates.test.sh`, HARNESS-039's AC-5 block (three
+  assertions, names unchanged), now audited in `$REPO_ROOT`. Earned by DV-1.
+- AC-2: DV-2, fantasy-world-builder's own `gates` suite after a refresh.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -233,6 +251,12 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Command: `bash scripts/selftest.sh gates`. A test-only story: the block was
+rewritten against an implementation that already exists, so it passes on
+arrival (`gates: 498 passed, 0 failed`) and is earned by DV-1's mutation
+instead, pasted there. GREEN has no production change to make; it confirms
+the suite still passes and that no source file changed.
 
 ## Regressions
 
