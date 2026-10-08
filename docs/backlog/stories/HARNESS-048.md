@@ -349,8 +349,7 @@ is empty), and `bash scripts/selftest.sh gates` passed in RED's run above.
 
 **GATES (2026-10-08).** DV-1 run in RED, DV-2 here; both pasted above.
 `bash scripts/gates.sh`: recorded under `## Gate results`. Full self-test with
-`SELFTEST_JOBS=4`, at GATES, 2939 s (fantasy-world-builder's self-test was
-running beside it for part of that):
+`SELFTEST_JOBS=4`, at GATES, 2939 s:
 
     exit 0 in 2939 s
     assertion floors: all 26 suite(s) met their declared floor (2993 assertions executed, 2702 declared).
