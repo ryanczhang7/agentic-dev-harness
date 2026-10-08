@@ -546,6 +546,7 @@ profiles 102
 refresh 165
 reporting 27
 run-lock 140
+security-audit 51
 selftest 268
 settings 27
 shipped-docs 14
