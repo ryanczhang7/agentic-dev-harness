@@ -4,8 +4,8 @@ title: The audit check judges the real tree
 slug: the-audit-check-judges-the-real-tree
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-048-the-audit-check-judges-the-real-tree
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -354,3 +354,14 @@ is empty), and `bash scripts/selftest.sh gates` passed in RED's run above.
     exit 0 in 2939 s
     assertion floors: all 26 suite(s) met their declared floor (2993 assertions executed, 2702 declared).
     26 harness suite(s) passed.
+
+**DONE, 2026-10-08.** Merged in #124 (merge commit f8790d6), release 88. The VERSION
+bump lands in this DONE commit. `phase.sh set DONE --force` was run on `main`
+(a detached checkout of `origin/main` in the worktree), overriding the branch
+check. PR CI: `gates` passed in 2m34s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37859714800),
+`boundaries` in 7s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37859714755).
+DV-2's confirmation, fantasy-world-builder's own suite after refreshing to
+this release, is reported to the user rather than recorded here: it happens
+in that repository, after this commit.
