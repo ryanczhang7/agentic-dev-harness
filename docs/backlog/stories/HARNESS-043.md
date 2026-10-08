@@ -4,8 +4,8 @@ title: A /security-audit command wrapping Cloudflare's vendored skill
 slug: a-security-audit-command-wrapping-cloudf
 epic: 
 type: feature
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-043-a-security-audit-command-wrapping-cloudf
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/security-audit.md, .claude/skills/security-audit/UPSTREAM, .claude/skills/security-audit/LICENSE, .claude/skills/security-audit/*.md, .claude/skills/security-audit/*.cjs, .claude/skills/security-audit/report-schema.json, .claude/tests/security-audit.test.sh, .claude/tests/reporting.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -367,6 +367,37 @@ the amended block says.**
   (Cloudflare's `budget_cannot_fund_reconnaissance_and_reserves`) is a
   result too: record it, raise the number, run once more. Owner: GATES
 
+  **Result (GATES, 2026-10-08, run by the orchestrating session on fable):**
+
+      profile: quick   scope: repo-wide   budget: 16 strict   spent: 16 of 16
+        reconnaissance 4 (Explore, model: opus)    hunters 6 (general-purpose, model: opus)
+        critic 1 (Explore, model: opus)            verifiers 5 (general-purpose, model: opus)
+        parent: the session, resolved fable; every dispatch carried model: opus and reported no override
+      wall-clock: agents 2026-10-08T01:26:29Z -> 01:47:22Z (~21 min, three parallel waves);
+                  parent-side ledger/findings/reports/summary writing about as long again
+      findings by verdict: confirmed 0 / needs_validation 5 / rejected 0  -> "nothing found this run"
+        task.sh/eval-args/allowlisted-prefix
+        settings.json:allow:git-log-diff-output-arbitrary-write
+        story-id/path-traversal/allowlisted-scripts
+        workflows/pull-request/self-attested-ci-verdict
+        check-boundaries/gate-record/unauthenticated-result-text
+      validators not run: Failed to read findings JSON: OS no-follow and nonblocking input protection is unavailable
+        (validate-coverage-ledger.cjs: the same message; both exit 1 - C-7 as predicted)
+      coverage ledger: 12 units - covered 2, candidate 5, deferred 5
+        (2 phase-lock units: hunter-guard stopped by a safety classifier before any conclusion,
+         reassigned by the critic, deferred under quick; 3 critic-accepted gaps). Final critic stop: false.
+      summary written: docs/wiki/audits/security-2026-10-08.md
+      raw output: ~/security-audit-skill/agentic-dev-harness/run-1/
+      stories filed: none (zero confirmed; the command files a fix story per confirmed finding only)
+
+  Budget default set to **18** in the command, "provisional" clause dropped: 16
+  spent exactly, plus DV-1's one reserve verifier (17), plus one so a
+  critic-reassigned unit is not deferred for want of a single call (18); a sixth
+  candidate at 16 would have made the run `incomplete`. AC-2's regex accepts the
+  new number; no test changed. One adaptation of the skill is recorded in the
+  summary's Evidence: agents were pointed at the exact files and section names
+  to read rather than having the blocks pasted into every prompt.
+
 - **DV-2 (defect put back: a vendored file altered)** — With the first line
   of `.claude/skills/security-audit/LICENSE` deleted, AC-1's real-tree
   assertion MUST go red in the `security-audit` suite with exactly one line
@@ -378,6 +409,21 @@ the amended block says.**
 
   Paste the red and the `restored (verified byte-for-byte ...)` line.
   Owner: GATES
+
+  **Result (GATES, 2026-10-08, run by the orchestrator on fable):** red as
+  predicted, in exactly two assertions, both naming `LICENSE` — the real tree
+  and the AC-4 refreshed copy, which the handoff said would move together
+  because the refresh copies the mutated working tree. Nothing else moved.
+
+      === mutate: .claude/skills/security-audit/LICENSE (1 line(s) changed by 1d) ===
+      === mutate: running bash scripts/selftest.sh security-audit ===
+          FAIL vendor_problems over the real directory prints nothing
+               actual:   LICENSE: blob 2e1a0faa75e42cfe1fbb9a4d55e9bfa1d190ef47 does not match UPSTREAM's 6dbc9ecb3a5b9080e95b962869e8c7ab16cfdc20
+          FAIL and vendor_problems over the project's copy of the skill prints nothing
+               actual:   LICENSE: blob 2e1a0faa75e42cfe1fbb9a4d55e9bfa1d190ef47 does not match UPSTREAM's 6dbc9ecb3a5b9080e95b962869e8c7ab16cfdc20
+      security-audit: 49 passed, 2 failed
+      FAIL security-audit  did 49 units of work, below the floor of 51 in .claude/tests/floors.conf
+      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_security-audit_LICENSE.20261008T012442Z.420081.bak) ===
 
 ## Amendments
 
@@ -407,6 +453,7 @@ name, below the table.
 - PLANNED - `lead-po` - resolved `fable` (reported by the agent; no override in the dispatch). As planned.
 - RED - `test-developer` - resolved `opus` (reported by the agent; no override in the dispatch). As planned.
 - GREEN - `feature-developer` - resolved `opus` (reported by the agent; no override in the dispatch). As planned.
+- GATES - orchestrating session (DV-1 run as the skill's parent) - resolved `fable`; every hunter/critic/verifier dispatch `model: opus` as the command says, none reported an override. No feature-developer dispatch: all gates unconfigured, nothing to fix.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -715,11 +762,37 @@ portability): `247 passed, 0 failed`.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
+    run:    2026-10-08T01:54:18Z
+    commit: df37b71 (working tree had uncommitted changes)
+    tree:   45ed5a83edd7ca236fdfc58b39aa4d7eafa90cd6
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
+
 ## Scaffold inventory
 
 <!-- Not used: this is a feature story; nothing is written under SCAFFOLD. -->
 
 ## Notes
+
+**GATES → REVIEW (2026-10-08, orchestrator on fable).** Full self-test, run
+detached while the story was at GATES, nothing else running in this worktree:
+
+    $ bash scripts/selftest.sh
+    assertion floors: all 26 suite(s) met their declared floor (2993 assertions executed, 2702 declared).
+    26 harness suite(s) passed.
+    exit=0 duration=4878s
+
+81 minutes, against about 25 for GREEN's run of the same suites on this host.
+It passed. `ps` afterwards shows no orphaned self-test or gate run. The cause
+of the extra time is not known; recorded, not explained.
 
 **GREEN (2026-10-07, feature-developer; resolved `opus` per its definition,
 dispatched with no override).**

@@ -15,7 +15,7 @@ Scope: $ARGUMENTS - a repository path, a subsystem name (map it onto the
 skill's coverage units and companion files), or `<ref>..<ref>` for the diff
 between two refs. Empty means the whole repository.
 
-Defaults: scope repo-wide; profile `quick`; budget 16 agent invocations (strict, provisional until HARNESS-043 DV-1)
+Defaults: scope repo-wide; profile `quick`; budget 18 agent invocations (strict; set by HARNESS-043 DV-1 from a run that spent 16)
 
 The user may ask for `standard` or `deep`, another scope or another budget.
 
