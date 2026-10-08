@@ -5,7 +5,7 @@ slug: the-audit-check-judges-the-real-tree
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-048-the-audit-check-judges-the-real-tree
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -318,3 +318,7 @@ the suite still passes and that no source file changed.
 
 ## Notes
 
+
+**GREEN (2026-10-08), no-op.** A test-only story: no source or config file
+changed (`git diff --stat f235dab -- scripts .claude/hooks .claude/harness`
+is empty), and `bash scripts/selftest.sh gates` passed in RED's run above.
