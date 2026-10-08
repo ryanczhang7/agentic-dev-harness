@@ -369,6 +369,7 @@ the amended block says.**
 
   **Result (GATES, 2026-10-08, run by the orchestrating session on fable):**
 
+```
       profile: quick   scope: repo-wide   budget: 16 strict   spent: 16 of 16
         reconnaissance 4 (Explore, model: opus)    hunters 6 (general-purpose, model: opus)
         critic 1 (Explore, model: opus)            verifiers 5 (general-purpose, model: opus)
@@ -389,6 +390,7 @@ the amended block says.**
       summary written: docs/wiki/audits/security-2026-10-08.md
       raw output: ~/security-audit-skill/agentic-dev-harness/run-1/
       stories filed: none (zero confirmed; the command files a fix story per confirmed finding only)
+```
 
   Budget default set to **18** in the command, "provisional" clause dropped: 16
   spent exactly, plus DV-1's one reserve verifier (17), plus one so a
@@ -415,6 +417,7 @@ the amended block says.**
   and the AC-4 refreshed copy, which the handoff said would move together
   because the refresh copies the mutated working tree. Nothing else moved.
 
+```
       === mutate: .claude/skills/security-audit/LICENSE (1 line(s) changed by 1d) ===
       === mutate: running bash scripts/selftest.sh security-audit ===
           FAIL vendor_problems over the real directory prints nothing
@@ -424,6 +427,7 @@ the amended block says.**
       security-audit: 49 passed, 2 failed
       FAIL security-audit  did 49 units of work, below the floor of 51 in .claude/tests/floors.conf
       === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_security-audit_LICENSE.20261008T012442Z.420081.bak) ===
+```
 
 ## Amendments
 
