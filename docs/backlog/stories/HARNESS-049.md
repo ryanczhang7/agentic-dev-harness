@@ -4,8 +4,8 @@ title: The refresh names new files a project's linter will read
 slug: the-refresh-names-new-files-a-project-s
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-049-the-refresh-names-new-files-a-project-s
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -274,6 +274,34 @@ says.
   nothing (through `scripts/mutate.sh`), AC-1's assertions MUST go red in the
   `refresh` suite and AC-2's control stays green. Owner: GATES
 
+  **Result (GATES, 2026-10-09, run by the orchestrator).** Line 363, the
+  existence test `[ -e "$PROJ/.claude/$d/$rel" ] && continue`, replaced with
+  an unconditional `continue`, so the walk collects nothing:
+
+      $ bash scripts/mutate.sh scripts/refresh-harness.sh '363s/.*/    continue/' -- bash scripts/selftest.sh refresh
+      === mutate: scripts/refresh-harness.sh (1 line(s) changed by 363s/.*/    continue/) ===
+      === mutate: running bash scripts/selftest.sh refresh ===
+          FAIL AC-1 dry run: the new .cjs is named NEW, once
+          FAIL AC-1 dry run: the new .test.cjs is named NEW as a .cjs file, once
+          FAIL AC-1 dry run: the new .json is named NEW, once
+          FAIL AC-1 dry run: the note's first line is printed once
+          FAIL AC-1 dry run: the note's second line, which says to exclude .claude, is printed once
+          FAIL AC-1 dry run: the NEW lines are exactly the three new lintable files, nothing else
+          FAIL AC-1 real run: the new .cjs is named NEW, once
+          FAIL AC-1 real run: the new .test.cjs is named NEW, once
+          FAIL AC-1 real run: the new .json is named NEW, once
+          FAIL AC-1 real run: the note's first line is printed once
+          FAIL AC-1 real run: the note's second line is printed once
+          FAIL AC-1 real run: the NEW lines are the same set the dry run printed
+      refresh: 203 passed, 12 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20261009T150828Z.2108436.bak) ===
+      $ bash scripts/mutate.sh --check
+      mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+  Exactly the 12 AC-1 assertions RED predicted; every AC-2 assertion and the
+  identical-trees control stayed green; `git status` shows the script
+  unchanged.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -309,6 +337,7 @@ name, below the table.
 - PLANNED - `lead-po` - the orchestrating session, resolved `fable` (Fable 5.1, `claude-fable-5-1`). As planned.
 - RED - `test-developer` - resolved `opus` (Opus 5.5, `claude-opus-5-5`; reported by the agent, no override in the dispatch). As planned. Orchestrator re-ran `bash scripts/selftest.sh refresh`: `refresh: 188 passed, 27 failed`, exit 1, 27 `FAIL` lines, matching the handoff; `bash scripts/gates.sh --fast` exit 0 with every gate unconfigured (project.conf is not bootstrapped in this repository).
 - GREEN - `feature-developer` - resolved `opus` (Opus 5.5, `claude-opus-5-5`; reported by the agent, no override in the dispatch). As planned. Orchestrator re-ran `bash scripts/selftest.sh refresh`: `refresh: 215 passed, 0 failed`, exit 0, floor 215/215 met; `bash scripts/gates.sh --fast` exit 0, every gate unconfigured.
+- GATES - orchestrating session, resolved `opus` (Opus 5.5, `claude-opus-5-5`) after a session model change mid-story; planned `opus` for GATES, so as planned. No feature-developer dispatch: every gate unconfigured, nothing to fix. DV-1 run by the orchestrator through `mutate.sh`.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -617,10 +646,21 @@ control uses `new_lines_of` (the set) instead.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-09T15:12:31Z
+    commit: ad07683
+    tree:   44f76cfe8a7d831edd855ce3950e50e7efd4d67e
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -710,3 +750,18 @@ the script; recorded so GATES does not read 7 as a mismatch.
 Not run here, per the dispatch: DV-1 (GATES, orchestrator), the full
 `selftest.sh`, `gates.sh --fast` and `gates.sh`.
 
+
+**GATES (orchestrator, 2026-10-09).** DV-1 run first and pasted under
+`## Deferred verifications`: `refresh: 203 passed, 12 failed`, exactly the
+predicted twelve AC-1 assertions, file restored. GREEN's second control (7
+rather than RED's 6) checked against the diff: the extra failure is AC-3's
+"reads the variable", because line 362 is the implementation's only read of
+`$LINTABLE_EXT`; a benign difference between RED's candidate and the shipped
+script, not a defect. `bash scripts/gates.sh`: recorded under
+`## Gate results` (all gates unconfigured in this repository; required gate
+for this story is the harness `selftest`, which CI runs). Full self-test
+with `SELFTEST_JOBS=4`, at GATES, alone in the worktree:
+
+    exit 0 in 2370 s
+    assertion floors: all 26 suite(s) met their declared floor (3043 assertions executed, 2752 declared).
+    26 harness suite(s) passed.
