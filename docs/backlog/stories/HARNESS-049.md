@@ -4,8 +4,8 @@ title: The refresh names new files a project's linter will read
 slug: the-refresh-names-new-files-a-project-s
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-049-the-refresh-names-new-files-a-project-s
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -765,3 +765,16 @@ with `SELFTEST_JOBS=4`, at GATES, alone in the worktree:
     exit 0 in 2370 s
     assertion floors: all 26 suite(s) met their declared floor (3043 assertions executed, 2752 declared).
     26 harness suite(s) passed.
+
+**DONE, 2026-10-09.** Merged in #125 (merge commit 9344200), release 89. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` run on
+`main`, overriding the branch check, as HARNESS-048 did. PR CI, first run,
+timings read from the job: `gates` passed in 2m36s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37955316637),
+of which the harness self-test took 2m23s and ended `26 harness suite(s)
+passed.` with `refresh: 215 passed, 0 failed`; the sigpipe and grep-count
+guards 3 s each; `Run gates` under a second (`All required gates passed (0
+ran, 7 unconfigured, 0 known)`). `boundaries` passed in 7s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37955316622).
+No step runs under a limit it could approach: the bash suites carry no
+timeout and the job is 2.6 min against the runner's 6 h default.
