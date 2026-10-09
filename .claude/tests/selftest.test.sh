@@ -534,11 +534,11 @@ doctor 61
 gate-reminder 32
 gates 498
 grep-count 20
-lib 217
+lib 250
 mutate 189
 new-story 43
 phase 33
-phase-guard 310
+phase-guard 369
 plan 42
 policy 17
 procedure 37
@@ -563,8 +563,8 @@ assert_eq "and each records the executed count measured on this tree" "" "$wrong
 # lands. See the note at the foot of floors.conf.
 assert_eq "profiles is floored at its 102 executed assertions, not its call-site count" \
   102 "$(floor_of profiles "$REAL")"
-assert_eq "lib is floored at its 217 executed assertions, not its call-site count" \
-  217 "$(floor_of lib "$REAL")"
+assert_eq "lib is floored at its 250 executed assertions, not its call-site count" \
+  250 "$(floor_of lib "$REAL")"
 
 # ===========================================================================
 # HARNESS-020: a project declares its own suites' floors in

@@ -931,4 +931,24 @@ assert_eq "a redirect into docs is a candidate without a write-capable name" \
 assert_eq "the harness's own vocabulary in a commit message is not a command" "-" \
   "$(wcand 'git commit -m "fix the sed -i extractor"')"
 
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-045 AC-5: write_candidates names a git --output target"
+
+# AC-5, as equalities on the whole rendered answer: the verdict, the one
+# candidate, and its role (C-1, C-4). Before this story the first line rendered
+# `-`: git was not a write-capable name and --output had no rule.
+assert_eq "HARNESS-045 AC-5: git log --output=src/x.ts is a write of src/x.ts, destination of git --output" \
+  "W | src/x.ts :: destination of git --output" \
+  "$(wcand 'git log -1 --format=x --output=src/x.ts')"
+
+# The controls. Both render `-` today and must keep rendering `-`: git is not a
+# write by itself (C-1 sets the verdict only when a write is found), and
+# --output-indicator-new is not --output (an exact match, not a prefix test).
+# Without them, "git is always W" or a prefix match satisfies the line above.
+assert_eq "HARNESS-045 AC-5 control: git diff -- src/x.ts is not write-capable and has no candidate" \
+  "-" "$(wcand 'git diff -- src/x.ts')"
+assert_eq "HARNESS-045 AC-5 control: --output-indicator-new is not --output" \
+  "-" "$(wcand 'git log --output-indicator-new=+ src/x.ts')"
+
 summary "lib"
