@@ -335,6 +335,36 @@ elif [ -n "${local_unknown:-}" ]; then
   say ""
 fi
 
+# --- new files a project's own tools will read --------------------------------
+#
+# From the field: fantasy-world-builder, refreshed from release 64 to 88, took
+# in .claude/skills/security-audit/ - two .cjs validators, their .test.cjs
+# suites and a .json schema - under one line, `REPLACED  .claude/skills/`, which
+# reads as "the same as before". Its biome.json included "**", so its required
+# lint, unit and coverage gates went red on main, and nothing here had named
+# the files. The harness cannot know which tools a project runs; it can name
+# what arrives that such tools read, and say so in the dry run.
+#
+# New = upstream ships it under a replaced directory and the project has no
+# file at that path. Judged here, BEFORE the copy loop, so the dry run and the
+# real run name the same set. scripts/ is not walked: only scripts/*.sh is
+# delivered, and naming a file that will not arrive is a false report. The
+# extension is the text after the last dot, and the set is written once, here.
+LINTABLE_EXT="js cjs mjs ts tsx json jsonc py"
+new_lintable=""
+for d in agents commands skills hooks tests; do
+  [ -d "$UP/.claude/$d" ] || continue
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    base="${rel##*/}"
+    case "$base" in *.*) ;; *) continue ;; esac
+    ext="${base##*.}"
+    case " $LINTABLE_EXT " in *" $ext "*) ;; *) continue ;; esac
+    [ -e "$PROJ/.claude/$d/$rel" ] && continue
+    new_lintable="$new_lintable  NEW       .claude/$d/$rel  (a .$ext file your linters and formatters will read)"$'\n'
+  done <<< "$(cd "$UP/.claude/$d" && find . -type f 2>/dev/null | sed 's|^\./||')"
+done
+
 # --- directories upstream owns, except for what it does not ship -------------
 for d in agents commands skills hooks tests; do
   src="$UP/.claude/$d"; dst="$PROJ/.claude/$d"
@@ -395,6 +425,12 @@ if [ "$DRY" = 0 ] && [ -d "$KEEP" ]; then
 fi
 
 for d in $replaced_dirs; do say "  REPLACED  .claude/$d/"; done
+if [ -n "$new_lintable" ]; then
+  printf '%s' "$new_lintable"
+  say "            Your project's own linters, formatters and test runners will read"
+  say "            these files unless their configuration excludes .claude."
+  say ""
+fi
 
 # --- single files upstream owns ---------------------------------------------
 for f in .claude/harness/phases.conf .claude/harness/models.conf \

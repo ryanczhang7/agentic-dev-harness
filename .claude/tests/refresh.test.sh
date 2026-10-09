@@ -1126,4 +1126,205 @@ fi
 assert_eq "control: and floors.conf is not reported KEPT" 0 \
   "$(exact_count "  KEPT      .claude/tests/floors.conf  (upstream does not ship it - yours)" "$out")"
 
+# ===========================================================================
+# HARNESS-049: the refresh names each NEW file a project's own linters,
+# formatters and test runners will read.
+#
+# From the field (fantasy-world-builder, release 64 -> 88): the refresh brought
+# in .claude/skills/security-audit/ - .cjs validators, .test.cjs suites, a
+# .json schema - under one line, `REPLACED  .claude/skills/`, which reads as
+# "the same as before". The project's biome config included "**", and its
+# required lint, unit and coverage gates went red on main. Nothing in the report
+# pointed at the files.
+#
+# Every needle is a WHOLE LINE pinned byte for byte by the story's Contract
+# (exact_count / whole_line_count, here-docs, never a pipe into grep -c). The
+# negative controls ask "is this path named NEW in ANY wording", so they count
+# lines that START with `  NEW ` and contain the path (new_lines_naming), the
+# shape added_lines_naming uses for ADDED. No assertion depends on the order of
+# two NEW lines: Git Bash `find` and Linux `find` walk in different orders.
+#
+# This block is the last to touch $UP.
+# ===========================================================================
+
+NEW_DIR=".claude/skills/lint-me"
+N_CJS="  NEW       $NEW_DIR/validate.cjs  (a .cjs file your linters and formatters will read)"
+N_TCJS="  NEW       $NEW_DIR/validate.test.cjs  (a .cjs file your linters and formatters will read)"
+N_JSON="  NEW       $NEW_DIR/schema.json  (a .json file your linters and formatters will read)"
+NOTE1="            Your project's own linters, formatters and test runners will read"
+NOTE2="            these files unless their configuration excludes .claude."
+UNCHANGED=".claude/skills/stack-profiles/check.cjs"
+
+# new_lines_naming <path> <haystack>   How many NEW lines contain <path>,
+# whatever their padding or parenthesis: "never named NEW" is about the word.
+new_lines_naming() {
+  awk -v p="$1" 'index($0, "  NEW ") == 1 && index($0, p) { n++ } END { print n + 0 }' <<NEWN_HAY
+$2
+NEWN_HAY
+}
+
+# new_lines_of <haystack>   Every NEW line, sorted bytewise, so two runs (or a
+# run and the expected set) compare without depending on `find` order.
+new_lines_of() {
+  awk 'index($0, "  NEW ") == 1' <<NEWL_HAY | LC_ALL=C sort
+$1
+NEWL_HAY
+}
+
+# A NEW skill directory upstream ships: two lintable kinds (AC-1), plus a .md
+# and a .sh beside them (AC-2's non-code controls). One .cjs in a directory the
+# consumer already has, which new_project gives it at upstream's bytes below
+# (AC-2's unchanged control - it is not LOCAL either, since its blob is on
+# upstream's release line). And one .mjs under scripts/, which the refresh never
+# delivers - it copies scripts/*.sh only - so naming it NEW would be a claim
+# about a file that is not going to arrive.
+mkdir -p "$UP/$NEW_DIR"
+printf 'module.exports = 1;\n'      > "$UP/$NEW_DIR/validate.cjs"
+printf 'require("./validate.cjs");\n' > "$UP/$NEW_DIR/validate.test.cjs"
+printf '{ "type": "object" }\n'      > "$UP/$NEW_DIR/schema.json"
+printf '# lint-me\n'                 > "$UP/$NEW_DIR/SKILL.md"
+printf 'echo lint-me\n'              > "$UP/$NEW_DIR/run.sh"
+printf 'module.exports = 2;\n'       > "$UP/$UNCHANGED"
+printf 'export default 3;\n'         > "$UP/scripts/helper.mjs"
+( cd "$UP" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "upstream ships a skill with code in it" >/dev/null 2>&1 )
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-049 AC-1  a new file a project's tools will read is named NEW, dry run and real run"
+
+new_project
+cp "$UP/$UNCHANGED" "$PROJ/$UNCHANGED"
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "already has upstream's check.cjs" >/dev/null 2>&1 )
+assert_eq "fixture: the consumer lacks $NEW_DIR and holds $UNCHANGED" "no yes" \
+  "$([ -e "$PROJ/$NEW_DIR" ] && echo yes || echo no) $([ -f "$PROJ/$UNCHANGED" ] && echo yes || echo no)"
+assert_eq "fixture: and the consumer's tree is committed, so the real run will not refuse" "" \
+  "$(git -C "$PROJ" status --porcelain 2>/dev/null)"
+
+EXPECTED_NEW="$(printf '%s\n' "$N_CJS" "$N_TCJS" "$N_JSON" | LC_ALL=C sort)"
+
+dry="$(refresh --dry-run "$UP")"; rc=$?
+assert_eq "AC-1 dry run: it exits 0" 0 "$rc"
+assert_eq "AC-1 dry run: the new .cjs is named NEW, once" 1 "$(exact_count "$N_CJS" "$dry")"
+assert_eq "AC-1 dry run: the new .test.cjs is named NEW as a .cjs file, once" 1 "$(exact_count "$N_TCJS" "$dry")"
+assert_eq "AC-1 dry run: the new .json is named NEW, once" 1 "$(exact_count "$N_JSON" "$dry")"
+assert_eq "AC-1 dry run: the note's first line is printed once" 1 "$(exact_count "$NOTE1" "$dry")"
+assert_eq "AC-1 dry run: the note's second line, which says to exclude .claude, is printed once" 1 \
+  "$(exact_count "$NOTE2" "$dry")"
+assert_eq "AC-1 dry run: the NEW lines are exactly the three new lintable files, nothing else" \
+  "$EXPECTED_NEW" "$(new_lines_of "$dry")"
+assert_eq "AC-1 dry run: and it still says it wrote nothing" 1 \
+  "$(exact_count "Dry run: nothing was written." "$dry")"
+if [ -e "$PROJ/$NEW_DIR" ]; then
+  _bad "AC-1 dry run: $NEW_DIR still does not exist" "a dry run created it"
+else
+  _ok "AC-1 dry run: $NEW_DIR still does not exist"
+fi
+# LOCAL judges the consumer's files, and these are absent from the consumer.
+assert_eq "AC-1 dry run: no LOCAL line names the new skill directory" 0 \
+  "$(awk -v p="$NEW_DIR/" 'index($0, "    LOCAL ") == 1 && index($0, p) { n++ } END { print n + 0 }' <<LOCAL_HAY
+$dry
+LOCAL_HAY
+)"
+
+real="$(refresh "$UP")"; rc=$?
+assert_eq "AC-1 real run: it still exits 0 - naming the files is not a refusal" 0 "$rc"
+assert_eq "AC-1 real run: the new .cjs is named NEW, once" 1 "$(exact_count "$N_CJS" "$real")"
+assert_eq "AC-1 real run: the new .test.cjs is named NEW, once" 1 "$(exact_count "$N_TCJS" "$real")"
+assert_eq "AC-1 real run: the new .json is named NEW, once" 1 "$(exact_count "$N_JSON" "$real")"
+assert_eq "AC-1 real run: the note's first line is printed once" 1 "$(exact_count "$NOTE1" "$real")"
+assert_eq "AC-1 real run: the note's second line is printed once" 1 "$(exact_count "$NOTE2" "$real")"
+assert_eq "AC-1 real run: the NEW lines are the same set the dry run printed" \
+  "$EXPECTED_NEW" "$(new_lines_of "$real")"
+# Judged before the copy: a comparison made after it finds every file present
+# and names nothing, which is the defect a real-run-only check would miss.
+missing=""
+for f in validate.cjs validate.test.cjs schema.json SKILL.md run.sh; do
+  cmp -s "$UP/$NEW_DIR/$f" "$PROJ/$NEW_DIR/$f" || missing="$missing $f"
+done
+assert_eq "AC-1 real run: and every file of the new skill is delivered, byte-identical" "" "$missing"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-049 AC-2  an unchanged file, a non-code file and an undelivered file are not named"
+
+# Read off the same two runs as AC-1, so a NEW line that fires for everything
+# fails here beside the assertions that make it fire at all.
+for spec in "$UNCHANGED|a file the consumer already has at the same path" \
+            "$NEW_DIR/SKILL.md|a new .md file" \
+            "$NEW_DIR/run.sh|a new .sh file" \
+            "scripts/helper.mjs|a .mjs under scripts/, which the refresh does not deliver"; do
+  p="${spec%%|*}"; why="${spec#*|}"
+  assert_eq "AC-2 dry run: no NEW line names $why ($p)" 0 "$(new_lines_naming "$p" "$dry")"
+  assert_eq "AC-2 real run: no NEW line names $why ($p)" 0 "$(new_lines_naming "$p" "$real")"
+done
+if [ -e "$PROJ/scripts/helper.mjs" ]; then
+  _bad "AC-2 fixture: scripts/helper.mjs is indeed not delivered" "it was copied - the control's premise is wrong"
+else
+  _ok "AC-2 fixture: scripts/helper.mjs is indeed not delivered"
+fi
+
+# THE CONTROL: a refresh in which nothing is new. Every upstream file under the
+# five replaced directories is put in the consumer first, at upstream's bytes,
+# and the fixture proves both halves of that before the report is read: nothing
+# is missing, and there ARE lintable files on both sides - so a NEW line that
+# ignores whether the consumer has the file fires here, and silence means
+# something.
+new_project
+for d in agents commands skills hooks tests; do
+  cp -r "$UP/.claude/$d/." "$PROJ/.claude/$d/"
+done
+( cd "$PROJ" && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t -c user.name=t commit -qm "every upstream file already here" >/dev/null 2>&1 )
+absent=0; lintable=0
+for d in agents commands skills hooks tests; do
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    [ -e "$PROJ/.claude/$d/$rel" ] || absent=$((absent+1))
+    case "$rel" in *.cjs|*.json) lintable=$((lintable+1)) ;; esac
+  done <<CTL_LIST
+$(cd "$UP/.claude/$d" && find . -type f 2>/dev/null | sed 's|^\./||')
+CTL_LIST
+done
+assert_eq "control fixture: no upstream file under the replaced directories is absent from the consumer" 0 "$absent"
+assert_eq "control fixture: and four lintable files exist on both sides" 4 "$lintable"
+out="$(refresh --dry-run "$UP")"; rc=$?
+assert_eq "AC-2 control: a refresh between identical trees exits 0" 0 "$rc"
+assert_eq "AC-2 control: and prints no NEW line at all" "" "$(new_lines_of "$out")"
+assert_eq "AC-2 control: and not the note's first line" 0 "$(exact_count "$NOTE1" "$out")"
+assert_eq "AC-2 control: nor its second" 0 "$(exact_count "$NOTE2" "$out")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-049 AC-3  the extensions a project's tools read are written once"
+
+# A static read of the script, and the right instrument for the claim: "defined
+# in one place" is a property of the TEXT, which no run of the script can see.
+# The spelling is the Contract's: one column-0 assignment of LINTABLE_EXT to a
+# space-separated list of bare extensions.
+RS="$REPO_ROOT/scripts/refresh-harness.sh"
+assert_eq "AC-3: exactly one column-0 assignment LINTABLE_EXT=\"...\"" 1 \
+  "$(grep -cE '^LINTABLE_EXT="[^"]*"[[:space:]]*(#.*)?$' "$RS")"
+assert_eq "AC-3: and no second assignment to it anywhere (local, readonly, +=)" 1 \
+  "$(grep -cE '(^|[^A-Za-z0-9_$])LINTABLE_EXT\+?=' "$RS")"
+ext_line="$(sed -nE 's/^LINTABLE_EXT="([^"]*)".*$/\1/p' "$RS")"
+for e in js cjs mjs ts tsx json jsonc py; do
+  case " $ext_line " in
+    *" $e "*) _ok "AC-3: the set names $e" ;;
+    *) _bad "AC-3: the set names $e" "LINTABLE_EXT is \"$ext_line\"" ;;
+  esac
+done
+used="$(grep -cE '\$\{?LINTABLE_EXT' "$RS")"
+assert_eq "AC-3: the script reads the variable rather than only declaring it" yes \
+  "$([ "$used" -ge 1 ] && echo yes || echo no)"
+# Written ONCE: an extension the set names appears on no other code line. A
+# second hard-coded `case` pattern is the drift this criterion exists to stop.
+for e in cjs mjs tsx jsonc; do
+  assert_eq "AC-3: .$e appears on no code line but the assignment" 1 \
+    "$(awk -v e="$e" '/^[[:space:]]*#/ { next }
+         { s = $0; while ((i = index(s, e)) > 0) {
+             pre = (i == 1) ? "" : substr(s, i - 1, 1); post = substr(s, i + length(e), 1)
+             if (pre !~ /[A-Za-z0-9_]/ && post !~ /[A-Za-z0-9_]/) { n++; break }
+             s = substr(s, i + length(e)) } }
+         END { print n + 0 }' "$RS")"
+done
+
 summary "refresh"
