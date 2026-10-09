@@ -4,8 +4,8 @@ title: The refresh names new files a project's linter will read
 slug: the-refresh-names-new-files-a-project-s
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-049-the-refresh-names-new-files-a-project-s
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -135,6 +135,11 @@ says.
   skills hooks tests`, and `$UP/scripts/*.sh` is excluded by AC-2 (`.sh` is
   not a lintable extension) — so the walk may skip `scripts/` entirely, or
   include it and let the extension filter drop it; RED's choice, say which.
+  **RED's choice (amended 2026-10-09): skip `scripts/`.** The refresh copies
+  `scripts/*.sh` only, so no lintable file under `scripts/` is ever delivered;
+  naming one NEW would describe a copy that does not happen. Pinned by an AC-2
+  control: upstream ships `scripts/helper.mjs`, the consumer lacks it, and no
+  NEW line may name it.
   "Absent from the consumer" is `[ ! -e "$PROJ/.claude/$d/$rel" ]`, judged
   BEFORE the copy loop runs, so the dry run and the real run print the same
   lines (AC-1).
@@ -146,6 +151,20 @@ says.
   script with `grep`: pin that the eight names each appear on one line that
   also carries the variable name, and that no second assignment to that name
   exists. Exact spelling of the variable name is RED's to pin.
+  **Pinned by RED (amended 2026-10-09):** the name is `LINTABLE_EXT`, and the
+  single-`case`-pattern alternative is withdrawn - the AC-3 tests read a
+  variable. Exactly one line matches `^LINTABLE_EXT="[^"]*"[[:space:]]*(#.*)?$`
+  (column 0, double-quoted, optional trailing comment); exactly one line in the
+  file matches `(^|[^A-Za-z0-9_$])LINTABLE_EXT\+?=` (so no `local`, `readonly`
+  or `+=` second assignment); the quoted value holds `js cjs mjs ts tsx json
+  jsonc py` as space-separated BARE words, no leading dots (more words are
+  allowed); `$LINTABLE_EXT` or `${LINTABLE_EXT` is read at least once; and each
+  of the words `cjs`, `mjs`, `tsx`, `jsonc` appears as a whole word on exactly
+  one NON-COMMENT line - the assignment - so no second hard-coded `*.cjs`
+  pattern exists. Comment lines (first non-blank character `#`) may mention them
+  freely. Reason: "defined in one place" is only checkable if the one place has
+  a name the test can find, and a second hard-coded pattern is the drift AC-3
+  exists to stop.
 - **Output shape.** After the `REPLACED  .claude/<d>/` lines (line 397) and
   before the single-file `REPLACED` lines (line 400), one line per new file:
 
@@ -160,6 +179,26 @@ says.
 
   Then an empty line. RED pins the exact wording; GREEN prints it verbatim.
   Zero new files: no NEW line and no note (AC-2 control).
+  **Pinned by RED (amended 2026-10-09) - these are the exact lines, and they
+  supersede the two examples above.** The note is reworded because "If they
+  should not, exclude it." has no clear referent; the meaning is unchanged. One
+  NEW line per new file, `<ext>` being the text after the LAST dot (so
+  `validate.test.cjs` is "a .cjs file"):
+
+      ··NEW·······<path>··(a .<ext> file your linters and formatters will read)
+
+  i.e. `"  NEW       $path  (a .$ext file your linters and formatters will read)"`
+  - two spaces, `NEW`, seven spaces, the path relative to the project root
+  (`.claude/<d>/<rel>`, forward slashes, no `./`), two spaces, the parenthesis.
+  Then the note, exactly these two lines, once per run however many NEW lines:
+
+      "            Your project's own linters, formatters and test runners will read"
+      "            these files unless their configuration excludes .claude."
+
+  (twelve leading spaces each, no trailing space). The tests do NOT pin where in
+  the report the NEW block sits, nor the empty line after the note, nor the
+  order of two NEW lines; the after-the-REPLACED-dir-lines placement above is
+  the recommendation, not a test.
 - **Ordering.** NEW lines come out in `find` order; RED must not assert an
   order between two NEW lines (Git Bash `find` and Linux `find` differ).
 - **Exit status and side effects.** Unchanged: exit 0 on both runs, nothing
@@ -267,6 +306,9 @@ name, below the table.
 
 **Resolved:**
 
+- PLANNED - `lead-po` - the orchestrating session, resolved `fable` (Fable 5.1, `claude-fable-5-1`). As planned.
+- RED - `test-developer` - resolved `opus` (Opus 5.5, `claude-opus-5-5`; reported by the agent, no override in the dispatch). As planned. Orchestrator re-ran `bash scripts/selftest.sh refresh`: `refresh: 188 passed, 27 failed`, exit 1, 27 `FAIL` lines, matching the handoff; `bash scripts/gates.sh --fast` exit 0 with every gate unconfigured (project.conf is not bootstrapped in this repository).
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -288,6 +330,29 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One new block at the end of `.claude/tests/refresh.test.sh` (the last to touch
+`$UP`), 50 assertions. Level: integration - the real script run against a
+fixture upstream repository and a fixture consumer, exactly as the existing
+blocks do; AC-3 is a static read of the script text, the only instrument that
+can see "defined in one place". All three ACs are mechanical: whole-line
+needles (`exact_count`, here-docs) pinned by the amended Contract, no metric.
+
+Fixture added to `$UP` and committed: `.claude/skills/lint-me/{validate.cjs,
+validate.test.cjs, schema.json}` (AC-1 positives), `.claude/skills/lint-me/
+{SKILL.md, run.sh}` (AC-2 non-code controls), `.claude/skills/stack-profiles/
+check.cjs` (AC-2 unchanged control - the consumer gets upstream's bytes), and
+`scripts/helper.mjs` (AC-2 undelivered control - the refresh copies
+`scripts/*.sh` only).
+
+| Assertion(s) | AC |
+|---|---|
+| fixture: consumer lacks `lint-me/`, holds `check.cjs`; tree committed (2) | precondition |
+| dry run: exit 0; each of the three NEW lines exactly once; each note line once; the sorted set of NEW lines equals exactly the three; "Dry run: nothing was written." once; `lint-me/` not created; no `    LOCAL ` line names `lint-me/` (10) | AC-1 |
+| real run: exit 0; three NEW lines once each; note lines once each; NEW set equals the same three; all five `lint-me/` files delivered byte-identical (8) | AC-1 |
+| no line starting `  NEW ` names `check.cjs`, `SKILL.md`, `run.sh`, `scripts/helper.mjs` - dry and real (8); `helper.mjs` is indeed not delivered (1) | AC-2 |
+| identical trees: fixture - nothing upstream ships under the five dirs is absent from the consumer, and 4 lintable files exist on both sides (2); exit 0, no NEW line, neither note line (4) | AC-2 control |
+| `LINTABLE_EXT` assigned once at column 0; no second assignment; each of eight names in its value; read via `$LINTABLE_EXT`; `cjs mjs tsx jsonc` on no other code line (15) | AC-3 |
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -307,6 +372,222 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the Test Developer (RED), 2026-10-09, model `opus` (Opus 5.5,
+`claude-opus-5-5`), no override in the dispatch.
+
+**Command.**
+
+    bash scripts/selftest.sh refresh        # ~3 min on this machine (local, not CI)
+
+**Result in RED, script unchanged:** `refresh: 188 passed, 27 failed`, exit 1,
+plus the floor line `FAIL refresh  did 188 units of work, below the floor of 215`
+(the floor is the executed count; it is met once GREEN turns the 27 green).
+Every one of the 165 pre-existing assertions passes (188 = 165 + 23 new that
+pass on arrival). The new failures, verbatim:
+
+```
+  HARNESS-049 AC-1  a new file a project's tools will read is named NEW, dry run and real run
+    FAIL AC-1 dry run: the new .cjs is named NEW, once
+         expected: 1
+         actual:   0
+    FAIL AC-1 dry run: the new .test.cjs is named NEW as a .cjs file, once
+         expected: 1
+         actual:   0
+    FAIL AC-1 dry run: the new .json is named NEW, once
+         expected: 1
+         actual:   0
+    FAIL AC-1 dry run: the note's first line is printed once
+         expected: 1
+         actual:   0
+    FAIL AC-1 dry run: the note's second line, which says to exclude .claude, is printed once
+         expected: 1
+         actual:   0
+    FAIL AC-1 dry run: the NEW lines are exactly the three new lintable files, nothing else
+         expected:   NEW       .claude/skills/lint-me/schema.json  (a .json file your linters and formatters will read)
+           NEW       .claude/skills/lint-me/validate.cjs  (a .cjs file your linters and formatters will read)
+           NEW       .claude/skills/lint-me/validate.test.cjs  (a .cjs file your linters and formatters will read)
+         actual:   
+    FAIL AC-1 real run: the new .cjs is named NEW, once
+         expected: 1
+         actual:   0
+    FAIL AC-1 real run: the new .test.cjs is named NEW, once
+         expected: 1
+         actual:   0
+    FAIL AC-1 real run: the new .json is named NEW, once
+         expected: 1
+         actual:   0
+    FAIL AC-1 real run: the note's first line is printed once
+         expected: 1
+         actual:   0
+    FAIL AC-1 real run: the note's second line is printed once
+         expected: 1
+         actual:   0
+    FAIL AC-1 real run: the NEW lines are the same set the dry run printed
+         expected:   NEW       .claude/skills/lint-me/schema.json  (a .json file your linters and formatters will read)
+           NEW       .claude/skills/lint-me/validate.cjs  (a .cjs file your linters and formatters will read)
+           NEW       .claude/skills/lint-me/validate.test.cjs  (a .cjs file your linters and formatters will read)
+         actual:   
+
+  HARNESS-049 AC-2  an unchanged file, a non-code file and an undelivered file are not named
+
+  HARNESS-049 AC-3  the extensions a project's tools read are written once
+    FAIL AC-3: exactly one column-0 assignment LINTABLE_EXT="..."
+         expected: 1
+         actual:   0
+    FAIL AC-3: and no second assignment to it anywhere (local, readonly, +=)
+         expected: 1
+         actual:   0
+    FAIL AC-3: the set names js
+         LINTABLE_EXT is ""
+    FAIL AC-3: the set names cjs
+         LINTABLE_EXT is ""
+    FAIL AC-3: the set names mjs
+         LINTABLE_EXT is ""
+    FAIL AC-3: the set names ts
+         LINTABLE_EXT is ""
+    FAIL AC-3: the set names tsx
+         LINTABLE_EXT is ""
+    FAIL AC-3: the set names json
+         LINTABLE_EXT is ""
+    FAIL AC-3: the set names jsonc
+         LINTABLE_EXT is ""
+    FAIL AC-3: the set names py
+         LINTABLE_EXT is ""
+    FAIL AC-3: the script reads the variable rather than only declaring it
+         expected: yes
+         actual:   no
+    FAIL AC-3: .cjs appears on no code line but the assignment
+         expected: 1
+         actual:   0
+    FAIL AC-3: .mjs appears on no code line but the assignment
+         expected: 1
+         actual:   0
+    FAIL AC-3: .tsx appears on no code line but the assignment
+         expected: 1
+         actual:   0
+    FAIL AC-3: .jsonc appears on no code line but the assignment
+         expected: 1
+         actual:   0
+
+refresh: 188 passed, 27 failed
+```
+
+**Why each failure is the right one.** Every AC-1 failure is a count of 0 for a
+pinned whole line, or an empty NEW set: the script prints no NEW line and no
+note today, which is the defect. The refresh itself ran and exited 0 in both
+runs (those assertions pass), so nothing failed for a fixture or harness
+reason. Every AC-3 failure is "no `LINTABLE_EXT` exists", the absence the
+criterion names. Nothing failed on a syntax error, an unbound variable or a
+timeout.
+
+**The exact output GREEN must print** (amended Contract, "Output shape", is the
+authority; repeated here verbatim, quotes not included):
+
+    "  NEW       .claude/skills/lint-me/validate.cjs  (a .cjs file your linters and formatters will read)"
+    "  NEW       .claude/skills/lint-me/validate.test.cjs  (a .cjs file your linters and formatters will read)"
+    "  NEW       .claude/skills/lint-me/schema.json  (a .json file your linters and formatters will read)"
+    "            Your project's own linters, formatters and test runners will read"
+    "            these files unless their configuration excludes .claude."
+
+General form `"  NEW       $path  (a .$ext file your linters and formatters will read)"`,
+`$ext` = text after the last dot, `$path` = `.claude/<d>/<rel>`. The note once
+per run, only when at least one NEW line printed. And the variable, at column 0:
+
+    LINTABLE_EXT="js cjs mjs ts tsx json jsonc py"
+
+**What the tests pin about behaviour.** New = present under
+`$UP/.claude/{agents,commands,skills,hooks,tests}`, absent from the consumer at
+the same path, extension in `LINTABLE_EXT`, judged BEFORE the copy loop (the
+real run must print the same set as the dry run; a comparison after the copy
+finds everything present and names nothing). `scripts/` is not walked (Contract
+amended: `scripts/helper.mjs` must never be named). Exit 0 in both runs; the
+dry run still writes nothing (existing fingerprint assertion and `lint-me/` not
+created); no `    LOCAL ` line for the new files.
+
+**What the tests do NOT constrain** (GREEN's choice): where in the report the
+NEW block sits (Contract recommends after the `REPLACED  .claude/<d>/` lines);
+the empty line after the note; the order of NEW lines; how the extension test
+is implemented (`case` over `" $LINTABLE_EXT "`, a loop, ...) as long as it
+reads the variable; case sensitivity of extensions (`.JSON` is untested);
+files with no extension; whether a new lintable file inside a directory the
+consumer already HAS is named (the logic implies yes; only the new-directory
+case is fixtured); the variable's position in the file (bash 3.2 semantics
+aside, the AC-3 greps read the whole file). Keep inserts below line 148
+(sigpipe pins 134, 135, 147, 148 in `sigpipe.test.sh`).
+
+**Files touched.**
+
+- `.claude/tests/refresh.test.sh` - new HARNESS-049 block before `summary`
+  (helpers `new_lines_naming`, `new_lines_of`; fixture; AC-1, AC-2, AC-3).
+- `.claude/tests/floors.conf` - `floor | refresh | 165` -> `215`, plus the
+  `# HARNESS-049 raised refresh 165 -> 215` measurement block at the end.
+- `.claude/tests/selftest.test.sh` - hand-copied table `refresh 165` -> `215`.
+- `docs/backlog/stories/HARNESS-049.md` - Contract amended in three places
+  (scripts/ skip, AC-3 spelling, exact output lines), `## Test plan`, this
+  handoff.
+- Not touched: `scripts/refresh-harness.sh`.
+
+**Passed on arrival (23), and what earns them.** They assert absence or are
+fixture/side-effect checks that the unchanged script already satisfies:
+
+| Assertion(s) | Earned by |
+|---|---|
+| fixture preconditions (2 AC-1, 2 control, 1 helper.mjs not delivered) | they check the fixture, not the script; the control's `lintable = 4` is what makes the identical-trees run non-vacuous |
+| dry/real exit 0 (2), dry-run line, `lint-me/` not created, no LOCAL line, files delivered (4) | existing behaviour the story must not break; pinned by HARNESS-040/AC-4-era blocks already |
+| AC-2 `check.cjs` not NEW (2) and control: no NEW line, no note (3); the control's exit 0 (1) is existing behaviour, unearned | mutant "drop the `[ -e "$PROJ/..." ] && continue` existence test" - measured below, 7 red |
+| AC-2 `SKILL.md`/`run.sh` not NEW (4) | mutant "extension filter accepts everything" - measured below, 6 red |
+| AC-2 `scripts/helper.mjs` not NEW (2) | NOT earned in RED: no candidate walked `scripts/`. A mutant adding `scripts/` to the walk would earn it; left to `/audit-mutations` |
+
+**Negative controls, measured outside the tree.** In RED the script has no
+comparison to break, so the controls were measured against a CANDIDATE
+implementation in the session scratchpad (a copy of `refresh-harness.sh` with
+an 11-line comparison inserted after the LOCAL block and a 6-line print after
+the `REPLACED  .claude/<d>/` loop, plus copies of `_lib.sh` and this test file
+in the same layout). These are numbers for that candidate, not for the shipped
+script: GREEN confirms them against its own implementation.
+
+| Run | Expected | Measured (local, this machine) |
+|---|---|---|
+| candidate | 215 passed, 0 failed | `refresh: 215 passed, 0 failed` |
+| DV-1: list emptied before printing (comparison returns nothing) | the 12 AC-1 NEW/note/set assertions red, all AC-2 green | `refresh: 203 passed, 12 failed` - exactly the 12 AC-1 lines; AC-2 and its control green |
+| existence test removed (names every lintable upstream file) | `check.cjs` and the identical-trees control red | `refresh: 208 passed, 7 failed` - both NEW-set checks, `check.cjs` dry+real, control no-NEW and both note lines |
+| extension filter accepts all | `SKILL.md`, `run.sh` red | `refresh: 209 passed, 6 failed` - both NEW-set checks, SKILL.md and run.sh dry+real |
+
+**DV-1 predicted outcome** (Owner: GATES, the orchestrator's to run with
+`scripts/mutate.sh` against the shipped script): with the NEW-file list made
+empty, `bash scripts/selftest.sh refresh` reports 12 failures, all "AC-1 dry
+run"/"AC-1 real run" NEW-line, note-line and NEW-set assertions; every AC-2
+assertion, including "AC-2 control: and prints no NEW line at all", stays
+green. Measured as `203 passed, 12 failed` on the candidate - a claim about the
+shipped script until GATES runs it.
+
+**security-audit.test.sh AC-4 checked.** Its two refresh runs (lines 482, 504)
+read `$out` for nothing but the exit status; every other assertion inspects
+files in the project (`cmp`, `[ -e ]`, `vendor_problems`, `vendor_listed`). A
+`NEW  .claude/skills/security-audit/....cjs` line can neither satisfy nor break
+any of its needles. The real-tree refresh will now print NEW lines for
+`security-audit/*.cjs` and `report-schema.json`; it must still exit 0, which the
+Contract already requires.
+
+**Timings.** All local (Windows, Git Bash), none from CI: the `refresh` suite
+took 3m11s wall; `selftest` suite ~2.5 min. The new block adds four refresh
+runs (two dry, one real, one control) to a suite of dozens; no timeout is
+involved (bash suites have none).
+
+**Checks run.** `bash scripts/check-sigpipe.sh` exit 0 (49 files, 0 findings);
+`bash scripts/check-grep-count.sh` exit 0 (0 findings); `bash scripts/selftest.sh
+selftest` exit 0, `selftest: 268 passed, 0 failed` with the raised table.
+`gates.sh --fast` NOT run, per the dispatch (the orchestrator runs gates).
+Nothing committed: the Contract asks for the floors in RED's own commit, which
+is the orchestrator's to make.
+
+**Discovered.** (1) The selftest floor check compares the PASSED count with the
+floor, so in RED the suite also prints `below the floor of 215`; that is the
+HARNESS-040 precedent, not a new failure. (2) The new note text replaces the
+PO's draft wording; see the amended Contract. (3) `gawk`'s `index(s, "")`
+returns 0, so an empty-needle "count NEW lines" helper would be vacuous; the
+control uses `new_lines_of` (the set) instead.
 
 ## Regressions
 
