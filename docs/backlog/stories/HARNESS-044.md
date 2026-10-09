@@ -4,8 +4,8 @@ title: task.sh passes its arguments to the task as words, not as shell
 slug: task-sh-passes-its-arguments-to-the-task
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-044-task-sh-passes-its-arguments-to-the-task
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/task.sh, .claude/tests/doctor.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -545,3 +545,12 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+
+**DONE, 2026-10-09.** Merged in #126 (merge commit 991c8c3), release 90 (88 and
+89 were HARNESS-048 and HARNESS-049, landed from another session meanwhile; they
+share no file with this story). The VERSION bump lands in this DONE commit.
+`phase.sh set DONE --force` was run on `main`, overriding the branch check, as
+HARNESS-042 and HARNESS-043 did. PR CI: `gates` passed in 2m14s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37992355874),
+`boundaries` in 6s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/37992355892).
