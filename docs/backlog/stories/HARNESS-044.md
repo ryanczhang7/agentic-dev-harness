@@ -4,8 +4,8 @@ title: task.sh passes its arguments to the task as words, not as shell
 slug: task-sh-passes-its-arguments-to-the-task
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-044-task-sh-passes-its-arguments-to-the-task
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/task.sh, .claude/tests/doctor.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -165,6 +165,28 @@ the amended block says.**
   and the suite is green again. RED cannot run this: there is no fix to
   revert. Paste the mutate.sh output and the red assertion names here, as a
   fenced block.
+
+  **Result (GATES, 2026-10-09, run by the orchestrator on fable):** exactly
+  the seven assertions RED predicted went red, nothing else moved, and the
+  file came back verified. AC-3's goldens and `args:extra` stayed green.
+
+```
+$ bash scripts/mutate.sh scripts/task.sh 's/eval "\$cmd \\"\\\$@\\""/eval "$cmd" "$@"/' -- bash scripts/selftest.sh doctor
+=== mutate: scripts/task.sh (1 line(s) changed by s/eval "\$cmd \\"\\$@\\""/eval "$cmd" "$@"/) ===
+=== mutate: running bash scripts/selftest.sh doctor ===
+    FAIL AC-1: an argument holding '; touch PWNED' reaches the task as one word
+    FAIL AC-1: and the ';' runs nothing - no PWNED file exists under the fixture
+    FAIL AC-1: an argument holding '$(touch PWNED2)' reaches the task unexpanded
+    FAIL AC-1: and the command substitution runs nothing - no PWNED2 file exists under the fixture
+    FAIL AC-1: an argument holding '> PWNED3' is printed, not obeyed as a redirect
+    FAIL AC-1: and the redirect creates nothing - no PWNED3 file exists under the fixture
+    FAIL AC-2: an argument with a space arrives as one word: 'a b' then 'c' is two lines, not three
+doctor: 54 passed, 7 failed
+FAIL doctor  did 54 units of work, below the floor of 61 in .claude/tests/floors.conf
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_task.sh.20261009T194640Z.5697.bak) ===
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 ## Out of scope
 
@@ -413,10 +435,21 @@ stayed green in the control run.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-09T19:49:05Z
+    commit: 2779982
+    tree:   5cc705a0b91862942799e9285bea8d4162940367
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -445,6 +478,19 @@ stayed green in the control run.
      named here. -->
 
 ## Notes
+
+**GATES → REVIEW (2026-10-09, orchestrator on fable).** Full self-test, run
+detached while the story was at GATES, nothing else running in this worktree:
+
+    $ bash scripts/selftest.sh
+    assertion floors: all 26 suite(s) met their declared floor (3054 assertions executed, 2763 declared).
+    26 harness suite(s) passed.
+    exit=0 duration=5085s
+
+85 minutes. `ps` afterwards showed another `selftest.sh`, not this story's,
+running since 15:29 local in `/d/fantasy-world-builder/.claude/worktrees/interesting-diffie-ca32c4`
+(a different repository's session), overlapping most of this run. That
+contention is observed; whether it accounts for the time is not measured.
 
 **GREEN (2026-10-09, `feature-developer`, resolved Opus 5.5 / `claude-opus-5-5`,
 as its definition declares; no override in the dispatch).** One write,
@@ -494,6 +540,7 @@ name, below the table.
 - PLANNED: `lead-po` ran on **Fable 5.1** (`claude-fable-5-1`), the model its definition declares; the dispatching prompt stated no override and none was observed. 2026-10-08.
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-09.
 - GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-09.
+- GATES: orchestrator on **Fable 5.1** ran DV-1 itself; no `feature-developer` dispatch (all gates unconfigured, nothing to fix). 2026-10-09.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
