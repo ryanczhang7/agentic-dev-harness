@@ -125,6 +125,79 @@ in the dry run, before anything is written.
   `refresh-harness.sh` before GREEN adds lines (memory: full selftest before
   REVIEW).
 
+**Pinned by the Lead PO before RED (2026-10-09).** RED may amend any block
+below in place, with a reason beside it; GREEN builds what the amended block
+says.
+
+- **Where the comparison lives.** `scripts/refresh-harness.sh`, between the
+  LOCAL block (ends line 336) and the `rm -rf`/`cp -r` loop (line 379). It
+  walks `find . -type f` under each `$UP/.claude/$d` for `d in agents commands
+  skills hooks tests`, and `$UP/scripts/*.sh` is excluded by AC-2 (`.sh` is
+  not a lintable extension) — so the walk may skip `scripts/` entirely, or
+  include it and let the extension filter drop it; RED's choice, say which.
+  "Absent from the consumer" is `[ ! -e "$PROJ/.claude/$d/$rel" ]`, judged
+  BEFORE the copy loop runs, so the dry run and the real run print the same
+  lines (AC-1).
+- **The extension set, once (AC-3).** One variable, at column 0, near the
+  comparison:
+  `LINTABLE_EXT="js cjs mjs ts tsx json jsonc py"` — a space-separated list,
+  matched by `case "$rel" in *.js|*.cjs|...)` built from it, or by a `case`
+  whose single pattern list IS the one place. The test for AC-3 reads the
+  script with `grep`: pin that the eight names each appear on one line that
+  also carries the variable name, and that no second assignment to that name
+  exists. Exact spelling of the variable name is RED's to pin.
+- **Output shape.** After the `REPLACED  .claude/<d>/` lines (line 397) and
+  before the single-file `REPLACED` lines (line 400), one line per new file:
+
+      ·· NEW       .claude/skills/security-audit/validate-findings.cjs  (a .cjs file your linters and formatters will read)
+
+  (`··` = two spaces, column alignment with `KEPT      ` / `REPLACED  `; the
+  word `NEW` is followed by seven spaces so the path starts in the same
+  column). Then, once, after the last NEW line, the note:
+
+      ··          Your project's own linters, formatters and test runners read
+      ··          these unless they exclude .claude. If they should not, exclude it.
+
+  Then an empty line. RED pins the exact wording; GREEN prints it verbatim.
+  Zero new files: no NEW line and no note (AC-2 control).
+- **Ordering.** NEW lines come out in `find` order; RED must not assert an
+  order between two NEW lines (Git Bash `find` and Linux `find` differ).
+- **Exit status and side effects.** Unchanged: exit 0 on both runs, nothing
+  written in a dry run (the existing AC-4 fingerprint assertion stays green).
+- **Oracle partition.** All three ACs are mechanical: exact lines in `$out`,
+  counted with the suite's existing `whole_line_count` / `exact_count`
+  helpers (here-doc, never a pipe — `check-sigpipe.sh` and
+  `check-grep-count.sh` judge the test file too). No invented metric, no
+  threshold.
+- **Portability.** No new `"$(cmd | head …)"` substitution and no `grep -c …
+  || printf 0`: `check-sigpipe.sh` pins four lines in this script (134, 135,
+  147, 148, in `.claude/tests/sigpipe.test.sh` `DISCARDED`), so GREEN inserts
+  **only below line 148** and adds no new pipefail SIGPIPE shape. A new
+  pinned line would need that suite's table edited too.
+- **Floors.** `.claude/tests/floors.conf` line 55 (`floor | refresh | 165`)
+  and the hand-copied table at `.claude/tests/selftest.test.sh:546`
+  (`refresh 165`) both carry the refresh suite's floor. RED raises BOTH to
+  the EXECUTED count of its run (not the passing count), in its own commit,
+  with the measurement comment the file's precedent shows (HARNESS-040's
+  block there). Every file in this repository classifies `harness`, so the
+  lock permits all of it; the role boundary is honoured by RED touching
+  only the test file and the two floor tables, never the script.
+- **Changed signatures.** None: no function in `refresh-harness.sh` changes
+  its interface, and no other script or suite calls into it except
+  `refresh.test.sh` and `security-audit.test.sh` (AC-4 there runs a real
+  refresh and greps for `security-audit` paths — the NEW lines will name
+  `.cjs`/`.json` files under it, which can only ADD matches; RED checks that
+  suite's needles are anchored lines, not substrings that a NEW line would
+  satisfy or break).
+- **Test fixture.** The suite's `UP` already ships `.claude/skills/stack-
+  profiles/reference/python-uv.md` and `.claude/tests/lib.test.sh`; add a
+  `.cjs` and a `.json` under a NEW skill directory, plus a `.md` and a `.sh`
+  there as AC-2's non-code controls, and one `.cjs` present in BOTH trees as
+  AC-2's unchanged control. They must be committed into the fixture
+  repository (`git add -A && commit`) or the LOCAL walk sees nothing
+  different — but LOCAL judges the consumer's files, and these are absent
+  from the consumer, so no LOCAL line appears; assert that too.
+
 ## Deferred verifications
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
