@@ -278,25 +278,25 @@ says.
   existence test `[ -e "$PROJ/.claude/$d/$rel" ] && continue`, replaced with
   an unconditional `continue`, so the walk collects nothing:
 
-      $ bash scripts/mutate.sh scripts/refresh-harness.sh '363s/.*/    continue/' -- bash scripts/selftest.sh refresh
-      === mutate: scripts/refresh-harness.sh (1 line(s) changed by 363s/.*/    continue/) ===
-      === mutate: running bash scripts/selftest.sh refresh ===
-          FAIL AC-1 dry run: the new .cjs is named NEW, once
-          FAIL AC-1 dry run: the new .test.cjs is named NEW as a .cjs file, once
-          FAIL AC-1 dry run: the new .json is named NEW, once
-          FAIL AC-1 dry run: the note's first line is printed once
-          FAIL AC-1 dry run: the note's second line, which says to exclude .claude, is printed once
-          FAIL AC-1 dry run: the NEW lines are exactly the three new lintable files, nothing else
-          FAIL AC-1 real run: the new .cjs is named NEW, once
-          FAIL AC-1 real run: the new .test.cjs is named NEW, once
-          FAIL AC-1 real run: the new .json is named NEW, once
-          FAIL AC-1 real run: the note's first line is printed once
-          FAIL AC-1 real run: the note's second line is printed once
-          FAIL AC-1 real run: the NEW lines are the same set the dry run printed
-      refresh: 203 passed, 12 failed
-      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20261009T150828Z.2108436.bak) ===
-      $ bash scripts/mutate.sh --check
-      mutate: no stranded mutation; nothing of a previous run is in the tree.
+    $ bash scripts/mutate.sh scripts/refresh-harness.sh '363s/.*/    continue/' -- bash scripts/selftest.sh refresh
+    === mutate: scripts/refresh-harness.sh (1 line(s) changed by 363s/.*/    continue/) ===
+    === mutate: running bash scripts/selftest.sh refresh ===
+        FAIL AC-1 dry run: the new .cjs is named NEW, once
+        FAIL AC-1 dry run: the new .test.cjs is named NEW as a .cjs file, once
+        FAIL AC-1 dry run: the new .json is named NEW, once
+        FAIL AC-1 dry run: the note's first line is printed once
+        FAIL AC-1 dry run: the note's second line, which says to exclude .claude, is printed once
+        FAIL AC-1 dry run: the NEW lines are exactly the three new lintable files, nothing else
+        FAIL AC-1 real run: the new .cjs is named NEW, once
+        FAIL AC-1 real run: the new .test.cjs is named NEW, once
+        FAIL AC-1 real run: the new .json is named NEW, once
+        FAIL AC-1 real run: the note's first line is printed once
+        FAIL AC-1 real run: the note's second line is printed once
+        FAIL AC-1 real run: the NEW lines are the same set the dry run printed
+    refresh: 203 passed, 12 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_refresh-harness.sh.20261009T150828Z.2108436.bak) ===
+    $ bash scripts/mutate.sh --check
+    mutate: no stranded mutation; nothing of a previous run is in the tree.
 
   Exactly the 12 AC-1 assertions RED predicted; every AC-2 assertion and the
   identical-trees control stayed green; `git status` shows the script
