@@ -5,7 +5,7 @@ slug: task-sh-passes-its-arguments-to-the-task
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-044-task-sh-passes-its-arguments-to-the-task
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/task.sh, .claude/tests/doctor.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -446,6 +446,31 @@ stayed green in the control run.
 
 ## Notes
 
+**GREEN (2026-10-09, `feature-developer`, resolved Opus 5.5 / `claude-opus-5-5`,
+as its definition declares; no override in the dispatch).** One write,
+`scripts/task.sh:50`, C-1 exactly; file still 53 lines, no new process:
+
+    cd "$ROOT/$cwd" && eval "$cmd \"\$@\""
+
+Byte check of the line (`sed -n 50p | od -c`) ends `e v a l   " $ c m d
+\ " \ $ @ \ " "`, i.e. two escaped backslashes before `"` and one before `$`.
+Before the edit the suite reproduced RED exactly (`doctor: 54 passed,
+7 failed`, the same seven). After:
+
+    doctor: 61 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (61 assertions executed, 61 declared).
+    1 harness suite(s) passed.
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+Controls confirmed against the shipped line: RED's C-1 row predicted
+`61 passed, 0 failed`, floor 61/61 - measured identical. AC-3 holds: the
+HARNESS-024 AC-3 `task_golden` comparisons (`project.task.golden`,
+`crlf.task.golden`), the AC-4 `args:extra` / `arg=extra` assertions and the
+AC-2 spawn-count assertions are among the 61 executed with 0 failed. No
+divergence from the handoff. The near-miss row was not re-measured (RED's
+mutate.sh run is the record). DV-1 is GATES's.
 
 ## Model guidance
 
@@ -468,6 +493,7 @@ name, below the table.
 
 - PLANNED: `lead-po` ran on **Fable 5.1** (`claude-fable-5-1`), the model its definition declares; the dispatching prompt stated no override and none was observed. 2026-10-08.
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-09.
+- GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-09.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
