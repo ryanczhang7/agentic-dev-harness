@@ -5,7 +5,7 @@ slug: the-phase-lock-sees-a-git-output-write
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-045-the-phase-lock-sees-a-git-output-write
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -602,6 +602,69 @@ invocation like the 350 before them. No CI timing taken.
 
 ## Notes
 
+**GREEN (feature-developer, 2026-10-09).** Resolved model: **Opus 5.5**
+(`claude-opus-5-5`), as the definition declares (`opus`); no override in the
+dispatch. Wrote `.claude/hooks/lib.sh` only, exactly as C-1 pins it; every
+helper C-1 names (`isname`, `islong`, `longname`/`LONGVAL`/`LONGHAS`,
+`dispatch`, `emitr`) behaved as C-1 assumes, so nothing was worked around. No
+new process (C-6): the rule is inside the one existing awk. C-7 not taken:
+`CLAUDE.md`'s sentence lists tools, not tool rules, and is left unchanged.
+
+    function isname(w) {
+      return (w == "sed" || ... || w == "touch" || w == "git")
+    }
+    function do_git(a, b,   k, t) {
+      for (k = a; k <= b; k++) if (isname(tok[k]) && tok[k] != "git") { dispatch(tok[k], k + 1, b); return }
+      for (k = a; k <= b; k++) {
+        if (!islong(tok[k]) || longname(tok[k]) != "output") continue
+        WRITE = 1
+        if (LONGHAS) t = LONGVAL
+        else { k++; t = (k <= b) ? tok[k] : "" }
+        emitr(t, "destination of git --output")
+      }
+    }
+    # in dispatch, before WRITE = 1:
+      if (name == "git") { do_git(a, b); return }
+
+Seen red first (lib, before the edit): `lib: 249 passed, 1 failed`, the AC-5
+case, `actual: -`, as the handoff records. After:
+
+    phase-guard: 369 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (369 assertions executed, 369 declared).
+    lib: 250 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (250 assertions executed, 250 declared).
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+Control table confirmed against the shipped rule by measured value, not only by
+the assertions passing (`wcand` from `lib.test.sh:674`, sourced over `lib.sh`):
+
+    git log -1 --format=x --output=src/x.ts          => W | src/x.ts :: destination of git --output
+    git log -1 --format=x --output src/main.ts       => W | src/main.ts :: destination of git --output
+    git diff --output=src/main.ts HEAD               => W | src/main.ts :: destination of git --output
+    git log --output="src/main.ts"                   => W | src/main.ts :: destination of git --output
+    git diff -- src/x.ts                             => -
+    git log --output-indicator-new=+ src/x.ts        => -
+    git log --output-indicator-new=+ -- src/main.ts  => -
+    git log --oneline -- src/main.ts                 => -
+    git diff --stat                                  => -
+    git diff --name-only                             => -
+    git diff --no-index a b                          => -
+    git mv src/main.ts docs/notes.md                 => W | docs/notes.md :: destination of mv | src/main.ts :: source of mv (removed by the move)
+    git rm src/main.ts                               => W | src/main.ts
+    git -C x mv a b                                  => W | a :: source of mv (removed by the move) | b :: destination of mv
+    git commit -m "fix: sed -i x.ts"                 => -
+    git status && mv a b                             => W | a :: source of mv (removed by the move) | b :: destination of mv
+    git diff > /dev/null                             => - | /dev/null
+
+Every value equals RED's recorded one; no divergence. (`git diff > /dev/null`
+carries the redirect candidate from the separate redirect branch with verdict
+`-`, as before the change, so `no_candidate` does not fire on it.) The C-4
+denial line is pinned by the passing `role: HARNESS-045 C-4` assertion.
+Not earned by a mutation here (#15-19), per the handoff; DV-1 and DV-2 are
+GATES'.
+
 
 ## Model guidance
 
@@ -624,6 +687,7 @@ name, below the table.
 
 - PLANNED: `lead-po` ran on **Fable 5.1** (`claude-fable-5-1`), the model its definition declares; the dispatching prompt stated no override and none was observed. 2026-10-08.
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. Escalated AC-4 rather than amending it; amendment A-1 approved by the user. 2026-10-09.
+- GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-09.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
