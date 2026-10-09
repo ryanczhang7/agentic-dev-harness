@@ -427,4 +427,69 @@ for _s in doctor task; do
     "0" "$(disagreements "$_h24/trim.oracle" "$_h24/trim.$_s.assign")"
 done
 
+
+# ============================================================================
+# HARNESS-044: task.sh passes its arguments to the task as words, not as shell
+# ============================================================================
+#
+# task.sh ran `eval "$cmd" "$@"`, and eval joins its operands with spaces and
+# parses the result, so every caller argument was re-parsed as shell. The one
+# earlier test of argument passing (AC-4 above, `arg=extra`) uses a benign word
+# and cannot tell the two behaviours apart. The task here is `printf 'arg=%s\n'`,
+# which prints one `arg=` line per word it receives: the line count is the word
+# count and the line text is the word.
+#
+# The suite's shared $FIX is reused with a fresh write_conf: nothing after this
+# block reads its conf, and its scripts/ copy is the tree's task.sh (copied at
+# the top of the file), which is what DV-1's reverted fix has to reach.
+#
+# h44_run <args...>   sets $out to task.sh's stdout, byte for byte - a sentinel
+# follows it inside the substitution so a trailing newline is kept and compared
+# - and $rc to its exit status. stderr is discarded; only stdout is the oracle.
+# h44_planted <what>   asserts no PWNED* exists anywhere under the fixture, then
+# removes any it found, so one case's file cannot mask the next case's.
+
+describe "HARNESS-044: task.sh passes its arguments to the task as words, not as shell"
+
+write_conf "$FIX" <<'EOF2'
+task | t | - | . | printf 'arg=%s\n'
+EOF2
+h44_run() {
+  local _o
+  _o="$( cd "$FIX" && bash scripts/task.sh t "$@" 2>/dev/null; printf '#rc=%s' "$?" )"
+  out="${_o%#rc=*}"; rc="${_o##*#rc=}"
+}
+h44_planted() {
+  local _f
+  _f="$(find "$FIX" -name 'PWNED*')"
+  assert_eq "$1" "" "$_f"
+  [ -n "$_f" ] && find "$FIX" -name 'PWNED*' -exec rm -f {} +
+  return 0
+}
+_nl='
+'
+
+h44_run '; touch PWNED'
+assert_eq "AC-1: an argument holding '; touch PWNED' reaches the task as one word" \
+  "arg=; touch PWNED$_nl" "$out"
+assert_eq "AC-1: and task.sh exits 0" "0" "$rc"
+h44_planted "AC-1: and the ';' runs nothing - no PWNED file exists under the fixture"
+
+h44_run '$(touch PWNED2)'
+assert_eq "AC-1: an argument holding '\$(touch PWNED2)' reaches the task unexpanded" \
+  "arg=\$(touch PWNED2)$_nl" "$out"
+assert_eq "AC-1: and task.sh exits 0 for it" "0" "$rc"
+h44_planted "AC-1: and the command substitution runs nothing - no PWNED2 file exists under the fixture"
+
+h44_run '> PWNED3'
+assert_eq "AC-1: an argument holding '> PWNED3' is printed, not obeyed as a redirect" \
+  "arg=> PWNED3$_nl" "$out"
+assert_eq "AC-1: and task.sh exits 0 for it too" "0" "$rc"
+h44_planted "AC-1: and the redirect creates nothing - no PWNED3 file exists under the fixture"
+
+h44_run 'a b' c
+assert_eq "AC-2: an argument with a space arrives as one word: 'a b' then 'c' is two lines, not three" \
+  "arg=a b${_nl}arg=c$_nl" "$out"
+assert_eq "AC-2: and task.sh exits 0" "0" "$rc"
+
 summary "doctor"

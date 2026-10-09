@@ -4,8 +4,8 @@ title: task.sh passes its arguments to the task as words, not as shell
 slug: task-sh-passes-its-arguments-to-the-task
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-044-task-sh-passes-its-arguments-to-the-task
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/task.sh, .claude/tests/doctor.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -189,6 +189,47 @@ the amended block says.**
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One level: the harness's own bash suite, `.claude/tests/doctor.test.sh`, new
+block `describe "HARNESS-044: task.sh passes its arguments to the task as
+words, not as shell"`, placed after the HARNESS-024 AC-5 block and before
+`summary "doctor"` (C-2). It runs the real `scripts/task.sh` (the fixture's
+copy of the tree's file) as a subprocess - the cheapest level that can see
+what `eval` does to an argument.
+
+**Fixture.** The suite's shared `$FIX` (`make_project_fixture` at `:7`),
+reused with a fresh `write_conf` holding exactly
+`task | t | - | . | printf 'arg=%s\n'`. Reused rather than a new fixture
+because nothing after the block reads its conf, and a second
+`make_project_fixture` is a git init + commit for no isolation gained.
+
+**Capture.** `h44_run <args>` runs `( cd "$FIX" && bash scripts/task.sh t
+<args> 2>/dev/null; printf '#rc=%s' "$?" )` inside one substitution and splits
+it: `$out` is stdout byte for byte **including its trailing newline** (the
+sentinel stops `$(...)` stripping it), `$rc` the exit status. Every stdout
+assertion is `assert_eq` against the whole output with its final newline -
+whole-output equality, never containment (C-2). `h44_planted` asserts
+`find "$FIX" -name 'PWNED*'` is empty (the whole fixture, not only the task
+cwd) and then deletes whatever it found, so one case cannot mask the next.
+
+| # | Assertion (name as printed) | Pins | AC |
+|---|---|---|---|
+| 1 | `AC-1: an argument holding '; touch PWNED' reaches the task as one word` | stdout == `arg=; touch PWNED\n` | AC-1 |
+| 2 | `AC-1: and task.sh exits 0` | rc == 0 | AC-1 |
+| 3 | `AC-1: and the ';' runs nothing - no PWNED file exists under the fixture` | no `PWNED*` | AC-1 |
+| 4 | `AC-1: an argument holding '$(touch PWNED2)' reaches the task unexpanded` | stdout == `arg=$(touch PWNED2)\n` | AC-1 |
+| 5 | `AC-1: and task.sh exits 0 for it` | rc == 0 | AC-1 |
+| 6 | `AC-1: and the command substitution runs nothing - no PWNED2 file exists under the fixture` | no `PWNED*` | AC-1 |
+| 7 | `AC-1: an argument holding '> PWNED3' is printed, not obeyed as a redirect` | stdout == `arg=> PWNED3\n` | AC-1 (C-3) |
+| 8 | `AC-1: and task.sh exits 0 for it too` | rc == 0 | AC-1 |
+| 9 | `AC-1: and the redirect creates nothing - no PWNED3 file exists under the fixture` | no `PWNED*` | AC-1 (C-3) |
+| 10 | `AC-2: an argument with a space arrives as one word: 'a b' then 'c' is two lines, not three` | stdout == `arg=a b\narg=c\n` | AC-2 |
+| 11 | `AC-2: and task.sh exits 0` | rc == 0 | AC-2 |
+
+**AC-3** has no new test, by its own text: the HARNESS-024 `task_golden`
+comparisons over `project.task.golden` and `crlf.task.golden` and the AC-4
+`args:extra` / `arg=extra` assertions stay, unchanged, and pass in RED's run
+(no FAIL line among them; see the handoff output).
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -208,6 +249,142 @@ the amended block says.**
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**Run the new tests:** `bash scripts/selftest.sh doctor` (the whole `doctor`
+suite, ~60 s here; the HARNESS-044 block is its last `describe`).
+
+**The single change GREEN makes** is C-1, unamended: `scripts/task.sh:50`
+`cd "$ROOT/$cwd" && eval "$cmd" "$@"` becomes
+`cd "$ROOT/$cwd" && eval "$cmd \"\$@\""`. Nothing else. No Contract block was
+amended in RED.
+
+**RED output** (2026-10-09, this tree, `task.sh` unchanged, local Windows 11 /
+Git Bash):
+
+```
+  HARNESS-044: task.sh passes its arguments to the task as words, not as shell
+    FAIL AC-1: an argument holding '; touch PWNED' reaches the task as one word
+         expected: arg=; touch PWNED
+         
+         actual:   arg=
+         
+    FAIL AC-1: and the ';' runs nothing - no PWNED file exists under the fixture
+         expected: 
+         actual:   /tmp/tmp.ANrijmD9tH/PWNED
+    FAIL AC-1: an argument holding '$(touch PWNED2)' reaches the task unexpanded
+         expected: arg=$(touch PWNED2)
+         
+         actual:   arg=
+         
+    FAIL AC-1: and the command substitution runs nothing - no PWNED2 file exists under the fixture
+         expected: 
+         actual:   /tmp/tmp.ANrijmD9tH/PWNED2
+    FAIL AC-1: an argument holding '> PWNED3' is printed, not obeyed as a redirect
+         expected: arg=> PWNED3
+         
+         actual:   
+         
+    FAIL AC-1: and the redirect creates nothing - no PWNED3 file exists under the fixture
+         expected: 
+         actual:   /tmp/tmp.ANrijmD9tH/PWNED3
+    FAIL AC-2: an argument with a space arrives as one word: 'a b' then 'c' is two lines, not three
+         expected: arg=a b
+         arg=c
+         
+         actual:   arg=a
+         arg=b
+         arg=c
+         
+
+doctor: 54 passed, 7 failed
+FAIL doctor  did 54 units of work, below the floor of 61 in .claude/tests/floors.conf
+```
+
+**Why it is the right failure.** Every red line is an assertion of this block
+failing on its own oracle, and each actual value is the reproduction the story
+predicts: `; touch PWNED` and `$(touch PWNED2)` each print a bare `arg=` and
+create their file; `> PWNED3` prints nothing and creates `PWNED3` (C-3);
+`'a b' c` prints three lines. No other `doctor` assertion failed - in
+particular, **AC-3 holds**: both HARNESS-024 `task_golden` comparisons
+(`project.task.golden`, `crlf.task.golden`) and the AC-4 `args:extra` /
+`arg=extra` needles passed in the same run. The floor line is the expected
+consequence of raising the floor in RED (below), not a separate defect.
+
+**Green on arrival (4 of 11):** the four `exits 0` assertions (#2, #5, #8,
+#11 in the Test plan). Today's eval also exits 0 in all four cases (`touch`
+succeeds, the redirect succeeds), so these pin "the fix does not break the exit
+status" and are not the discriminating half; they were earned by a control
+below, not by today's run.
+
+**Controls, measured** (by `scripts/mutate.sh` on `scripts/task.sh`, which
+restored and `cmp`-verified it both times; RED wrote no source):
+
+| Candidate line 50 | Expected | Measured |
+|---|---|---|
+| today, `eval "$cmd" "$@"` | 54 passed, 7 failed | 54 passed, 7 failed |
+| C-1, `eval "$cmd \"\$@\""` | 61 passed, 0 failed | **61 passed, 0 failed**, floor met (61/61) |
+| near-miss, `eval "$cmd \"$@\""` (arguments expanded into the eval string inside double quotes) | red | 58 passed, 3 failed: PWNED2 output, PWNED2 file, AC-2 (`arg=a b c`) |
+
+```
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_task.sh.20261009T193857Z.12586.bak) ===
+  50:   cd "$ROOT/$cwd" && eval "$cmd" "$@"
+```
+
+So the suite is satisfiable by C-1 exactly, AC-3 stays green under it, and the
+plausible one-backslash-short fix is rejected. Note the near-miss passes the
+`;` and `>` cases (both inert inside double quotes) - it is the `$(...)` case
+and AC-2 that reject it, which is why all four cases are needed. GREEN should
+still confirm the 61/0 against the shipped line.
+
+**Predicted DV-1 red set (exactly 7, GATES).** With the fix reverted, these
+and only these go red; the other 54 stay green, AC-3's goldens among them:
+
+1. `AC-1: an argument holding '; touch PWNED' reaches the task as one word`
+2. `AC-1: and the ';' runs nothing - no PWNED file exists under the fixture`
+3. `AC-1: an argument holding '$(touch PWNED2)' reaches the task unexpanded`
+4. `AC-1: and the command substitution runs nothing - no PWNED2 file exists under the fixture`
+5. `AC-1: an argument holding '> PWNED3' is printed, not obeyed as a redirect`
+6. `AC-1: and the redirect creates nothing - no PWNED3 file exists under the fixture`
+7. `AC-2: an argument with a space arrives as one word: 'a b' then 'c' is two lines, not three`
+
+A revert expression checked on a scratch copy (fixed copy -> reverted copy is
+`cmp`-identical to today's `task.sh`):
+`bash scripts/mutate.sh scripts/task.sh 's/eval "\$cmd \\"\\\$@\\""/eval "$cmd" "$@"/' -- bash scripts/selftest.sh doctor`.
+GATES owns DV-1 and may write its own; RED cannot run it - there is no fix to
+revert yet.
+
+**Floors.** `doctor` 50 -> **61** in `.claude/tests/floors.conf` (with a
+HARNESS-044 comment) and in `.claude/tests/selftest.test.sh`'s hand-copied
+`COUNTS` table (`doctor 61`), same change. 61 = 54 passed + 7 failed, the
+executed count; selftest.sh compares the *passed* count to the floor, so
+`doctor` sits below its floor until GREEN lands, as every earlier RED floor
+raise did. `bash scripts/selftest.sh selftest` -> `selftest: 268 passed,
+0 failed` with the table updated.
+
+**Other checks (local):** `check-sigpipe: scanned 49 shell file(s), 45 with
+pipefail, 0 finding(s)`; `check-grep-count: scanned 49 shell file(s),
+0 finding(s)`. `bash scripts/gates.sh --fast`: `All required gates passed
+(0 ran, 5 unconfigured, 0 known)` - lint, typecheck, unit, coverage
+unconfigured, mutation on request; this repo's real verdict is `selftest`.
+No timing budget is involved (bash suite, no per-test timeout); the ~60 s
+suite time is local, not CI.
+
+**Files touched (RED):** `.claude/tests/doctor.test.sh` (the block; AC-1,
+AC-2), `.claude/tests/floors.conf` (floor + comment),
+`.claude/tests/selftest.test.sh` (`doctor 61`), this story (`## Test plan`,
+this handoff).
+
+**Export shape pinned:** none - no module is imported. The tests pin only the
+CLI behaviour of `bash scripts/task.sh t <args>` from the fixture root: exact
+stdout including trailing newline, exit 0, no file created. They do **not**
+constrain stderr, the listing mode, the unconfigured/unknown-task paths (the
+HARNESS-024 goldens do), or how line 50 is spelled beyond what C-1 says.
+
+**Approach notes for GREEN.** If you write the line by hand, count the
+backslashes: `eval "$cmd \"\$@\""`. One backslash short (`\"$@\"`) is the
+near-miss above and fails 3 assertions. HARNESS-024 AC-2 (spawn counts over a
+padded manifest) must stay equal; the C-1 line spawns nothing new and it
+stayed green in the control run.
 
 ## Regressions
 
@@ -290,6 +467,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED: `lead-po` ran on **Fable 5.1** (`claude-fable-5-1`), the model its definition declares; the dispatching prompt stated no override and none was observed. 2026-10-08.
+- RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-09.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on

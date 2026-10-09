@@ -530,7 +530,7 @@ done <<'COUNTS'
 boundaries 113
 ci-local 28
 classify 55
-doctor 50
+doctor 61
 gate-reminder 32
 gates 498
 grep-count 20
