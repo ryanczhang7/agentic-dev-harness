@@ -5,7 +5,7 @@ slug: the-refresh-names-new-files-a-project-s
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-049-the-refresh-names-new-files-a-project-s
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/refresh-harness.sh, .claude/tests/refresh.test.sh]       # files this story expects to write; `plan.sh conflicts` reads it
@@ -308,6 +308,7 @@ name, below the table.
 
 - PLANNED - `lead-po` - the orchestrating session, resolved `fable` (Fable 5.1, `claude-fable-5-1`). As planned.
 - RED - `test-developer` - resolved `opus` (Opus 5.5, `claude-opus-5-5`; reported by the agent, no override in the dispatch). As planned. Orchestrator re-ran `bash scripts/selftest.sh refresh`: `refresh: 188 passed, 27 failed`, exit 1, 27 `FAIL` lines, matching the handoff; `bash scripts/gates.sh --fast` exit 0 with every gate unconfigured (project.conf is not bootstrapped in this repository).
+- GREEN - `feature-developer` - resolved `opus` (Opus 5.5, `claude-opus-5-5`; reported by the agent, no override in the dispatch). As planned. Orchestrator re-ran `bash scripts/selftest.sh refresh`: `refresh: 215 passed, 0 failed`, exit 0, floor 215/215 met; `bash scripts/gates.sh --fast` exit 0, every gate unconfigured.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -648,4 +649,64 @@ control uses `new_lines_of` (the set) instead.
      named here. -->
 
 ## Notes
+
+**GREEN (Feature Developer, 2026-10-09).** Model resolved: `opus` (Opus 5.5,
+`claude-opus-5-5`), the agent definition's own `model:`; the dispatch carried
+no override.
+
+Change, `scripts/refresh-harness.sh` only, 36 lines inserted, nothing removed,
+all below line 148 (the sigpipe pins at 134, 135, 147, 148 are untouched):
+
+- new lines 338-367, between the LOCAL block and the KEPT walk: a header
+  comment (the fantasy-world-builder incident), the one column-0
+  `LINTABLE_EXT="js cjs mjs ts tsx json jsonc py"`, and a walk of `find . -type f`
+  under `$UP/.claude/{agents,commands,skills,hooks,tests}` (not `scripts/`),
+  in the script's existing here-string idiom. A file is collected when its
+  basename has a dot, the text after the last dot is a word of
+  `" $LINTABLE_EXT "` (a `case`; the variable's only reader), and
+  `$PROJ/.claude/$d/$rel` does not exist. Judged before the copy loop, so the
+  dry and real runs collect the same set. The pinned NEW lines are built into
+  `new_lintable` as they are found.
+- new lines 428-433, right after the `REPLACED  .claude/<d>/` lines: when
+  `new_lintable` is non-empty, print it, then the two pinned note lines, then
+  an empty line. Empty: nothing.
+
+Results (local, Windows Git Bash):
+
+    bash scripts/selftest.sh refresh          -> refresh: 215 passed, 0 failed  (exit 0, floor met: 215/215)
+    bash scripts/check-sigpipe.sh             -> exit 0, 49 files, 0 finding(s)
+    bash scripts/check-grep-count.sh          -> exit 0, 49 files, 0 finding(s)
+    bash scripts/selftest.sh sigpipe          -> exit 0, 82/82
+    bash scripts/selftest.sh security-audit   -> exit 0, 51/51 (its real-tree refresh still exits 0)
+
+Negative controls from the handoff, measured against the shipped script with
+`scripts/mutate.sh` (both restored, `cmp`-verified; `mutate.sh --check` clean):
+
+    existence test removed (line 363 -> `:`)       -> refresh: 208 passed, 7 failed
+      FAIL AC-1 dry run: the NEW lines are exactly the three new lintable files, nothing else
+      FAIL AC-1 real run: the NEW lines are the same set the dry run printed
+      FAIL AC-2 dry run: no NEW line names a file the consumer already has at the same path (.claude/skills/stack-profiles/check.cjs)
+      FAIL AC-2 real run: no NEW line names a file the consumer already has at the same path (.claude/skills/stack-profiles/check.cjs)
+      FAIL AC-2 control: and prints no NEW line at all
+      FAIL AC-2 control: and not the note's first line
+      FAIL AC-2 control: nor its second
+    extension filter accepts everything (line 362 -> `:`) -> refresh: 208 passed, 7 failed
+      FAIL AC-1 dry run: the NEW lines are exactly the three new lintable files, nothing else
+      FAIL AC-1 real run: the NEW lines are the same set the dry run printed
+      FAIL AC-2 dry run: no NEW line names a new .md file (.claude/skills/lint-me/SKILL.md)
+      FAIL AC-2 real run: no NEW line names a new .md file (.claude/skills/lint-me/SKILL.md)
+      FAIL AC-2 dry run: no NEW line names a new .sh file (.claude/skills/lint-me/run.sh)
+      FAIL AC-2 real run: no NEW line names a new .sh file (.claude/skills/lint-me/run.sh)
+      FAIL AC-3: the script reads the variable rather than only declaring it
+
+The first matches RED's prediction exactly (7, the same seven). The second
+diverges, benignly: RED predicted 6 and measured 6 on its candidate; the
+shipped script gives the same 6 plus `AC-3: the script reads the variable`,
+because the mutated `case` line is the only place this implementation reads
+`$LINTABLE_EXT`, so deleting the filter also deletes the read. RED's candidate
+evidently read the variable somewhere else too. Not a defect in the test or
+the script; recorded so GATES does not read 7 as a mismatch.
+
+Not run here, per the dispatch: DV-1 (GATES, orchestrator), the full
+`selftest.sh`, `gates.sh --fast` and `gates.sh`.
 
