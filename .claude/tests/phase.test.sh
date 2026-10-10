@@ -200,4 +200,49 @@ for doc in .claude/commands/advance-story.md .claude/commands/complete-story.md 
   assert_eq "AC-6: $doc names bash scripts/plan.sh after" "names" "$got"
 done
 
+
+# ---------------------------------------------------------------------------
+# HARNESS-046 runs in a fixture of its own: phase.sh set writes the state file
+# and moves frontmatter, and every block above depends on the state $FIX is in.
+P46="$(make_project_fixture)"
+trap 'rm -rf "$FIX" "$P46"' EXIT
+p46() { ( cd "$P46" && bash scripts/phase.sh "$@" ); }
+
+describe "HARNESS-046 AC-2: phase.sh set refuses an id that is not one path component"
+
+# A story-shaped file one directory ABOVE the stories directory, inside the
+# fixture: from docs/backlog/stories, ../EXIST is docs/backlog/EXIST.md (C-6).
+# Measured on today's phase.sh, 2026-10-09: exit 0, EXIST.md rewritten (status
+# and `branch: story/../EXIST-e` added), STORY_ID=../EXIST persisted.
+printf -- '---\nid: EXIST\ntitle: Exists outside the stories directory\nslug: exist\ntype: feature\nstatus: todo\nphase: PLANNED\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works.\n' \
+  > "$P46/docs/backlog/EXIST.md"
+cp "$P46/docs/backlog/EXIST.md" "$P46/EXIST.before"
+rm -f "$P46/.claude/state/current-story.env"
+assert_eq "HARNESS-046 AC-2 precondition: no current-story.env before the run" absent \
+  "$([ -e "$P46/.claude/state/current-story.env" ] && printf present || printf absent)"
+
+h46_err="$(p46 set ../EXIST PLANNED 2>&1 >/dev/null)"; h46_rc=$?
+assert_eq "HARNESS-046 AC-2: phase.sh set ../EXIST PLANNED exits 1" 1 "$h46_rc"
+assert_contains "HARNESS-046 AC-2: and prints the grammar message naming ../EXIST on stderr" \
+  "error: story id '../EXIST' is not one path component: an id is letters, digits, '.', '_' or '-', and starts with a letter or digit" \
+  "$h46_err"
+assert_eq "HARNESS-046 AC-2: docs/backlog/EXIST.md is byte-for-byte unchanged" unchanged \
+  "$(cmp -s "$P46/EXIST.before" "$P46/docs/backlog/EXIST.md" && printf unchanged || printf changed)"
+assert_eq "HARNESS-046 AC-2: and current-story.env still does not exist" absent \
+  "$([ -e "$P46/.claude/state/current-story.env" ] && printf "present: $(grep '^STORY_ID=' "$P46/.claude/state/current-story.env")" || printf absent)"
+
+describe "HARNESS-046 AC-4: every id shape in use still works"
+
+# The controls for the refusal: a grammar narrower than the settled one turns
+# one of these red. new-story.sh then phase.sh set <id> PLANNED, both exit 0,
+# and the story file is where it should be. PLANNED, because guard_transition
+# skips it: this asserts the id check, not the branch or dependency checks.
+for id in HARNESS-046 WORLD-014 T-1 T-A K-2 MT-071 a.b_c-1 x; do
+  ( cd "$P46" && bash scripts/new-story.sh "$id" "x" >/dev/null 2>&1 ); h46_ns=$?
+  p46 set "$id" PLANNED >/dev/null 2>&1; h46_ps=$?
+  [ -f "$P46/docs/backlog/stories/$id.md" ] && h46_f=file || h46_f="no file"
+  assert_eq "HARNESS-046 AC-4: new-story.sh $id then phase.sh set $id PLANNED both exit 0 and create docs/backlog/stories/$id.md" \
+    "0|0|file" "$h46_ns|$h46_ps|$h46_f"
+done
+
 summary "phase"

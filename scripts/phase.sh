@@ -154,6 +154,7 @@ cmd_set() {
   [ -n "$id" ] && [ -n "$phase" ] || die "usage: phase.sh set <story-id> <PHASE> [--force]"
   phase="$(printf '%s' "$phase" | tr 'a-z' 'A-Z')"
   valid_phase "$phase" || die "unknown phase '$phase'. Known: $(awk -F'|' '!/^#|^$/{gsub(/ /,"",$1); printf "%s ", $1}' "$PHASES")"
+  valid_story_id "$id" || die "story id '$id' is not one path component: an id is letters, digits, '.', '_' or '-', and starts with a letter or digit"
 
   local file="$STORIES/$id.md"
   [ -f "$file" ] || die "no story file at docs/backlog/stories/$id.md — create it first (scripts/new-story.sh)"

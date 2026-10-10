@@ -1566,6 +1566,53 @@ rm -f "$FIX/.claude/state/T-1.before"
 git -C "$FIX" checkout -q -- . 2>/dev/null
 set_phase "$FIX" ""
 
+describe "HARNESS-046 AC-3  gates.sh --story refuses an id that is not one path component, before any gate runs"
+
+# A fixture of its own, so nothing here depends on the state $FIX was left in.
+# EXIST.md sits one directory ABOVE the stories directory, inside the fixture:
+# from docs/backlog/stories, ../EXIST is docs/backlog/EXIST.md (C-6). It and
+# project.conf are committed, so a run that is NOT refused records into it -
+# measured on today's gates.sh, 2026-10-09: the gate runs, its output line
+# `ran` is printed, and `## Gate results` is appended to EXIST.md.
+G46="$(make_project_fixture)"
+trap 'rm -rf "$FIX" "$MFX" "$_h24" "$G46"' EXIT
+g46() { ( cd "$G46" && bash scripts/gates.sh "$@" 2>&1 ); }
+G46_MSG="error: story id '../EXIST' is not one path component: an id is letters, digits, '.', '_' or '-', and starts with a letter or digit"
+write_conf "$G46" <<'EOF2'
+gate     | probe | required | . | printf 'ran\n'
+evidence | probe | ran
+EOF2
+printf -- '---\nid: EXIST\ntitle: Exists outside the stories directory\nslug: exist\ntype: feature\nstatus: todo\nphase: GATES\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Gate results\n\n## Notes\n' \
+  > "$G46/docs/backlog/EXIST.md"
+git -C "$G46" add -A >/dev/null 2>&1
+git -C "$G46" -c user.email=t@t -c user.name=t commit -qm "HARNESS-046 fixture" >/dev/null 2>&1
+cp "$G46/docs/backlog/EXIST.md" "$G46/.claude/state/EXIST.before"
+g46_same() { cmp -s "$G46/.claude/state/EXIST.before" "$G46/docs/backlog/EXIST.md" && printf unchanged || printf changed; }
+rm -f "$G46/.claude/state/current-story.env"
+
+out="$(g46 --story ../EXIST)"; rc=$?
+assert_eq "HARNESS-046 AC-3: gates.sh --story ../EXIST exits 2" 2 "$rc"
+assert_eq "HARNESS-046 AC-3: and prints the grammar message naming ../EXIST, once" 1 "$(count_line "$G46_MSG" "$out")"
+# Two needles for "the gate did not run": its own output line, whole, and the
+# header gates.sh prints before every gate it runs.
+assert_eq "HARNESS-046 AC-3: no line is the gate's output 'ran' (the gate did not run)" 0 "$(count_line ran "$out")"
+assert_eq "HARNESS-046 AC-3: and no gate header was printed" 0 "$(count_re '^=== gate: ' "$out")"
+assert_eq "HARNESS-046 AC-3: docs/backlog/EXIST.md is byte-for-byte unchanged" unchanged "$(g46_same)"
+git -C "$G46" checkout -q -- . 2>/dev/null
+
+# Contract C-4's second site: an id arriving from current-story.env rather than
+# --story. phase.sh will refuse to write one, but the state file is evidence and
+# is checked where it is read (gates.sh:331), so a hand-edited STORY_ID is
+# refused the same way.
+printf 'STORY_ID=../EXIST\nSTORY_SLUG=exist\nSTORY_TYPE=feature\nPHASE=GATES\nBRANCH=main\n' \
+  > "$G46/.claude/state/current-story.env"
+out="$(g46)"; rc=$?
+assert_eq "HARNESS-046 C-4: with STORY_ID=../EXIST in current-story.env, gates.sh exits 2" 2 "$rc"
+assert_eq "HARNESS-046 C-4: and prints the grammar message naming ../EXIST, once" 1 "$(count_line "$G46_MSG" "$out")"
+assert_eq "HARNESS-046 C-4: and runs no gate" 0 "$(count_re '^=== gate: ' "$out")"
+assert_eq "HARNESS-046 C-4: and docs/backlog/EXIST.md is byte-for-byte unchanged" unchanged "$(g46_same)"
+rm -rf "$G46"
+
 # ============================================================================
 # HARNESS-027: a failing gate's log survives the passing re-run
 # ============================================================================
