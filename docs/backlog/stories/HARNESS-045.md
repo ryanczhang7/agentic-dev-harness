@@ -4,8 +4,8 @@ title: The phase lock sees a git --output write
 slug: the-phase-lock-sees-a-git-output-write
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-045-the-phase-lock-sees-a-git-output-write
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -206,6 +206,28 @@ the amended block says.**
   restore is verified and the suite is green again. RED cannot run this:
   there is no rule to remove. Paste the mutate.sh output and the red
   assertion names here, as a fenced block.
+
+  **Result (GATES, 2026-10-09, orchestrator on fable):** exactly RED's
+  predicted six went red (the four AC-1 writes, the C-4 role, AC-2's GREEN
+  test target); AC-3, AC-4 and every pre-existing assertion stayed green;
+  the restore was verified.
+
+```
+=== mutate: .claude/hooks/lib.sh (1 line(s) changed by s/ || w == "git")$/)/) ===
+=== mutate: running bash scripts/selftest.sh phase-guard ===
+    FAIL blocks: HARNESS-045 AC-1: git log --output=src/main.ts overwrites frozen source in RED
+    FAIL blocks: HARNESS-045 AC-1: the two-word form --output src/main.ts is the same write
+    FAIL blocks: HARNESS-045 AC-1: git diff --output=src/main.ts HEAD writes source too
+    FAIL blocks: HARNESS-045 AC-1: a quoted --output value is still the target
+    FAIL role: HARNESS-045 C-4: the denial says the path is the destination of git --output
+    FAIL blocks: HARNESS-045 AC-2: git log --output onto a frozen test is blocked in GREEN
+phase-guard: 363 passed, 6 failed
+FAIL phase-guard  did 363 units of work, below the floor of 369 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261009T235201Z.92.bak) ===
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 - **DV-2 (the rule, probed against real lines of the tree). Owner: GATES.**
   `rules.md`, "A rule is probed against the tree it judges": the fixtures in
   AC-3 are the author's spellings. Take every `git log` and `git diff`
@@ -219,6 +241,31 @@ the amended block says.**
   blocked on `src/main.ts`. Paste the list and both verdict columns here as
   a fenced block. If any original is refused, that is a false positive the
   fixtures could not see, and the story returns to RED.
+
+  **Result (GATES, 2026-10-09, orchestrator on fable):** every original
+  allowed, every `--output` form blocked on `src/main.ts`. The grep at GATES
+  lists three code invocations, not two: `check-boundaries.sh:610` is
+  `git diff-tree`, and `mutate.sh:357` is a comment - the real call is
+  `mutate.sh:362-363`, `git -c … -c … diff --no-index …`, with global `-c`
+  options before the subcommand. Two of the three sit inside `$(…)`; the
+  guard judges them there. `mutate.sh:169` and `:497` are `printf` messages
+  that mention `git diff`, probed as data. `--output` was inserted as an
+  option before the operands rather than appended, because after `--` git
+  would read it as a pathspec. Script:
+  `scratchpad/dv2-045.sh` (`make_fixture`, `set_phase RED`, `guard_bash`).
+
+```
+--- as written in the tree
+check-boundaries.sh:173              allowed
+check-boundaries.sh:610              allowed
+mutate.sh:362-363                    allowed
+mutate.sh:169 (message)              allowed
+mutate.sh:497 (message)              allowed
+--- the same, with --output=src/main.ts added as an option
+check-boundaries.sh:173 +out         blocked: path:     src/main.ts
+check-boundaries.sh:610 +out         blocked: path:     src/main.ts
+mutate.sh:362-363 +out               blocked: path:     src/main.ts
+```
 
 ## Out of scope
 
@@ -569,10 +616,21 @@ invocation like the 350 before them. No CI timing taken.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-10T00:05:01Z
+    commit: dcee786
+    tree:   5ff72388f4ff85ccd724b3f5318584ca41119af6
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -601,6 +659,18 @@ invocation like the 350 before them. No CI timing taken.
      named here. -->
 
 ## Notes
+
+**GATES → REVIEW (2026-10-09, orchestrator on fable).** Full self-test, run
+detached while the story was at GATES, nothing else running in this worktree
+and no other `selftest.sh` on the host (`ps` before and after):
+
+    $ bash scripts/selftest.sh
+    assertion floors: all 26 suite(s) met their declared floor (3076 assertions executed, 2855 declared).
+    26 harness suite(s) passed.
+    exit=0 duration=3308s
+
+55 minutes, alone on the host; HARNESS-044's run took 85 beside another
+repository's self-test.
 
 **GREEN (feature-developer, 2026-10-09).** Resolved model: **Opus 5.5**
 (`claude-opus-5-5`), as the definition declares (`opus`); no override in the
@@ -688,6 +758,7 @@ name, below the table.
 - PLANNED: `lead-po` ran on **Fable 5.1** (`claude-fable-5-1`), the model its definition declares; the dispatching prompt stated no override and none was observed. 2026-10-08.
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. Escalated AC-4 rather than amending it; amendment A-1 approved by the user. 2026-10-09.
 - GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-09.
+- GATES: orchestrator on **Fable 5.1** ran DV-1 and DV-2 itself; no `feature-developer` dispatch (all gates unconfigured, nothing to fix). 2026-10-09.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
