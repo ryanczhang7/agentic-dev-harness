@@ -1377,6 +1377,23 @@ untracked_gated() {
 # implementations of "read a key out of the frontmatter" is how the three come
 # to disagree about what a story says.
 
+# valid_story_id <id>   0 when <id> is one path component: the first character
+# a letter or digit, every character a letter, digit, '.', '_' or '-'. 1
+# otherwise. Prints nothing and spawns nothing (this file is the hook's hot
+# path). Every script that joins an id into docs/backlog/stories/$id.md asks
+# this first - new-story.sh, phase.sh and gates.sh - so `../X` names no file.
+# The letters are listed rather than written as `A-Z`: a range in a bracket
+# expression follows the locale's collation on bash 3.2, which has no
+# globasciiranges, and may then admit non-ASCII letters.
+valid_story_id() {
+  [ -n "$1" ] || return 1
+  [ -z "${1//[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-]/}" ] || return 1
+  case "$1" in
+    [abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]*) return 0 ;;
+  esac
+  return 1
+}
+
 # frontmatter_value <file> <key>   The scalar value, trailing comment stripped.
 frontmatter_value() {
   awk -v k="$2" '

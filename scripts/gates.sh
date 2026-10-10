@@ -84,7 +84,7 @@ while [ $# -gt 0 ]; do
     --required) REQUIRED_ONLY=1 ;;
     --fast) FAST=1 ;;
     --audit) AUDIT=1 ;;
-    --story) shift; STORY="${1:-}" ;;
+    --story) shift; STORY="${1:-}"; valid_story_id "$STORY" || { printf "error: story id '%s' is not one path component: an id is letters, digits, '.', '_' or '-', and starts with a letter or digit\n" "$STORY" >&2; exit 2; } ;;
     -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
     *) printf 'unknown option: %s\n' "$1" >&2; exit 2 ;;
   esac
@@ -328,7 +328,7 @@ record_in_story() { # <story-file> <result-text> <summary-lines>
 #     required_gates: [integration]
 #
 # Optional for the repo, binding for the story that depends on it.
-if [ -z "$STORY" ]; then load_state; STORY="$STORY_ID"; fi
+if [ -z "$STORY" ]; then load_state; STORY="$STORY_ID"; fi; [ -z "$STORY" ] || valid_story_id "$STORY" || { printf "error: story id '%s' is not one path component: an id is letters, digits, '.', '_' or '-', and starts with a letter or digit\n" "$STORY" >&2; exit 2; }
 STORY_FILE="$ROOT/docs/backlog/stories/$STORY.md"
 STORY_REQUIRES=""
 if [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then

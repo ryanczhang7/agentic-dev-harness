@@ -5,7 +5,7 @@ slug: a-story-id-is-one-path-component
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-046-a-story-id-is-one-path-component
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/new-story.sh, scripts/gates.sh, scripts/phase.sh, .claude/tests/lib.test.sh, .claude/tests/new-story.test.sh, .claude/tests/phase.test.sh, .claude/tests/gates.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -607,6 +607,73 @@ table and its named `lib is floored at its 281` assertion. selftest green.
 
 ## Notes
 
+### GREEN (feature-developer, 2026-10-10)
+
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), the `opus` the definition
+declares; the dispatch gave no override. Tests untouched; nothing committed;
+phase left at GREEN. The four scripts are staged.
+
+`valid_story_id`, in `.claude/hooks/lib.sh` immediately above
+`frontmatter_value`:
+
+    valid_story_id() {
+      [ -n "$1" ] || return 1
+      [ -z "${1//[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-]/}" ] || return 1
+      case "$1" in
+        [abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]*) return 0 ;;
+      esac
+      return 1
+    }
+
+C-1's shape, with the letters and digits listed instead of `A-Za-z0-9`: a
+range in a bracket expression follows the locale's collation on bash 3.2 (no
+`globasciiranges`), so the explicit list is locale-proof at no cost. Measured
+here (bash 5, which defaults `globasciiranges` on, so the range would also
+have been fine on this machine): `é`, `aé`, `Ä`, `ß` refused and `x` accepted
+under `LC_ALL` = `C`, `en_US.UTF-8` and `C.UTF-8`. No suite row covers it.
+
+Call sites:
+
+- `scripts/new-story.sh`: `. "$ROOT/.claude/hooks/lib.sh"` right after the
+  usage check, then the id check (`printf` with `%s`, stderr, exit 2) and
+  `case "$title" in *$'\n'*|*$'\r'*) echo 'error: the title must be one line' >&2; exit 2 ;; esac`.
+  Both run before `file=` is computed.
+- `scripts/phase.sh` `cmd_set`: one line after the `valid_phase` check,
+  before `local file=`: `valid_story_id "$id" || die "story id '$id' is not one path component: …"` (exit 1).
+- `scripts/gates.sh`: on the existing `--story)` line (`:87`) and appended to
+  the existing `if [ -z "$STORY" ]; then load_state; …; fi` line (`:331`), as
+  C-4 specifies. `lib.sh` is sourced at `:70`, before option parsing, so the
+  `:87` call finds the function. Line count unchanged (1027); lines 74 and 580
+  compared with `cmp` against a copy taken before the edit: identical.
+  Side effect worth knowing: `--story ""` is now refused (exit 2) where it
+  used to fall back to the state file; nothing in the tree passes it.
+
+Controls from the handoff, confirmed against the shipped function (status|output):
+
+    accepted: HARNESS-046=0| WORLD-014=0| T-1=0| T-A=0| K-2=0| MT-071=0| a.b_c-1=0| x=0| 9=0| x-=0| a..b=0|
+    refused:  ../OUTSIDE=1| a/b=1| a\\b=1| ..=1| .x=1| -x=1| a\ b=1| $'A\nB'=1| ''=1| $'a\tb'=1| $'a\rb'=1|
+              a\;b=1| a\$b=1| _x=1| x/=1| a:b=1| a\*b=1|
+
+11 accepted, 17 refused, silent throughout - matching the handoff's row for
+C-1's suggestion. No divergence.
+
+Results (each through `bash scripts/selftest.sh <suite>`, floors checked):
+
+    lib: 281 passed, 0 failed          floor 281 met
+    new-story: 53 passed, 0 failed     floor 53 met
+    phase: 58 passed, 0 failed         floor 58 met
+    gates: 507 passed, 0 failed        floor 507 met
+    sigpipe: 82 passed, 0 failed       (gates.sh:74 and :580 pins hold)
+    plan: 248 passed, 0 failed
+    boundaries: 113 passed, 0 failed
+    worktree: 73 passed, 0 failed
+    selftest: 268 passed, 0 failed
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+DV-1 is GATES's and was not run here.
+
 
 ## Model guidance
 
@@ -629,6 +696,7 @@ name, below the table.
 
 - PLANNED: `lead-po` ran on **Fable 5.1** (`claude-fable-5-1`), the model its definition declares; the dispatching prompt stated no override and none was observed. 2026-10-08.
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. Amended C-1 (whole-message match) and C-6 (floors raised) in place. 2026-10-10.
+- GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-10.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
