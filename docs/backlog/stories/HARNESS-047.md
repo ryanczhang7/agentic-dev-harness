@@ -5,7 +5,7 @@ slug: deny-git-log-and-git-diff-output-in-sett
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-047-deny-git-log-and-git-diff-output-in-sett
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/settings.json, .claude/tests/settings.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -506,6 +506,42 @@ amendment). No change to the implementation approach.
 
 ## Notes
 
+**GREEN, 2026-10-10 (Feature Developer).** Ran on `opus` per the agent
+definition; the dispatch gave no override. Observed the RED failure first
+(`settings: 37 passed, 2 failed`, floor 39 not met), then made the one C-1
+edit to `.claude/settings.json` with the Edit tool, once:
+
+```
+@@ -29,7 +29,9 @@
+       "MultiEdit(./.claude/state/current-story.env)",
+       "Write(./.claude/state/last-gate-run)",
+       "Edit(./.claude/state/last-gate-run)",
+-      "MultiEdit(./.claude/state/last-gate-run)"
++      "MultiEdit(./.claude/state/last-gate-run)",
++      "Bash(git log *--output*)",
++      "Bash(git diff *--output*)"
+     ]
+   },
+```
+
+Results on this tree after the edit:
+
+```
+settings: 39 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (39 assertions executed, 39 declared).
+check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+check-grep-count: scanned 49 shell file(s), 0 finding(s)
+gates.sh --fast: exit 0; format/lint/typecheck/unit/coverage UNCONFIGURED (BOOTSTRAPPED=no), mutation ON REQUEST
+```
+
+Controls 2-11 in the handoff table: every one is a whole-output
+`assert_eq` against the recorded expected text, and all ten are `ok` in the
+verbose run after the edit, so each measured value equals RED's - no
+divergence. Tests 1 and 12 went red -> green on exactly this edit, matching
+the handoff's simulated GREEN. JSON checked by eye: `allow` unchanged
+(`"Bash(git diff:*)"`, `"Bash(git log:*)"` in place), `deny` brackets
+balanced, comma on the former last element, none after the new last.
+`.claude/settings.json` staged; not committed, phase not changed.
 
 ## Model guidance
 
@@ -528,6 +564,7 @@ name, below the table.
 
 - PLANNED: `lead-po` ran on **Fable 5.1** (`claude-fable-5-1`), the model its definition declares; the dispatching prompt stated no override and none was observed. 2026-10-08.
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. Amended C-4 (floor raised) in place; `touches:` widened to match by the orchestrator. 2026-10-10.
+- GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-10.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
