@@ -4,8 +4,8 @@ title: The phase lock sees a git --output write
 slug: the-phase-lock-sees-a-git-output-write
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-045-the-phase-lock-sees-a-git-output-write
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -763,3 +763,11 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+
+**DONE, 2026-10-10.** Merged in #127 (merge commit c29ce0f), release 91. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check, as HARNESS-042 to 044 did. PR CI: `gates`
+passed in 3m10s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38011502269),
+`boundaries` in 6s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38011502248).
