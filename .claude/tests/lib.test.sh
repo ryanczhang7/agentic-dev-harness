@@ -951,4 +951,46 @@ assert_eq "HARNESS-045 AC-5 control: git diff -- src/x.ts is not write-capable a
 assert_eq "HARNESS-045 AC-5 control: --output-indicator-new is not --output" \
   "-" "$(wcand 'git log --output-indicator-new=+ src/x.ts')"
 
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-046 AC-5: valid_story_id is the one check, and it is a table"
+
+# The grammar is SETTLED in the story's Context and read out here, not
+# re-derived: the first character is a letter or digit; every character is a
+# letter, digit, '.', '_' or '-'. One assert_eq per id on "<status>|<output>",
+# stdout and stderr together, so "returns 0 and prints nothing" is one answer.
+# While the function is undefined, bash returns 127 and prints "command not
+# found" to stderr - captured here, so the suite reports every row red rather
+# than aborting on the first.
+#
+# The first eight accepted ids are AC-4's list and the first thirteen refused
+# ids are AC-1's eight plus AC-5's five. The rest pin the edges of the same
+# grammar: a leading '_' (the first-character rule), a '..' INSIDE an id (one
+# component, admitted), a trailing '/' or '-', a ':' and a glob '*' (which a
+# case pattern or an unquoted expansion would read as syntax).
+h46_vsid() { local o rc; o="$(valid_story_id "$1" 2>&1)"; rc=$?; printf '%s|%s' "$rc" "$o"; }
+
+for id in HARNESS-046 WORLD-014 T-1 T-A K-2 MT-071 a.b_c-1 x 9 x- a..b; do
+  assert_eq "HARNESS-046 AC-5: valid_story_id accepts '$id', silently" "0|" "$(h46_vsid "$id")"
+done
+
+# A for-list, NOT an array: Cygwin's bash 5.3 drops the CR from $'a\rb' inside
+# a compound array assignment `( ... )` - measured, 2026-10-09: the row arrived
+# as `ab`, which every grammar accepts, so the CR case asserted nothing.
+for id in '../OUTSIDE' 'a/b' 'a\b' '..' '.x' '-x' 'a b' $'A\nB' \
+          '' $'a\tb' $'a\rb' 'a;b' 'a$b' \
+          '_x' 'x/' 'a:b' 'a*b'; do
+  assert_eq "HARNESS-046 AC-5: valid_story_id refuses $(printf '%q' "$id"), silently" "1|" "$(h46_vsid "$id")"
+done
+
+# AC-5's pin on SHARED: AC-1..AC-3 would pass with three private regexes. Each
+# script must call the one function on a line that is not a comment - a
+# mention in a comment is not a call. Assignment, then a separate comparison:
+# check-grep-count.sh refuses a printing fallback on a `grep -c`.
+for s in scripts/new-story.sh scripts/gates.sh scripts/phase.sh; do
+  h46_calls="$(grep -c '^[^#]*valid_story_id' "$REPO_ROOT/$s")"
+  if [ "$h46_calls" -ge 1 ]; then h46_got=calls; else h46_got="does not call ($h46_calls lines)"; fi
+  assert_eq "HARNESS-046 AC-5: $s calls valid_story_id on a non-comment line" calls "$h46_got"
+done
+
 summary "lib"
