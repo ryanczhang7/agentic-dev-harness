@@ -4,8 +4,8 @@ title: Deny git log and git diff --output in settings.json
 slug: deny-git-log-and-git-diff-output-in-sett
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-047-deny-git-log-and-git-diff-output-in-sett
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/settings.json, .claude/tests/settings.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -124,8 +124,11 @@ export changes signature; there is no caller list.
 the amended block says.**
 
 - **C-1 The two lines (settled - read out, never re-derived).** Appended to
-  the `deny` array of `.claude/settings.json`, after the three
-  `MultiEdit(...)` entries, as the last two elements, byte for byte:
+  the `deny` array of `.claude/settings.json`, after the last
+  `MultiEdit(...)` entry, as the last two elements, byte for byte
+  (*corrected at GATES, 2026-10-10: this said "the three `MultiEdit(...)`
+  entries"; there are two - `grep -c 'MultiEdit(' .claude/settings.json` is
+  2. Prose only; the checker matches the lines anchored, not by position.*):
 
       "Bash(git log *--output*)",
       "Bash(git diff *--output*)"
@@ -200,19 +203,98 @@ the amended block says.**
   against the live file: the lines do not exist yet, so the live-file
   assertion is red and the copy is the same as the file. Paste the three
   outputs here, as a fenced block.
+
+  **Result (GATES, 2026-10-10, orchestrator on fable):** exactly as RED
+  predicted. `git_output_rules` (the C-2 checker, extracted from
+  `settings.test.sh`) over three copies of the live file taken at GATES:
+
+```
+--- live.json                       (the live .claude/settings.json, copied)
+(exit 0)
+--- none.json                       (both C-1 lines deleted with grep -v)
+deny has no "Bash(git log *--output*)"
+deny has no "Bash(git diff *--output*)"
+(exit 0)
+--- nodiff.json                     (only the git diff line deleted)
+deny has no "Bash(git diff *--output*)"
+(exit 0)
+```
+
+  `mutate.sh` was not used on the live file (C-3); the copies were made
+  under `.claude/state/` and removed afterwards.
 - **DV-2 (the audit's owner-observed check). Owner: REVIEW. May be WAIVED
   with a reason.** In a throwaway Claude Code session in default permission
   mode, on a checkout carrying this story's `settings.json` and with no
   user-level git allow or deny rules, ask the agent to run exactly
-  `git log -1 --format=probe --output=<a scratch path outside the project>`
-  and separately `git log -1 --oneline`; record for each whether a
-  permission prompt appeared and whether the file appeared. Expected from
-  the documented precedence: the first prompts (deny before allow), the
-  second does not. This is the platform fact no test here can observe; a
-  result either way goes also into
-  `docs/wiki/audits/security-2026-10-08.md` under `## Evidence`. If it is
-  not run, write `WAIVED` and why, and the audit keeps the lead at
-  `needs_validation` for the consent half.
+  `git log -1 --format=format:probe --output=<a scratch path outside the project>`
+  and separately `git log -1 --oneline`; record for each which of three
+  outcomes happened - **refused** (the tool call is denied, nothing runs),
+  **prompted** (a permission prompt appears), or **ran** without a prompt -
+  and whether the file appeared. Expected from the documented precedence:
+  the first is refused (deny before allow), the second runs without a
+  prompt. This is the platform fact no test here can observe; a result either
+  way goes also into `docs/wiki/audits/security-2026-10-08.md` under
+  `## Evidence`. If it is not run, write `WAIVED` and why, and the audit keeps
+  the lead at `needs_validation` for the consent half.
+
+  *Corrected at GATES, 2026-10-10 (the DV text, not a criterion).* This said
+  `--format=probe` and "the first prompts". Both were wrong, reported by
+  another session that ran the check in a throwaway session: (1) git treats a
+  `--format` value as a template only when it contains `%`
+  (`/mingw64/share/doc/git-doc/git-log.html:1747-1749` and `:2782`, read by
+  the orchestrator); a bare `probe` is looked up as a named pretty format, and
+  git exits 128 with `fatal: invalid --pretty format: probe` before writing
+  anything, so the file could never appear. `format:probe` is a template and
+  prints `probe`. The wrong form came from the audit's verifier, which said a
+  bare `--format=<string>` is tformat. (2) A matching deny rule refuses the
+  call; it does not prompt. That session's run was on the settings *before*
+  this story (no `--output` deny): nothing blocked it, and git failed on the
+  format. That is baseline evidence only, not DV-2's result.
+
+  **Result (2026-10-10, run in a throwaway session by another Claude
+  session on the user's behalf; recorded and checked by the orchestrator on
+  fable):** as expected - the `--output` probe was **refused**, the plain
+  `git log` **ran**.
+
+```
+setup:  Claude Code CLI v2.1.293, --permission-mode default,
+        cwd D:\agentic-dev-harness on story/HARNESS-047-... at c95c6d5 (GREEN),
+        settings.json deny holds Bash(git log *--output*) and Bash(git diff *--output*)
+        beside the Bash(git log:*) allow; no ~/.claude/settings.json, no settings.local.json.
+        Each command dispatched verbatim to a general-purpose subagent.
+
+1. git log -1 --format=format:probe --output=C:/Users/ryanc/AppData/Local/Temp/claude/D--agentic-dev-harness/a588a01f-a263-4932-adf0-5a9ffbd18110/scratchpad/probe-out.txt
+   outcome: REFUSED   2026-10-10T17:19:07Z..17:19:22Z
+   tool result (is_error true):
+     Permission to use Bash with command git log -1 --format=format:probe --output=C:/Users/ryanc/AppData/Local/Temp/claude/D--agentic-dev-harness/a588a01f-a263-4932-adf0-5a9ffbd18110/scratchpad/probe-out.txt has been denied.
+   file appeared: NO  ($ ls .../scratchpad/probe-out.txt -> No such file or directory)
+
+2. git log -1 --oneline
+   outcome: RAN, exit 0   2026-10-10T17:21:14Z..17:21:26Z
+   stdout: c95c6d5 HARNESS-047 GREEN: deny git log and git diff --output in settings.json
+
+transcripts: C:\Users\ryanc\.claude\projects\D--agentic-dev-harness\b33b57ef-afdc-41a1-a9bf-1f87e32a684c\subagents\
+             agent-aad4e5fb41e2f9d6b.jsonl (1), agent-a2c5e24d2af3d7426.jsonl (2)
+```
+
+  *What this does and does not establish.* The orchestrator read both
+  transcripts: the command strings, the denial text with `is_error:true`, and
+  the `--oneline` output are as quoted, and the scratch file does not exist.
+  The transcript does **not** record whether a permission dialog was shown:
+  "has been denied" is the same text for a deny rule and for a person
+  declining a prompt. The reporting session states no dialog appeared for
+  (1). For (2), the prompt column is **none shown in the session scrollback
+  the user pasted**: between the subagent being backgrounded and its "finished
+  · 11s" line, no approval dialog appears, and the main agent's summary reads
+  "ran without being blocked … exit code 0 and nothing on stderr". The user
+  did not state it in words, so it is recorded as the scrollback, not as a
+  user confirmation. With the baseline beside it - the same probe on the
+  pre-story settings was not blocked at all - the refusal follows this
+  story's deny line.
+
+  *Limit:* only `git log` was probed live. The `git diff *--output*` deny was
+  not exercised in a session; it is pinned by text only (AC-1, `settings`
+  suite). DV-2 does not ask for it, so this is a limit, not a failure.
 
 ## Out of scope
 
@@ -473,10 +555,21 @@ amendment). No change to the implementation approach.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-10T16:44:35Z
+    commit: c95c6d5
+    tree:   f0f79e81858d9e0f1cd47f3bcf7f47644a1b7659
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -505,6 +598,19 @@ amendment). No change to the implementation approach.
      named here. -->
 
 ## Notes
+
+**GATES → REVIEW (2026-10-10, orchestrator on fable).** Full self-test, run
+detached while the story was at GATES, nothing else running in this worktree:
+
+    $ bash scripts/selftest.sh
+    assertion floors: all 26 suite(s) met their declared floor (3151 assertions executed, 2942 declared).
+    26 harness suite(s) passed.
+    exit=0 duration=9196s
+
+153 minutes. `ps` counted 3 other `selftest.sh` processes on the host at the
+start and 8 at the end, from other sessions' worktrees; the contention is
+observed, its share of the time is not measured.
+
 
 **GREEN, 2026-10-10 (Feature Developer).** Ran on `opus` per the agent
 definition; the dispatch gave no override. Observed the RED failure first
@@ -565,6 +671,7 @@ name, below the table.
 - PLANNED: `lead-po` ran on **Fable 5.1** (`claude-fable-5-1`), the model its definition declares; the dispatching prompt stated no override and none was observed. 2026-10-08.
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. Amended C-4 (floor raised) in place; `touches:` widened to match by the orchestrator. 2026-10-10.
 - GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-10.
+- GATES: orchestrator on **Fable 5.1** ran DV-1 itself; no `feature-developer` dispatch (all gates unconfigured, nothing to fix). 2026-10-10.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
