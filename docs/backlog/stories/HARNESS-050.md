@@ -65,11 +65,18 @@ own `settings.json`.
 **Why after HARNESS-047.** HARNESS-047 edits the same `deny` array (appending
 `Bash(git log *--output*)` and `Bash(git diff *--output*)`) and the same suite
 (`git_output_rules`), and its Contract C-1 places its two lines "after the
-`MultiEdit(...)` entries, as the last two elements". That position is prose,
-not an assertion - its checker matches each line anchored wherever it is -
-but two stories editing one array in two worktrees would collide on every
-line. `depends_on: [HARNESS-047]`; this story starts once 047 is DONE and
-keeps 047's two lines as the last two elements.
+last `MultiEdit(...)` entry, as the last two elements". That position **is**
+asserted: besides `git_output_rules`, which matches each line anchored
+wherever it is, 047's RED added `C-1: settings.json is the live file with
+exactly the two lines appended to deny`, which `cmp`s the live file against
+a copy built from it with the two lines removed and re-appended after the
+last deny element. Deleting earlier deny rules leaves it green, since both
+sides derive from the live file; appending any deny entry after the two git
+lines, or moving them off the end, turns it red. Two stories editing one
+array in two worktrees would also collide on every line.
+`depends_on: [HARNESS-047]`; this story starts once 047 is DONE and keeps
+047's two lines as the last two elements, or changes that assertion in its
+own RED and says why.
 
 Required gate that fails if this story's artifact broke: `selftest`, through
 `.claude/tests/settings.test.sh` (`bash scripts/selftest.sh settings`).
@@ -166,7 +173,10 @@ the amended block says.**
   `Write(./.claude/state/last-gate-run)` and
   `MultiEdit(./.claude/state/last-gate-run)`. Nothing else in the file
   changes. HARNESS-047's `git_output_rules` keeps passing because it matches
-  each of its lines anchored, not by position.
+  each of its lines anchored, not by position; its position assertion
+  (`C-1: settings.json is the live file with exactly the two lines appended
+  to deny`) keeps passing because the two git lines stay last and the
+  removed lines all precede them.
 - **C-2 `problems` in `settings.test.sh`.** Same signature. Three checks
   survive and one is new; `TOOLS` is deleted, together with the comment
   block that justified each tool and the `settings_for <tool>...` fixture
