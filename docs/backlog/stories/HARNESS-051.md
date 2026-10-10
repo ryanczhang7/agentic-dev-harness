@@ -4,8 +4,8 @@ title: plan.sh refuses an id with no story file instead of recommending from not
 slug: plan-sh-refuses-an-id-with-no-story-file
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-051-plan-sh-refuses-an-id-with-no-story-file
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -195,13 +195,21 @@ says.
   must be empty. The existing `plan()` helper in `plan.test.sh` merges
   `2>&1`; RED adds (or amends) a capture that keeps the streams apart, since
   AC-1..AC-3 assert about each.
-- **`cmd_both` prints nothing on stdout** for a missing story. Today it
-  prints `Story <id>` *before* calling `cmd_next`; with `cmd_next` exiting
-  inside `nxt="$(cmd_next "$id")"` (`:313`, again a command substitution)
-  `cmd_both` would itself carry on unless it also checks. So GREEN must make
-  `cmd_both` stop after the `cmd_next` substitution fails, and the `Story`
-  header must not have been printed yet - either test the file first in
-  `cmd_both` or move the header after a successful `cmd_next`. RED pins the
+- **`cmd_both` prints nothing on stdout** for a missing story. ~~Today it
+  prints `Story <id>` *before* calling `cmd_next`~~ *(amended by RED,
+  2026-10-10: it does not - `scripts/plan.sh:313` is
+  `nxt="$(cmd_next "$id")"` and the `Story` header is printed after it, at
+  `:315`.)* With `cmd_next` exiting inside `nxt="$(cmd_next "$id")"` (`:313`,
+  again a command substitution) `cmd_both` would itself carry on unless it
+  also checks. So GREEN must make `cmd_both` stop when that substitution
+  fails: **`nxt="$(cmd_next "$id")" || exit $?` at `:313`**, before the
+  header. *(Amended by RED: the PO's alternative - testing the file first in
+  `cmd_both` - is withdrawn, because it would make DV-1 unable to observe
+  AC-3. DV-1 removes the exit from `cmd_next` only and requires AC-3 to go
+  red; a `cmd_both` that tests the file itself stops on its own, so AC-3
+  would stay green under that mutation and DV-1 would fail for a reason
+  that is not a defect. With the guard on the `cmd_next` substitution,
+  `cmd_both` depends on `cmd_next`'s exit, and DV-1 sees it.)* RED pins the
   observable: empty stdout, one stderr line, exit 2.
 - **Oracle partition.** Every criterion is *mechanical*: exact line counts,
   an exact message, an exact exit code, an empty stream. Pin them exactly;
@@ -309,6 +317,11 @@ name, below the table.
 
 - PLANNED, `lead-po`, 2026-10-10: **Fable 5.1** (`claude-fable-5-1`) - the
   agent's declared `model:`, matching the plan; no override reported.
+- RED, `test-developer`, 2026-10-10: **Opus 5.5** (`claude-opus-5-5`),
+  passed explicitly as `model: opus` by the orchestrator, matching the plan;
+  the agent reported its declared `model:` and no override. Orchestrating
+  `lead-po` for this phase (dispatched as a subagent, `/advance-story`):
+  **Fable 5.1** (`claude-fable-5-1`), no override reported.
 
 **Oracle partition for the RED brief:** all five criteria are *mechanical*
 (exact message, exact line counts, empty stream, exit code 2); nothing is
@@ -351,7 +364,191 @@ settled-by-measurement or oracle-free. Pin exactly; leave nothing open-ended.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Level: integration - each case runs the real `scripts/plan.sh` as a process
+from the suite's project fixture `$FIX`, stdin `</dev/null`, with stdout and
+stderr captured apart by a new helper `plan_split` (the existing `plan()`
+merges `2>&1` and is unchanged). All in `.claude/tests/plan.test.sh`, a new
+`describe "HARNESS-051: next, models and the bare id refuse a story that has
+no file"` placed directly after the existing AC-4 (`write T-99`) block and
+before `describe "conflicts: …"`. The id is `T-99`, the same one the AC-4
+block uses.
+
+| Assertion | AC |
+|---|---|
+| precondition: `docs/backlog/stories/T-99.md` is absent in the fixture | all |
+| `next T-99`: `grep -cx 'plan: no story at docs/backlog/stories/T-99\.md'` over stderr is 1 | AC-1 |
+| `next T-99`: stderr, whole, equals that one line | AC-1 |
+| `next T-99`: stdout equals `""` | AC-1 |
+| `next T-99`: exit status equals 2 | AC-1 |
+| `models T-99`: the same four (count 1, whole stderr, stdout `""`, exit 2) | AC-2 |
+| `T-99` (bare): the same four - count 1 is the "once, not twice" assertion | AC-3 |
+| `write T-99`: exit status equals 2 (the existing block asserts only non-zero) | AC-4 control |
+
+AC-4's own behaviour is pinned by the existing block at the old `:587-607`,
+untouched. AC-5 is the rest of the suite, untouched; no assertion outside the
+new block was edited.
+
 ## Handoff: RED -> GREEN
+
+**Command:** `bash scripts/selftest.sh plan` (from the worktree root). It is
+slow - about 30 minutes wall on this machine while other suites were running
+alongside; the new block itself is nine `plan.sh` invocations.
+
+**Failure output** (2026-10-10, local run, unfixed `scripts/plan.sh`; the
+eight FAIL lines are every FAIL in the run):
+
+```
+    FAIL AC-1: and recommends nothing on stdout
+         expected: 
+         actual:   complete-story	T-99 is an ordinary cycle: a contract to work from, 0 criteria, nothing deferred, no dependency waiting. Run it end to end.
+    FAIL AC-1: and exits 2
+         expected: 2
+         actual:   0
+    FAIL AC-2: and prints no model table on stdout
+         expected: 
+         actual:   PLANNED	lead-po	opus	planning is the judgement phase
+         RED	test-developer	opus	with no contract to hand RED, the thing that was measured is absent
+         GREEN	feature-developer	opus	a weaker model here reaches green by weakening a test
+         GATES	feature-developer	opus	same risk as GREEN
+         REVIEW	lead-po	opus	a wrong call here ships
+         SCAFFOLD	lead-po	opus	source, tests and config in one derivation
+    FAIL AC-2: and exits 2
+         expected: 2
+         actual:   0
+    FAIL AC-3: the bare form on an id with no story prints the no-story line once, not twice
+         expected: 1
+         actual:   2
+    FAIL AC-3: and that line is the whole of stderr
+         expected: plan: no story at docs/backlog/stories/T-99.md
+         actual:   plan: no story at docs/backlog/stories/T-99.md
+         plan: no story at docs/backlog/stories/T-99.md
+    FAIL AC-3: and prints no Story header, recommendation or model plan on stdout
+         expected: 
+         actual:   Story T-99
+         
+           Recommended:  /complete-story T-99
+           Because:      T-99 is an ordinary cycle: a contract to work from, 0 criteria, nothing deferred, no dependency waiting. Run it end to end.
+         
+           Model plan (from .claude/harness/models.conf — a plan, not a record;
+           write down what each dispatch RESOLVED to, in ## Model guidance):
+         
+             PLANNED   lead-po            opus   planning is the judgement phase
+             RED       test-developer     opus   with no contract to hand RED, the thing that was measured is absent
+             GREEN     feature-developer  opus   a weaker model here reaches green by weakening a test
+             GATES     feature-developer  opus   same risk as GREEN
+             REVIEW    lead-po            opus   a wrong call here ships
+             SCAFFOLD  lead-po            opus   source, tests and config in one derivation
+    FAIL AC-3: and exits 2
+         expected: 2
+         actual:   0
+
+plan: 254 passed, 8 failed
+```
+
+**Why each is the right failure.** Exactly the shape the story's negative
+control predicts: AC-1 and AC-2 see one stderr line (their count and
+whole-stderr assertions PASS today) but a recommendation / model table on
+stdout and exit 0 - the fall-through. AC-3 additionally sees the line twice,
+once per subshell die in `cmd_next` and `cmd_models`. No failure is a crash,
+a missing helper or a fixture problem; the suite ran to the end and every
+other assertion (including the existing AC-4 block and all conflicts / waves
+/ after cases) passed. 14 assertions were added (8 red, 6 green: the
+precondition, the AC-1/AC-2 count and whole-stderr checks, and the AC-4
+control).
+
+**Passed on arrival, and what earns each.**
+
+- AC-1 / AC-2 "exactly once" and "whole of stderr": green today *because*
+  today's single die is the correct output for those two streams; they are
+  earned as negative controls by the same run, where the AC-3 copies of the
+  identical assertions go red on the doubled line (`expected: 1 / actual: 2`).
+- precondition `T-99 absent`: a fixture fact, not a behaviour.
+- AC-4 control (`write T-99` exits 2): written against code that already
+  satisfies it, so earned by a mutation of exactly that exit:
+
+```
+=== mutate: scripts/plan.sh (1 line(s) changed by 367s/|| exit \$?$/|| exit 3/) ===
+  367 -   file="$(story_file "$id")" || exit $?
+  367 +   file="$(story_file "$id")" || exit 3
+    FAIL AC-4 control: 'write' on an id with no story exits 2, as next and models must
+         expected: 2
+         actual:   3
+plan: 253 passed, 9 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-051/.claude/state/mutations/scripts_plan.sh.20261010T192727Z.420037.bak) ===
+  367:   file="$(story_file "$id")" || exit $?
+```
+
+  (The other 8 FAILs in that run are the unfixed AC-1..AC-3 above. The
+  existing AC-4 "non-zero" block stayed green under exit 3, which is why the
+  control was worth adding.) `mutate.sh --check` afterwards: no stranded
+  mutation.
+
+**Files touched:** `.claude/tests/plan.test.sh` (new describe block only),
+`docs/backlog/stories/HARNESS-051.md` (`## Contract` cmd_both bullet amended
+in place, `## Test plan`, this section). No production file.
+
+**What the tests pin** (fact, not suggestion):
+
+- `bash scripts/plan.sh next T-99`, `models T-99`, `T-99` and `write T-99`,
+  run from the fixture with stdin `/dev/null`, each exit **exactly 2**.
+- For `next`, `models` and the bare form, stderr is **exactly the one line**
+  `plan: no story at docs/backlog/stories/T-99.md` (die's text, unchanged),
+  counted `grep -cx` = 1 and compared whole; for the bare form that means
+  **once**, so `cmd_models` must never be reached.
+- stdout is **exactly empty** for those three - no `Story T-99` header, no
+  blank line, nothing.
+- No interface: no function signature, no new subcommand, no file the tests
+  read besides stdout/stderr/exit.
+
+**What is left to GREEN:** the exact spelling of the early exits in
+`cmd_next` (`:254`) and `cmd_models` (`:191`) - `|| exit $?` is the idiom
+already at `:367`. For `cmd_both`, the Contract bullet is amended (see it):
+guard the substitution at `:313` (`nxt="$(cmd_next "$id")" || exit $?`). The
+`Story` header is already printed *after* that line (`:315`), contrary to the
+original Contract text, so no reordering is needed. Do not test the file
+separately in `cmd_both`: it would pass every test here but blind DV-1 (see
+the mutation table).
+
+**Mutation table (predictions; none run - the fix does not exist yet).**
+"Full fix" = early exit in `cmd_next`, `cmd_models`, and the `:313` guard in
+`cmd_both`.
+
+| Mutant (applied to the full fix) | AC-1 (4) | AC-2 (4) | AC-3 (4) | AC-4 + control |
+|---|---|---|---|---|
+| none (full fix) | green | green | green | green |
+| exit removed from `cmd_next` only (= DV-1) | stdout, exit red; count, whole-stderr green | green | all four red: `cmd_next` returns 0 with `complete-story`, guard does not fire, header printed, `cmd_models` dies inside the `| while` pipeline subshell -> 2 stderr lines, exit 0 | green |
+| exit removed from `cmd_models` only | green | stdout, exit red; count, whole-stderr green | green (cmd_both stops at `:313`, `cmd_models` never reached) | green |
+| `:313` guard removed from `cmd_both` only | green | green | all four red: `cmd_next` exits 2 in its substitution but `cmd_both` continues - header and `Recommended:  / T-99` on stdout, `cmd_models` dies once more (stderr count 2), exit 0 | green |
+| `cmd_both` tests the file itself instead of guarding `:313`, then DV-1 | AC-1 as DV-1 row | green | **all green** - DV-1's AC-3 expectation would fail for no defect | green |
+
+The last row is why the Contract was amended.
+
+**Negative controls - expected values** (measured on the unfixed tree in the
+run above; GREEN confirms against the fixed tree):
+
+| Control | Threshold | Unfixed (measured) | Fixed (expected) |
+|---|---|---|---|
+| no-story line count, `next` | = 1 | 1 | 1 |
+| no-story line count, `models` | = 1 | 1 | 1 |
+| no-story line count, bare | = 1 | **2** | 1 |
+| stdout bytes, `next` / `models` / bare | = "" | recommendation / 6-row table / full report | "" |
+| exit, `next` / `models` / bare | = 2 | 0 / 0 / 0 | 2 / 2 / 2 |
+| exit, `write` | = 2 | 2 (and 3 under the probe) | 2 |
+
+**Deferred verifications.** DV-1 cannot run in RED: the `cmd_next` exit it
+removes does not exist yet; it is GATES'. Its command shape in the story
+(`'254s/ || exit \$?$//'`) assumes GREEN's text ends the line with
+` || exit $?` at `:254` - re-check the line number after GREEN.
+
+**No caller list is owed.** No signature changes; checked with
+`grep -n 'story_file' scripts/plan.sh`: definition `:34`, callers `:191`
+(cmd_models), `:254` (cmd_next), `:367` (cmd_write), and the comment at `:348-349`.
+
+**Gates.** `bash scripts/gates.sh --fast`: every gate UNCONFIGURED (harness
+repo, `BOOTSTRAPPED=no`), "0 ran"; the real judge is `selftest`.
+`check-grep-count.sh` (49 files, 0 findings) and `check-sigpipe.sh` (49
+files, 0 findings) are clean with the new block. All timings above are from
+a local run; none from CI.
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
      to the Feature Developer, whose context is fresh. Must contain:
@@ -453,4 +650,44 @@ settled-by-measurement or oracle-free. Pin exactly; leave nothing open-ended.
 
 - `bash scripts/plan.sh HARNESS-051` recommends `/advance-story` because the
   story carries a Deferred verification (DV-1) that GATES must stop and run.
+- RED, 2026-10-10, in worktree `D:\adh-HARNESS-051` on the story branch
+  (from origin/main 544f233). **PO decision 1 - the Contract amendment RED
+  made is accepted.** RED struck the claim that `cmd_both` prints the
+  `Story` header before calling `cmd_next` and withdrew the "test the file
+  first in `cmd_both`" option. Checked independently by the orchestrator
+  against the tree, not from RED's text: `sed -n 311,315p scripts/plan.sh`
+  shows `nxt="$(cmd_next "$id")"` at `:313` and `printf 'Story %s\n\n'` at
+  `:315`, so the original bullet was wrong about the order. The withdrawal is
+  right for the reason RED gave: DV-1 removes the exit from `cmd_next` alone
+  and requires AC-3 to go red; a `cmd_both` that tests the file itself would
+  keep AC-3 green under that mutation, so DV-1 could only be satisfied by a
+  `cmd_both` that depends on `cmd_next`'s exit. GREEN builds the amended
+  bullet: `nxt="$(cmd_next "$id")" || exit $?` at `:313`. No acceptance
+  criterion changed, so no `## Amendments` entry is owed.
+- RED verification by the orchestrator: read the new block in
+  `.claude/tests/plan.test.sh` (14 assertions, streams captured apart,
+  `grep -cx` needles, exit compared to the number 2, no existing assertion
+  edited) and re-ran `bash scripts/selftest.sh plan` itself; the result is
+  pasted below once the run finished. `bash scripts/mutate.sh --check` was
+  clean after RED's AC-4-control probe.
+
+      $ bash scripts/selftest.sh plan        # orchestrator's own run, 2026-10-10
+          FAIL AC-1: and recommends nothing on stdout
+          FAIL AC-1: and exits 2
+          FAIL AC-2: and prints no model table on stdout
+          FAIL AC-2: and exits 2
+          FAIL AC-3: the bare form on an id with no story prints the no-story line once, not twice
+          FAIL AC-3: and that line is the whole of stderr
+          FAIL AC-3: and prints no Story header, recommendation or model plan on stdout
+          FAIL AC-3: and exits 2
+      plan: 254 passed, 8 failed
+      assertion floors: all 1 suite(s) met their declared floor (254 assertions executed, 42 declared).
+      1 of 1 harness suite(s) FAILED.
+      exit 1
+
+  The same eight FAIL lines as RED's handoff, and only those; the right
+  failures (fall-through on stdout and exit 0; the doubled line in the bare
+  form). `gates.sh --fast` has nothing to judge here (every gate is
+  unconfigured in the harness repo, `BOOTSTRAPPED=no`); `selftest` is the
+  gate.
 
