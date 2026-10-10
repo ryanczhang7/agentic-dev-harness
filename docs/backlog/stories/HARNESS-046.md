@@ -4,8 +4,8 @@ title: A story id is one path component
 slug: a-story-id-is-one-path-component
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-046-a-story-id-is-one-path-component
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/new-story.sh, scripts/gates.sh, scripts/phase.sh, .claude/tests/lib.test.sh, .claude/tests/new-story.test.sh, .claude/tests/phase.test.sh, .claude/tests/gates.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -243,6 +243,55 @@ the amended block says.**
   check). Restore verified after each. RED cannot run this: there is no
   function to neuter. Paste both mutate.sh outputs and the red assertion
   names here, as fenced blocks.
+
+  **Result (GATES, 2026-10-10, orchestrator on fable):** both predicted
+  sets, exactly. (a) `lib`: the 17 refused rows red, the 11 accepted rows
+  and the three call pins green. (b) `new-story`: AC-1's 8 red, AC-6's
+  two title checks green (independent of the id check). Each restore
+  verified; `--check` clean afterwards.
+
+```
+##### (a) lib
+=== mutate: .claude/hooks/lib.sh (1 line(s) changed by s/^  \[ -n "\$1" \] || return 1$/  return 0/) ===
+=== mutate: running bash scripts/selftest.sh lib ===
+    FAIL HARNESS-046 AC-5: valid_story_id refuses ../OUTSIDE, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses a/b, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses a\\b, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses .., silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses .x, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses -x, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses a\ b, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses $'A\nB', silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses '', silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses $'a\tb', silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses $'a\rb', silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses a\;b, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses a\$b, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses _x, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses x/, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses a:b, silently
+    FAIL HARNESS-046 AC-5: valid_story_id refuses a\*b, silently
+lib: 264 passed, 17 failed
+FAIL lib  did 264 units of work, below the floor of 281 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261010T054218Z.1643.bak) ===
+##### (b) new-story
+=== mutate: .claude/hooks/lib.sh (1 line(s) changed by s/^  \[ -n "\$1" \] || return 1$/  return 0/) ===
+=== mutate: running bash scripts/selftest.sh new-story ===
+    FAIL HARNESS-046 AC-1: new-story.sh ../OUTSIDE exits 2, prints the grammar message naming it, and writes nothing
+    FAIL HARNESS-046 AC-1: new-story.sh a/b exits 2, prints the grammar message naming it, and writes nothing
+    FAIL HARNESS-046 AC-1: new-story.sh a\\b exits 2, prints the grammar message naming it, and writes nothing
+    FAIL HARNESS-046 AC-1: new-story.sh .. exits 2, prints the grammar message naming it, and writes nothing
+    FAIL HARNESS-046 AC-1: new-story.sh .x exits 2, prints the grammar message naming it, and writes nothing
+    FAIL HARNESS-046 AC-1: new-story.sh -x exits 2, prints the grammar message naming it, and writes nothing
+    FAIL HARNESS-046 AC-1: new-story.sh a\ b exits 2, prints the grammar message naming it, and writes nothing
+    FAIL HARNESS-046 AC-1: new-story.sh $'A\nB' exits 2, prints the grammar message naming it, and writes nothing
+new-story: 45 passed, 8 failed
+FAIL new-story  did 45 units of work, below the floor of 53 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261010T054322Z.4686.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 ## Out of scope
 
@@ -574,10 +623,21 @@ table and its named `lib is floored at its 281` assertion. selftest green.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-10T05:43:51Z
+    commit: 33ab19f
+    tree:   78d83d0102b9e7c684ab0a338d74ba6fd7afe5c7
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -606,6 +666,22 @@ table and its named `lib is floored at its 281` assertion. selftest green.
      named here. -->
 
 ## Notes
+
+**GATES → REVIEW (2026-10-10, orchestrator on fable).** Full self-test, run
+detached while the story was at GATES, alone in this worktree and on the host
+(`ps`: no other `selftest.sh` at start or end):
+
+    $ bash scripts/selftest.sh
+    assertion floors: all 26 suite(s) met their declared floor (3139 assertions executed, 2930 declared).
+    26 harness suite(s) passed.
+    exit=0 duration=2477s
+
+41 minutes. `gates.sh` lines 74 and 580 are byte-identical to before the
+story (`cmp`), and the `sigpipe` suite that pins them passed within this run.
+One behaviour change beyond the criteria, from C-4's prescribed line:
+`gates.sh --story ""` is now refused (exit 2) instead of falling back to the
+state file; nothing in the tree passes an empty `--story`.
+
 
 ### GREEN (feature-developer, 2026-10-10)
 
@@ -697,6 +773,7 @@ name, below the table.
 - PLANNED: `lead-po` ran on **Fable 5.1** (`claude-fable-5-1`), the model its definition declares; the dispatching prompt stated no override and none was observed. 2026-10-08.
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. Amended C-1 (whole-message match) and C-6 (floors raised) in place. 2026-10-10.
 - GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-10.
+- GATES: orchestrator on **Fable 5.1** ran DV-1 itself; no `feature-developer` dispatch (all gates unconfigured, nothing to fix). 2026-10-10.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
