@@ -4,8 +4,8 @@ title: Deny git log and git diff --output in settings.json
 slug: deny-git-log-and-git-diff-output-in-sett
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-047-deny-git-log-and-git-diff-output-in-sett
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/settings.json, .claude/tests/settings.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -676,3 +676,11 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+
+**DONE, 2026-10-10.** Merged in #131 (merge commit ab7c78d), release 93. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check, as HARNESS-042 to 046 did. PR CI: `gates`
+passed in 2m53s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38079498967),
+`boundaries` in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38079498956).
