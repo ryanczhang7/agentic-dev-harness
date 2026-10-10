@@ -1493,4 +1493,89 @@ assert_eq "AC-4: so is a Bash redirect into it" "" \
 # The folder-name fallback: a directory elsewhere that merely shares A's name.
 assert_eq "AC-4: C:\\elsewhere\\<A's name>\\src\\main.ts is not A's src" "" \
   "$(h035_reason Write file_path "C:\\elsewhere\\${H035_A##*/}\\src\\main.ts")"
+
+# ---------------------------------------------------------------------------
+# HARNESS-045. `git log` and `git diff` take `--output=<file>` (and the two-word
+# `--output <file>`), which writes the command's output - with `--format`,
+# chosen bytes - to that file. Until this story the parser had no rule for it:
+# the verdict was `-`, no candidate was emitted, and frozen source could be
+# overwritten in RED with no trace. Every criterion is mechanical (C-5).
+describe "HARNESS-045 AC-1: a git --output target is judged as a write"
+set_phase "$FIX" RED
+
+assert_blocked "$FIX" 'git log -1 --format=x --output=src/main.ts' src/main.ts \
+  'HARNESS-045 AC-1: git log --output=src/main.ts overwrites frozen source in RED'
+assert_blocked "$FIX" 'git log -1 --format=x --output src/main.ts' src/main.ts \
+  'HARNESS-045 AC-1: the two-word form --output src/main.ts is the same write'
+assert_blocked "$FIX" 'git diff --output=src/main.ts HEAD' src/main.ts \
+  'HARNESS-045 AC-1: git diff --output=src/main.ts HEAD writes source too'
+assert_blocked "$FIX" 'git log --output="src/main.ts"' src/main.ts \
+  'HARNESS-045 AC-1: a quoted --output value is still the target'
+# C-4: the denial names what the operand is. assert_role also requires the
+# operand line to follow the path line, which assert_blocked depends on.
+assert_role "$FIX" 'git log -1 --format=x --output=src/main.ts' \
+  'operand:  destination of git --output' \
+  'HARNESS-045 C-4: the denial says the path is the destination of git --output'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-045 AC-2: the --output target is judged by its category, not refused outright"
+set_phase "$FIX" RED
+# Control: passes before the rule exists AND must keep passing after it. A rule
+# that refused every git --output would fail here.
+assert_allowed "$FIX" 'git log -1 --output=docs/notes.md' \
+  'HARNESS-045 AC-2 control: git log --output into docs is allowed in RED'
+
+set_phase "$FIX" GREEN
+assert_blocked "$FIX" 'git log -1 --output=tests/main.test.ts' tests/main.test.ts \
+  'HARNESS-045 AC-2: git log --output onto a frozen test is blocked in GREEN'
+# Control: source is writable in GREEN, so the same command onto source passes.
+assert_allowed "$FIX" 'git log -1 --output=src/main.ts' \
+  'HARNESS-045 AC-2 control: git log --output onto source is allowed in GREEN'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-045 AC-3: read-only git stays read-only"
+set_phase "$FIX" RED
+# Every one of these passes today and must still pass once git is a name the
+# parser knows. The first is the reason C-1 matches `--output` EXACTLY: the
+# `index(...) == 1` prefix test do_sed and do_mv use would read
+# --output-indicator-new=+ as a write, which writes no file.
+assert_allowed "$FIX" 'git log --output-indicator-new=+ -- src/main.ts' \
+  'HARNESS-045 AC-3: --output-indicator-new is not --output'
+assert_allowed "$FIX" 'git log --oneline -- src/main.ts' \
+  'HARNESS-045 AC-3: git log --oneline over source writes nothing'
+assert_allowed "$FIX" 'git diff -- src/main.ts' \
+  'HARNESS-045 AC-3: git diff -- src/main.ts writes nothing'
+assert_allowed "$FIX" 'git diff --stat' \
+  'HARNESS-045 AC-3: git diff --stat writes nothing'
+assert_allowed "$FIX" 'git diff --name-only' \
+  'HARNESS-045 AC-3: git diff --name-only (check-boundaries.sh) writes nothing'
+assert_allowed "$FIX" 'git diff --no-index a b' \
+  'HARNESS-045 AC-3: git diff --no-index a b (mutate.sh) writes nothing'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-045 AC-4: git mv and git rm keep the rules they already had"
+# The HARNESS-010 AC-3 block already pins both git mv verdicts (:965-972); these
+# restate them under this story's name and add the role, so a do_git that
+# handed the subcommand to the wrong rule (or to none) is named here.
+#
+# The phases are those of :965-972, not of AC-4's literal text: AC-4 says "in
+# GREEN" for both git mv cases, but source is WRITABLE in GREEN, so
+# `git mv src/main.ts docs/notes.md` is allowed there and always was; :965
+# asserts it in RED. See the story's Handoff - this is escalated, not settled.
+set_phase "$FIX" RED
+assert_blocked "$FIX" 'git mv src/main.ts docs/notes.md' src/main.ts \
+  'HARNESS-045 AC-4: git mv of source in RED is still judged by the mv rule'
+assert_role "$FIX" 'git mv src/main.ts docs/notes.md' \
+  'operand:  source of mv (removed by the move)' \
+  'HARNESS-045 AC-4: git mv reports the mv source role, not a git role'
+assert_blocked "$FIX" 'git rm src/main.ts' src/main.ts \
+  'HARNESS-045 AC-4: git rm of source in RED is judged by the rm rule'
+
+set_phase "$FIX" GREEN
+assert_blocked "$FIX" 'git mv tests/main.test.ts docs/notes.md' tests/main.test.ts \
+  'HARNESS-045 AC-4: git mv of a frozen test in GREEN is blocked on the test'
+assert_role "$FIX" 'git mv tests/main.test.ts docs/notes.md' \
+  'operand:  source of mv (removed by the move)' \
+  'HARNESS-045 AC-4: and the frozen test is named as the mv source'
+
 summary "phase-guard"

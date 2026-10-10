@@ -409,7 +409,7 @@ mutate_targets() {
 # hand each command its own operand list.
 _WC_AWK='
     function isname(w) {
-      return (w == "sed" || w == "tee" || w == "cp" || w == "mv" || w == "rm" || w == "touch")
+      return (w == "sed" || w == "tee" || w == "cp" || w == "mv" || w == "rm" || w == "touch" || w == "git")
     }
     function out(s)      { BUF = BUF s "\n" }
     function emit(t)     { if (t != "") out(t) }
@@ -550,6 +550,23 @@ _WC_AWK='
       }
     }
 
+    # git is not a write by itself (HARNESS-045). First, hand a subcommand the
+    # rules above already judge - git mv, git rm - to its own rule, walking past
+    # any global option before it. Otherwise the one git option whose purpose is
+    # to write a file: --output, matched EXACTLY, because --output-indicator-new,
+    # -old and -context write nothing, and git refuses any shorter abbreviation
+    # as ambiguous with them.
+    function do_git(a, b,   k, t) {
+      for (k = a; k <= b; k++) if (isname(tok[k]) && tok[k] != "git") { dispatch(tok[k], k + 1, b); return }
+      for (k = a; k <= b; k++) {
+        if (!islong(tok[k]) || longname(tok[k]) != "output") continue
+        WRITE = 1
+        if (LONGHAS) t = LONGVAL
+        else { k++; t = (k <= b) ? tok[k] : "" }
+        emitr(t, "destination of git --output")
+      }
+    }
+
     # rm and tee take every remaining operand, with no role: there is nothing
     # ambiguous about them, and inventing a role for one is the churn AC-5s own
     # control forbids.
@@ -559,6 +576,7 @@ _WC_AWK='
 
     function dispatch(name, a, b) {
       if (name == "sed") { do_sed(a, b); return }
+      if (name == "git") { do_git(a, b); return }
       WRITE = 1
       if (name == "tee" || name == "rm") { do_plain(a, b); return }
       if (name == "touch") { do_touch(a, b); return }
