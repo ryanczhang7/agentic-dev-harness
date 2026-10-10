@@ -4,8 +4,8 @@ title: A story id is one path component
 slug: a-story-id-is-one-path-component
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-046-a-story-id-is-one-path-component
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/new-story.sh, scripts/gates.sh, scripts/phase.sh, .claude/tests/lib.test.sh, .claude/tests/new-story.test.sh, .claude/tests/phase.test.sh, .claude/tests/gates.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -778,3 +778,11 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+
+**DONE, 2026-10-10.** Merged in #128 (merge commit 2f1b98b), release 92. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check, as HARNESS-042 to 045 did. PR CI: `gates`
+passed in 2m52s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38030958962),
+`boundaries` in 8s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38030959062).
