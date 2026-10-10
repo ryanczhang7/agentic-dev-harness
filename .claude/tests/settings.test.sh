@@ -127,6 +127,53 @@ problems() {
   return 0
 }
 
+# HARNESS-047. `git log` and `git diff` are allow-listed as read-only, and both
+# take `--output=<file>`, which writes anywhere the user can. The user chose to
+# keep the two allows and deny `--output` beside them (deny is evaluated before
+# allow). The checker below pins that text, mechanically: which entries, in
+# which array, spelled how. It is invisible to `problems` - neither direction
+# there sees a `Bash(...)` rule - and `problems` is invisible to it.
+#
+# The `:*` spelling is wrong mid-pattern: the platform recognises `:*` only at
+# the END of a rule, so `Bash(git log:*--output*)` is a rule that looks like a
+# deny and matches nothing. That is why every match here is anchored and whole.
+GIT_OUTPUT_DENY='Bash(git log *--output*)
+Bash(git diff *--output*)'
+GIT_OUTPUT_ALLOW='Bash(git diff:*)
+Bash(git log:*)'
+
+# array_lines <block> <settings>   Each element of the `"<block>": [` array, one
+# per line, trimmed and with its trailing comma removed: the text between the
+# line that opens the array and the next line that is only a `]`. No JSON
+# parser (rules.md, "Portability"); the file is read as lines, as `problems`
+# reads it.
+array_lines() {
+  awk -v k="\"$1\": [" '
+    { sub(/\r$/, "") }
+    f && /^[[:space:]]*\]/ { f = 0; next }
+    f { s = $0; sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s)
+        sub(/,$/, "", s); print s; next }
+    index($0, k) { f = 1 }' "$2"
+}
+
+# git_output_rules <settings>   One line per disagreement with HARNESS-047's
+# Contract C-1; silence means the deny array carries both `--output` rules and
+# the allow array still carries both git prefixes.
+git_output_rules() {
+  local settings="$1" deny allow rule n
+  deny="$(array_lines deny "$settings")"
+  allow="$(array_lines allow "$settings")"
+  while IFS= read -r rule; do
+    n="$(grep -cxF -- "\"$rule\"" <<< "$deny" || true)"
+    [ "${n:-0}" -gt 0 ] || printf 'deny has no "%s"\n' "$rule"
+  done <<< "$GIT_OUTPUT_DENY"
+  while IFS= read -r rule; do
+    n="$(grep -cxF -- "\"$rule\"" <<< "$allow" || true)"
+    [ "${n:-0}" -gt 0 ] || printf 'allow has no "%s"\n' "$rule"
+  done <<< "$GIT_OUTPUT_ALLOW"
+  return 0
+}
+
 SETTINGS="$REPO_ROOT/.claude/settings.json"
 README="$REPO_ROOT/.claude/state/README.md"
 
@@ -323,5 +370,126 @@ para="$(mutations_para "$README")"
 assert_contains "AC-6: the mutations/ paragraph is found" '`mutations/` is' "$para"
 assert_contains "AC-6: the mutations/ paragraph names a surviving .new" ".new" "$para"
 assert_contains "AC-6: and says it means the run was killed outright" "killed outright" "$para"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-047: git log and git diff stay allowed, and their --output is denied"
+
+# AC-1 and AC-2 on the live file. Red until GREEN appends the two C-1 lines to
+# the deny array: today it prints the two `deny has no` lines.
+assert_eq "AC-1/AC-2: the live settings.json denies git log/diff --output and still allows git log/diff" \
+  "" "$(git_output_rules "$SETTINGS")"
+
+# AC-3: fixture copies OF THE LIVE FILE, never hand-written, so that every
+# other line in them is the shipped one. Before GREEN the live file lacks the
+# C-1 lines, so a compliant copy is built by inserting them; after GREEN it
+# already has them. `edit_array` therefore first DROPS both and then ADDS what
+# a case wants, which yields the same text either side of GREEN.
+#
+# edit_array <file> <block> add|drop <rule>   In place. `add` appends "<rule>"
+# as the last element of that array, giving the element before it a comma;
+# `drop` removes the element that is exactly "<rule>", and the element left
+# last loses its comma. Indented six spaces, as the live file's elements are.
+edit_array() {
+  awk -v k="\"$2\": [" -v op="$3" -v r="\"$4\"" '
+    { sub(/\r$/, "") }
+    f && /^[[:space:]]*\]/ {
+      if (op == "add") {
+        if (last != "") { if (last !~ /,$/) last = last ","; print last }
+        print "      " r
+      } else if (last != "") { sub(/,$/, "", last); print last }
+      last = ""; f = 0; print; next
+    }
+    f {
+      t = $0; sub(/^[[:space:]]+/, "", t); sub(/[[:space:]]+$/, "", t); sub(/,$/, "", t)
+      if (op == "drop" && t == r) next
+      if (last != "") { if (last !~ /,$/) last = last ","; print last }
+      last = $0; next
+    }
+    index($0, k) { f = 1 }
+    { print }' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+}
+# without_c1   $FIX/live.json: the live file with neither C-1 line.
+without_c1() {
+  tr -d '\r' < "$SETTINGS" > "$FIX/live.json"
+  edit_array "$FIX/live.json" deny drop 'Bash(git log *--output*)'
+  edit_array "$FIX/live.json" deny drop 'Bash(git diff *--output*)'
+}
+# compliant   $FIX/live.json: the live file as C-1 says it must end up.
+compliant() {
+  without_c1
+  edit_array "$FIX/live.json" deny add 'Bash(git log *--output*)'
+  edit_array "$FIX/live.json" deny add 'Bash(git diff *--output*)'
+}
+g() { git_output_rules "$FIX/live.json"; }
+
+# Controls first: the checker is silent on the copy C-1 describes, and so on
+# the shape GREEN must produce. Passes today, as a fixture.
+compliant
+assert_eq "AC-3 control: a copy with both C-1 lines appended to deny produces nothing" "" "$(g)"
+# The same copy with CRLF line endings: a checkout that converts them must not
+# turn every anchored match into a miss.
+sed 's/$/\r/' "$FIX/live.json" > "$FIX/crlf.json"
+assert_eq "AC-3 control: the same copy with CRLF endings produces nothing" \
+  "" "$(git_output_rules "$FIX/crlf.json")"
+# The copy with neither line is what the live file is today: both complaints,
+# deny log first, and nothing about allow.
+without_c1
+assert_eq "AC-1 control: a copy with neither C-1 line names both, and nothing else" \
+  'deny has no "Bash(git log *--output*)"
+deny has no "Bash(git diff *--output*)"' "$(g)"
+
+# (a) one deny line removed, each way round.
+compliant
+edit_array "$FIX/live.json" deny drop 'Bash(git diff *--output*)'
+assert_eq "AC-3a: a copy missing the git diff deny names exactly that rule" \
+  'deny has no "Bash(git diff *--output*)"' "$(g)"
+compliant
+edit_array "$FIX/live.json" deny drop 'Bash(git log *--output*)'
+assert_eq "AC-3a: a copy missing the git log deny names exactly that rule" \
+  'deny has no "Bash(git log *--output*)"' "$(g)"
+
+# (b) the `:*` spelling, which the docs recognise only at the end of a rule.
+without_c1
+edit_array "$FIX/live.json" deny add 'Bash(git log:*--output*)'
+edit_array "$FIX/live.json" deny add 'Bash(git diff *--output*)'
+assert_eq "AC-3b: a deny spelled Bash(git log:*--output*) is a miss, named once" \
+  'deny has no "Bash(git log *--output*)"' "$(g)"
+
+# (c) the right strings in the wrong array: an allow is not a deny.
+without_c1
+edit_array "$FIX/live.json" allow add 'Bash(git log *--output*)'
+edit_array "$FIX/live.json" allow add 'Bash(git diff *--output*)'
+assert_eq "AC-3c: both deny strings moved into allow name both, and nothing else" \
+  'deny has no "Bash(git log *--output*)"
+deny has no "Bash(git diff *--output*)"' "$(g)"
+
+# AC-2's half: option B keeps the allows. Removing either is option A, and the
+# checker names it - so a checker that never read the allow array fails here.
+compliant
+edit_array "$FIX/live.json" allow drop 'Bash(git diff:*)'
+assert_eq "AC-2: a copy without the git diff allow names exactly that rule" \
+  'allow has no "Bash(git diff:*)"' "$(g)"
+compliant
+edit_array "$FIX/live.json" allow drop 'Bash(git log:*)'
+assert_eq "AC-2: a copy without the git log allow names exactly that rule" \
+  'allow has no "Bash(git log:*)"' "$(g)"
+# ...and an allow moved into deny is still missing from allow.
+compliant
+edit_array "$FIX/live.json" allow drop 'Bash(git log:*)'
+edit_array "$FIX/live.json" deny add 'Bash(git log:*)'
+assert_eq "AC-2: the git log allow moved into deny is still named as missing from allow" \
+  'allow has no "Bash(git log:*)"' "$(g)"
+
+# C-1's placement, byte for byte: the two lines are the LAST two elements of
+# deny, after the MultiEdit entries, six-space indent, comma on the line before
+# and none after - which is also what keeps the JSON valid, and nothing else
+# here could tell. Red until GREEN.
+compliant
+if tr -d '\r' < "$SETTINGS" | cmp -s - "$FIX/live.json"; then
+  _ok "C-1: settings.json is the live file with exactly the two lines appended to deny"
+else
+  _bad "C-1: settings.json is the live file with exactly the two lines appended to deny" \
+    "$(tr -d '\r' < "$SETTINGS" | diff - "$FIX/live.json")"
+fi
 
 summary "settings"
