@@ -548,7 +548,7 @@ reporting 27
 run-lock 140
 security-audit 51
 selftest 268
-settings 27
+settings 39
 shipped-docs 14
 sigpipe 82
 spawns 69
