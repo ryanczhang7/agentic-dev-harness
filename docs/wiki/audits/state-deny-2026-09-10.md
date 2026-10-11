@@ -176,3 +176,22 @@ early fails loudly instead of passing quietly.
 
 None; the harness records its own rounds in this directory rather than in
 `docs/backlog/`, which ships to consumers.
+
+## Update, 2026-10-10: the MultiEdit and Write rules were never matched
+
+At startup, Claude Code CLI v2.1.293 (observed 2026-10-10 in this checkout)
+printed, for each of the four rules this audit added beside the two `Edit`
+rules:
+
+    Permission deny rule (.claude\settings.json): MultiEdit(./.claude/state/last-gate-run) is not matched by file permission checks — only Edit(path) rules are. Use Edit(./.claude/state/last-gate-run) instead (Edit rules cover all file-editing tools).
+
+with the same line for each `Write(...)` and `MultiEdit(...)` rule, and
+`"MultiEdit(...)" matches no known tool` for the two `MultiEdit` rules. So the
+question this audit twice said it could not probe - whether a `MultiEdit(...)`
+deny is enforced - has an answer: it is not, because the runtime discards it;
+an `Edit(path)` rule is the one file deny rule matched, and it covers every
+file-editing tool. HARNESS-050 removed the four rules, rewrote
+`settings.test.sh` to demand only `Edit` rules and to report any other as dead,
+and corrected `.claude/state/README.md` and `rules.md`. Whether the remaining
+`Edit` rule refuses a `Write` tool call is observed in that story's DV-2.
+Nothing above this section is edited.
