@@ -5,7 +5,7 @@ slug: plan-sh-refuses-an-id-with-no-story-file
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-051-plan-sh-refuses-an-id-with-no-story-file
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -322,6 +322,12 @@ name, below the table.
   the agent reported its declared `model:` and no override. Orchestrating
   `lead-po` for this phase (dispatched as a subagent, `/advance-story`):
   **Fable 5.1** (`claude-fable-5-1`), no override reported.
+- GREEN, `feature-developer`, 2026-10-10: **Opus 5.5** (`claude-opus-5-5`),
+  passed explicitly as `model: opus` by the orchestrator, matching the plan;
+  the agent reported its declared `model:` and no sign of an override.
+  Orchestrating `lead-po` for this phase (dispatched as a subagent,
+  `/advance-story`, in worktree `D:\adh-HARNESS-051`): **Fable 5.1**
+  (`claude-fable-5-1`), no override reported.
 
 **Oracle partition for the RED brief:** all five criteria are *mechanical*
 (exact message, exact line counts, empty stream, exit code 2); nothing is
@@ -690,4 +696,56 @@ a local run; none from CI.
   form). `gates.sh --fast` has nothing to judge here (every gate is
   unconfigured in the harness repo, `BOOTSTRAPPED=no`); `selftest` is the
   gate.
+- GREEN, 2026-10-10, in worktree `D:\adh-HARNESS-051`. Before GREEN the
+  branch merged `origin/main` (HARNESS-047, harness release 93) cleanly as
+  `b1ca52d`; `doctor.sh`'s worktree row reads `harness 93 (2026-10-10)`,
+  the same as the main checkout. The merge moved no line in
+  `scripts/plan.sh`: `grep -n 'story_file "\$id"\|cmd_next "\$id"'` still
+  gives `:191`, `:254`, `:313`, `:367`. The feature-developer made the
+  three-line change the amended Contract names and nothing else
+  (`git diff --stat`: `scripts/plan.sh | 6 +++---`, no test file):
+
+      191:  local file id; id="$1"; file="$(story_file "$id")" || exit $?
+      254:  local file id; id="$1"; file="$(story_file "$id")" || exit $?
+      313:  nxt="$(cmd_next "$id")" || exit $?
+
+  Verified by the orchestrator, not from the report: a manual run from the
+  worktree with `HARNESS-999` (no file), stdin `/dev/null`:
+
+      [next]   exit=2 stdout=0b stderr_lines=1 :: plan: no story at docs/backlog/stories/HARNESS-999.md
+      [models] exit=2 stdout=0b stderr_lines=1 :: plan: no story at docs/backlog/stories/HARNESS-999.md
+      [bare]   exit=2 stdout=0b stderr_lines=1 :: plan: no story at docs/backlog/stories/HARNESS-999.md
+      $ bash scripts/plan.sh next HARNESS-051 </dev/null
+      advance-story	HARNESS-051 is already in GREEN; advance it to GATES. ...
+      exit=0
+
+  Negative controls confirmed against the fixed tree (handoff table, "Fixed
+  (expected)" column): line count 1/1/1, stdout empty for all three, exit
+  2/2/2, `write` exit 2 - all as RED predicted. The feature-developer's own
+  `bash scripts/selftest.sh plan` run: `plan: 262 passed, 0 failed`,
+  `1 harness suite(s) passed.`, exit 0 (254 + the 8 that were red). The
+  orchestrator's own run is pasted below. `gates.sh --fast`: all gates
+  UNCONFIGURED, 0 ran, exit 0. `check-sigpipe.sh`: 49 files, 0 findings.
+  `check-grep-count.sh`: 49 files, 0 findings. No `plan.sh` line is pinned
+  by a sigpipe test (`grep -n 'plan\.sh' .claude/tests/*sigpipe*.test.sh`
+  is empty). `mutate.sh --check`: no stranded mutation. DV-1's command shape
+  (`'254s/ || exit \$?$//'`) applies as written; it is GATES' to run.
+
+      $ bash scripts/selftest.sh plan        # orchestrator's own run, 2026-10-10, worktree D:\adh-HARNESS-051
+      plan: 262 passed, 0 failed
+      assertion floors: all 1 suite(s) met their declared floor (262 assertions executed, 42 declared).
+      1 harness suite(s) passed.
+      real	27m35.884s
+      exit=0
+      (0 FAIL lines in the log)
+
+  Guards, orchestrator's own run after the self-test: `check-sigpipe: scanned
+  49 shell file(s), 45 with pipefail, 0 finding(s)` (exit 0);
+  `check-grep-count: scanned 49 shell file(s), 0 finding(s)` (exit 0);
+  `mutate: no stranded mutation`. `bash scripts/gates.sh --fast`: `All
+  required gates passed (0 ran, 5 unconfigured, 0 known)`, exit 0, not
+  recorded (partial run). The self-test holds the worktree run-lock while it
+  runs, so `gates.sh` waited for it; the feature-developer hit the same
+  refusal (exit 2) once and re-ran after. GREEN ends here; GATES is next
+  and runs DV-1 before the full `gates.sh`.
 
