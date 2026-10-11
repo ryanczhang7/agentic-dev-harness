@@ -5,7 +5,7 @@ slug: only-edit-path-deny-rules-protect-the-st
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-050-only-edit-path-deny-rules-protect-the-st
 depends_on: [HARNESS-047]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/settings.json, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/harness/rules.md, docs/wiki/audits/state-deny-2026-09-10.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -349,6 +349,7 @@ name, below the table.
 **Resolved:**
 
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. Escalated AC-5 rather than amending it; amendments A-1 and A-2 approved by the user. 2026-10-11.
+- GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-11.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -695,3 +696,61 @@ not bootstrapped, all five gates are UNCONFIGURED, and the suite is judged by
   HARNESS-047 shares `.claude/settings.json` and
   `.claude/tests/settings.test.sh`; resolved by `depends_on`, not by running
   the two side by side.
+- **GREEN, 2026-10-10/11, `feature-developer`.** Resolved model **Opus 5.5**
+  (`claude-opus-5-5`), as the definition declares (`opus`); no override in the
+  dispatch. RED's failure reproduced first: `settings: 59 passed, 11 failed`.
+  Three writes, staged, not committed, phase not changed:
+  - `.claude/settings.json`: the four lines `Write(...current-story.env)`,
+    `MultiEdit(...current-story.env)`, `Write(...last-gate-run)`,
+    `MultiEdit(...last-gate-run)` deleted with one Edit; deny is now C-1's
+    seven lines in order, 047's Bash pair last. Nothing else in the file
+    changed (PreToolUse matcher untouched). Checked by eye: every element but
+    the last ends in a comma, the file ends `}` newline.
+  - `.claude/state/README.md`, "The `Hand-editable` column is enforced": the
+    first paragraph now says settings.json denies `Edit` on exactly the `no`
+    rows; the `TOOLS` paragraph is replaced by AC-5's sentence on its own line,
+    then the explanation (another tool's rule is not matched, the runtime
+    warns at startup and discards it, the suite reports it as dead, and
+    `NotebookEdit` is covered by the `Edit` rule). "Verified by probe"
+    paragraph unchanged. **One deviation from C-3's prose:** C-3 says the paragraph
+    names "a `Write(path)` or `MultiEdit(path)` rule", but AC-5 forbids
+    `Write(` and `MultiEdit(` anywhere in the section, so it says "a rule
+    naming the path under another file-editing tool" instead.
+  - `.claude/harness/rules.md`, the `.claude/state/**` bullet: "denied to
+    `Write`, `Edit` and `MultiEdit` in `settings.json`" -> "denied to `Edit` in
+    `settings.json` - the one file deny rule the runtime matches, and it covers
+    `Write` and `MultiEdit` too", plain ` - `; rest of the bullet unchanged.
+  - Results (local, Windows 11, Git Bash):
+
+        bash scripts/selftest.sh settings  -> settings: 70 passed, 0 failed
+                                              assertion floors: all 1 suite(s) met their declared floor (70 assertions executed, 70 declared).
+        bash scripts/selftest.sh shipped-docs -> shipped-docs: 14 passed, 0 failed (floor 14/14)
+        bash scripts/selftest.sh reporting -> reporting: 27 passed, 0 failed (floor 27/27)
+        bash scripts/check-sigpipe.sh      -> check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+        bash scripts/check-grep-count.sh   -> check-grep-count: scanned 49 shell file(s), 0 finding(s)
+        bash scripts/gates.sh --fast       -> All required gates passed (0 ran, 5 unconfigured, 0 known).
+        bash scripts/mutate.sh --check     -> mutate: no stranded mutation; nothing of a previous run is in the tree.
+        bash scripts/selftest.sh (2nd run) -> assertion floors: all 26 suite(s) met their declared floor (3182 assertions executed, 2973 declared).
+                                              26 harness suite(s) passed.
+
+    The **first** full `selftest.sh` run ended `assertion floors: 25 of 26
+    suite(s) met their declared floor. / 1 of 26 harness suite(s) FAILED.`;
+    its output was piped through a filter that kept only the last 15 lines,
+    and the failing suite's name was not among them. Which suite and why is
+    **not known**. Other `selftest.sh` processes (another session, and
+    `fantasy-world-builder`'s suite) were running on the machine at the same
+    time. The rerun, with nothing changed in the tree, passed all 26 suites.
+    GATES should run the full suite once more and look for it.
+  - All of 047's assertions (`git_output_rules` and `C-1: settings.json is the
+    live file with exactly the two lines appended to deny`) are among the 70
+    passes.
+  - **Negative controls, measured against the shipped files:** the AC-1 shape
+    reader (the function was copied from the suite into the scratchpad and run
+    against copies built the way the suite builds them) gives `live: []`,
+    trailing-comma copy `trailing comma before line 31`, missing-comma copy
+    `missing comma before line 25` - the same as RED's "yes". The three AC-3
+    "spelled Edit" controls are exact `assert_eq ""` and pass, so they measure
+    `""`, as RED found. Yes-row control: no `is dead` (passes). AC-5 readers:
+    `Verified by probe` count 1 in README, `phase-guard-declined.log` count 1
+    in rules.md - both present. AC-6 `1 1` control and 047's controls pass. No
+    control diverges from RED.
