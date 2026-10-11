@@ -4,8 +4,8 @@ title: Only Edit(path) deny rules protect the state files
 slug: only-edit-path-deny-rules-protect-the-st
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-050-only-edit-path-deny-rules-protect-the-st
 depends_on: [HARNESS-047]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/settings.json, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/harness/rules.md, docs/wiki/audits/state-deny-2026-09-10.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -340,6 +340,18 @@ $ bash scripts/selftest.sh settings
   the story stops at REVIEW rather than merging: put it to the user with the
   observation. Nothing in this repository can run this, which is why it is
   REVIEW's.
+
+  **Status (2026-10-11, at DONE): NOT RUN.** The PR (#134) was merged by
+  the user before DV-2's observation was made or recorded; the orchestrator
+  had asked for it at REVIEW, and the PR body said "Do not merge until DV-2
+  is recorded". It is not `WAIVED` - no one decided it was unneeded - and it
+  did not pass. What stands: the removed rules were discarded by the runtime
+  per its own startup warning (Context), so the merged change removes nothing
+  the runtime was enforcing; what is **unconfirmed** is that the remaining
+  `Edit(./.claude/state/last-gate-run)` rule refuses a `Write` tool call. If
+  it is run later, its result goes here and in
+  `docs/wiki/audits/state-deny-2026-09-10.md`'s update; if (b) is not
+  refused, the two `Write` rules go back in a new story.
 
 ## Amendments
 
@@ -835,3 +847,13 @@ FAILED` (suite name lost to a `tail`, under contention) did not recur here.
     `Verified by probe` count 1 in README, `phase-guard-declined.log` count 1
     in rules.md - both present. AC-6 `1 1` control and 047's controls pass. No
     control diverges from RED.
+
+**DONE, 2026-10-11.** Merged in #134 (merge commit b7c7c8b), release 94. The
+VERSION bump lands in this DONE commit. `phase.sh set DONE --force` was run on
+`main`, overriding the branch check, as HARNESS-042 to 047 did. PR CI: `gates`
+passed in 2m52s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38110214333),
+`boundaries` in 5s
+(https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38110214299).
+**DV-2 was not run before merge** - see its status under `## Deferred
+verifications`.

@@ -193,5 +193,5 @@ an `Edit(path)` rule is the one file deny rule matched, and it covers every
 file-editing tool. HARNESS-050 removed the four rules, rewrote
 `settings.test.sh` to demand only `Edit` rules and to report any other as dead,
 and corrected `.claude/state/README.md` and `rules.md`. Whether the remaining
-`Edit` rule refuses a `Write` tool call is observed in that story's DV-2.
+`Edit` rule refuses a `Write` tool call was to be observed in that story's DV-2; as of 2026-10-11 it was not run before the story merged, so that half is unconfirmed.
 Nothing above this section is edited.
