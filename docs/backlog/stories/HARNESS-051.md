@@ -5,7 +5,7 @@ slug: plan-sh-refuses-an-id-with-no-story-file
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-051-plan-sh-refuses-an-id-with-no-story-file
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -277,6 +277,60 @@ says.
 
   Paste the failing assertion names and the restore line here.
 
+  **Result (GATES, 2026-10-10, worktree `D:\adh-HARNESS-051`, HEAD
+  `0e5df4f`, run by the orchestrator).** Line 254 confirmed first as the
+  `cmd_next` assignment ending ` || exit $?`. The mutation went red exactly
+  where DV-1 requires: AC-1's stdout and exit assertions, AC-3's "once, not
+  twice", whole-stderr and empty-stdout assertions; the `write T-99` block
+  (AC-4) and its control stayed green; AC-2 stayed green (its guard at `:191`
+  was untouched). 26m52s wall. Every FAIL in the run:
+
+  ```
+  === mutate: scripts/plan.sh (1 line(s) changed by 254s/ || exit \$?$//) ===
+    254 -   local file id; id="$1"; file="$(story_file "$id")" || exit $?
+    254 +   local file id; id="$1"; file="$(story_file "$id")"
+  === mutate: running bash scripts/selftest.sh plan ===
+    HARNESS-051: next, models and the bare id refuse a story that has no file
+      FAIL AC-1: and recommends nothing on stdout
+           expected:
+           actual:   complete-story	T-99 is an ordinary cycle: a contract to work from, 0 criteria, nothing deferred, no dependency waiting. Run it end to end.
+      FAIL AC-1: and exits 2
+           expected: 2
+           actual:   0
+      FAIL AC-3: the bare form on an id with no story prints the no-story line once, not twice
+           expected: 1
+           actual:   2
+      FAIL AC-3: and that line is the whole of stderr
+           expected: plan: no story at docs/backlog/stories/T-99.md
+           actual:   plan: no story at docs/backlog/stories/T-99.md
+           plan: no story at docs/backlog/stories/T-99.md
+      FAIL AC-3: and prints no Story header, recommendation or model plan on stdout
+           expected:
+           actual:   Story T-99
+                     Recommended:  /complete-story T-99
+                     Because:      T-99 is an ordinary cycle: ...
+                     Model plan (from .claude/harness/models.conf ...
+  plan: 257 passed, 5 failed
+  1 of 1 harness suite(s) FAILED.
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-051/.claude/state/mutations/scripts_plan.sh.20261011T012909Z.398215.bak) ===
+    254:   local file id; id="$1"; file="$(story_file "$id")" || exit $?
+  ```
+
+  Afterwards `bash scripts/mutate.sh --check`: `no stranded mutation`, and
+  `cmp <(git show HEAD:scripts/plan.sh) scripts/plan.sh` is silent -
+  `plan.sh` is byte-identical to HEAD.
+
+  *One assertion the handoff's mutation table predicted red stayed green:*
+  AC-3 "and exits 2" (the table's DV-1 row says "all four red ... exit 0").
+  Read from the code, not guessed: in `cmd_both` the last command is the
+  pipeline `cmd_models "$id" | while ... done` (`:322-324`), and under the
+  script's `pipefail` the now-guarded `cmd_models` (`:191`) exiting 2 inside
+  that pipeline makes the pipeline's status, and so the function's and the
+  script's, 2. The table was written in RED against a tree where
+  `cmd_models` was still unguarded, so its "exit 0" belonged to that tree.
+  DV-1's own condition - AC-1 red, AC-3's one-line/empty-stdout assertions
+  red, AC-4 green - is met in full; 5 red of the 6 the table named.
+
 That is the rules.md budget: one defect-put-back for the central claim. No
 test here is written against existing behaviour that already passes
 (AC-4 and AC-5 are controls over cases that already exist in the suite and
@@ -327,6 +381,12 @@ name, below the table.
   the agent reported its declared `model:` and no sign of an override.
   Orchestrating `lead-po` for this phase (dispatched as a subagent,
   `/advance-story`, in worktree `D:\adh-HARNESS-051`): **Fable 5.1**
+  (`claude-fable-5-1`), no override reported.
+- GATES, 2026-10-10, in worktree `D:\adh-HARNESS-051`: no
+  `feature-developer` dispatch was needed - DV-1 and the full `gates.sh`
+  were run by the orchestrator itself and nothing failed, so the planned
+  `opus` row had no dispatch to resolve. Orchestrating `lead-po` for this
+  phase (dispatched as a subagent, `/advance-story`): **Fable 5.1**
   (`claude-fable-5-1`), no override reported.
 
 **Oracle partition for the RED brief:** all five criteria are *mechanical*
@@ -601,10 +661,21 @@ a local run; none from CI.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-11T01:57:02Z
+    commit: 0e5df4f
+    tree:   cdc2c4c5aac87448db49cae5fdcc08458353b9de
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -748,4 +819,19 @@ a local run; none from CI.
   runs, so `gates.sh` waited for it; the feature-developer hit the same
   refusal (exit 2) once and re-ran after. GREEN ends here; GATES is next
   and runs DV-1 before the full `gates.sh`.
+- GATES, 2026-10-10/11, in worktree `D:\adh-HARNESS-051` on HEAD `0e5df4f`,
+  by the orchestrator (no feature-developer dispatch: nothing failed). Order
+  as `/advance-story` says: phase set, then DV-1 through `mutate.sh` against
+  the `plan` suite only (result pasted under `## Deferred verifications`,
+  26m52s, restore verified, `mutate.sh --check` clean, `plan.sh`
+  byte-identical to HEAD), then the full `bash scripts/gates.sh`, which
+  recorded itself above: `All required gates passed (0 ran, 7 unconfigured,
+  0 known)`, exit 0 - the harness repo has `BOOTSTRAPPED=no`, so `selftest`
+  is the real judge and the whole self-test is the first step of
+  GATES -> REVIEW, not of this phase. One surprise, recorded beside DV-1:
+  the handoff's mutation table predicted AC-3 "exits 2" red under DV-1 and
+  it stayed green, because the guarded `cmd_models` exits 2 inside
+  `cmd_both`'s final pipeline under `pipefail`; the table was written
+  against the unguarded tree. No assertion, no test and no source line was
+  changed in this phase.
 
