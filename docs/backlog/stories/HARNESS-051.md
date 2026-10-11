@@ -4,8 +4,8 @@ title: plan.sh refuses an id with no story file instead of recommending from not
 slug: plan-sh-refuses-an-id-with-no-story-file
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-051-plan-sh-refuses-an-id-with-no-story-file
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -388,6 +388,12 @@ name, below the table.
   `opus` row had no dispatch to resolve. Orchestrating `lead-po` for this
   phase (dispatched as a subagent, `/advance-story`): **Fable 5.1**
   (`claude-fable-5-1`), no override reported.
+- GATES -> REVIEW, 2026-10-11, in worktree `D:\adh-HARNESS-051`: no
+  specialist dispatch - the merge of origin/main, the gates re-run, the full
+  self-test, the commit and the PR were the orchestrator's own work.
+  Orchestrating `lead-po` (dispatched as a subagent, `/advance-story`):
+  **Fable 5.1** (`claude-fable-5-1`), the agent's declared `model:`; no
+  override reported. The planned REVIEW row (`fable`) therefore matches.
 
 **Oracle partition for the RED brief:** all five criteria are *mechanical*
 (exact message, exact line counts, empty stream, exit code 2); nothing is
@@ -663,9 +669,9 @@ a local run; none from CI.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-11T01:57:02Z
-    commit: 0e5df4f
-    tree:   cdc2c4c5aac87448db49cae5fdcc08458353b9de
+    run:    2026-10-11T20:35:32Z
+    commit: 0993beb
+    tree:   799ea67cae124b69d5a1aee9c578db7cfb0487b2
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -834,4 +840,32 @@ a local run; none from CI.
   `cmd_both`'s final pipeline under `pipefail`; the table was written
   against the unguarded tree. No assertion, no test and no source line was
   changed in this phase.
+- GATES -> REVIEW, 2026-10-11, in worktree `D:\adh-HARNESS-051`, by the
+  orchestrator (`lead-po`, resolved to **Fable 5.1**, `claude-fable-5-1`, no
+  override reported; no specialist dispatch - nothing failed). First the
+  branch merged `origin/main` (HARNESS-050, PR #134, harness release 94)
+  cleanly as `0993beb`; the merge touched no file this story writes
+  (`scripts/plan.sh`, `.claude/tests/plan.test.sh` unchanged by it). Because
+  the tree changed, the full `bash scripts/gates.sh` was re-run after
+  `mutate.sh --check` (`no stranded mutation`) and re-stamped itself above:
+  commit `0993beb`, tree `799ea67cae124b69d5a1aee9c578db7cfb0487b2`,
+  `All required gates passed (0 ran, 7 unconfigured, 0 known)`, exit 0.
+  Then the whole self-test, every suite, once, detached, with nothing else
+  run in this worktree until it exited:
+
+      $ bash scripts/selftest.sh            # orchestrator's own run, 2026-10-11, D:\adh-HARNESS-051 at 0993beb
+      ... 26 suites, every one `N passed, 0 failed` (plan: 262 passed, 0 failed); 0 FAIL lines
+      assertion floors: all 26 suite(s) met their declared floor (3196 assertions executed, 2973 declared).
+      26 harness suite(s) passed.
+      exit=0
+      duration=11909s   (3h18m wall)
+
+  The duration is far past the ~25 min earlier stories recorded. Checked
+  before blaming the host, as `/advance-story` says: `ps` showed a second
+  `scripts/selftest.sh` (pid 1746, started 15:30, from another session's
+  checkout, plus a `/d/manga-translator` suite) running the whole time -
+  other sessions' work, not an orphan of this one, so it was left alone and
+  this run simply shared the machine. Afterwards: `check-sigpipe: scanned 49
+  shell file(s), 45 with pipefail, 0 finding(s)` (exit 0);
+  `check-grep-count: scanned 49 shell file(s), 0 finding(s)` (exit 0).
 
