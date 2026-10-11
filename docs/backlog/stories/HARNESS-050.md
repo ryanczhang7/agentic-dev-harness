@@ -4,8 +4,8 @@ title: Only Edit(path) deny rules protect the state files
 slug: only-edit-path-deny-rules-protect-the-st
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-050-only-edit-path-deny-rules-protect-the-st
 depends_on: [HARNESS-047]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/settings.json, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/harness/rules.md, docs/wiki/audits/state-deny-2026-09-10.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -275,6 +275,58 @@ the amended block says.**
   `bash scripts/mutate.sh .claude/tests/settings.test.sh 's|^SETTINGS=.*|SETTINGS="$REPO_ROOT/.claude/state/dv1-<a|b>.json"|' -- bash scripts/selftest.sh settings`
   after writing the two copies, confirm the suite is green again on the
   restored file, and paste the output here.
+
+  **Result (GATES, 2026-10-11, orchestrator on fable):** both cases exactly
+  as RED predicted, `66 passed, 4 failed` each. (a) The copy with
+  `Write(./.claude/state/last-gate-run)` re-added after the `Edit` line
+  fails `no disagreements` with exactly that rule's dead-rule line; (b) the
+  copy with `Edit(./.claude/state/last-gate-run)` removed fails it with
+  exactly the `not hand-editable` line and fails
+  `Edit(./.claude/state/last-gate-run) is denied`. The AC-1 count and
+  whole-array checks go red with them, as predicted. Copies made with
+  `awk`/`grep -v` from the committed file into `.claude/state/` and removed
+  afterwards; the suite was green on the restored file.
+
+```
+$ diff .claude/settings.json .claude/state/dv1-a.json
+28a29
+>       "Write(./.claude/state/last-gate-run)",
+$ diff .claude/settings.json .claude/state/dv1-b.json
+28d27
+<       "Edit(./.claude/state/last-gate-run)",
+##### DV-1 (a)
+=== mutate: .claude/tests/settings.test.sh (1 line(s) changed by s|^SETTINGS=.*|SETTINGS="$REPO_ROOT/.claude/state/dv1-a.json"|) ===
+=== mutate: running bash scripts/selftest.sh settings ===
+    FAIL no disagreements
+         expected:
+         actual:   "Write(./.claude/state/last-gate-run)" is dead: only Edit(path) rules are matched by file permission checks
+    FAIL AC-1: exactly one deny rule names ./.claude/state/last-gate-run
+         expected: 1
+         actual:   2
+    FAIL AC-1: no Write(...) deny rule names a path under ./.claude/state/
+         expected: 0
+         actual:   1
+    FAIL AC-1/C-1: the deny array is exactly the seven C-1 rules, in order
+settings: 66 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .../mutations/.claude_tests_settings.test.sh.20261011T020917Z.4695...)
+##### DV-1 (b)
+=== mutate: .claude/tests/settings.test.sh (1 line(s) changed by s|^SETTINGS=.*|SETTINGS="$REPO_ROOT/.claude/state/dv1-b.json"|) ===
+=== mutate: running bash scripts/selftest.sh settings ===
+    FAIL no disagreements
+         expected:
+         actual:   last-gate-run: not hand-editable, but settings.json has no "Edit(./.claude/state/last-gate-run)"
+    FAIL Edit(./.claude/state/last-gate-run) is denied
+    FAIL AC-1: exactly one deny rule names ./.claude/state/last-gate-run
+         expected: 1
+         actual:   0
+    FAIL AC-1/C-1: the deny array is exactly the seven C-1 rules, in order
+settings: 66 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .../mutations/.claude_tests_settings.test.sh.20261011T021006Z.4710...)
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+$ bash scripts/selftest.sh settings
+1 harness suite(s) passed.
+```
 - **DV-2 - the runtime claim behind the fix. Owner: REVIEW.** Condition: in
   a throwaway, logged-in, interactive Claude Code session started in a
   checkout of this story's branch at the PR head (so `.claude/settings.json`
@@ -350,6 +402,7 @@ name, below the table.
 
 - RED: `test-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. Escalated AC-5 rather than amending it; amendments A-1 and A-2 approved by the user. 2026-10-11.
 - GREEN: `feature-developer` resolved **Opus 5.5** (`claude-opus-5-5`), as declared; no override in the dispatch. 2026-10-11.
+- GATES: orchestrator on **Fable 5.1** ran DV-1 and wrote the audit update itself; no `feature-developer` dispatch (all gates unconfigured, nothing to fix). 2026-10-11.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -682,13 +735,41 @@ not bootstrapped, all five gates are UNCONFIGURED, and the suite is judged by
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-11T02:12:30Z
+    commit: eb47ed4
+    tree:   ce17074600ed0c5877f1444b72bbefcc25b461ba
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
 <!-- Omitted: this story adds or changes no gate. -->
 
 ## Notes
+
+**GATES → REVIEW (2026-10-11, orchestrator on fable).** Full self-test, run
+detached while the story was at GATES, nothing else running in this worktree,
+full log kept:
+
+    $ bash scripts/selftest.sh
+    assertion floors: all 26 suite(s) met their declared floor (3182 assertions executed, 2973 declared).
+    26 harness suite(s) passed.
+    exit=0 duration=6393s
+
+107 minutes; `ps` counted 2 other `selftest.sh` processes on the host at the
+start and none at the end. GREEN's one unexplained `1 of 26 harness suite(s)
+FAILED` (suite name lost to a `tail`, under contention) did not recur here.
+
 
 - Filed 2026-10-10 from the user's startup-warning report. `docs/backlog/epics/`
   is empty and HARNESS-047 has no epic, so `epic:` is blank.
