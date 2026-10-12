@@ -5,7 +5,7 @@ slug: a-gate-that-reads-stdin-cannot-swallow-t
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-052-a-gate-that-reads-stdin-cannot-swallow-t
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/doctor.sh, .claude/tests/gates.test.sh, .claude/tests/doctor.test.sh, .claude/tests/sigpipe.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -385,7 +385,7 @@ In the loop, immediately after `field 2 "$line" id` (line 349) and before
   reached="$reached $id"
 ```
 
-After the loop, immediately before `CONF_CHANGED=0` (line 848), so the refusal
+After the loop, before `CONF_CHANGED=0` (line 848), so the refusal
 lands inside the summary block and the exit status, stamp and count line follow
 from the existing `fails` path:
 
@@ -404,6 +404,14 @@ for d in $GATE_IDS; do
 done
 set +f
 ```
+
+*Amended in GREEN (placement only, no code change):* the block sits above the
+seven-line comment that documents `CONF_CHANGED` ("Folded into `results`
+rather than reported as a separate early exit ..."), not between that comment
+and `CONF_CHANGED=0`, so the comment stays attached to the code it describes.
+Both positions are after every `results` append in the loop and before the
+summary is printed, so the refusal lands in the same place in the output, and
+both are below line 593, so C-3's pin is unaffected.
 
 And before the existing `if [ "$fails" -gt 0 ]; then printf '\n%d required
 gate(s) failed.\n'` (line 1009):
@@ -609,6 +617,8 @@ name, below the table.
 - RED, `test-developer`, dispatched with `model: opus`; the agent reported
   running on Opus 5.5 (`claude-opus-5-5`). As planned. Orchestrator
   (`/advance-story`) ran on Fable 5.1.
+- GREEN, `feature-developer`, dispatched with `model: opus`; the agent reported
+  running on Opus 5.5 (`claude-opus-5-5`). As planned. Orchestrator on Fable 5.1.
 
 ## Out of scope
 
@@ -1439,3 +1449,43 @@ assert_lacks "manifest errors: and nothing is called unaccounted for" "never acc
 - Lost gates land in `fails`, so with the in-place rewrite (AC-6) a run shows
   both `FAIL config: ... changed while the gates were running` and the
   refusal, and `2 required gate(s) failed.` That is correct and expected.
+
+### GREEN confirmations
+
+Feature developer, running on Opus 5.5 (`claude-opus-5-5`); no model override
+in the dispatch. C-1 and C-2 landed as written; the one departure is the
+placement of the declared-vs-reached block, amended in place under C-2.
+Suites run one at a time, stdin from `/dev/null` (other sessions' suites were
+running on this host at the time, so wall-clock times are not meaningful):
+
+```
+$ bash .claude/tests/sigpipe.test.sh </dev/null
+sigpipe: 82 passed, 0 failed
+$ bash .claude/tests/doctor.test.sh </dev/null
+doctor: 64 passed, 0 failed
+$ bash .claude/tests/gates.test.sh </dev/null
+gates: 595 passed, 0 failed
+$ sed -n 593p scripts/gates.sh
+      why="could not launch: $(clean_log "$log" | grep -Eom1 -- "$blockpat" | head -1)"
+```
+
+Negative controls against the shipped code (RED's table):
+
+- AC-3: measured directly on a `make_project_fixture` copy with
+  `printf 'CALLER-DATA\n' | bash scripts/gates.sh`: `count.log` holds
+  `stdin-bytes=0` (RED measured 57 on the unfixed tree). Matches the expected
+  value.
+- AC-11: all five healthy rows and the manifest-errors row pass inside
+  `gates.test.sh` (the suite compares them exactly against the story's text),
+  so they are byte for byte what RED measured; no `never accounted for` line
+  in any of them. Their red under DV-2's second variant is GATES' work.
+- AC-5 control: `discovery | eats | . | cat >/dev/null; true` alone, doctor
+  exits 0 (holds). With `later` after it: `ok       eats         discovered`,
+  `MISSING  later        nothing discovered by: false`, exit 1.
+- AC-6 first case: passes in the suite (outcome `ran` or `refused`); DV-2's
+  `other` prediction is GATES' to measure.
+
+Also run: `bash scripts/gates.sh --fast` -> `All required gates passed (0 ran,
+5 unconfigured, 0 known).`; `bash scripts/check-sigpipe.sh` -> `scanned 49
+shell file(s), 45 with pipefail, 0 finding(s)`; `bash scripts/check-grep-count.sh`
+-> `scanned 49 shell file(s), 0 finding(s)`. DV-1..DV-4 not run (GATES).

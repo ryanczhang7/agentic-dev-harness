@@ -337,6 +337,17 @@ fi
 
 fails=0; warns=0; known=0; unconfigured=0; ran=0; noevidence=0; blocked=0; skipped=""
 results=""
+# Every gate line the loop REACHES is recorded here, before any filter or
+# refusal can `continue` past it; after the loop the list is compared with
+# GATE_IDS, read at parse time before any gate ran. A declared gate the loop
+# never reached (a gate drained or truncated the manifest under it) refuses the
+# run by name. GATES_FAULT_LOSE is the test seam: the gate lines it names are
+# treated as never read. It can only make a run fail, and says so up front.
+reached=""; fault_lose=""
+if [ -n "${GATES_FAULT_LOSE:-}" ] && [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ]; then
+  fault_lose=" $GATES_FAULT_LOSE "
+  printf 'note: GATES_FAULT_LOSE is set; this run will lose: %s\n' "$GATES_FAULT_LOSE"
+fi
 
 while IFS= read -r line; do
   line="${line%%$'\r'}"
@@ -347,6 +358,8 @@ while IFS= read -r line; do
   field 1 "$line" kind
   [ "$kind" = "gate" ] || continue
   field 2 "$line" id
+  case "$fault_lose" in *" $id "*) continue ;; esac
+  reached="$reached $id"
   field 3 "$line" req
   field 4 "$line" cwd
   rest  5 "$line" cmd
@@ -557,7 +570,7 @@ while IFS= read -r line; do
   log="$LOGDIR/$id.log"
   started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   start=$(date +%s)
-  ( cd "$ROOT/$cwd" && eval "$cmd" ) 2>&1 | tee "$log"
+  ( cd "$ROOT/$cwd" && eval "$cmd" ) </dev/null 2>&1 | tee "$log"
   rc=${PIPESTATUS[0]}
   dur=$(( $(date +%s) - start ))
   ran=$((ran+1))
@@ -838,6 +851,20 @@ if [ -n "$COVERS" ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
   fi
 fi
 
+# Declared against reached, per line and in manifest order: each reached entry
+# pays off one declared one. What is left was never read, so this run can say
+# nothing about it, and a run that cannot account for its manifest certifies
+# nothing - required or optional, filtered or not.
+lost=0; unpaid=" $reached "
+set -f
+for d in $GATE_IDS; do
+  case "$unpaid" in
+    *" $d "*) unpaid="${unpaid/" $d "/ }" ;;
+    *) results="$results\nFAIL         $d (declared in project.conf but never accounted for)"; lost=$((lost+1)); fails=$((fails+1)) ;;
+  esac
+done
+set +f
+
 # Folded into `results` rather than reported as a separate early exit, which is
 # deliberate: that lands it INSIDE the summary block, so the exit status, the
 # RESULT=fail stamp, the "N required gate(s) failed" line and --fast's own
@@ -1006,6 +1033,9 @@ if [ "$blocked" -gt 0 ]; then
   printf 'and docs/wiki/environment.md are where that gets fixed and written down.\n'
 fi
 
+if [ "$lost" -gt 0 ]; then
+  printf '\n%d declared gate(s) never accounted for; this run certifies nothing.\n' "$lost"
+fi
 if [ "$fails" -gt 0 ]; then
   printf '\n%d required gate(s) failed.\n' "$fails"
   exit 1
