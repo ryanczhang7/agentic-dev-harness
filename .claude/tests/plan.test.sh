@@ -607,6 +607,80 @@ assert_eq "AC-4: and creates neither the story nor any .new anywhere in the proj
   "absent/" "$(present "$STORY_DIR/T-99.md")/$(find "$FIX" -name '*.new' -not -path '*/.git/*' 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
+describe "HARNESS-051: next, models and the bare id refuse a story that has no file"
+
+# WHAT THIS IS FOR. `cmd_next` and `cmd_models` call `file="$(story_file "$id")"`
+# with nothing after it, so `story_file`'s die exits only the command
+# substitution: the function carries on with an empty `$file` and recommends
+# from defaults - `complete-story`, "a contract to work from", a full model
+# table - and exits 0. The bare form (`cmd_both`) runs both, so the `no story`
+# line appears twice. Only `write` (AC-4 above) already stops.
+#
+# THE STREAMS ARE CAPTURED APART. `plan()` merges `2>&1`, and every criterion
+# here says something different about each stream: stderr is exactly the one
+# die line, stdout is empty. A merged capture cannot tell "one error line and
+# nothing else" from "one error line and a recommendation", which is the defect.
+#
+# THE NEEDLES. The error line is counted with `grep -cx`, whole line and
+# escaped dot, so a second copy (the bare form today), a reworded message or a
+# line that merely mentions the path all read as "not 1". The whole of stderr
+# is also compared to that one line exactly, because a count of 1 is satisfied
+# by one die line PLUS some other diagnostic. stdout is compared to the empty
+# string, not searched for `Recommended:` - absence of one needle is satisfied
+# by any other output. The exit status is compared to the number 2, die's
+# status, not to "non-zero": a `set -u` crash exits 1 and must not pass.
+#
+# stdin is /dev/null for the reason the AC-4 block gives: the fall-through
+# reads with an empty `$file`, and from a terminal it would sit waiting.
+SPLIT_ERR="$FIX/plan-split.stderr"
+# plan_split <args...>   Sets SPLIT_OUT (stdout), SPLIT_ERRTEXT (stderr) and
+# SPLIT_RC (exit status) without merging the streams.
+plan_split() {
+  SPLIT_OUT="$( cd "$FIX" && bash scripts/plan.sh "$@" </dev/null 2>"$SPLIT_ERR" )"; SPLIT_RC=$?
+  SPLIT_ERRTEXT="$(cat "$SPLIT_ERR")"
+}
+no_story_lines() { grep -cx 'plan: no story at docs/backlog/stories/T-99\.md' "$SPLIT_ERR" || true; }
+NO_STORY_LINE='plan: no story at docs/backlog/stories/T-99.md'
+
+# Precondition: the id really has no file, or every case below is about
+# something else.
+assert_eq "HARNESS-051 precondition: T-99 has no story file in the fixture" \
+  absent "$(present "$STORY_DIR/T-99.md")"
+
+# --- AC-1: plan.sh next <missing id> ----------------------------------------
+plan_split next T-99
+assert_eq "AC-1: 'next' on an id with no story prints the no-story line exactly once on stderr" \
+  1 "$(no_story_lines)"
+assert_eq "AC-1: and that line is the whole of stderr" "$NO_STORY_LINE" "$SPLIT_ERRTEXT"
+assert_eq "AC-1: and recommends nothing on stdout" "" "$SPLIT_OUT"
+assert_eq "AC-1: and exits 2" 2 "$SPLIT_RC"
+
+# --- AC-2: plan.sh models <missing id> --------------------------------------
+plan_split models T-99
+assert_eq "AC-2: 'models' on an id with no story prints the no-story line exactly once on stderr" \
+  1 "$(no_story_lines)"
+assert_eq "AC-2: and that line is the whole of stderr" "$NO_STORY_LINE" "$SPLIT_ERRTEXT"
+assert_eq "AC-2: and prints no model table on stdout" "" "$SPLIT_OUT"
+assert_eq "AC-2: and exits 2" 2 "$SPLIT_RC"
+
+# --- AC-3: plan.sh <missing id> (the bare form, cmd_both) --------------------
+plan_split T-99
+assert_eq "AC-3: the bare form on an id with no story prints the no-story line once, not twice" \
+  1 "$(no_story_lines)"
+assert_eq "AC-3: and that line is the whole of stderr" "$NO_STORY_LINE" "$SPLIT_ERRTEXT"
+assert_eq "AC-3: and prints no Story header, recommendation or model plan on stdout" "" "$SPLIT_OUT"
+assert_eq "AC-3: and exits 2" 2 "$SPLIT_RC"
+
+# --- AC-4 control: write's refusal exits 2 exactly ---------------------------
+# The AC-4 block above asserts only "non-zero"; the contract pins 2 for every
+# form of this refusal. Green on arrival (HARNESS-019 fixed `write`), earned in
+# the story's ## Handoff by a mutate.sh run turning `|| exit $?` into `|| exit 3`.
+plan_split write T-99
+assert_eq "AC-4 control: 'write' on an id with no story exits 2, as next and models must" \
+  2 "$SPLIT_RC"
+rm -f "$SPLIT_ERR"
+
+# ---------------------------------------------------------------------------
 describe "conflicts: which startable stories would fight over the same file"
 
 # WHAT THIS IS FOR. Running two stories at once needs two things to be true:
