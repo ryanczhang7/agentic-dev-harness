@@ -4,8 +4,8 @@ title: A gate that reads stdin cannot swallow the gates after it, and a run acco
 slug: a-gate-that-reads-stdin-cannot-swallow-t
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-052-a-gate-that-reads-stdin-cannot-swallow-t
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/doctor.sh, .claude/tests/gates.test.sh, .claude/tests/doctor.test.sh, .claude/tests/sigpipe.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1629,3 +1629,18 @@ Also run: `bash scripts/gates.sh --fast` -> `All required gates passed (0 ran,
 5 unconfigured, 0 known).`; `bash scripts/check-sigpipe.sh` -> `scanned 49
 shell file(s), 45 with pipefail, 0 finding(s)`; `bash scripts/check-grep-count.sh`
 -> `scanned 49 shell file(s), 0 finding(s)`. DV-1..DV-4 not run (GATES).
+
+### Full self-test at GATES (before REVIEW)
+
+`bash scripts/selftest.sh`, run detached on the GATES tree (`21a4ae6`), alone in
+this worktree:
+
+```
+assertion floors: all 26 suite(s) met their declared floor (3287 assertions executed, 2973 declared).
+26 harness suite(s) passed.
+selftest-exit=0 duration=7503s
+```
+
+2h05m wall on this Windows host (HARNESS-051's run recorded 3h18m); 0 `FAIL`
+lines in the output. `gates.test.sh` 595/0, `doctor.test.sh` 64/0,
+`sigpipe.test.sh` 82/0 within it.
