@@ -5,7 +5,7 @@ slug: a-gate-that-reads-stdin-cannot-swallow-t
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-052-a-gate-that-reads-stdin-cannot-swallow-t
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/doctor.sh, .claude/tests/gates.test.sh, .claude/tests/doctor.test.sh, .claude/tests/sigpipe.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -550,6 +550,31 @@ RED cannot run it: there is no fix to remove. Run as
 `bash scripts/mutate.sh scripts/gates.sh 's|) </dev/null 2>&1 \| tee "$log"|) 2>\&1 \| tee "$log"|' -- bash .claude/tests/gates.test.sh`
 and paste the FAIL lines and the summary count, then the green re-run.
 
+*Result (GATES, 2026-10-12, run exactly as above).* Red with exactly the 11
+predicted assertions and nothing else; restored and verified by `mutate.sh`:
+
+```
+    FAIL the gate after a stdin-reading gate still runs
+    FAIL and so does the gate after it
+    FAIL and both are counted as having run
+    FAIL a run of two passing gates exits 0
+    FAIL a failing required gate after a stdin-reading gate is reported FAIL
+    FAIL a gate after one that drains fds 0 and 3-9 still runs and is reported FAIL
+    FAIL a gate reads zero bytes of stdin, whatever gates.sh was given
+    FAIL --fast: a failing gate after a stdin-reading gate is reported FAIL
+    FAIL --fast: the slow gate after them is still seen, and skipped
+    FAIL --fast: the run says a required gate failed
+    FAIL --required: a failing gate after a stdin-reading gate is reported FAIL
+gates: 584 passed, 11 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261012T191332Z.803.bak) ===
+  573:   ( cd "$ROOT/$cwd" && eval "$cmd" ) </dev/null 2>&1 | tee "$log"
+```
+
+So with the stdin fix removed the accounting still refuses `later` rather
+than certifying the run: Defect 2's invariant is independent of Defect 1's fix.
+Green re-run: see DV-4's block.
+
 **DV-2 (defect put back, central claim of Defect 2). Owner: GATES.** With the
 refusal disabled and the seam kept - mutate `for d in $GATE_IDS; do` to
 `for d in ; do` - AC-7 stays green (the seam still loses `b`), and every
@@ -566,10 +591,105 @@ controls: mutate `reached="$reached $id"` to `reached="$reached"` (the
 invariant forgets every disposition) and confirm every AC-11 row goes red with
 a `never accounted for` line; paste the count.
 
+*Result (GATES, 2026-10-12), first mutation*,
+`bash scripts/mutate.sh scripts/gates.sh 's|^for d in \$GATE_IDS; do$|for d in ; do|' -- bash .claude/tests/gates.test.sh`.
+No AC-7 assertion went red. Every refusal, count, `RESULT=fail`, `result: fail`,
+exit-1 and not-certified assertion in AC-6, AC-8, AC-9 and AC-10 went red. AC-6's
+first case classified as `other`, as corrected, and its "never certifies itself"
+assertion stayed green:
+
+```
+    FAIL the gate after an in-place rewrite of project.conf either runs or is refused by name
+         outcome: other (exit 1); wanted 'ran' or 'refused'
+    FAIL and the summary has a FAIL line for it, its own or the refusal
+    FAIL (a) a lost gate gets its own refusal line
+    FAIL (a) and the refusals are counted
+    FAIL (a) and the run is not certified
+    FAIL (a) and exits 1
+    FAIL (b) two lost gates: the first is refused
+    FAIL (b) and the second
+    FAIL (b) in manifest order
+    FAIL (b) and both are counted
+    FAIL (b) and the run is not certified
+    FAIL (b) and exits 1
+    FAIL (c) a lost optional gate is refused like a required one
+    FAIL (c) and counted
+    FAIL (c) and the run is not certified
+    FAIL (c) and exits 1
+    FAIL a full run that lost a gate records result: fail
+    FAIL and the record carries the refusal line
+    FAIL and the stamp says RESULT=fail
+    FAIL (a) --fast: the lost gate is refused
+    FAIL (a) --fast: exactly one gate is counted lost
+    FAIL (a) --fast: and exits 1
+    FAIL (b) --required: the lost gate is refused
+    FAIL (b) --required: exactly one gate is counted lost
+    FAIL (b) --required: and exits 1
+    FAIL (c) --gate b: the lost gate it selected is refused
+    FAIL (c) --gate b: exactly one gate is counted lost
+    FAIL (c) --gate b: and exits 1, not 2
+    FAIL (d) --gate a: a lost gate it did not select is still refused
+    FAIL (d) --gate a: exactly one gate is counted lost
+    FAIL (d) --gate a: and exits 1
+gates: 564 passed, 31 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261012T192441Z.18426.bak) ===
+  860: for d in $GATE_IDS; do
+```
+
+*Result, second mutation (AC-11's controls)*,
+`bash scripts/mutate.sh scripts/gates.sh 's|^  reached="\$reached \$id"$|  reached="$reached"|' -- bash .claude/tests/gates.test.sh`.
+`gates: 507 passed, 88 failed`. Every declared gate in every fixture is now
+refused (e.g. `FAIL         unit (declared in project.conf but never accounted
+for)`), so every exit-0 control across the file goes red, the pre-existing ones
+included. AC-11 had 18 assertions, and 17 of them went red:
+
+```
+    FAIL healthy, full run: the summary is exactly what it was
+    FAIL healthy, full run: and so is the exit code
+    FAIL healthy, full run: and nothing is called unaccounted for
+    FAIL healthy, --fast: the summary is exactly what it was
+    FAIL healthy, --fast: and so is the exit code
+    FAIL healthy, --fast: and nothing is called unaccounted for
+    FAIL healthy, --required: the summary is exactly what it was
+    FAIL healthy, --required: and so is the exit code
+    FAIL healthy, --required: and nothing is called unaccounted for
+    FAIL healthy, --gate w: the summary is exactly what it was
+    FAIL healthy, --gate w: and so is the exit code
+    FAIL healthy, --gate w: and nothing is called unaccounted for
+    FAIL healthy, --gate u: the summary is exactly what it was
+    FAIL healthy, --gate u: and so is the exit code
+    FAIL healthy, --gate u: and nothing is called unaccounted for
+    FAIL manifest errors: the summary is exactly what it was
+    FAIL manifest errors: and nothing is called unaccounted for
+gates: 507 passed, 88 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261012T193514Z.34081.bak) ===
+  362:   reached="$reached $id"
+```
+
+The one AC-11 assertion that stayed green is `manifest errors: and so is the
+exit code`. That fixture already exits 1, so a refusal cannot change its exit
+code; its summary and "unaccounted for" assertions are what caught the
+mutation.
+
 **DV-3 (defect put back, AC-5). Owner: GATES.** With `</dev/null` removed from
 `scripts/doctor.sh` line 268, AC-5 **must** go red: `ok       eats
 discovered`, no `MISSING  later`, exit 0. Run through `mutate.sh` against
 `bash .claude/tests/doctor.test.sh` only; paste the red and the green re-run.
+
+*Result (GATES, 2026-10-12)*,
+`bash scripts/mutate.sh scripts/doctor.sh 's|) </dev/null >/dev/null 2>&1; then|) >/dev/null 2>\&1; then|' -- bash .claude/tests/doctor.test.sh`.
+AC-5 went red, the AC-5 control stayed green, and the file was restored:
+
+```
+    FAIL AC-5: the discovery line after a stdin-reading one is still checked, and reported MISSING
+    FAIL AC-5: and doctor exits 1 for it
+doctor: 62 passed, 2 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_doctor.sh.20261012T194117Z.49908.bak) ===
+  268:   if ( set +o pipefail; cd "$ROOT/$cwd" 2>/dev/null && eval "$cmd" ) </dev/null >/dev/null 2>&1; then
+```
 
 **DV-4 (the pin). Owner: GATES.** `bash .claude/tests/sigpipe.test.sh` is
 green on the committed tree, with `C-5 freshness: all twelve status-discarded
@@ -577,6 +697,15 @@ lines are still where this suite says they are` passing and line 593 of
 `gates.sh` holding `why="could not launch: $(`. RED records the same assertion
 red against the unchanged source (C-3). Paste `sed -n 593p scripts/gates.sh`
 and the suite's summary line.
+
+*Result (GATES, 2026-10-12)*, on the tree after DV-1 to DV-3 had been restored:
+
+```
+$ sed -n 593p scripts/gates.sh
+      why="could not launch: $(clean_log "$log" | grep -Eom1 -- "$blockpat" | head -1)"
+$ bash .claude/tests/sigpipe.test.sh </dev/null | tail -1
+sigpipe: 82 passed, 0 failed
+```
 
 ## Amendments
 
@@ -965,10 +1094,21 @@ that does not exist yet. They are owned by GATES, as the story says.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-12T19:54:31Z
+    commit: 2d20b15
+    tree:   2eea56e1d3cc7d7dacd597bdbef28ad2e268e217
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
