@@ -492,4 +492,41 @@ assert_eq "AC-2: an argument with a space arrives as one word: 'a b' then 'c' is
   "arg=a b${_nl}arg=c$_nl" "$out"
 assert_eq "AC-2: and task.sh exits 0" "0" "$rc"
 
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-5: a discovery command that reads stdin cannot delete the discovery lines after it"
+
+# doctor.sh evals each `discovery` command inside `done < "$CONF"`, so a command
+# that reads its stdin drains the rest of the manifest and the loop ends: every
+# later discovery line is never checked, and a scope that collapsed to nothing
+# goes unreported - the one thing the check exists to report. Release 94,
+# measured at PLANNED: `ok       eats         discovered`, no `later` line,
+# exit 0.
+#
+# run_doctor_eof   run_doctor with stdin at end-of-input and descriptors 3-9
+# closed, so `cat` in the fixture can only read what doctor.sh gives it, never
+# this suite's terminal or pipe. A variant, so the other blocks' runs are
+# unchanged. Sets $out and $rc, like run_doctor.
+run_doctor_eof() {
+  out="$( cd "$FIX" && bash scripts/doctor.sh 2>&1 </dev/null 3<&- 4<&- 5<&- 6<&- 7<&- 8<&- 9<&- )"; rc=$?
+}
+
+# The control first: `eats` alone exits 0 in this fixture as it now stands, so
+# the exit 1 asserted below can only come from `later` - not from anything an
+# earlier block left in the shared fixture (the CI blocks above write workflows
+# that make doctor exit 1 while they are present).
+write_conf "$FIX" <<'EOF2'
+discovery | eats  | . | cat >/dev/null; true
+EOF2
+run_doctor_eof
+assert_eq "AC-5 control: a stdin-reading discovery line alone exits 0 in this fixture" "0" "$rc"
+
+write_conf "$FIX" <<'EOF2'
+discovery | eats  | . | cat >/dev/null; true
+discovery | later | . | false
+EOF2
+run_doctor_eof
+assert_contains "AC-5: the discovery line after a stdin-reading one is still checked, and reported MISSING" \
+  "MISSING  later" "$out"
+assert_eq "AC-5: and doctor exits 1 for it" "1" "$rc"
+
 summary "doctor"
