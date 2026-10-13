@@ -1052,3 +1052,5 @@ recorded: a second session's `selftest.sh` for a different repository
 (`manga-translator`) ran on the same machine for the whole of it, and this
 worktree's `run.lock` was held by this run alone throughout (checked at
 13:25 while `boundaries` ran; no orphan). Slow, not wrong.
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/140 (opened 2026-10-13 from `f5a84c8`).
