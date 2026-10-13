@@ -4,8 +4,8 @@ title: A spike that escalates a gate cannot merge without having run it
 slug: a-spike-that-escalates-a-gate-cannot-mer
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-054-a-spike-that-escalates-a-gate-cannot-mer
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -301,17 +301,19 @@ says.
   predicted - AC-1a/1b red, the two pre-existing feature-type assertions red,
   AC-2 and AC-3 green - and the file came back byte for byte:
 
-      $ bash scripts/mutate.sh scripts/check-boundaries.sh '459s/^  REVIEW|DONE)$/  NEVER)/' -- bash scripts/selftest.sh boundaries
-      === mutate: scripts/check-boundaries.sh (1 line(s) changed by 459s/^  REVIEW|DONE)$/  NEVER)/) ===
-      === mutate: running bash scripts/selftest.sh boundaries ===
-          FAIL a required gate the record has no PASS for
-          FAIL one that did pass is reported as passing
-          FAIL AC-1a an escalating spike with no gate record is refused
-          FAIL AC-1a and the run fails rather than noting and moving on
-          FAIL AC-1b a recorded run with no PASS for the escalated gate is refused
-          FAIL AC-1b and that run fails too
-      boundaries: 119 passed, 6 failed
-      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261013T162026Z.329427.bak) ===
+  ```
+  $ bash scripts/mutate.sh scripts/check-boundaries.sh '459s/^  REVIEW|DONE)$/  NEVER)/' -- bash scripts/selftest.sh boundaries
+  === mutate: scripts/check-boundaries.sh (1 line(s) changed by 459s/^  REVIEW|DONE)$/  NEVER)/) ===
+  === mutate: running bash scripts/selftest.sh boundaries ===
+      FAIL a required gate the record has no PASS for
+      FAIL one that did pass is reported as passing
+      FAIL AC-1a an escalating spike with no gate record is refused
+      FAIL AC-1a and the run fails rather than noting and moving on
+      FAIL AC-1b a recorded run with no PASS for the escalated gate is refused
+      FAIL AC-1b and that run fails too
+  boundaries: 119 passed, 6 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261013T162026Z.329427.bak) ===
+  ```
 
 - **DV-2 (the control's control)** — With the spike arm deleted
   (`scripts/mutate.sh` with `'/REVIEW:spike|DONE:spike) note/d'` against
@@ -333,15 +335,17 @@ says.
   AC-1 included, since the escalating spikes fall through to the ordinary arm
   and the 3e-i block still fires. Restored and verified:
 
-      $ bash scripts/mutate.sh scripts/check-boundaries.sh '/REVIEW:spike|DONE:spike) note/d' -- bash scripts/selftest.sh boundaries
-      === mutate: scripts/check-boundaries.sh (1 line(s) changed by /REVIEW:spike|DONE:spike) note/d) ===
-      === mutate: running bash scripts/selftest.sh boundaries ===
-          FAIL AC-2 a spike escalating nothing still needs no gate record
-          FAIL AC-2 and merges
-      boundaries: 123 passed, 2 failed
-      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261013T165537Z.380836.bak) ===
-      $ bash scripts/mutate.sh --check
-      mutate: no stranded mutation; nothing of a previous run is in the tree.
+  ```
+  $ bash scripts/mutate.sh scripts/check-boundaries.sh '/REVIEW:spike|DONE:spike) note/d' -- bash scripts/selftest.sh boundaries
+  === mutate: scripts/check-boundaries.sh (1 line(s) changed by /REVIEW:spike|DONE:spike) note/d) ===
+  === mutate: running bash scripts/selftest.sh boundaries ===
+      FAIL AC-2 a spike escalating nothing still needs no gate record
+      FAIL AC-2 and merges
+  boundaries: 123 passed, 2 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261013T165537Z.380836.bak) ===
+  $ bash scripts/mutate.sh --check
+  mutate: no stranded mutation; nothing of a previous run is in the tree.
+  ```
 
 That is the rules.md budget: one defect-put-back for the central claim, plus
 one mutation earning the two control tests that pass on arrival. AC-3 is
@@ -1030,3 +1034,21 @@ AC-1a x2, AC-1b x2 and the two pre-existing feature-type assertions; DV-2:
 then recorded `result: pass (0 ran, 7 unconfigured, 0 known)` against commit
 `bf1301f` - every gate is unconfigured on this repository (`BOOTSTRAPPED=no`),
 so the suites above and the full self-test before REVIEW are the judge.
+
+### Full self-test before REVIEW (AC-4; orchestrator, 2026-10-13)
+
+    $ time bash scripts/selftest.sh
+    boundaries: 125 passed, 0 failed
+    sigpipe: 82 passed, 0 failed
+    ...
+    assertion floors: all 26 suite(s) met their declared floor (3310 assertions executed, 2996 declared).
+    26 harness suite(s) passed.
+    real    157m37.563s
+    exit=0
+
+Every suite green, every floor met, sigpipe C-5 finding all twelve lines with
+the pin at `:619`. The duration is far above the ~25 min earlier stories
+recorded: a second session's `selftest.sh` for a different repository
+(`manga-translator`) ran on the same machine for the whole of it, and this
+worktree's `run.lock` was held by this run alone throughout (checked at
+13:25 while `boundaries` ran; no orphan). Slow, not wrong.
