@@ -5,7 +5,7 @@ slug: a-spike-that-escalates-a-gate-cannot-mer
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-054-a-spike-that-escalates-a-gate-cannot-mer
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -296,6 +296,23 @@ says.
   Paste the failing assertion names, the pass/fail counts, and the restore
   line here.
 
+  **Result (GATES, orchestrator, 2026-10-13).** The 3e-i arm was renamed so
+  the block is unreachable for every story; the partition is exactly the one
+  predicted - AC-1a/1b red, the two pre-existing feature-type assertions red,
+  AC-2 and AC-3 green - and the file came back byte for byte:
+
+      $ bash scripts/mutate.sh scripts/check-boundaries.sh '459s/^  REVIEW|DONE)$/  NEVER)/' -- bash scripts/selftest.sh boundaries
+      === mutate: scripts/check-boundaries.sh (1 line(s) changed by 459s/^  REVIEW|DONE)$/  NEVER)/) ===
+      === mutate: running bash scripts/selftest.sh boundaries ===
+          FAIL a required gate the record has no PASS for
+          FAIL one that did pass is reported as passing
+          FAIL AC-1a an escalating spike with no gate record is refused
+          FAIL AC-1a and the run fails rather than noting and moving on
+          FAIL AC-1b a recorded run with no PASS for the escalated gate is refused
+          FAIL AC-1b and that run fails too
+      boundaries: 119 passed, 6 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261013T162026Z.329427.bak) ===
+
 - **DV-2 (the control's control)** — With the spike arm deleted
   (`scripts/mutate.sh` with `'/REVIEW:spike|DONE:spike) note/d'` against
   `scripts/check-boundaries.sh`), AC-2's two assertions MUST go red (the
@@ -310,6 +327,21 @@ says.
       bash scripts/mutate.sh scripts/check-boundaries.sh \
         '/REVIEW:spike|DONE:spike) note/d' \
         -- bash scripts/selftest.sh boundaries
+
+  **Result (GATES, orchestrator, 2026-10-13).** With the spike arm deleted,
+  exactly AC-2's two assertions went red and the other 123 stayed green -
+  AC-1 included, since the escalating spikes fall through to the ordinary arm
+  and the 3e-i block still fires. Restored and verified:
+
+      $ bash scripts/mutate.sh scripts/check-boundaries.sh '/REVIEW:spike|DONE:spike) note/d' -- bash scripts/selftest.sh boundaries
+      === mutate: scripts/check-boundaries.sh (1 line(s) changed by /REVIEW:spike|DONE:spike) note/d) ===
+      === mutate: running bash scripts/selftest.sh boundaries ===
+          FAIL AC-2 a spike escalating nothing still needs no gate record
+          FAIL AC-2 and merges
+      boundaries: 123 passed, 2 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261013T165537Z.380836.bak) ===
+      $ bash scripts/mutate.sh --check
+      mutate: no stranded mutation; nothing of a previous run is in the tree.
 
 That is the rules.md budget: one defect-put-back for the central claim, plus
 one mutation earning the two control tests that pass on arrival. AC-3 is
@@ -642,10 +674,21 @@ here, as the story assigns them to GATES.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-13T17:26:16Z
+    commit: bf1301f
+    tree:   2ba0e1e3a53f1f1c55aeebb20ee0c3bccbd6f3be
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -976,3 +1019,14 @@ an exact equality or substring): AC-1a/1b exit 1 with the `requires gate
 `^FAIL` line. sigpipe C-5 finds all twelve lines at their pins, `:619`
 included. `gates.sh --fast` ran nothing (`BOOTSTRAPPED=no`); the suites
 above are the judge here. The DV-1 and DV-2 columns are GATES' to measure.
+
+### GATES (orchestrator, 2026-10-13)
+
+DV-1 and DV-2 both ran through `scripts/mutate.sh` against the `boundaries`
+suite before the gate run; results are pasted in `## Deferred verifications`.
+Each partition matched the prediction exactly (DV-1: 119/6, the six being
+AC-1a x2, AC-1b x2 and the two pre-existing feature-type assertions; DV-2:
+123/2, AC-2's two), and `mutate.sh --check` is clean. `bash scripts/gates.sh`
+then recorded `result: pass (0 ran, 7 unconfigured, 0 known)` against commit
+`bf1301f` - every gate is unconfigured on this repository (`BOOTSTRAPPED=no`),
+so the suites above and the full self-test before REVIEW are the judge.
