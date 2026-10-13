@@ -172,9 +172,11 @@ teaches the agent that blocks are noise, which is the one thing it cannot
 afford. Relative paths are resolved against the directory the command will
 actually run in, so `cd /tmp/scratch && rm -rf logs` names no repo path at all
 and `cd src && echo x > main.ts` names `src/main.ts` rather than a file at the
-root. Anything the project's `.gitignore` covers is classified `ignored` and
-writable in every phase, so deleting a test runner's scratch directory is not a
-phase violation. And a parse the guard cannot believe — a "path" that is an
+root. A path the project's `.gitignore` covers, and that no `paths.conf` rule
+classifies first, is `ignored` and writable in every phase, so deleting a test
+runner's scratch directory is not a phase violation. A test- or config-shaped
+file inside an ignored directory keeps its own category, because it can still
+steer the local runs a phase relies on. And a parse the guard cannot believe — a "path" that is an
 operator, a regex fragment or a leftover backquote — is treated as
 inconclusive rather than as a violation: it is logged to
 `.claude/state/phase-guard-declined.log` and allowed, because a guard that
