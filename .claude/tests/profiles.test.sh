@@ -59,6 +59,11 @@ profile_problems() {
     # Parsed like `slow`, and judged by the same two rules: it must name a
     # gate the profile configures, and it must say why.
     /^[[:space:]]*ondemand[[:space:]]*\|/  { id = t($2); ondemand[id] = 1; owhy[id] = rest(3); next }
+    # HARNESS-055: `no-count | <id> | <why>` declares that the evidence regex of
+    # a gate proves liveness and measures nothing, so a floor on it compares
+    # against a stopwatch. Parsed like `slow`; judged by the same two rules plus
+    # the refusal of a floor beside it.
+    /^[[:space:]]*no-count[[:space:]]*\|/  { id = t($2); nc[id] = 1; ncwhy[id] = rest(3); next }
     /What `--fast` should leave out/       { fastsec = 1 }
 
     END {
@@ -74,10 +79,21 @@ profile_problems() {
       for (id in fl)   if (!(id in gates)) print "orphan\tfloor names `"    id "`, which this profile does not configure"
       for (id in slow) if (!(id in gates)) print "orphan\tslow names `"     id "`, which this profile does not configure"
       for (id in ondemand) if (!(id in gates)) print "orphan\tondemand names `" id "`, which this profile does not configure"
+      for (id in nc)   if (!(id in gates)) print "orphan\tno-count names `" id "`, which this profile does not configure"
 
       for (id in fl)
         if (!(id in ev))
           print "floor\tfloor on `" id "` has no evidence line to measure it out of"
+
+      # The same refusal gates.sh makes: a floor measured out of a regex that
+      # was declared to measure nothing compares against a stopwatch.
+      for (id in fl)
+        if (id in nc)
+          print "floor\tfloor on `" id "` is declared no-count, so there is no count to compare against"
+
+      for (id in nc)
+        if (ncwhy[id] == "")
+          print "no-count\t`" id "` is marked no-count with no reason"
 
       for (id in slow)
         if (why[id] == "")
@@ -212,6 +228,58 @@ assert_eq "AC-1 control: a profile with no mutation gate is silent on mutation-e
   "$(ondemand_probs mutation-evidence)"
 
 # ---------------------------------------------------------------------------
+describe "the checker recognises a no-count line (HARNESS-055, AC-8)"
+
+# Fixtures first, for the same reason as the two blocks above: the per-profile
+# `floor`, `orphan` and `no-count` checks below are silent on a profile that
+# carries no no-count line, so a rule that never fires would leave every one of
+# them green and empty. base_profile's build gate has evidence `.`.
+nocount_rules() { # every floor, orphan and no-count line, over $WORK/p.md
+  profile_problems "$WORK/p.md" | awk -F'\t' '$1 == "floor" || $1 == "orphan" || $1 == "no-count" { print }'
+}
+base_profile; printf '    no-count | build | seconds\n    floor | build | 5\n' >> "$WORK/p.md"
+assert_eq "a floor on a gate declared no-count is a floor problem" \
+  "floor on \`build\` is declared no-count, so there is no count to compare against" "$(ondemand_probs floor)"
+base_profile; printf '    no-count | nope | why\n' >> "$WORK/p.md"
+assert_eq "a no-count line naming no configured gate is an orphan" \
+  "no-count names \`nope\`, which this profile does not configure" "$(ondemand_probs orphan)"
+base_profile; printf '    no-count | build |\n' >> "$WORK/p.md"
+assert_eq "a no-count line with no reason is a no-count problem" \
+  "\`build\` is marked no-count with no reason" "$(ondemand_probs no-count)"
+# Controls. A floor on a gate whose regex really counts is not refused, and a
+# well-formed no-count line with no floor beside it is not a problem: without
+# these, a checker that fired on every floor, or on every no-count line, would
+# pass the three cases above.
+base_profile; printf '    floor | unit | 40\n' >> "$WORK/p.md"
+assert_eq "control: a floor on a counted gate with no no-count line yields no floor, orphan or no-count line" \
+  "" "$(nocount_rules)"
+base_profile; printf '    no-count | build | seconds\n' >> "$WORK/p.md"
+assert_eq "control: a no-count line with a reason and no floor beside it yields no floor, orphan or no-count line" \
+  "" "$(nocount_rules)"
+
+# ---------------------------------------------------------------------------
+describe "the profiles whose evidence regex counts nothing say so (HARNESS-055, AC-8)"
+
+# nocount_ids <file>   The ids of its `no-count` lines, sorted, space-joined,
+# read with the same field logic profile_problems uses. Without this, deleting
+# every no-count line leaves the per-profile checks below green: "every
+# no-count line carries a reason" is satisfied by a profile carrying none.
+nocount_ids() {
+  awk "$PROFILE_FIELDS"'
+    BEGIN { FS = "|" }
+    /^[[:space:]]*no-count[[:space:]]*\|/ { print t($2) }
+  ' "$1" | sort | tr '\n' ' ' | sed 's/ $//'
+}
+assert_eq "rust-cargo.md declares no-count on exactly build, lint and typecheck (Finished .* profile is a stopwatch)" \
+  "build lint typecheck" "$(nocount_ids "$PROFILE_DIR/rust-cargo.md")"
+assert_eq "node-typescript.md declares no-count on exactly build (built in [0-9] is a stopwatch)" \
+  "build" "$(nocount_ids "$PROFILE_DIR/node-typescript.md")"
+assert_eq "python-uv.md declares no-count on exactly build (Successfully built is followed by a version)" \
+  "build" "$(nocount_ids "$PROFILE_DIR/python-uv.md")"
+assert_eq "web-static.md declares no-count on exactly build (built in is a stopwatch)" \
+  "build" "$(nocount_ids "$PROFILE_DIR/web-static.md")"
+
+# ---------------------------------------------------------------------------
 describe "the profiles that configure a mutation gate are the ones expected (HARNESS-015, AC-3)"
 
 # The per-profile assertion below is derived from the files, so a list that came
@@ -343,8 +411,9 @@ for f in "$PROFILE_DIR"/*.md; do
   }
   check required-gates "configures every required gate"
   check evidence       "every required gate with a command has an evidence line"
-  check orphan         "no evidence, floor, slow or ondemand line names an unconfigured gate"
-  check floor          "every floor has an evidence line to measure"
+  check orphan         "no evidence, floor, no-count, slow or ondemand line names an unconfigured gate"
+  check floor          "every floor has an evidence line, and a count, to measure"
+  check no-count       "every no-count line carries a reason"
   check slow           "every slow line carries a reason"
   check ondemand       "every ondemand line carries a reason"
   check fast-section   "says what --fast should leave out"

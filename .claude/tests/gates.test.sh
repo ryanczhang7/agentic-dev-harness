@@ -121,6 +121,157 @@ out="$(gates)"
 assert_contains "observed count in the summary" "observed 132" "$out"
 
 # ---------------------------------------------------------------------------
+describe "no-count: an evidence regex that proves liveness and measures nothing"
+
+# The field report: cargo's `Finished \`dev\` profile ... in 0.29s` proves the
+# tool ran and offers no count, so work_count reports the ELAPSED TIME. It read
+# 0, then 2, then 6 across runs of the same unchanged workspace. Harmless while
+# decorative; a coin-toss gate the moment somebody puts a floor under it.
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s\n'
+evidence | lint | Finished .* profile
+EOF
+out="$(gates)"
+assert_contains "undeclared, the stopwatch is reported as a count" "observed 0" "$out"
+
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s\n'
+evidence | lint | Finished .* profile
+no-count | lint | the digits after it are elapsed seconds, not a count
+EOF
+out="$(gates)"
+assert_contains "declared, the number is withheld" "observed -" "$out"
+assert_contains "and liveness still holds"         "PASS         lint" "$out"
+
+# The same gate with nothing to say still fails: `no-count` withholds the
+# measurement, it does not excuse the gate from proving it ran.
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'nothing to do\n'
+evidence | lint | Finished .* profile
+no-count | lint | the digits after it are elapsed seconds, not a count
+EOF
+out="$(gates)"
+assert_contains "no-count does not weaken the evidence assertion" "no evidence of work" "$out"
+
+describe "no-count: a floor on it is refused"
+
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.29s\n'
+evidence | lint | Finished .* profile
+no-count | lint | the digits after it are elapsed seconds, not a count
+floor    | lint | 5
+EOF
+out="$(gates --audit)"
+assert_contains "the audit refuses it" "declared no-count" "$out"
+assert_contains "and the audit fails"  "1 manifest problem" "$out"
+
+# Refused at run time too, not only under --audit: a floor that would otherwise
+# have PASSED here purely because the fixture's stopwatch read 5.29s.
+out="$(gates)"
+assert_contains "the run refuses it"  "FAIL         lint" "$out"
+assert_contains "rather than passing on the clock" "declared no-count" "$out"
+
+describe "no-count: a line that defends nothing is a manifest error"
+
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Finished `dev` profile in 0.29s\n'
+evidence | lint | Finished .* profile
+no-count | lint |
+EOF
+out="$(gates --audit)"
+assert_contains "no-count without a reason fails the audit" "marked no-count with no reason" "$out"
+
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Finished `dev` profile in 0.29s\n'
+evidence | lint | Finished .* profile
+no-count | lnit | a typo, so lint is left open to a floor on its stopwatch
+floor    | lint | 5
+EOF
+out="$(gates --audit)"
+assert_contains "no-count naming no gate fails the audit" "names no configured gate" "$out"
+
+# A count-free regex is not detectable from the regex, which is why it is
+# declared. `TOTAL` has no digit class either, and the number after it is a
+# real one a floor may use.
+write_conf "$FIX" <<'EOF'
+gate     | coverage | required | . | printf 'TOTAL  1629  16  99.02%%\n'
+evidence | coverage | TOTAL
+floor    | coverage | 1000
+EOF
+out="$(gates)"
+assert_contains "a digit-class-free regex may still measure" "observed 1629, floor 1000" "$out"
+
+# ---------------------------------------------------------------------------
+describe "no-count: what HARNESS-055 adds beyond the ported block (AC-2, AC-3, AC-4, AC-5, AC-7)"
+
+# AC-7: the declaration is visible where a reader looks for it - beside the
+# gate in --list and in the audit's ok block - and is not itself a problem.
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s\n'
+evidence | lint | Finished .* profile
+no-count | lint | the digits after it are elapsed seconds, not a count
+EOF
+out="$(gates --list)"
+assert_contains "--list shows the no-count reason beside the gate" \
+  "no-count: the digits after it are elapsed seconds, not a count (no floor possible)" "$out"
+out="$(gates --audit)"; rc=$?
+assert_contains "--audit's ok block shows the no-count reason" \
+  'no-count: the digits after it are elapsed seconds, not a count (reports `observed -`; no floor possible)' "$out"
+assert_eq "and a declared gate with no floor passes the audit" "0 Manifest audit passed." \
+  "$rc $(grep -x 'Manifest audit passed\.' <<< "$out")"
+
+# AC-2 and AC-3: the refusal names the gate and the reason, the audit's exit
+# says so, and the run is a failed run rather than a pass with a note beside it.
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.29s\n'
+evidence | lint | Finished .* profile
+no-count | lint | the digits after it are elapsed seconds, not a count
+floor    | lint | 5
+EOF
+out="$(gates --audit)"; rc=$?
+assert_contains "the audit's refusal of a floor on a no-count gate names lint and why it was declared" \
+  "FAIL lint         floor cannot be measured: lint is declared no-count (the digits after it are elapsed seconds, not a count)" "$out"
+assert_eq "and the audit exits non-zero" "non-zero" "$( [ "$rc" != 0 ] && echo non-zero || echo zero)"
+out="$(gates)"
+assert_contains "the run's refusal names lint and why it was declared" \
+  "FAIL         lint (floor cannot be measured: lint is declared no-count (the digits after it are elapsed seconds, not a count))" "$out"
+assert_not_contains "and the run does not say the required gates passed" \
+  "All required gates passed" "$out"
+
+# AC-4: a no-count with no reason fails the audit, and on a plain run fails the
+# gate before its command runs. The command leaves a marker inside .git, which
+# is neither tracked nor untracked, so whether it ran is observable without
+# disturbing the fixture's recorded tree.
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | touch .git/h055-nocount-ran; printf 'Finished `dev` profile in 0.29s\n'
+evidence | lint | Finished .* profile
+no-count | lint |
+EOF
+out="$(gates --audit)"; rc=$?
+assert_contains "--audit names lint as marked no-count with no reason" \
+  "FAIL lint         marked no-count with no reason; say what its evidence regex measures instead" "$out"
+assert_eq "and that audit exits non-zero" "non-zero" "$( [ "$rc" != 0 ] && echo non-zero || echo zero)"
+rm -f "$FIX/.git/h055-nocount-ran"
+out="$(gates)"
+assert_contains "on a plain run, no-count without a reason fails the gate" \
+  "FAIL         lint (marked no-count with no reason in project.conf)" "$out"
+assert_eq "and the gate's command is never run" "not run" \
+  "$( [ -e "$FIX/.git/h055-nocount-ran" ] && echo ran || echo "not run")"
+rm -f "$FIX/.git/h055-nocount-ran"
+
+# AC-5: the misspelt id is named, and the audit's exit says so.
+write_conf "$FIX" <<'EOF'
+gate     | lint | required | . | printf 'Finished `dev` profile in 0.29s\n'
+evidence | lint | Finished .* profile
+no-count | lnit | a typo, so lint is left open to a floor on its stopwatch
+floor    | lint | 5
+EOF
+out="$(gates --audit)"; rc=$?
+assert_contains "the orphan no-count line is named by its misspelt id" \
+  'FAIL lnit         a `no-count` line names no configured gate' "$out"
+assert_eq "and that audit exits non-zero" "non-zero" "$( [ "$rc" != 0 ] && echo non-zero || echo zero)"
+
+# ---------------------------------------------------------------------------
 describe "required_gates: a story can escalate an optional gate for itself"
 
 write_conf "$FIX" <<'EOF'
