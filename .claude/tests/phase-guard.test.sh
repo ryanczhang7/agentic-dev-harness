@@ -1578,4 +1578,35 @@ assert_role "$FIX" 'git mv tests/main.test.ts docs/notes.md' \
   'operand:  source of mv (removed by the move)' \
   'HARNESS-045 AC-4: and the frozen test is named as the mv source'
 
+# ---------------------------------------------------------------------------
+describe "HARNESS-053: a paren inside a quoted argument is data (0937c76)"
+# mask_shell_quotes masked every operator inside a quoted span except ( and ),
+# and every extractor treats a paren as a terminator. So a quoted name holding
+# a paren was either truncated at it (redirect, backslash escape) or arrived
+# whole with a literal ( that path_is_implausible declines as a leaked parse
+# (rm, touch, tee, mv destination): allowed, only logged. The six
+# assert_blocked cases are that defect through every extractor; the three
+# assert_allowed cases are false-positive controls for a mask that grew too
+# wide. Commands and paths verbatim from the triage of manhwa-cropper 0937c76.
+# The unquoted subshell control is :509 and is not repeated here.
+set_phase "$FIX" RED
+assert_blocked "$FIX" "echo x > 'src/my (1).ts'" 'src/my (1).ts' \
+  'HARNESS-053 AC-1: quoted redirect target containing parens'
+assert_blocked "$FIX" "rm 'src/x (1).ts'" 'src/x (1).ts' \
+  'HARNESS-053 AC-2: rm of a quoted name containing parens'
+assert_blocked "$FIX" "touch 'src/x (1).ts'" 'src/x (1).ts' \
+  'HARNESS-053 AC-2: touch of a quoted name containing parens'
+assert_blocked "$FIX" "echo x | tee 'src/t (1).ts'" 'src/t (1).ts' \
+  'HARNESS-053 AC-2: tee into a quoted name containing parens'
+assert_blocked "$FIX" "mv docs/notes.md 'src/m (1).ts'" 'src/m (1).ts' \
+  'HARNESS-053 AC-2: mv onto a quoted name containing parens'
+assert_blocked "$FIX" 'rm src/x\ \(1\).ts' 'src/x (1).ts' \
+  'HARNESS-053 AC-3: rm of a backslash-escaped name containing parens'
+assert_allowed "$FIX" "echo x > 'docs/my (1).md'" \
+  'HARNESS-053 AC-4: quoted docs target containing parens'
+assert_allowed "$FIX" "cp 'src/a (1).ts' docs/notes.md" \
+  'HARNESS-053 AC-4: cp from a quoted name containing parens, writing docs'
+assert_allowed "$FIX" "git commit -m \"\$(printf '%s' 'a (b) > c')\"" \
+  'HARNESS-053 AC-4: parens and arrow inside a quoted command substitution'
+
 summary "phase-guard"

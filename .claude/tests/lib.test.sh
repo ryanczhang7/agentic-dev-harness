@@ -142,6 +142,14 @@ for cmd in \
   assert_eq "round trip: $cmd" "$cmd" "$(roundtrip "$cmd")"
 done
 
+# HARNESS-053: a paren inside a quoted span is data too. Every extractor stops
+# at ( and ), so a paren that survives masking truncates a quoted file name or
+# leaks into it. Same one-awk shape as has_operator above, for the same reason.
+assert_eq "HARNESS-053 AC-5a: no ( or ) survives masking in: rm 'src/x (1).ts'" "0" \
+  "$(awk '/[()]/ { h = 1 } END { print h + 0 }' <<<"$(mask "rm 'src/x (1).ts'")")"
+assert_eq "HARNESS-053 AC-5b: round trip: rm 'src/x (1).ts'" "rm 'src/x (1).ts'" \
+  "$(roundtrip "rm 'src/x (1).ts'")"
+
 describe "mask_shell_quotes: structure outside quotes is preserved"
 
 for cmd in \

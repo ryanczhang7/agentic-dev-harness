@@ -4,8 +4,8 @@ title: The phase lock judges a quoted file name containing parentheses, instead 
 slug: the-phase-lock-judges-a-quoted-file-name
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-053-the-phase-lock-judges-a-quoted-file-name
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -338,6 +338,11 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+
+- RED, `test-developer`, dispatched with `model: opus`; the agent reported
+  running on Opus 5.5 (`claude-opus-5-5`). As planned. Orchestrator
+  (`/advance-story`) ran on Fable 5.1, then Opus 5.5 after a session model change.
+
 ## Out of scope
 
 - **The `sed -i` operand walk** - the second defect of `0937c76`. Upstream
@@ -374,6 +379,36 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Two levels, both the cheapest that can falsify the criterion:
+
+- **Integration, through the real guard** (`.claude/tests/phase-guard.test.sh`,
+  last block, `describe "HARNESS-053: a paren inside a quoted argument is data
+  (0937c76)"`, under `set_phase "$FIX" RED` on the file's shared `make_fixture`
+  tree). AC-1..AC-4 are claims about the denial the hook emits, so they are
+  judged with `assert_blocked` (exact, whole `path:` field) and
+  `assert_allowed`. Exactly C-2's nine, verbatim; nothing added.
+- **Unit, on the masker** (`.claude/tests/lib.test.sh`, appended to
+  `describe "mask_shell_quotes: operators inside quotes stop being operators"`).
+  AC-5 is a claim about `mask_shell_quotes`/`unmask_shell_quotes` themselves.
+
+| # | Test (label) | Asserts | AC | Today |
+|---|---|---|---|---|
+| 1 | `HARNESS-053 AC-1: quoted redirect target containing parens` | `echo x > 'src/my (1).ts'` blocked on `src/my (1).ts` | AC-1 | red (path `src/my `) |
+| 2 | `HARNESS-053 AC-2: rm of a quoted name containing parens` | `rm 'src/x (1).ts'` blocked on `src/x (1).ts` | AC-2 | red (not blocked) |
+| 3 | `HARNESS-053 AC-2: touch of a quoted name containing parens` | `touch 'src/x (1).ts'` blocked on `src/x (1).ts` | AC-2 | red (not blocked) |
+| 4 | `HARNESS-053 AC-2: tee into a quoted name containing parens` | `echo x \| tee 'src/t (1).ts'` blocked on `src/t (1).ts` | AC-2 | red (not blocked) |
+| 5 | `HARNESS-053 AC-2: mv onto a quoted name containing parens` | `mv docs/notes.md 'src/m (1).ts'` blocked on `src/m (1).ts` | AC-2 | red (not blocked) |
+| 6 | `HARNESS-053 AC-3: rm of a backslash-escaped name containing parens` | `rm src/x\ \(1\).ts` blocked on `src/x (1).ts` | AC-3 | red (path `src/x`) |
+| 7 | `HARNESS-053 AC-4: quoted docs target containing parens` | `echo x > 'docs/my (1).md'` allowed | AC-4 | green (control) |
+| 8 | `HARNESS-053 AC-4: cp from a quoted name containing parens, writing docs` | `cp 'src/a (1).ts' docs/notes.md` allowed | AC-4 | green (control) |
+| 9 | `HARNESS-053 AC-4: parens and arrow inside a quoted command substitution` | `git commit -m "$(printf '%s' 'a (b) > c')"` allowed | AC-4 | green (control) |
+| 10 | `HARNESS-053 AC-5a: no ( or ) survives masking in: rm 'src/x (1).ts'` | `awk '/[()]/'` over the masked text finds nothing (prints `0`) | AC-5 | red (`1`) |
+| 11 | `HARNESS-053 AC-5b: round trip: rm 'src/x (1).ts'` | mask then unmask returns the input byte for byte | AC-5 | green (earned by DV-1(b)) |
+
+AC-4's fourth case (`(echo x > src/main.ts)` blocked on `src/main.ts`) is
+already pinned at `phase-guard.test.sh:509` and, per AC-4 and C-2, is not
+re-added.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -385,6 +420,131 @@ name, below the table.
        * any test that passed on arrival, and the probe or negative control
          that earns it (C-2 names three; say so rather than claim them)
        * anything discovered that changes the approach -->
+
+**Model.** RED ran on `opus` (Claude Opus 5.5, `claude-opus-5-5`), the agent
+definition's own `model:`; no override was given in the dispatch.
+
+**Commands** (both are the gate's view; the summary lines below come from them):
+
+    bash scripts/selftest.sh lib            # ~3 min on this host
+    bash scripts/selftest.sh phase-guard    # ~45 min on this host; run it alone
+
+Iteration slice (C-8), nine assertions in ~38 s, gitignored and left in place
+for GREEN and the DVs: `bash .claude/state/h053-slice.sh </dev/null` (it
+sources `_lib.sh`, makes a fixture and holds the C-2 block verbatim, under the
+name `paren-slice`). It is regenerated from the test file with:
+
+    { echo '#!/usr/bin/env bash'; echo '. "D:/agentic-dev-harness/.claude/tests/_lib.sh"'; echo 'FIX="$(make_fixture)"'; sed -n '/^describe "HARNESS-053/,/^summary/p' .claude/tests/phase-guard.test.sh | sed 's/^summary "phase-guard"/summary "paren-slice"/'; } > .claude/state/h053-slice.sh
+
+**Failure output** (2026-10-13, this tree, `lib.sh` unchanged; FAIL + reason,
+the denial text after `path:` trimmed):
+
+    lib (bash scripts/selftest.sh lib):
+        FAIL HARNESS-053 AC-5a: no ( or ) survives masking in: rm 'src/x (1).ts'
+             expected: 0
+             actual:   1
+    lib: 282 passed, 1 failed
+
+    phase-guard (bash scripts/selftest.sh phase-guard):
+        FAIL blocks: HARNESS-053 AC-1: quoted redirect target containing parens
+             blocked, but on the wrong path (wanted 'src/my (1).ts'): BLOCKED by the harness phase lock.    story:    T-1   phase:    RED   path:     src/my    category: source  [...]
+        FAIL blocks: HARNESS-053 AC-2: rm of a quoted name containing parens
+             not blocked at all
+        FAIL blocks: HARNESS-053 AC-2: touch of a quoted name containing parens
+             not blocked at all
+        FAIL blocks: HARNESS-053 AC-2: tee into a quoted name containing parens
+             not blocked at all
+        FAIL blocks: HARNESS-053 AC-2: mv onto a quoted name containing parens
+             not blocked at all
+        FAIL blocks: HARNESS-053 AC-3: rm of a backslash-escaped name containing parens
+             blocked, but on the wrong path (wanted 'src/x (1).ts'): BLOCKED by the harness phase lock.    story:    T-1   phase:    RED   path:     src/x    category: source  [...]
+    phase-guard: 372 passed, 6 failed
+
+**Why it is the right red.** The six phase-guard FAILs are exactly the six of
+the Context's triage run, with the same reported wrong paths (`src/my ` with
+its trailing space, `src/x`) and `not blocked at all` for the four
+`path_is_implausible` declines. The three `assert_allowed` controls are green.
+In lib, AC-5a is red because the masked text still carries the parens (`awk`
+found one: `actual: 1`), and AC-5b is green. No other assertion in either suite
+changed state: before this story lib was 281 executed / phase-guard 369 with
+none failing on this tree; the only FAIL lines in both runs are this story's.
+
+**Files touched**
+
+- `.claude/tests/phase-guard.test.sh` - one block of nine, before `summary`
+  (the preceding HARNESS-045 block leaves the phase at GREEN; the new block
+  sets RED itself, and nothing follows it but `summary`).
+- `.claude/tests/lib.test.sh` - two `assert_eq` after the `for cmd` loop of
+  the `operators inside quotes` block. AC-5a uses the block's one-awk shape
+  (`awk '/[()]/ { h = 1 } END { print h + 0 }' <<<"$masked"`), not `grep -q`.
+- `.claude/tests/floors.conf` - `lib` 281 -> 283, `phase-guard` 369 -> 378,
+  plus a HARNESS-053 comment paragraph in the file's style.
+- `.claude/tests/selftest.test.sh` - the mirrored table (`lib 283`,
+  `phase-guard 378`) and the `lib is floored at its 283 executed assertions`
+  case. `bash .claude/tests/selftest.test.sh </dev/null` -> `selftest: 268
+  passed, 0 failed`.
+- this story: `## Test plan`, this section.
+
+**What the tests pin: GREEN builds C-1 exactly, in `.claude/hooks/lib.sh` and
+nowhere else.** Three edits: the two `maskchar` lines after the TAB line
+(`lib.sh:113`) mapping `(` -> `\016` and `)` -> `\017`; the `tr` at
+`lib.sh:241` (the function starts at `:240`, not as C-1 says) widened to
+`'\001\002\003\004\005\006\007\010\016\017' '|&;>< \t\n()'`; and the mapping
+comment above `mask_shell_quotes` gaining `( -> \016   ) -> \017` and the
+sentence on why not VT/FF. Do not touch `path_is_implausible` (C-3) or any
+extractor: the extractors are correct to stop at a paren once a quoted one can
+no longer reach them. Note the exact `maskchar` spelling DV-1(a) deletes:
+`if (c == "(")  return "\016"` - TWO spaces before `return`, as C-1 shows; the
+DV-1(a) sed `'/if (c == "[()]")  return/d'` depends on it.
+
+**Export shape.** No signature changes, so there is no caller list. Checked on
+this tree: `mask_shell_quotes` (`lib.sh:104`) and `unmask_shell_quotes`
+(`lib.sh:240`) keep their names and their stdin -> stdout filter shape; the
+tests call them only through lib.test.sh's existing `mask`/`roundtrip` helpers
+(`printf '%s' "$1" | mask_shell_quotes [| unmask_shell_quotes]`) and through the
+guard hook. Not constrained: which control characters are used, provided they
+are inert to every character class the extractors use (C-1 settles `\016`/`\017`;
+AC-5a only requires that no literal paren survives, AC-5b that the round trip
+is exact).
+
+**Green on arrival, and what earns each.**
+
+| Test | Earned by | Status |
+|---|---|---|
+| AC-5b round trip | DV-1(b): revert the `tr` set; parens come back as `\016`/`\017` and it goes red | GATES runs it; not run in RED (the line does not exist yet) |
+| AC-4 `echo x > 'docs/my (1).md'` allowed | `/audit-mutations` - no mutation in this story's budget turns it red (C-2) | not claimed |
+| AC-4 `cp 'src/a (1).ts' docs/notes.md` allowed | `/audit-mutations` (C-2) | not claimed |
+| AC-4 `git commit -m "$(printf '%s' 'a (b) > c')"` allowed | `/audit-mutations` (C-2) | not claimed |
+
+**Negative controls - expected values.** Every criterion is mechanical; the
+controls are the three AC-4 `assert_allowed` cases, expected value `allowed`,
+measured `allowed` (green) in both the slice and the whole-suite run on this
+tree. Unlike a dark RED, these suites did NOT fail at import: every assertion
+in both files executed, so the measured values above are real, against the
+unpatched `lib.sh`. GREEN confirms they are still `allowed` against the patched
+one - that is the over-masking check.
+
+**Deferred verifications - declined in RED.** DV-1 (a) and (b) and DV-2 are
+owned by GATES. RED cannot run DV-1: the lines it deletes or reverts do not
+exist until GREEN writes C-1. RED did not run DV-2 either (it is a before/after
+on the committed fix). Neither is claimed here.
+
+**Discovered - for the orchestrator, not a change to the approach.**
+
+- `scripts/selftest.sh`'s `executed_count` (`:220`) returns the **passed**
+  count, not `passed + failed`, despite its name and its comment. So a
+  single-suite run now reports the floors as unmet in RED (`lib` 282 < 283,
+  `phase-guard` 372 < 378) and met again once GREEN turns the reds green. That
+  is the same state every previous RED floor raise left (the HARNESS-045/046
+  paragraphs in `floors.conf` say "sit at their floors and failing until GREEN
+  lands"), so I followed the contract's `passed + failed`; flagging only that
+  the helper's comment and the floor arithmetic disagree on the word
+  "executed". The pre-raise run printed `assertion floors: all 1 suite(s) met
+  their declared floor (372 assertions executed, 369 declared)`.
+- C-1's `lib.sh:240` for the `tr` line is `:241` (the function header is at
+  `:240`); line numbers only, nothing amended.
+- `bash scripts/gates.sh --fast`: `All required gates passed (0 ran, 5
+  unconfigured, 0 known).` - every gate here is unconfigured; nothing broke.
 
 ## Regressions
 
