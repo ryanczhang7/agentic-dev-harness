@@ -2307,4 +2307,459 @@ git -C "$FIX" checkout -q -- . 2>/dev/null
 git -C "$FIX" checkout -q main 2>/dev/null
 set_phase "$FIX" ""
 
+
+# ===========================================================================
+# HARNESS-052: a gate that reads stdin cannot swallow the gates after it, and a
+# run accounts for every declared gate. Ported from manhwa-cropper's MC-046 and
+# MC-047 suites (the adapted text is in the story's `## Notes`). Every run below
+# that is not about the caller's stdin is made with stdin at end-of-input and
+# descriptors 3-9 closed, so a gate that drains a descriptor can only reach what
+# gates.sh gave it, never this suite's terminal or pipe.
+# ===========================================================================
+
+# gates_isolated [args]   gates.sh with stdin at EOF and fds 3-9 closed.
+gates_isolated() {
+  ( cd "$FIX" && bash scripts/gates.sh "$@" 2>&1 ) </dev/null 3<&- 4<&- 5<&- 6<&- 7<&- 8<&- 9<&-
+}
+
+# assert_gate_failed <what> <id> <output>   The summary line for a required gate
+# that exited 1, by id: `FAIL         <id> (<n>s, exit 1) -> <its log>`. The
+# duration is the one field not pinned.
+assert_gate_failed() {
+  case "$3" in
+    *"FAIL         $2 ("*"s, exit 1) -> .claude/state/gate-logs/$2.log"*) _ok "$1" ;;
+    *) _bad "$1" "expected a summary line: FAIL         $2 (<n>s, exit 1) -> .claude/state/gate-logs/$2.log
+actual:   $3" ;;
+  esac
+}
+
+# assert_lacks <what> <needle> <haystack>   The downstream name for _lib.sh's
+# assert_not_contains, which is the same assertion; reused rather than copied.
+assert_lacks() { assert_not_contains "$@"; }
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-1: a gate that reads its stdin cannot delete the gates after it"
+
+# AC-1(a): the reported bug. Release 93: `later` is absent, "(1 ran, ...)", exit 0.
+write_conf "$FIX" <<'EOF'
+gate     | eats  | required | . | cat >/dev/null; printf 'Tests 1 passed\n'
+gate     | later | required | . | printf 'Tests 2 passed\n'
+evidence | eats  | Tests [1-9][0-9]* passed
+evidence | later | Tests [1-9][0-9]* passed
+EOF
+out="$(gates_isolated)"; rc=$?
+assert_contains "the gate after a stdin-reading gate still runs" "=== gate: later (required) ===" "$out"
+assert_contains "the stdin-reading gate passes"          "PASS         eats (" "$out"
+assert_contains "and so does the gate after it"          "PASS         later (" "$out"
+assert_contains "and both are counted as having run" \
+  "All required gates passed (2 ran, 0 unconfigured, 0 known)." "$out"
+assert_eq "a run of two passing gates exits 0" "0" "$rc"
+
+# AC-1(b): worse than reported. Release 93: exit 0, "All required gates passed".
+AC1B_CONF="gate     | eats  | required | . | cat >/dev/null; printf 'Tests 1 passed\n'
+gate     | later | required | . | exit 1
+evidence | eats  | Tests [1-9][0-9]* passed"
+printf '%s\n' "$AC1B_CONF" | write_conf "$FIX"
+out="$(gates_isolated)"; rc=$?
+assert_gate_failed "a failing required gate after a stdin-reading gate is reported FAIL" later "$out"
+assert_contains "and the run says a required gate failed" "1 required gate(s) failed." "$out"
+assert_lacks "and does not certify the run" "All required gates passed" "$out"
+assert_eq "and exits 1" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-2: a gate cannot reach the manifest through any inherited descriptor"
+
+# The obvious fix - read the manifest on fd 3 instead of fd 0 - passes AC-1 and
+# relocates the defect: the eval'd command inherits fd 3 and a gate that reads
+# it drains the manifest exactly as before. This gate reads 0 and every
+# descriptor 3 to 9 an ordinary command can reach by accident.
+write_conf "$FIX" <<'EOF'
+gate     | eats  | required | . | for fd in 0 3 4 5 6 7 8 9; do cat <&$fd >/dev/null; done 2>/dev/null; printf 'Tests 1 passed\n'
+gate     | later | required | . | exit 1
+evidence | eats  | Tests [1-9][0-9]* passed
+EOF
+out="$(gates_isolated)"; rc=$?
+assert_gate_failed "a gate after one that drains fds 0 and 3-9 still runs and is reported FAIL" later "$out"
+assert_contains "and the run says a required gate failed" "1 required gate(s) failed." "$out"
+assert_lacks "and does not certify the run" "All required gates passed" "$out"
+assert_eq "and exits 1" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-3: a gate reads end-of-input, not the manifest and not the caller's stdin"
+
+# Release 93: the gate reads the rest of the manifest (57 bytes). Under the
+# fd-3-only fix it reads whatever gates.sh was given - here a pipe, in a
+# terminal the TTY, where it would block forever. The pipe is finite, so this
+# test cannot block whichever of those it meets; it fails instead.
+write_conf "$FIX" <<'EOF'
+gate  | count | required | . | printf 'stdin-bytes=%s\n' "$(wc -c | tr -d ' ')"
+gate  | after | required | . | printf 'Tests 2 passed\n'
+EOF
+rm -f "$FIX/.claude/state/gate-logs/count.log"
+out="$(printf 'CALLER-DATA\n' | ( cd "$FIX" && bash scripts/gates.sh 2>&1 ))"
+assert_contains "a run given data on stdin still finishes" "--- gate summary ---" "$out"
+seen="$(grep '^stdin-bytes=' "$FIX/.claude/state/gate-logs/count.log" 2>/dev/null)"
+assert_eq "a gate reads zero bytes of stdin, whatever gates.sh was given" "stdin-bytes=0" "$seen"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-4: --fast and --required give the same guarantee as a full run"
+
+# The subsets run the same loop. (--gate <id> is deliberately absent: a
+# filtered-out gate hits `continue` before anything runs, so it has no defect.)
+printf '%s\n%s\n%s\n' "$AC1B_CONF" \
+  "gate     | slow_one | required | . | printf 'Tests 3 passed\n'" \
+  "slow     | slow_one | stands in for a release build; RED has no use for it" \
+  | write_conf "$FIX"
+out="$(gates_isolated --fast)"; rc=$?
+assert_gate_failed "--fast: a failing gate after a stdin-reading gate is reported FAIL" later "$out"
+assert_contains "--fast: the slow gate after them is still seen, and skipped" "--fast skipped: slow_one" "$out"
+assert_contains "--fast: the run says a required gate failed" "1 required gate(s) failed." "$out"
+assert_eq "--fast: and exits 1" "1" "$rc"
+
+printf '%s\n' "$AC1B_CONF" | write_conf "$FIX"
+out="$(gates_isolated --required)"; rc=$?
+assert_gate_failed "--required: a failing gate after a stdin-reading gate is reported FAIL" later "$out"
+assert_contains "--required: the run says a required gate failed" "1 required gate(s) failed." "$out"
+assert_eq "--required: and exits 1" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+# AC-6 to AC-11 (MC-047): the run accounts for every declared gate.
+#
+# The seam is set per call and never exported, so no later block inherits it.
+# It is unset here as well, so that a caller's environment cannot leak into the
+# no-false-refusal controls at the end.
+unset GATES_FAULT_LOSE
+
+# seam <ids> [gates.sh args...]   A run with GATES_FAULT_LOSE set for that one
+# process only.
+seam() {
+  local lose="$1"; shift
+  ( cd "$FIX" && GATES_FAULT_LOSE="$lose" bash scripts/gates.sh "$@" 2>&1 ) </dev/null
+}
+
+# assert_line <what> <line> <output>   <line> is a WHOLE line of <output>, not a
+# substring of one: a refusal naming `ab` must not pass for `b`.
+assert_line() {
+  if printf '%s\n' "$3" | grep -Fxq -- "$2"; then _ok "$1"
+  else _bad "$1" "expected a line exactly: $2
+actual:   $3"; fi
+}
+
+# assert_no_line <what> <line> <output>
+assert_no_line() {
+  if printf '%s\n' "$3" | grep -Fxq -- "$2"; then _bad "$1" "expected NO line: $2
+actual:   $3"
+  else _ok "$1"; fi
+}
+
+# first_line_no <prefix> <output>   The number of the first line that starts
+# with <prefix>, compared literally; empty when there is none.
+first_line_no() {
+  printf '%s\n' "$2" | awk -v p="$1" 'index($0, p) == 1 { print NR; exit }'
+}
+
+# refusal <id>   The summary line for a lost gate, 13-column prefix and all.
+refusal() { printf 'FAIL         %s (declared in project.conf but never accounted for)' "$1"; }
+
+# lost_count <n>   The line under the summary that counts them.
+lost_count() { printf '%s declared gate(s) never accounted for; this run certifies nothing.' "$1"; }
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-6: a gate that rewrites project.conf in place cannot make a later gate vanish from a certified run"
+
+# `first` reads no stdin: it truncates the manifest by path. The loop streams
+# project.conf from an open descriptor, so its next read lands past the new end
+# of file and `later` is never reached.
+#
+# ac1_outcome <output> <exit>   Classifies a run as exactly one of:
+#   ran        `later` ran and passed, and both gates were counted, exit 0
+#   refused    the refusal line names `later`, no pass line, exit 1
+#   false-cert "All required gates passed" and `later` absent: the defect
+#   other      anything else, which is not an acceptable outcome either
+ac1_outcome() {
+  if [ "$2" = 0 ] \
+     && printf '%s\n' "$1" | grep -Fxq '=== gate: later (required) ===' \
+     && printf '%s\n' "$1" | grep -q '^PASS         later (' \
+     && printf '%s\n' "$1" | grep -Fxq 'All required gates passed (2 ran, 0 unconfigured, 0 known).'; then
+    printf 'ran'
+  elif [ "$2" = 1 ] \
+     && printf '%s\n' "$1" | grep -Fxq -- "$(refusal later)" \
+     && ! printf '%s\n' "$1" | grep -Fq 'All required gates passed'; then
+    printf 'refused'
+  elif printf '%s\n' "$1" | grep -Fq 'All required gates passed' \
+     && ! printf '%s\n' "$1" | grep -Fq 'later'; then
+    printf 'false-cert'
+  else
+    printf 'other'
+  fi
+}
+
+# Each case writes the manifest afresh: the first gate destroys it.
+write_conf "$FIX" <<'EOF'
+gate | first | required | . | printf 'BOOTSTRAPPED=yes\n' > .claude/harness/project.conf; printf 'Tests 1 passed\n'
+gate | later | required | . | printf 'Tests 2 passed\n'
+EOF
+out="$(gates_isolated)"; rc=$?
+outcome="$(ac1_outcome "$out" "$rc")"
+case "$outcome" in
+  ran|refused) _ok "the gate after an in-place rewrite of project.conf either runs or is refused by name" ;;
+  *) _bad "the gate after an in-place rewrite of project.conf either runs or is refused by name" \
+       "outcome: $outcome (exit $rc); wanted 'ran' or 'refused'
+$out" ;;
+esac
+case "$outcome" in
+  false-cert) _bad "and the run never certifies itself with that gate absent from the output" \
+       "certified a pass (exit $rc) without mentioning 'later':
+$out" ;;
+  *) _ok "and the run never certifies itself with that gate absent from the output" ;;
+esac
+
+write_conf "$FIX" <<'EOF'
+gate | first | required | . | printf 'BOOTSTRAPPED=yes\n' > .claude/harness/project.conf; printf 'Tests 1 passed\n'
+gate | later | required | . | exit 1
+EOF
+out="$(gates_isolated)"; rc=$?
+assert_eq "a failing required gate after an in-place rewrite fails the run" "1" "$rc"
+if printf '%s\n' "$out" | grep -q '^FAIL         later ('; then
+  _ok "and the summary has a FAIL line for it, its own or the refusal"
+else
+  _bad "and the summary has a FAIL line for it, its own or the refusal" \
+    "expected a line starting: FAIL         later (
+actual:   $out"
+fi
+assert_lacks "and the run is not certified" "All required gates passed" "$out"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-7: GATES_FAULT_LOSE loses exactly the gates it names, and says so before any gate runs"
+
+# Release 93: the variable is ignored and all three gates run.
+SEAM_CONF="gate | a | required | . | printf 'Tests 1 passed\n'
+gate | b | required | . | printf 'Tests 1 passed\n'
+gate | c | required | . | printf 'Tests 1 passed\n'"
+
+printf '%s\n' "$SEAM_CONF" | write_conf "$FIX"
+out_b="$(seam b)"; rc_b=$?
+assert_lacks    "a gate the seam names never runs"        "=== gate: b (" "$out_b"
+assert_contains "the gate before it still runs"           "=== gate: a (required) ===" "$out_b"
+assert_contains "and so does the gate after it"           "=== gate: c (required) ===" "$out_b"
+
+note_no="$(first_line_no 'note: GATES_FAULT_LOSE is set' "$out_b")"
+banner_no="$(first_line_no '=== gate:' "$out_b")"
+if [ -n "$note_no" ]; then
+  _ok "the seam announces itself with a note: GATES_FAULT_LOSE is set line"
+  note_line="$(printf '%s\n' "$out_b" | sed -n "${note_no}p")"
+  if printf '%s\n' "$note_line" | tr -c 'A-Za-z0-9_.-' '\n' | grep -Fxq b; then
+    _ok "and the note names the gate it will lose"
+  else
+    _bad "and the note names the gate it will lose" "note line does not name 'b': $note_line"
+  fi
+else
+  _bad "the seam announces itself with a note: GATES_FAULT_LOSE is set line" \
+    "no line starts 'note: GATES_FAULT_LOSE is set':
+$out_b"
+  _bad "and the note names the gate it will lose" "there is no note line to name it"
+fi
+if [ -n "$note_no" ] && [ -n "$banner_no" ] && [ "$note_no" -lt "$banner_no" ]; then
+  _ok "and the note comes before the first gate banner"
+else
+  _bad "and the note comes before the first gate banner" \
+    "note at line '${note_no:-none}', first '=== gate:' at line '${banner_no:-none}'"
+fi
+
+out_ac="$(seam 'a c')"; rc_ac=$?
+assert_lacks    "a seam naming two gates loses the first" "=== gate: a (" "$out_ac"
+assert_lacks    "and the second"                          "=== gate: c (" "$out_ac"
+assert_contains "and runs the one it does not name"       "=== gate: b (required) ===" "$out_ac"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-8: a lost gate refuses the run"
+
+# On the two runs above. Release 93: all three gates run, exit 0.
+assert_line  "(a) a lost gate gets its own refusal line"   "$(refusal b)" "$out_b"
+assert_line  "(a) and the refusals are counted"            "$(lost_count 1)" "$out_b"
+assert_lacks "(a) and the run is not certified" "All required gates passed" "$out_b"
+assert_eq    "(a) and exits 1" "1" "$rc_b"
+
+assert_line  "(b) two lost gates: the first is refused"    "$(refusal a)" "$out_ac"
+assert_line  "(b) and the second"                          "$(refusal c)" "$out_ac"
+a_no="$(first_line_no "$(refusal a)" "$out_ac")"
+c_no="$(first_line_no "$(refusal c)" "$out_ac")"
+if [ -n "$a_no" ] && [ -n "$c_no" ] && [ "$a_no" -lt "$c_no" ]; then
+  _ok "(b) in manifest order"
+else
+  _bad "(b) in manifest order" "refusal of a at line '${a_no:-none}', of c at line '${c_no:-none}'"
+fi
+assert_line  "(b) and both are counted"                    "$(lost_count 2)" "$out_ac"
+assert_lacks "(b) and the run is not certified" "All required gates passed" "$out_ac"
+assert_eq    "(b) and exits 1" "1" "$rc_ac"
+
+# (c) A lost OPTIONAL gate is not a WARN: losing it means the runner is broken.
+printf '%s\n' "$SEAM_CONF" | sed 's/^gate | b | required |/gate | b | optional |/' | write_conf "$FIX"
+out="$(seam b)"; rc=$?
+assert_line  "(c) a lost optional gate is refused like a required one" "$(refusal b)" "$out"
+assert_line  "(c) and counted"                              "$(lost_count 1)" "$out"
+assert_lacks "(c) not merely warned about"                  "WARN         b" "$out"
+assert_lacks "(c) and the run is not certified" "All required gates passed" "$out"
+assert_eq    "(c) and exits 1" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-9: the refusal reaches the story record and the stamp"
+
+# Release 93: the record reads `result: pass (3 ran, ...)`. Upstream refuses to
+# record off the story branch or while a gated file is untracked, hence the
+# branch and the `git add -A`; the branch is switched back after.
+printf '%s\n' "$SEAM_CONF" | write_conf "$FIX"
+story "$FIX" T-47 GATES </dev/null
+git -C "$FIX" checkout -q -b story/T-47-fixture 2>/dev/null
+git -C "$FIX" add -A 2>/dev/null
+rm -f "$FIX/.claude/state/last-gate-run"
+out="$(seam b --story T-47)"
+rec="$(awk '/^## Gate results/ { f = 1; next } f && /^## / { exit } f' "$FIX/docs/backlog/stories/T-47.md")"
+if printf '%s\n' "$rec" | grep -Eq '^ *result: fail( |$)'; then
+  _ok "a full run that lost a gate records result: fail"
+else
+  _bad "a full run that lost a gate records result: fail" "## Gate results:
+$rec
+run output:
+$out"
+fi
+assert_line "and the record carries the refusal line" "    $(refusal b)" "$rec"
+assert_line "and the stamp says RESULT=fail" "RESULT=fail" \
+  "$(cat "$FIX/.claude/state/last-gate-run" 2>/dev/null)"
+git -C "$FIX" checkout -q - 2>/dev/null
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-10: --fast, --required and --gate refuse a lost gate, and never blame one they excluded"
+
+# `s` is slow, `o` optional. A lost line was never reached to be excluded, so a
+# filter that would have excluded it does not excuse it. Release 93: all four
+# runs exit 0.
+AC10_CONF="$SEAM_CONF
+gate | s | required | . | printf 'Tests 1 passed\n'
+slow | s | fixture: stands in for a release build
+gate | o | optional | . | printf 'Tests 1 passed\n'"
+
+printf '%s\n' "$AC10_CONF" | write_conf "$FIX"
+out="$(seam b --fast)"; rc=$?
+assert_line    "(a) --fast: the lost gate is refused"            "$(refusal b)" "$out"
+assert_line    "(a) --fast: the slow gate is reported skipped"   "--fast skipped: s" "$out"
+assert_no_line "(a) --fast: and is not blamed as lost"           "$(refusal s)" "$out"
+assert_line    "(a) --fast: exactly one gate is counted lost"    "$(lost_count 1)" "$out"
+assert_eq      "(a) --fast: and exits 1" "1" "$rc"
+
+printf '%s\n' "$AC10_CONF" | write_conf "$FIX"
+out="$(seam b --required)"; rc=$?
+assert_line    "(b) --required: the lost gate is refused"        "$(refusal b)" "$out"
+assert_no_line "(b) --required: the optional gate it left out is not blamed" "$(refusal o)" "$out"
+assert_line    "(b) --required: exactly one gate is counted lost" "$(lost_count 1)" "$out"
+assert_eq      "(b) --required: and exits 1" "1" "$rc"
+
+printf '%s\n' "$AC10_CONF" | write_conf "$FIX"
+out="$(seam b --gate b)"; rc=$?
+assert_line    "(c) --gate b: the lost gate it selected is refused" "$(refusal b)" "$out"
+assert_lacks   "(c) --gate b: b is declared, so it is not a typo" "no gate named" "$out"
+assert_line    "(c) --gate b: exactly one gate is counted lost"   "$(lost_count 1)" "$out"
+assert_eq      "(c) --gate b: and exits 1, not 2" "1" "$rc"
+
+printf '%s\n' "$AC10_CONF" | write_conf "$FIX"
+out="$(seam b --gate a)"; rc=$?
+assert_line    "(d) --gate a: a lost gate it did not select is still refused" "$(refusal b)" "$out"
+assert_line    "(d) --gate a: exactly one gate is counted lost"   "$(lost_count 1)" "$out"
+assert_eq      "(d) --gate a: and exits 1" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-052 AC-11: no false refusal - every disposition counts as accounted for"
+
+# The negative controls on the invariant: it runs on every CI job, so a false
+# refusal would block every PR. Each summary is pinned whole - every status
+# line and the verdict, timings masked - because a healthy run must stay
+# byte-for-byte what it is today. These pass on arrival (there is no invariant
+# yet); each earns its red in GATES by a mutation that makes the invariant
+# forget dispositions (the story's DV-2).
+#
+# verdict_of <output>   The status lines, the --fast skip line and the verdict,
+# with each `(<n>s` masked to `(Ns`.
+verdict_of() {
+  printf '%s\n' "$1" | sed -n -E \
+    -e '/^(PASS|FAIL|WARN|KNOWN|UNCONFIGURED) /{s/\(([0-9]+)s/(Ns/;p;}' \
+    -e '/^--fast skipped/p' \
+    -e '/^All required gates passed/p' \
+    -e '/^[0-9]+ required gate\(s\) failed\.$/p'
+}
+
+HEALTHY_CONF="gate     | a | required | . | printf 'Tests 3 passed\n'
+evidence | a | Tests [1-9]
+gate     | k | optional | . | exit 1
+waiver   | k | fixture: known red
+gate     | w | optional | . | exit 1
+gate     | u | optional | . |
+gate     | s | required | . | printf 'Tests 2 passed\n'
+evidence | s | Tests [1-9]
+slow     | s | fixture: stands in for a release build"
+
+# ac6_row <label> <expected verdict_of> <expected exit> [gates.sh args...]
+ac6_row() {
+  local label="$1" want="$2" want_rc="$3" o r
+  shift 3
+  printf '%s\n' "$HEALTHY_CONF" | write_conf "$FIX"
+  o="$( ( cd "$FIX" && bash scripts/gates.sh "$@" 2>&1 ) </dev/null )"; r=$?
+  assert_eq    "$label: the summary is exactly what it was" "$want" "$(verdict_of "$o")"
+  assert_eq    "$label: and so is the exit code" "$want_rc" "$r"
+  assert_lacks "$label: and nothing is called unaccounted for" "never accounted for" "$o"
+}
+
+ac6_row "healthy, full run" "PASS         a (Ns, observed 3)
+KNOWN        k (Ns, exit 1; fixture: known red) -> .claude/state/gate-logs/k.log
+WARN         w (Ns, exit 1, optional) -> .claude/state/gate-logs/w.log
+UNCONFIGURED u
+PASS         s (Ns, observed 2)
+All required gates passed (4 ran, 1 unconfigured, 1 known)." 0
+
+ac6_row "healthy, --fast" "PASS         a (Ns, observed 3)
+KNOWN        k (Ns, exit 1; fixture: known red) -> .claude/state/gate-logs/k.log
+WARN         w (Ns, exit 1, optional) -> .claude/state/gate-logs/w.log
+UNCONFIGURED u
+--fast skipped: s
+All required gates passed (3 ran, 1 unconfigured, 1 known)." 0 --fast
+
+ac6_row "healthy, --required" "PASS         a (Ns, observed 3)
+PASS         s (Ns, observed 2)
+All required gates passed (2 ran, 0 unconfigured, 0 known)." 0 --required
+
+ac6_row "healthy, --gate w" "WARN         w (Ns, exit 1, optional) -> .claude/state/gate-logs/w.log
+All required gates passed (1 ran, 0 unconfigured, 0 known)." 0 --gate w
+
+ac6_row "healthy, --gate u" "UNCONFIGURED u
+All required gates passed (0 ran, 1 unconfigured, 0 known)." 0 --gate u
+
+# One gate per refusal that happens before a gate runs, plus one that runs.
+# (Downstream's e_nocnt row is dropped: upstream has no no-count line; that is
+# HARNESS-055.)
+write_conf "$FIX" <<'EOF'
+gate      | e_slow  | required | . | printf 'Tests 1 passed\n'
+slow      | e_slow  |
+gate      | e_floor | required | . | printf 'Tests 1 passed\n'
+evidence  | e_floor | Tests [1-9]
+floor     | e_floor | abc
+gate      | e_cif   | required | . | printf 'Tests 1 passed\n'
+evidence  | e_cif   | Tests [1-9]
+ci-factor | e_cif   | 3.4
+gate      | e_waive | required | . | printf 'Tests 1 passed\n'
+waiver    | e_waive | fixture: a bypass
+gate      | e_nocmd | required | . |
+gate      | ok      | required | . | printf 'Tests 1 passed\n'
+evidence  | ok      | Tests [1-9]
+EOF
+out="$( ( cd "$FIX" && bash scripts/gates.sh 2>&1 ) </dev/null )"; rc=$?
+assert_eq "manifest errors: the summary is exactly what it was" \
+"FAIL         e_slow (marked slow with no reason in project.conf)
+FAIL         e_floor (floor 'abc' is not a number)
+FAIL         e_cif (ci-factor has no source; say which CI run it was measured from)
+FAIL         e_waive (has a waiver but is required; waivers are for optional gates only)
+FAIL         e_nocmd (required gate has no command in project.conf)
+PASS         ok (Ns, observed 1)
+5 required gate(s) failed." "$(verdict_of "$out")"
+assert_eq    "manifest errors: and so is the exit code" "1" "$rc"
+assert_lacks "manifest errors: and nothing is called unaccounted for" "never accounted for" "$out"
+
 summary "gates"
