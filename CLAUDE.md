@@ -63,8 +63,10 @@ no story is active it is off entirely. Quoted arguments and heredoc bodies are
 data, not syntax; relative paths resolve against the directory the command will
 actually run in; a path held in a variable the command itself assigns is
 resolved and judged, and one it cannot resolve is declined and logged rather
-than waved through; and anything `.gitignore` covers is always writable. If it
-still blocks a command that writes nothing, that is a bug in the guard: add the
+than waved through; and a `.gitignore`d path is writable in every phase unless
+a `paths.conf` rule classifies it first — `.vitest/x/a.test.ts` is still `test`
+(an ignored test or config can still steer the local runs a phase relies on).
+If it still blocks a command that writes nothing, that is a bug in the guard: add the
 case to `.claude/tests/phase-guard.test.sh` and fix it there, which is the one
 form of "working around the lock" that is allowed.
 

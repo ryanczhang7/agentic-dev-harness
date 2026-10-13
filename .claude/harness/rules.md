@@ -122,7 +122,7 @@ record: what each dispatch RESOLVED to goes in underneath it, by name.
 
 | Phase | May write | Meaning |
 |---|---|---|
-| any | vendor, ignored | installed dependencies, build output, and anything the project's `.gitignore` covers — generated, not authored |
+| any | vendor, ignored | installed dependencies, build output, and any `.gitignore`d path that no `paths.conf` rule classifies first — generated, not authored. An ignored file shaped like a test, config or manifest keeps that category: it can still steer the local runs a phase relies on |
 | `PLANNED` | docs, harness | story is being written |
 | `RED` | test, manifest, docs, harness | failing tests only; source frozen. The manifest is writable for **test** dependencies only — see below |
 | `GREEN` | source, config, manifest, docs, harness | make them pass; tests frozen |
