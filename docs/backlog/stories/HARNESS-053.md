@@ -5,7 +5,7 @@ slug: the-phase-lock-judges-a-quoted-file-name
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-053-the-phase-lock-judges-a-quoted-file-name
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -306,6 +306,92 @@ the amended block says.**
   suites green on the restored file, run `bash scripts/mutate.sh --check`,
   and paste the output here.
 
+  *Result (a) (GATES, 2026-10-13).* For phase-guard I used the C-8 slice
+  (`bash .claude/state/h053-slice.sh`, the nine C-2 assertions verbatim)
+  instead of the 45-minute whole suite, as DV-1 permits. The whole suite runs
+  in the full self-test before REVIEW.
+
+  `bash scripts/mutate.sh .claude/hooks/lib.sh '/if (c == "[()]")  return/d' -- bash scripts/selftest.sh lib`
+  turned exactly AC-5a red, as predicted:
+
+  ```
+      FAIL HARNESS-053 AC-5a: no ( or ) survives masking in: rm 'src/x (1).ts'
+           expected: 0
+           actual:   1
+  lib: 282 passed, 1 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261013T033140Z.209077.bak) ===
+    121:       if (c == "(")  return "\016"
+    122:       if (c == ")")  return "\017"
+  ```
+
+  The same expression with `-- bash .claude/state/h053-slice.sh` turned the six
+  `assert_blocked` cases red, with the Context's wrong paths and `not blocked
+  at all`. The three `assert_allowed` controls stayed green:
+
+  ```
+      FAIL blocks: HARNESS-053 AC-1: quoted redirect target containing parens
+           blocked, but on the wrong path (wanted 'src/my (1).ts'): ... path:     src/my    category: source
+      FAIL blocks: HARNESS-053 AC-2: rm of a quoted name containing parens
+           not blocked at all
+      FAIL blocks: HARNESS-053 AC-2: touch of a quoted name containing parens
+           not blocked at all
+      FAIL blocks: HARNESS-053 AC-2: tee into a quoted name containing parens
+           not blocked at all
+      FAIL blocks: HARNESS-053 AC-2: mv onto a quoted name containing parens
+           not blocked at all
+      FAIL blocks: HARNESS-053 AC-3: rm of a backslash-escaped name containing parens
+           blocked, but on the wrong path (wanted 'src/x (1).ts'): ... path:     src/x    category: source
+  paren-slice: 3 passed, 6 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261013T033910Z.217332.bak) ===
+  ```
+
+  *Result (b) (GATES, 2026-10-13)*, using the corrected expression above.
+  `bash scripts/mutate.sh .claude/hooks/lib.sh '/^  tr /{s/[\]016[\]017//; s/()//}' -- bash scripts/selftest.sh lib`
+  turned exactly AC-5b red. The parens come back as `\016`/`\017` (`cat -v`
+  shows `^N`/`^O`), as predicted:
+
+  ```
+      FAIL HARNESS-053 AC-5b: round trip: rm 'src/x (1).ts'
+           expected: rm 'src/x (1).ts'
+           actual:   rm 'src/x ^N1^O.ts'
+  lib: 282 passed, 1 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261013T034842Z.228975.bak) ===
+    250:   tr '\001\002\003\004\005\006\007\010\016\017' '|&;>< \t\n()'
+  ```
+
+  The same expression with `-- bash .claude/state/h053-slice.sh` makes all six
+  AC-1..AC-3 cases report `blocked, but on the wrong path`. In each, the
+  candidate is the whole name with its parens still masked: masking now
+  works, so nothing is truncated or declined, but the guard reports a path
+  that was never unmasked. The three controls stay green:
+
+  ```
+      FAIL blocks: HARNESS-053 AC-1: ... (wanted 'src/my (1).ts'): ... path:     src/my ^N1^O.ts    category: source
+      FAIL blocks: HARNESS-053 AC-2: ... (wanted 'src/x (1).ts'):  ... path:     src/x ^N1^O.ts     category: source
+      FAIL blocks: HARNESS-053 AC-2: ... (wanted 'src/x (1).ts'):  ... path:     src/x ^N1^O.ts     category: source
+      FAIL blocks: HARNESS-053 AC-2: ... (wanted 'src/t (1).ts'):  ... path:     src/t ^N1^O.ts     category: source
+      FAIL blocks: HARNESS-053 AC-2: ... (wanted 'src/m (1).ts'):  ... path:     src/m ^N1^O.ts     operand:  destination of mv   category: source
+      FAIL blocks: HARNESS-053 AC-3: ... (wanted 'src/x (1).ts'):  ... path:     src/x ^N1^O.ts     category: source
+  paren-slice: 3 passed, 6 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261013T035624Z.237783.bak) ===
+    250:   tr '\001\002\003\004\005\006\007\010\016\017' '|&;>< \t\n()'
+  ```
+
+  *Green re-run on the restored tree*, which is also DV-2's "after":
+
+  ```
+  check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+  check-grep-count: scanned 49 shell file(s), 0 finding(s)
+  mutate: no stranded mutation; nothing of a previous run is in the tree.
+  lib: 283 passed, 0 failed
+  assertion floors: all 1 suite(s) met their declared floor (283 assertions executed, 283 declared).
+  paren-slice: 9 passed, 0 failed
+  ```
+
+  `lib.sh` was confirmed identical to the GREEN commit (`git diff --quiet
+  53aee95 -- .claude/hooks/lib.sh`) before `gates.sh` ran. The whole
+  phase-guard suite (378) runs in the full self-test before REVIEW.
+
 - **DV-2 - real-tree probe: the two tree-wide guards built on
   `masked_lines` are unchanged by the wider mask. Owner: GATES.** Condition:
   on the committed fix, `bash scripts/check-sigpipe.sh` and
@@ -319,6 +405,31 @@ the amended block says.**
   over the tree changes: if a quoted paren in a real script ever carried
   weight in either guard, masking it would move a finding. Paste all four
   census lines (before, after, and under the DV-1(a) mutation for each).
+
+  *Result (GATES, 2026-10-13).* On the committed fix (`53aee95`), before any
+  mutation, both guards exit 0 with:
+
+  ```
+  check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+  check-grep-count: scanned 49 shell file(s), 0 finding(s)
+  ```
+
+  Under DV-1(a), run as
+  `bash scripts/mutate.sh .claude/hooks/lib.sh '/if (c == "[()]")  return/d' -- bash -c 'bash scripts/check-sigpipe.sh 2>&1 | tail -1; bash scripts/check-grep-count.sh 2>&1 | tail -1'`.
+  That mutation is the pre-fix masker for every consumer that does not
+  unmask, and neither guard unmasks:
+
+  ```
+  check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+  check-grep-count: scanned 49 shell file(s), 0 finding(s)
+  === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261013T034047Z.219311.bak) ===
+  ```
+
+  The lines are identical with and without the wider mask, and the finding
+  count is 0 on both. A quoted paren in a real harness script carries no
+  weight in either guard. The file count is 49, not the triage's 51, because
+  `main` has moved since. The "after" re-run on the restored tree is under
+  DV-1's block, with the green re-run.
 
 ## Amendments
 
@@ -567,8 +678,21 @@ on the committed fix). Neither is claimed here.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run. Do not paste or
-     edit it. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-13T04:16:18Z
+    commit: 53aee95
+    tree:   8e26b3556f82461cc48dc69967c5613afc8d0b35
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
