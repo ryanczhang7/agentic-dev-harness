@@ -179,6 +179,14 @@ amended block says. No existing export changes signature: `work_count()`,
 `table_lookup()` and the parser loop keep their shapes, and `work_count` stays
 "a dumb reader of digits" - the callers decide whether to believe it.
 
+**Re-anchored 2026-10-13 (Lead PO, before RED).** HARNESS-052 is DONE and
+moved `scripts/gates.sh` from 1027 to 1057 lines. C-2's diff still applies
+with `patch` (hunks 9-13 at +13); GREEN applies it that way or by hand against
+the context lines, not by the stale numbers. C-8's pins are recomputed below.
+README anchors are now `:253` and `:372`. The `quality-gates/SKILL.md`
+sentence C-7 cites is line-wrapped (`...before anyone commits to a` / `floor.`)
+in "The gate that shrank"; it exists.
+
 ### C-1 - the manifest grammar
 
     no-count | <gate id> | <why its evidence regex measures nothing>
@@ -581,8 +589,14 @@ With C-2 written as given, those lines move to **77** (the header grew by
 three) and **617** (three in the header, two in the parser's `case`, ten in
 the `work_count` comment, one lookup, one `--list` line, twelve in the reason
 block and floor comment, seven in `floor_broken`, one `--audit` ok line:
-+37). RED writes the two pins
-as `scripts/gates.sh:77:` and `scripts/gates.sh:617:` and records in the
++37) - *against release 94*. **Recomputed by the Lead PO on 2026-10-13, after
+HARNESS-052 landed:** `scripts/gates.sh` is now 1057 lines and the pins today
+are `:74` and `:593` (`sigpipe.test.sh:567-568` already say so). C-2 applied
+to a scratch copy of today's file with `patch`: all 13 hunks apply, hunks 9-13
+at a uniform +13 offset, `bash -n` clean, 1109 lines, and
+`grep -n 'could not launch: \$(\|BOOTSTRAPPED="\$(grep'` prints **77** and
+**630**. RED writes the two pins
+as `scripts/gates.sh:77:` and `scripts/gates.sh:630:` and records in the
 handoff that it did; the suite will then fail in RED (stale pin against the
 unported file) for the right reason, alongside the gates suite. GREEN
 confirms with `grep -n 'could not launch: \$(\|BOOTSTRAPPED="\$(grep'
