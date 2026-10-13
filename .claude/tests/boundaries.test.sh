@@ -64,15 +64,21 @@ accepts_manifest() {
 commit_all() { git -C "$FIX" add -A >/dev/null 2>&1
                git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "${1:-wip}" >/dev/null 2>&1; }
 
-# story_on_branch   Writes docs/backlog/stories/T-1.md on a fresh story branch
-# cut from main, with the body on stdin appended after the frontmatter.
+# story_on_branch [type] [extra-frontmatter-line]   Writes
+# docs/backlog/stories/T-1.md on a fresh story branch cut from main, with the
+# body on stdin appended after the frontmatter. Defaults: type feature, no extra
+# line - which writes the same bytes the argument-free form always wrote, so
+# every call site that passes nothing is unchanged (HARNESS-054).
 story_on_branch() {
+  local type="${1:-feature}" extra="${2:-}"
   git -C "$FIX" checkout -q main 2>/dev/null
   git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
   git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
   mkdir -p "$FIX/docs/backlog/stories"
   {
-    printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n---\n\n'
+    printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: %s\nstatus: todo\nphase: REVIEW\nbranch: story/T-1-fixture\n' "$type"
+    [ -n "$extra" ] && printf -- '%s\n' "$extra"
+    printf -- '---\n\n'
     printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n\n'
     cat
   } > "$FIX/docs/backlog/stories/T-1.md"
@@ -1361,6 +1367,89 @@ run_boundaries
 assert_contains "one that did pass is reported as passing" \
   "ok    story-required gate 'unit' passed in the recorded run" "$out"
 assert_eq "and the run is clean" 0 "$rc"
+
+# ---------------------------------------------------------------------------
+describe "a spike that escalates a gate has to have run it"
+
+# HARNESS-054, ported from manhwa-cropper 3ac70e3. The required_gates re-check
+# lived inside the non-spike arm of 3e, and inside the else of its marker test,
+# so a spike that named a gate in required_gates and never ran it merged with
+# nothing said but "spike story; gate record not required". Every fixture in
+# the describe above is type: feature, so no spike had ever been put through.
+#
+# The exemption is right and stays (AC-2); only its width was wrong. AC-1a and
+# AC-1b are pinned separately because they fail through different code today:
+# no record at all, and a real record with no PASS for the escalated gate.
+# AC-3 is AC-1b's twin with integration in the record, so a fix that refused
+# every escalating spike passes AC-1 and fails AC-3.
+
+# gates_recorded <what>   Runs the real gates.sh for T-1 in the fixture. Its
+# record is the only one check-boundaries.sh's tree hash agrees with, so it is
+# never pasted - and a run that quietly stopped recording would make AC-1b
+# pass for the wrong reason and AC-3 fail for one, hence the assertion.
+gates_recorded() {
+  local g
+  g="$( cd "$FIX" && bash scripts/gates.sh --story T-1 2>&1 )"
+  assert_contains "fixture: $1 was recorded by gates.sh" \
+    "recorded in docs/backlog/stories/T-1.md" "$g"
+}
+
+story_on_branch spike 'required_gates: [integration]' <<'EOF'
+## Notes
+
+A spike that named a gate in its frontmatter and never ran it.
+EOF
+run_boundaries
+assert_contains "AC-1a an escalating spike with no gate record is refused" \
+  "story T-1: frontmatter requires gate 'integration'" "$out"
+assert_eq "AC-1a and the run fails rather than noting and moving on" 1 "$rc"
+
+story_on_branch spike 'required_gates: [integration]' </dev/null
+write_conf "$FIX" <<'CONF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+CONF
+# project.conf is code the gate hash covers, and gates.sh will not record while
+# a gated file is untracked, so it is committed BEFORE the run.
+commit_all "T-1 conf"
+gates_recorded "a run that never touched integration"
+commit_all "T-1 recorded, integration unrun"
+run_boundaries
+assert_contains "AC-1b a recorded run with no PASS for the escalated gate is refused" \
+  "story T-1: frontmatter requires gate 'integration'" "$out"
+assert_eq "AC-1b and that run fails too" 1 "$rc"
+
+story_on_branch spike 'required_gates: []' <<'EOF'
+## Notes
+
+A spike that escalated nothing, which is what a spike usually is.
+EOF
+run_boundaries
+assert_contains "AC-2 a spike escalating nothing still needs no gate record" \
+  "spike story; gate record not required" "$out"
+assert_eq "AC-2 and merges" 0 "$rc"
+
+story_on_branch spike 'required_gates: [integration]' </dev/null
+write_conf "$FIX" <<'CONF'
+gate     | unit        | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit        | Tests +[1-9][0-9]* passed
+gate     | integration | optional | . | printf 'Tests  3 passed (3)\n'
+evidence | integration | Tests +[1-9][0-9]* passed
+CONF
+commit_all "T-1 conf"
+gates_recorded "a run that did cover integration"
+assert_contains "fixture: the record carries a PASS for integration" \
+  "PASS         integration" "$(cat "$FIX/docs/backlog/stories/T-1.md")"
+commit_all "T-1 recorded, integration run"
+assert_eq "fixture: the record's tree is the tree being merged" \
+  "$( cd "$FIX" && CLAUDE_PROJECT_DIR="$FIX" bash -c '. .claude/hooks/lib.sh; gate_tree_hash' )" \
+  "$(sed -nE '/^[[:space:]]*tree:[[:space:]]*[0-9a-f]+/{s/^[[:space:]]*tree:[[:space:]]*([0-9a-f]+).*/\1/p;q;}' "$FIX/docs/backlog/stories/T-1.md")"
+run_boundaries
+assert_eq "AC-3 a spike that ran the gate it escalated merges" 0 "$rc"
+# No line BEGINS with FAIL - read on a here-string, never a pipe. A message
+# that merely mentions the word is not an objection. The lines themselves are
+# the actual value, so a failure names the objection rather than a count.
+assert_eq "AC-3 and nothing in the run objects" "" "$(grep '^FAIL' <<< "$out")"
 
 # ---------------------------------------------------------------------------
 describe "machine-local state is never committed"

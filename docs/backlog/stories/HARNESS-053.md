@@ -4,8 +4,8 @@ title: The phase lock judges a quoted file name containing parentheses, instead 
 slug: the-phase-lock-judges-a-quoted-file-name
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-053-the-phase-lock-judges-a-quoted-file-name
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
