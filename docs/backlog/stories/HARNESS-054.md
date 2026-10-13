@@ -4,8 +4,8 @@ title: A spike that escalates a gate cannot merge without having run it
 slug: a-spike-that-escalates-a-gate-cannot-mer
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-054-a-spike-that-escalates-a-gate-cannot-mer
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1054,3 +1054,11 @@ worktree's `run.lock` was held by this run alone throughout (checked at
 13:25 while `boundaries` ran; no orphan). Slow, not wrong.
 
 PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/140 (opened 2026-10-13 from `f5a84c8`).
+
+### DONE (2026-10-13)
+
+Merged as #140 (`768af71`, 2026-10-13T20:47:31Z). CI on the final head: run
+38464648038 `gates` success, run 38464648055 `boundaries` success. Timings
+read from the `gates` job: `Harness self-test` 20:40:14 -> 20:42:48 (2m34s)
+against the job's `timeout-minutes: 45`, nowhere near the limit; the sigpipe
+and grep-count steps 4s each.
