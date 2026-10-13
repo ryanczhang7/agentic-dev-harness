@@ -4,8 +4,8 @@ title: The phase lock judges a quoted file name containing parentheses, instead 
 slug: the-phase-lock-judges-a-quoted-file-name
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-053-the-phase-lock-judges-a-quoted-file-name
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -775,3 +775,19 @@ predates this dispatch; this subsection is added after the stat was taken.)
   `echo 'a\016\017b' | sed 's/[\]016[\]017//'` prints `ab`). DV-1(a)'s
   expression was dry-run the same way and matches exactly the two new
   `maskchar` lines.
+
+### Full self-test at GATES (before REVIEW)
+
+`bash scripts/selftest.sh`, run detached on the GATES tree (`bfa3809`), alone in
+this worktree:
+
+```
+assertion floors: all 26 suite(s) met their declared floor (3298 assertions executed, 2984 declared).
+26 harness suite(s) passed.
+selftest-exit=0 duration=9441s
+```
+
+2h37m wall on this Windows host, with other projects' self-tests sharing it;
+0 `FAIL` lines in the output. Within it: `phase-guard: 378 passed, 0 failed`
+(the whole suite, which DV-1 ran as a slice), `lib: 283 passed, 0 failed`,
+`selftest: 268 passed, 0 failed`.
