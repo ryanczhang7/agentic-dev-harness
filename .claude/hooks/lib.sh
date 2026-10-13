@@ -97,6 +97,13 @@ json_is_true() {
 #
 #   |  -> \001   &  -> \002   ;  -> \003   >  -> \004
 #   <  -> \005   SP -> \006   TAB-> \007   LF -> \010
+#   (  -> \016   )  -> \017
+#
+# Why \016/\017 for the parens and not \013/\014: VT and FF are POSIX
+# [[:space:]], so the redirect and tee extractors' character classes would eat
+# them and the target would truncate in exactly the old place - which is also
+# why SP and TAB are \006/\007. A mask character has to be inert to every
+# character class the extractors use, not merely unusual.
 #
 # Control characters are used because no real command line contains them, so
 # the round trip cannot corrupt a path that had one of them already.
@@ -111,6 +118,8 @@ mask_shell_quotes() {
       if (c == "<")  return "\005"
       if (c == " ")  return "\006"
       if (c == "\t") return "\007"
+      if (c == "(")  return "\016"
+      if (c == ")")  return "\017"
       return c
     }
     function maskstr(t,   k, o) {
@@ -238,7 +247,7 @@ mask_shell_quotes() {
 }
 
 unmask_shell_quotes() {
-  tr '\001\002\003\004\005\006\007\010' '|&;>< \t\n'
+  tr '\001\002\003\004\005\006\007\010\016\017' '|&;>< \t\n()'
 }
 
 # masked_lines <file>   The file's text with every operator inside a quoted,

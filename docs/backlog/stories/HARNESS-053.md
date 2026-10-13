@@ -5,7 +5,7 @@ slug: the-phase-lock-judges-a-quoted-file-name
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-053-the-phase-lock-judges-a-quoted-file-name
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, .claude/tests/phase-guard.test.sh, .claude/tests/lib.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -287,9 +287,18 @@ the amended block says.**
     red with the Context's wrong paths or `not blocked at all`, while the
     three `assert_allowed` controls stay green.
   - (b) With `unmask_shell_quotes` reverted to the old `tr` set -
-    `bash scripts/mutate.sh .claude/hooks/lib.sh '/^  tr /{s/\\016\\017//; s/()//}' -- bash scripts/selftest.sh lib`
-    (verified at PLANNED on the patched copy: changes only the `tr` line,
-    to exactly today's `tr '\001\002\003\004\005\006\007\010' '|&;>< \t\n'`)
+    `bash scripts/mutate.sh .claude/hooks/lib.sh '/^  tr /{s/[\]016[\]017//; s/()//}' -- bash scripts/selftest.sh lib`
+    (changes only the `tr` line, to exactly today's
+    `tr '\001\002\003\004\005\006\007\010' '|&;>< \t\n'`. *Corrected at the
+    end of GREEN:* PLANNED wrote `s/\\016\\017//`, which the feature-developer
+    found leaves `\016\017` in place on this host's GNU sed 4.9 and so builds
+    a different mutant - `tr` with set1 longer than set2, parens mapped to
+    newline. The orchestrator reproduced it independently with a dry run
+    against the committed line: `sed -n '/^  tr /{s/\\016\\017//; s/()//; p}'`
+    prints `tr '...\010\016\017' '|&;>< \t\n'` - `()` removed, escapes kept -
+    while the bracketed form prints exactly today's line. On a bare
+    `x\016\017y` input both spellings work, so the difference is specific to
+    the real line, which is why the probe is against the tree.)
     - AC-5b's round trip **must** go red (parens come back as
     `\016`/`\017`), and in phase-guard AC-1..AC-3 **must** report
     `blocked, but on the wrong path`.
@@ -342,6 +351,8 @@ name, below the table.
 - RED, `test-developer`, dispatched with `model: opus`; the agent reported
   running on Opus 5.5 (`claude-opus-5-5`). As planned. Orchestrator
   (`/advance-story`) ran on Fable 5.1, then Opus 5.5 after a session model change.
+- GREEN, `feature-developer`, dispatched with `model: opus`; the agent reported
+  running on Opus 5.5 (`claude-opus-5-5`). As planned. Orchestrator on Fable 5.1.
 
 ## Out of scope
 
@@ -580,3 +591,63 @@ on the committed fix). Neither is claimed here.
   are edited by every story that adds selftest assertions, so they are the
   likeliest collision with a sibling story; `plan.sh conflicts` can only see
   it if both sides declare it.
+
+### GREEN confirmations
+
+Feature-developer, dispatched with no model override; ran on Opus 5.5
+(`claude-opus-5-5`), the agent definition's own `model:`. C-1 applied as
+written, three edits to `.claude/hooks/lib.sh`, nothing else; no Contract
+amendment. The slice was observed red first on this tree
+(`paren-slice: 3 passed, 6 failed`, the same six FAILs as the handoff), then:
+
+    bash .claude/state/h053-slice.sh </dev/null
+    paren-slice: 9 passed, 0 failed
+
+    bash scripts/selftest.sh lib
+    lib: 283 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (283 assertions executed, 283 declared).
+
+    bash scripts/selftest.sh phase-guard      (full log: .claude/state/h053-pg-green.log)
+    phase-guard: 378 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (378 assertions executed, 378 declared).
+
+    bash scripts/check-sigpipe.sh      -> exit 0
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    bash scripts/check-grep-count.sh   -> exit 0
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+    bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+    git diff --stat
+     .claude/hooks/lib.sh                | 11 ++++++++++-
+     docs/backlog/stories/HARNESS-053.md |  2 +-
+     2 files changed, 11 insertions(+), 2 deletions(-)
+
+(The story's 2-line diff above is the uncommitted `phase: GREEN` change that
+predates this dispatch; this subsection is added after the stat was taken.)
+
+- **Negative controls.** The three AC-4 `assert_allowed` cases measured
+  `allowed` against the patched `lib.sh` in both the slice and the whole
+  phase-guard run (no FAIL line in either), matching RED's recorded value
+  `allowed`. No over-masking shows. The pre-existing `'a(b)'` implausible case
+  (`lib.test.sh:583`, inside the `for t in ...` loop; the handoff's `:575`
+  is the line before the block moved) passes in the 283/0 run.
+- **Census lines differ from the triage's in file count only** (49/45 here
+  against 51/47 in triage, on a different tree); finding count 0 on both, as
+  DV-2 requires. DV-2's before/after/under-mutation comparison is GATES' and
+  was not run.
+- **For GATES: DV-1(b)'s sed expression does not do what DV-1 says on this
+  host's GNU sed 4.9.** A dry run of the expression with `sed -n ...p` on the
+  patched file (no file change) printed
+  `tr '\001\002\003\004\005\006\007\010\016\017' '|&;>< \t\n'` - the `()`
+  removed, the `\016\017` NOT removed. Isolated:
+  `echo 'a\016\017b' | sed 's/\\016//'` prints `a\\017b`, i.e. this sed
+  mishandles `\\` followed by a digit. Under that mutant set1 is two longer
+  than set2, so `tr` maps `\016`/`\017` to `\n` (last char repeated): AC-5b
+  would still go red, but parens come back as newlines, not as
+  `\016`/`\017` as DV-1(b) predicts. A spelling that does work here:
+  `'/^  tr /{s/[\]016[\]017//; s/()//}'` (bracketed backslash;
+  `echo 'a\016\017b' | sed 's/[\]016[\]017//'` prints `ab`). DV-1(a)'s
+  expression was dry-run the same way and matches exactly the two new
+  `maskchar` lines.
