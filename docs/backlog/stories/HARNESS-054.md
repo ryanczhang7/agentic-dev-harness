@@ -5,7 +5,7 @@ slug: a-spike-that-escalates-a-gate-cannot-mer
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-054-a-spike-that-escalates-a-gate-cannot-mer
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -350,6 +350,7 @@ name, below the table.
 **Resolved:**
 
 - RED: `test-developer` on `opus` (its declared `model:`; the dispatch gave no override). Planned `opus`; no change.
+- GREEN: `feature-developer` on `opus` (claude-opus-5-5, its declared `model:`; no override). Planned `opus`; no change.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -939,3 +940,39 @@ second way (floors count passes): GREEN's expected `boundaries: 125 passed, 0
 failed` clears both. `gates.sh --fast` runs nothing on this repository
 (`BOOTSTRAPPED=no`, every gate unconfigured), so admissibility is the two
 tree-wide checks above plus the selftest suite.
+
+### GREEN verification (orchestrator, 2026-10-13)
+
+The feature-developer's diff to `scripts/check-boundaries.sh` is the port
+byte for byte: `git diff` reports `index 64bdea6..103b54e`, the same blob
+pair the recorded port diff above carries, so what landed is exactly what was
+triaged against release 93. Hunk `@@ -441,21 +441,32 @@`, net +11, and
+`grep -n 'ph_at="$(git show' scripts/check-boundaries.sh` now prints `619`,
+which is what `.claude/tests/sigpipe.test.sh:563` pins. No other file
+changed. The feature-developer reported `boundaries: 125 passed, 0 failed`
+(`real 32m50s`) and `sigpipe: 82 passed, 0 failed`; the orchestrator's own
+runs follow.
+
+    $ time bash scripts/selftest.sh sigpipe
+    sigpipe: 82 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (82 assertions executed, 82 declared).
+    exit=0
+
+    $ time bash scripts/selftest.sh boundaries
+    boundaries: 125 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (125 assertions executed, 125 declared).
+    1 harness suite(s) passed.
+    real    32m50.521s
+    exit=0
+
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+    exit=0
+
+Every control in the handoff's table landed on its "expected after GREEN"
+value (the suite prints only failures, and every one of these assertions is
+an exact equality or substring): AC-1a/1b exit 1 with the `requires gate
+'integration'` problem, AC-2 exit 0 with the note, AC-3 exit 0 with no
+`^FAIL` line. sigpipe C-5 finds all twelve lines at their pins, `:619`
+included. `gates.sh --fast` ran nothing (`BOOTSTRAPPED=no`); the suites
+above are the judge here. The DV-1 and DV-2 columns are GATES' to measure.
