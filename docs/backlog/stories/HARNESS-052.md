@@ -4,8 +4,8 @@ title: A gate that reads stdin cannot swallow the gates after it, and a run acco
 slug: a-gate-that-reads-stdin-cannot-swallow-t
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-052-a-gate-that-reads-stdin-cannot-swallow-t
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/doctor.sh, .claude/tests/gates.test.sh, .claude/tests/doctor.test.sh, .claude/tests/sigpipe.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
