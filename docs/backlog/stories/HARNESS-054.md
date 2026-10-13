@@ -4,11 +4,11 @@ title: A spike that escalates a gate cannot merge without having run it
 slug: a-spike-that-escalates-a-gate-cannot-mer
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-054-a-spike-that-escalates-a-gate-cannot-mer
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
+touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -349,6 +349,8 @@ name, below the table.
 
 **Resolved:**
 
+- RED: `test-developer` on `opus` (its declared `model:`; the dispatch gave no override). Planned `opus`; no change.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -384,28 +386,233 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+Level: integration, the only level that can falsify these criteria. Each
+case builds a real two-branch git fixture (`make_project_fixture`), writes a
+`type: spike` story at `phase: REVIEW`, and runs the real
+`scripts/check-boundaries.sh main` over it via `run_boundaries` (sets `$out`
+and `$rc`). Records for AC-1b and AC-3 are written by a real `gates.sh --story
+T-1` run inside the fixture, never pasted, because only that record carries a
+`tree:` the script agrees with.
+
+All in `.claude/tests/boundaries.test.sh`, one new describe
+*a spike that escalates a gate has to have run it*, placed directly after
+*a gate the story escalated for itself appears in the record* and before
+*machine-local state is never committed*.
+
+| Assertion (exact name) | Pins | AC | On arrival |
+|---|---|---|---|
+| `AC-1a an escalating spike with no gate record is refused` | `$out` contains `story T-1: frontmatter requires gate 'integration'` | AC-1a | RED |
+| `AC-1a and the run fails rather than noting and moving on` | `$rc` = `1` | AC-1a | RED |
+| `fixture: a run that never touched integration was recorded by gates.sh` | gates.sh printed `recorded in docs/backlog/stories/T-1.md` (unit-only conf) | AC-1b fixture | green |
+| `AC-1b a recorded run with no PASS for the escalated gate is refused` | `$out` contains `story T-1: frontmatter requires gate 'integration'` | AC-1b | RED |
+| `AC-1b and that run fails too` | `$rc` = `1` | AC-1b | RED |
+| `AC-2 a spike escalating nothing still needs no gate record` | `$out` contains `spike story; gate record not required` (`required_gates: []`, no `## Gate results`) | AC-2 | green (control) |
+| `AC-2 and merges` | `$rc` = `0` | AC-2 | green (control) |
+| `fixture: a run that did cover integration was recorded by gates.sh` | gates.sh printed `recorded in docs/backlog/stories/T-1.md` (unit + optional integration conf) | AC-3 fixture | green |
+| `fixture: the record carries a PASS for integration` | story file contains `PASS         integration` | AC-3 fixture | green |
+| `fixture: the record's tree is the tree being merged` | first recorded `tree:` hex = `gate_tree_hash` of the committed fixture | AC-3 fixture | green |
+| `AC-3 a spike that ran the gate it escalated merges` | `$rc` = `0` | AC-3 | green (control) |
+| `AC-3 and nothing in the run objects` | `grep '^FAIL' <<< "$out"` is empty (no line BEGINS with `FAIL`) | AC-3 | green (control) |
+
+AC-4 (every suite passes, sigpipe C-5 still finds its twelve lines) is not a
+new assertion: it is the existing `selftest.sh` run plus the pin GREEN moves
+(see the handoff). Nothing in RED can make it red, because the line it pins
+has not moved yet.
+
+Edges and non-goals: the non-escalating spike (AC-2) is the "empty" case of
+`required_gates`; the one-gate cases are AC-1/AC-3. The out-of-scope
+behaviour "a non-spike with an escalation and no record now gets two problems"
+is deliberately NOT asserted (Contract, "A side effect to accept").
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+RED by `test-developer`, dispatched on its declared `model: opus`; no override
+was given in the dispatch.
+
+**Command.** `bash scripts/selftest.sh boundaries` (one suite). The same file
+runs directly as `bash .claude/tests/boundaries.test.sh` (`VERBOSE=1` lists
+the passes too). It is slow on this Windows machine: about 20 minutes wall
+time per run (`real 20m5.632s`, `user 1m37s`, `sys 8m21s`, a local run with
+other processes going at the time; no CI timing was taken). The suite has no
+per-test timeouts, so nothing here needs a budget.
+
+**Failure output, verbatim** (`bash scripts/selftest.sh boundaries`, against
+the unmodified `scripts/check-boundaries.sh`, 2026-10-13; describes with no
+failure print as headers only):
+
+```
+  a gate the story escalated for itself appears in the record
+
+  a spike that escalates a gate has to have run it
+    FAIL AC-1a an escalating spike with no gate record is refused
+         expected to contain: story T-1: frontmatter requires gate 'integration'
+         actual:               ok    story files validated
+         ok    harness state not tracked
+         ok    source changes accompanied by test changes (0 source, 0 test)
+         ok    story T-1 is in REVIEW
+         ok    branch matches the story's frontmatter
+         ok    acceptance criteria unchanged since main
+           spike story; gate record not required
+    FAIL AC-1a and the run fails rather than noting and moving on
+         expected: 1
+         actual:   0
+    FAIL AC-1b a recorded run with no PASS for the escalated gate is refused
+         expected to contain: story T-1: frontmatter requires gate 'integration'
+         actual:               ok    story files validated
+         ok    harness state not tracked
+         ok    source changes accompanied by test changes (0 source, 0 test)
+         ok    story T-1 is in REVIEW
+         ok    branch matches the story's frontmatter
+         ok    acceptance criteria unchanged since main
+           spike story; gate record not required
+    FAIL AC-1b and that run fails too
+         expected: 1
+         actual:   0
+
+  machine-local state is never committed
+...
+boundaries: 121 passed, 4 failed
+
+assertion floors: all 1 suite(s) met their declared floor (121 assertions executed, 113 declared).
+1 of 1 harness suite(s) FAILED.
+exit=1
+```
+
+**Why it is the right failure.** Exactly the four AC-1 assertions are red,
+and the actual output shows the defect itself: a spike with
+`required_gates: [integration]` gets only `spike story; gate record not
+required` and exit 0. Both AC-1b fixture self-checks passed, so AC-1b fails
+on the missing re-check and not on a missing record. The 113 pre-existing
+assertions all pass, so `story_on_branch`'s new arguments changed nothing for
+existing callers. 121 passed = 113 existing + 8 new green (2 gates.sh
+recorded, PASS integration, tree hash, 2 AC-2, 2 AC-3); 4 red = AC-1a x2,
+AC-1b x2. That is the split the Contract predicted.
+
+**Files touched.** `.claude/tests/boundaries.test.sh` only (plus this story
+file). Not touched: `scripts/check-boundaries.sh`, `.claude/tests/sigpipe.test.sh`,
+`.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`.
+
+**Assertion -> AC map.** See `## Test plan`; one line each:
+
+- `AC-1a an escalating spike with no gate record is refused` - output contains `story T-1: frontmatter requires gate 'integration'` (AC-1a)
+- `AC-1a and the run fails rather than noting and moving on` - exit 1 (AC-1a)
+- `fixture: a run that never touched integration was recorded by gates.sh` - fixture self-check (AC-1b)
+- `AC-1b a recorded run with no PASS for the escalated gate is refused` - same substring (AC-1b)
+- `AC-1b and that run fails too` - exit 1 (AC-1b)
+- `AC-2 a spike escalating nothing still needs no gate record` - output contains `spike story; gate record not required` (AC-2)
+- `AC-2 and merges` - exit 0 (AC-2)
+- `fixture: a run that did cover integration was recorded by gates.sh` - fixture self-check (AC-3)
+- `fixture: the record carries a PASS for integration` - `PASS         integration` in the story file (AC-3)
+- `fixture: the record's tree is the tree being merged` - recorded `tree:` = `gate_tree_hash` (AC-3)
+- `AC-3 a spike that ran the gate it escalated merges` - exit 0 (AC-3)
+- `AC-3 and nothing in the run objects` - no output line begins `FAIL`; the actual value is the offending lines, so a failure names them (AC-3)
+
+**`story_on_branch` callers.** `grep -n 'story_on_branch' .claude/tests/boundaries.test.sh`
+on the RED tree before the edit returned 27 lines: the comment at `:67`, the
+definition at `:69`, a comment at `:1683`, and **24 call sites** (`:109 118
+135 150 161 179 197 215 222 244 277 614 630 645 661 673 693 704 718 731 818
+1596 1610 1693`). The brief said 25; the tree says 24. All are argument-free,
+so all take the defaults (`feature`, no extra line), and the new body writes
+the same bytes as the old: the old single `printf` ended
+`branch: story/T-1-fixture\n---\n\n`, and the new one writes
+`branch: story/T-1-fixture\n`, then nothing (the extra line is empty), then
+`---\n\n`. The 113 pre-existing passes are the evidence. The new describe adds
+four argument-bearing calls (`spike 'required_gates: [integration]'` x3,
+`spike 'required_gates: []'` x1).
+
+**What the tests pin (exact).**
+
+- `problem` text substring: `story T-1: frontmatter requires gate 'integration'`
+  (from the Contract's `problem "story $sid: frontmatter requires gate '$g', but ..."`).
+  check-boundaries prints problems as lines beginning `FAIL  `.
+- `note` text substring: `spike story; gate record not required` for a spike
+  with `required_gates: []` (AC-2).
+- Exit codes: `1` for AC-1a and AC-1b, `0` for AC-2 and AC-3.
+- AC-3: no output line matches `^FAIL`.
+- The existing `ok` text `ok    story-required gate 'unit' passed in the
+  recorded run` and the existing `problem` text in the feature-type describe
+  (`:1350-1363` before this edit) keep pinning the unchanged messages.
+
+**What they do NOT constrain.** Comment wording in the 3e-i block; whether
+the `spike story; gate record not required` note still prints for an
+*escalating* spike (it does today and may keep doing so); whether an
+escalating spike must also pass the marker / `result:` / `tree:` checks
+(AC-1b's record is otherwise valid); how many problems a non-spike with an
+escalation and no record gets; the wording of anything after the pinned
+substrings; where in 3e the re-check lives, provided the behaviour holds.
+
+**No production exports.** This is a shell script; the tests only run
+`scripts/check-boundaries.sh main` in a fixture and read stdout/stderr and the
+exit status. No function in it is sourced by the new tests.
+
+**Passed on arrival, and what earns each.** All are controls that pass on
+the unfixed script by design (the Contract's oracle partition):
+
+| Assertion | Green on arrival because | Earned by |
+|---|---|---|
+| `AC-2 a spike escalating nothing still needs no gate record` | the spike arm already prints the note | DV-2 (delete the spike arm: must go red) |
+| `AC-2 and merges` | the spike arm already skips the record | DV-2 (must go red: refused for no gate record) |
+| `AC-3 a spike that ran the gate it escalated merges` | the spike arm skips everything | DV-1 (defect put back: stays green while its twin AC-1b goes red) |
+| `AC-3 and nothing in the run objects` | as above | DV-1 (same) |
+| 4 `fixture:` self-checks | they check gates.sh and the fixture, not check-boundaries.sh | not mutation-earned; they guard the fixture, and the AC-1b one is what makes AC-1b's red mean "re-check missing" rather than "no record" |
+
+**Expected values of the controls** (all measured on this tree, local run,
+against the unfixed script; these are the real suite assertions, which did
+execute - nothing here fails at import):
+
+| Control | Threshold | Measured now (unfixed) | Expected after GREEN | Expected under DV-1 | Expected under DV-2 |
+|---|---|---|---|---|---|
+| AC-2 exit | `= 0` | 0 | 0 | 0 | non-zero (red) |
+| AC-2 note | contains | present | present | present | absent or with refusal (red) |
+| AC-3 exit | `= 0` | 0 | 0 | 0 | 0 |
+| AC-3 `^FAIL` lines | none | none | none | none | none |
+| AC-1a/1b exit | `= 1` | 0 (red) | 1 | 0 (red) | 1 (green) |
+
+The DV columns assume the mutation is applied to GREEN's fixed script, which
+is when GATES runs them. Under DV-2 the escalating spikes fall into the
+ordinary arm and the new 3e-i block still fires, so AC-1 stays green there;
+only AC-2 goes red. These after-GREEN and DV values are expectations derived
+from the Contract's text. No run has measured them.
+
+DV-1 and DV-2 are GATES' to run. RED cannot run DV-1 (the 3e-i block it
+disables does not exist yet) and did not run DV-2: I decline both in writing
+here, as the story assigns them to GATES.
+
+**For GREEN, the things to do besides the hunk.**
+
+1. **Move the sigpipe pin.** `.claude/tests/sigpipe.test.sh:563` holds
+   `scripts/check-boundaries.sh:608:ph_at="$(git show`. Today
+   `grep -n 'ph_at="$(git show' scripts/check-boundaries.sh` prints `608:`.
+   After the hunk, re-run that grep and pin whatever line it prints (`619` if
+   the hunk is exactly +11). RED did not touch `sigpipe.test.sh`, per the
+   Contract. The `:394` and `:433` pins are above the change.
+2. Then run `bash scripts/selftest.sh boundaries` (expect 125 passed, 0
+   failed) and `bash scripts/selftest.sh sigpipe`, and the full
+   `bash scripts/selftest.sh` for AC-4.
+
+**Discovered, for the orchestrator.**
+
+- **Floor not raised.** `boundaries` now executes 125 assertions against a
+  floor of 113 (`.claude/tests/floors.conf:39`, mirrored in
+  `.claude/tests/selftest.test.sh:530`). Recent stories (HARNESS-037, -039,
+  -053) raised the floor in the RED commit. This story's Contract puts every
+  file outside `touches:` out of scope ("no change to ... any other suite"),
+  and `floors.conf` says a story that adds assertions "need not touch this
+  file", so I left it at 113. If the orchestrator wants the floor at 125, it
+  is a two-file change (`floors.conf` plus `selftest.test.sh`'s table) and
+  needs a `touches:` decision first.
+- The diagnostic `[ "$rc" = 0 ] || printf ... | grep FAIL | sed` from the
+  triage suite was dropped. AC-3's second assertion now uses
+  `assert_eq ... "" "$(grep '^FAIL' <<< "$out")"`, a here-string, which also
+  carries the diagnostic: a failure prints the offending lines.
+- The tree-hash self-check reads the first `tree:` line with one
+  `sed -nE '/.../{s/.../\1/p;q;}'`, not `sed | head -1`, to keep a pipe out of
+  the suite.
+- `bash scripts/check-sigpipe.sh`: `scanned 49 shell file(s), 45 with
+  pipefail, 0 finding(s)`. `bash scripts/check-grep-count.sh`: `scanned 49
+  shell file(s), 0 finding(s)`. `bash scripts/gates.sh --fast`: every gate
+  UNCONFIGURED on this harness (`BOOTSTRAPPED=no`), so it ran nothing; the
+  selftest is the real judge here, as Context says.
 
 ## Regressions
 
@@ -677,3 +884,58 @@ index 64bdea6..103b54e 100644
 is caught at REVIEW by `check-boundaries.sh`; it should be caught when
 `gates.sh` runs, naming the gate. Needs its own story over `scripts/gates.sh`
 and `.claude/tests/gates.test.sh`.
+
+### PO decisions
+
+1. **The `boundaries` floor is raised 113 -> 125 in the RED commit**, in
+   `.claude/tests/floors.conf:39` and the mirrored table at
+   `.claude/tests/selftest.test.sh:530`, with the measurement comment appended
+   to `floors.conf`. The test-developer left it at 113 and escalated, reading
+   the Contract's "no file outside `touches:`" literally - the right call for
+   it. The Contract's scope line was about production and other suites, not
+   about the floor table; HARNESS-037, -039 and -053 all raised the floor in
+   the RED commit that added the assertions, and a floor 12 below the executed
+   count is 12 assertions that could vanish unnoticed. `touches:` is widened
+   to name both files. The orchestrator ran `selftest.sh boundaries` and
+   `selftest.sh selftest` itself after the change; output in `### RED
+   verification` below.
+
+### RED verification (orchestrator, 2026-10-13)
+
+RED dispatched to `test-developer`; it reported running on `opus` (its
+declared model, no override in the dispatch). Its diff was read in full: the
+`story_on_branch` extension and one new describe, nothing else in the suite.
+
+Orchestrator's own runs, after raising the floor (decision 1), against the
+unmodified `scripts/check-boundaries.sh`:
+
+    $ time bash scripts/selftest.sh boundaries
+      a spike that escalates a gate has to have run it
+        FAIL AC-1a an escalating spike with no gate record is refused
+        FAIL AC-1a and the run fails rather than noting and moving on
+        FAIL AC-1b a recorded run with no PASS for the escalated gate is refused
+        FAIL AC-1b and that run fails too
+    boundaries: 121 passed, 4 failed
+    FAIL boundaries  did 121 units of work, below the floor of 125 in .claude/tests/floors.conf
+    1 of 1 harness suite(s) FAILED.
+    real    30m7.852s
+    exit=1
+
+    $ time bash scripts/selftest.sh selftest
+    selftest: 268 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (268 assertions executed, 268 declared).
+    real    7m30.890s
+    exit=0
+
+    $ bash scripts/check-sigpipe.sh
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    $ bash scripts/check-grep-count.sh
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+Right failure: the four red assertions are AC-1a and AC-1b and nothing else,
+and their actual output is the defect itself (`spike story; gate record not
+required`, exit 0). The floor shortfall is the same four assertions counted a
+second way (floors count passes): GREEN's expected `boundaries: 125 passed, 0
+failed` clears both. `gates.sh --fast` runs nothing on this repository
+(`BOOTSTRAPPED=no`, every gate unconfigured), so admissibility is the two
+tree-wide checks above plus the selftest suite.
