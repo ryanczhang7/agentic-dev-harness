@@ -5,7 +5,7 @@ slug: a-gate-can-declare-that-its-evidence-lin
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-055-a-gate-can-declare-that-its-evidence-lin
 depends_on: [HARNESS-052]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/profiles.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/skills/quality-gates/SKILL.md, .claude/skills/quality-gates/reference/configuring.md, .claude/skills/stack-profiles/reference/new-profile.md, .claude/skills/stack-profiles/reference/rust-cargo.md, .claude/skills/stack-profiles/reference/node-typescript.md, .claude/skills/stack-profiles/reference/python-uv.md, .claude/skills/stack-profiles/reference/web-static.md, .claude/harness/project.conf, README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -732,6 +732,7 @@ name, below the table.
 **Resolved:**
 
 - RED: `test-developer` on `opus` (claude-opus-5-5, its declared `model:`; no override in the dispatch). Planned `opus`; no change.
+- GREEN: `feature-developer` on `opus` (claude-opus-5-5, its declared `model:`; no override). Planned `opus`; no change.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -1311,3 +1312,45 @@ floor-on-no-count fixtures".
     check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
     $ bash scripts/check-grep-count.sh
     check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+### GREEN verification (orchestrator, 2026-10-13)
+
+The feature-developer's diff was read in full. `scripts/gates.sh`: every
+hunk is C-2's text (+62/-10), the `--list` line sits inside the
+`if [ "$LIST" = 1 ]` block and the `nocountwhy` lookup beside `cifactor=`;
+`grep -n` prints the pins at `77` and `630`. The four profiles carry C-6's
+lines verbatim and `rust-cargo.md` the "Which is why all three carry a
+`no-count` line" paragraph; `project.conf` changed comments only (no
+`no-count` line in this repository's gate table); `configuring.md` says
+"Eight more kinds"; README's `gates.yml` bullet names the no-count floor.
+
+**Finding worth keeping (the feature-developer's, confirmed by reading the
+diff).** C-2 is a normal-format diff, and its two pure-insertion hunks (7,
+the lookup; 8, the `--list` printf) carry no context, so `patch` placed them
+by stale line number after HARNESS-052's +30: the lookup landed inside the
+`--fast` comment block and the `--list` line outside the `LIST` block, where
+it would have printed on every run. `bash -n` and the line count - the PO's
+and RED's scratch checks - cannot see a misplaced insertion. The developer
+moved both by hand to where C-1/C-10 put them; the line count (1109) and
+the pins are unchanged. Lesson for the next port: check `a`-hunk placement,
+or carry context (`diff -u`).
+
+Orchestrator's own runs against the shipped tree:
+
+    $ bash scripts/selftest.sh profiles
+    profiles: 116 passed, 0 failed  (floor 116 met)   real 0m55s
+    $ bash scripts/selftest.sh sigpipe
+    sigpipe: 82 passed, 0 failed    (floor 82 met)    real 6m30s
+    $ bash scripts/selftest.sh gates
+    gates: 619 passed, 0 failed     (floor 619 met)   real 12m56s
+    $ bash scripts/gates.sh --audit
+    Manifest audit passed.
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+Every control landed on its "expected after GREEN" value; the feature-
+developer also measured each directly against the shipped `gates.sh`
+(`observed 0` undeclared, `observed -` declared, `no evidence of work` on
+`nothing to do`, `observed 1629, floor 1000`, the exact C-3 refusal lines,
+no `All required gates passed` on the AC-3 run) and the table in its report
+matched the handoff with no divergence. The DV columns are GATES' to measure.
