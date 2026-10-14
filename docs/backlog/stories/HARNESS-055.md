@@ -1527,3 +1527,5 @@ assertions in a suite and a mechanism this story does not touch, and CI runs
 the same full self-test on an unloaded runner as a required check. The
 latent timing dependence in that test block is filed as a follow-up, not
 fixed here (it is a test file, frozen, and out of this story's scope).
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/141 (opened 2026-10-14 from `5f8d05b`).
