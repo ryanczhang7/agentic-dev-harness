@@ -203,6 +203,33 @@ below in place, with a reason beside it; GREEN builds what the amended block
 says. Line numbers are release 94's and will have moved once HARNESS-055
 (the `no-count` port, which also edits `gates.sh`) is merged; GREEN re-greps.
 
+**Re-anchored 2026-10-14 (Lead PO, before RED), after HARNESS-052 and
+HARNESS-055 landed.** `scripts/gates.sh` is 1109 lines. Today's positions,
+every one verified by grep: `set -uo pipefail` `:50`; the lock block
+`if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ]; then` `:249`, `run_lock_acquire`
+`:254`; `record_in_story()` `:314`, its `run:` line with the write-time
+`$(date …)` `:321`; the `(not recorded:` lines `:1064-1068`; the caller
+`record_in_story "$STORY_FILE" …` `:1070` and the `recorded in` printf
+`:1071`. The sigpipe pins (`sigpipe.test.sh:567-568`) read
+`scripts/gates.sh:77:` and `scripts/gates.sh:630:`; the `:77` pin does not
+move, the `:630` one moves by however many lines land above it (about six:
+one in the lock block, `RECORD_SKIPPED=""`, the comment and comparison lines
+in `record_in_story`) - **GREEN pins what `grep -n 'could not launch: \$('`
+prints**, as HARNESS-055 did. `gates.test.sh` helpers: `count_re` `:769`;
+the HARNESS-026 record-refusal describes `:1509` and `:1593`, the
+HARNESS-024 AC-1 process budget `:1303`; the record cases that run on
+`story/T-1-fixture` begin at `:2234`. The `gates` floor is now **619**
+(`floors.conf:44`, mirrored in `selftest.test.sh`); RED raises it to the
+executed count it reads off its own run. `check-boundaries.sh` still reads
+no `run:` (`:163` is a comment). The SKILL.md passage is `:522-525`.
+
+**PO decision 1 (2026-10-14).** The planner's open question - ship the
+record-level invariant without a reproduced real path to two runs on one
+story file - is answered *yes*, for the planner's reasons: the fixture plants
+the newer record and is deterministic, the check is cheap, and it catches the
+MC-026 shape whichever lock window is real. The path reproduction stays cut
+(Out of scope). The user may overrule this before GREEN.
+
 - **The run's start time: `RUN_STARTED_AT`.** A global, UTC to the second in
   the shape `run:` already uses, set *inside* the existing lock block
   `if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ]; then … fi` (`scripts/gates.sh:244-250`),
