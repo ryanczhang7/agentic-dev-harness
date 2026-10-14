@@ -5,7 +5,7 @@ slug: a-gate-can-declare-that-its-evidence-lin
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-055-a-gate-can-declare-that-its-evidence-lin
 depends_on: [HARNESS-052]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/profiles.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/skills/quality-gates/SKILL.md, .claude/skills/quality-gates/reference/configuring.md, .claude/skills/stack-profiles/reference/new-profile.md, .claude/skills/stack-profiles/reference/rust-cargo.md, .claude/skills/stack-profiles/reference/node-typescript.md, .claude/skills/stack-profiles/reference/python-uv.md, .claude/skills/stack-profiles/reference/web-static.md, .claude/harness/project.conf, README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -645,6 +645,25 @@ before (the new `--list` line is conditional on `is_nocount`).
   `and the run does not say the required gates passed` - so the prediction
   is **eight** red, all in the floor-on-no-count fixtures, and nothing
   outside them.)*
+
+  **Result (GATES, orchestrator, 2026-10-13).** Exactly the eight, nothing
+  else; AC-1, AC-4, AC-5, AC-6 and AC-7 stayed green. Restored and verified:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh 's/floor_broken="floor cannot be measured: /floor_broken=""; : "/' -- bash scripts/selftest.sh gates
+  === mutate: scripts/gates.sh (1 line(s) changed by s/floor_broken="floor cannot be measured: /floor_broken=""; : "/) ===
+  === mutate: running bash scripts/selftest.sh gates ===
+      FAIL the audit refuses it
+      FAIL and the audit fails
+      FAIL the run refuses it
+      FAIL rather than passing on the clock
+      FAIL the audit's refusal of a floor on a no-count gate names lint and why it was declared
+      FAIL and the audit exits non-zero
+      FAIL the run's refusal names lint and why it was declared
+      FAIL and the run does not say the required gates passed
+  gates: 611 passed, 8 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261014T002358Z.1690.bak) ===
+  ```
   (With the `observed="-"` branch in place the run reports `observed -`
   rather than `observed 5`, and the floor is printed but never compared: a
   declared gate never reaches `work_count`. The stopwatch is still being
@@ -669,6 +688,25 @@ before (the new `--list` line is conditional on `is_nocount`).
   `bash scripts/mutate.sh .claude/skills/stack-profiles/reference/rust-cargo.md '<sed expr>' -- bash scripts/selftest.sh profiles`,
   confirm green on the restored file, and paste the output here.
 
+  **Result (GATES, orchestrator, 2026-10-13).** Both halves against the
+  shipped `rust-cargo.md`, each red on exactly the intended check and
+  restored byte for byte (the `floor` check's detail line, naming `build`, is
+  re-read in `## Notes`, "DV-2a detail"):
+
+  ```
+  $ bash scripts/mutate.sh .claude/skills/stack-profiles/reference/rust-cargo.md '44a\    floor    | build    | 5' -- bash scripts/selftest.sh profiles
+  === mutate: .claude/skills/stack-profiles/reference/rust-cargo.md (1 line(s) changed by 44a\    floor    | build    | 5) ===
+      FAIL every floor has an evidence line, and a count, to measure
+  profiles: 115 passed, 1 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_skills_stack-profiles_reference_rust-cargo.md.20261014T005514Z.45483.bak) ===
+
+  $ bash scripts/mutate.sh .claude/skills/stack-profiles/reference/rust-cargo.md '/^    no-count | \(lint\|typecheck\|build\) *|/d' -- bash scripts/selftest.sh profiles
+  === mutate: .claude/skills/stack-profiles/reference/rust-cargo.md (3 line(s) changed by /^    no-count | \(lint\|typecheck\|build\) *|/d) ===
+      FAIL rust-cargo.md declares no-count on exactly build, lint and typecheck (Finished .* profile is a stopwatch)
+  profiles: 115 passed, 1 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_skills_stack-profiles_reference_rust-cargo.md.20261014T005741Z.49002.bak) ===
+  ```
+
 - **DV-3 - earning the three assertions that pass on arrival. Owner: GATES.**
   Condition: with `observed="$(work_count "$log" "$exp")"` replaced by
   `observed=""` in `gates.sh`, the `undeclared, the stopwatch is reported as
@@ -690,6 +728,40 @@ before (the new `--list` line is conditional on `is_nocount`).
   `! clean_log "$log"` in the file). Paste both outputs here, each followed
   by the green re-run on the restored file.
 
+  **Result, first mutation (GATES, orchestrator, 2026-10-13).** Both target
+  controls red, alongside every pre-existing observed/floor assertion that
+  reads `work_count` (51 in all - the blast radius of blinding the one
+  reader every floor depends on); the four no-count controls that do not
+  read a count (`observed -`, liveness, the refusals) stayed green. Restored
+  and verified:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh 's/observed="$(work_count "$log" "$exp")"/observed=""/' -- bash scripts/selftest.sh gates
+  === mutate: scripts/gates.sh (1 line(s) changed by s/observed="$(work_count "$log" "$exp")"/observed=""/) ===
+      FAIL above the floor passes
+      FAIL and reports the count
+      ...
+      FAIL observed count in the summary
+      FAIL undeclared, the stopwatch is reported as a count
+      FAIL a digit-class-free regex may still measure
+      ...
+  gates: 568 passed, 51 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261014T010011Z.52377.bak) ===
+  ```
+
+  **Result, second mutation.** Exactly the one predicted assertion, and
+  nothing else - the single-assertion mutation the orchestrator's
+  verification ladder prefers, so it also discharges that rule for this
+  story. Restored and verified:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh 's/\[ "$exp" != "-" \] && ! clean_log "$log"/[ "$exp" != "-" ] \&\& [ "$is_nocount" != 0 ] \&\& ! clean_log "$log"/' -- bash scripts/selftest.sh gates
+  === mutate: scripts/gates.sh (1 line(s) changed by ...) ===
+      FAIL no-count does not weaken the evidence assertion
+  gates: 618 passed, 1 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261014T013614Z.104227.bak) ===
+  ```
+
 - **DV-4 - earning the two assertions RED found green on arrival that DV-3
   does not cover (PO decision, 2026-10-13; `rules.md`, "one mutation that
   earns each test written against code that already exists"). Owner:
@@ -709,6 +781,31 @@ before (the new `--list` line is conditional on `is_nocount`).
   prefers. Paste both outputs here, each with the green re-run on the
   restored file. If the second expression does not match GREEN's exact text
   (it anchors on the `--audit` ok line of C-2), GATES adapts it and says so.
+
+  **Result, first mutation (GATES, orchestrator, 2026-10-13).** Exactly the
+  two predicted, nothing else. Restored and verified:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh 's/^    observed="-"$/    observed="-"; outcome=noevidence; why="probe: declared gate failed"/' -- bash scripts/selftest.sh gates
+  === mutate: scripts/gates.sh (1 line(s) changed by ...) ===
+      FAIL declared, the number is withheld
+      FAIL and liveness still holds
+  gates: 617 passed, 2 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261014T020928Z.155448.bak) ===
+  ```
+
+  **Result, second mutation.** The expression matched GREEN's text unadapted
+  and turned exactly the one assertion red. Restored and verified:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh '/reports `observed -`; no floor possible/s/$/ \&\& fails=$((fails+1))/' -- bash scripts/selftest.sh gates
+  === mutate: scripts/gates.sh (1 line(s) changed by ...) ===
+      FAIL and a declared gate with no floor passes the audit
+  gates: 618 passed, 1 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261014T024018Z.205672.bak) ===
+  $ bash scripts/mutate.sh --check
+  mutate: no stranded mutation; nothing of a previous run is in the tree.
+  ```
 
 ## Amendments
 
@@ -1097,6 +1194,22 @@ below, `profiles` 4 below and `sigpipe` 1 below their floors.
 
 ## Gate results
 
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-14T03:14:24Z
+    commit: 756bc32
+    tree:   0433a4dfa4364f8c84207a451e1b89f644b05498
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
+
 ## Gate probes
 
 <!-- This story changes `--audit`'s manifest rules rather than a gate command
@@ -1354,3 +1467,26 @@ developer also measured each directly against the shipped `gates.sh`
 `nothing to do`, `observed 1629, floor 1000`, the exact C-3 refusal lines,
 no `All required gates passed` on the AC-3 run) and the table in its report
 matched the handoff with no divergence. The DV columns are GATES' to measure.
+
+### GATES (orchestrator, 2026-10-13)
+
+All four deferred verifications ran through `scripts/mutate.sh` before the
+gate run - seven mutations, each caught by exactly the predicted assertions
+and each restored byte for byte; results pasted in `## Deferred
+verifications`. DV-1 611/8 (the eight floor-refusal assertions), DV-2a 115/1
+and DV-2b 115/1 (the floor check and the presence assertion), DV-3a 568/51
+(both controls plus every floor reader), DV-3b 618/1 and DV-4b 618/1 (one
+assertion each), DV-4a 617/2. `mutate.sh --check` clean.
+
+**DV-2a detail** (the `profiles` check's detail line, re-read on a second
+run of the same mutation, restored and verified):
+
+    FAIL every floor has an evidence line, and a count, to measure
+         expected:
+         actual:   - floor on `build` is declared no-count, so there is no count to compare against
+
+`bash scripts/gates.sh` then recorded `result: pass (0 ran, 7 unconfigured,
+0 known)` against `756bc32`; every gate is unconfigured on this repository,
+so the suites and the full self-test before REVIEW are the judge. Each
+`gates` mutation run took 30-40 minutes with the `manga-translator`
+session's self-test sharing the machine (13 min alone).
