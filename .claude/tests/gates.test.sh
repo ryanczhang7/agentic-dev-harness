@@ -1717,6 +1717,156 @@ rm -f "$FIX/.claude/state/T-1.before"
 git -C "$FIX" checkout -q -- . 2>/dev/null
 set_phase "$FIX" ""
 
+describe "HARNESS-056 AC-1..AC-5  a gate run that started earlier never overwrites a newer gate record"
+
+# A run that started earlier and finished later used to win: record_in_story
+# stamped run: at WRITE time and replaced ## Gate results unconditionally. The
+# "newer" record is PLANTED, in the tool's own shape, with run: 2099 - no
+# sleep, no background run, no race. The fixture is HARNESS-026's: T-1 at
+# GATES, on its own branch story/T-1-fixture, the story file committed (026
+# refuses a record from another branch, 014 one with untracked gated files).
+#
+# Needles: whole lines (count_line) or anchored count_re with no intervals.
+# The decline line is pinned whole, as the Contract writes it; the start time
+# it names is extracted and checked to lie between a clock read just before
+# the run and one just after, so the planted 2099 cannot stand in for it.
+git -C "$FIX" checkout -q -B story/T-1-fixture 2>/dev/null
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+story "$FIX" T-1 GATES </dev/null
+fix_commit "HARNESS-056 fixture: T-1 on its own branch"
+set_phase "$FIX" GATES
+T1="$FIX/docs/backlog/stories/T-1.md"
+H56_STAMP="$FIX/.claude/state/last-gate-run"
+H56_MARKER="$(sed -n "s/^GATE_MARKER='\(.*\)'$/\1/p" "$FIX/.claude/hooks/lib.sh")"
+H56_RECORDED='^recorded in docs/backlog/stories/T-1\.md \(## Gate results\)$'
+H56_TS='[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'
+H56_DECLINE="^\\(not recorded: docs/backlog/stories/T-1\\.md already holds a record from a gate run that started at 2099-01-01T00:00:00Z; this one started at $H56_TS, so the newer record stands\\)\$"
+H56_RUN_NOW='^    run:    20[2-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$'
+
+# h56_plant <run-value>   Rewrite T-1's ## Gate results as a record in the
+# tool's own shape whose run: is <run-value>, and commit it on the story branch.
+h56_plant() {
+  story "$FIX" T-1 GATES </dev/null
+  {
+    sed -e '/^## Gate results/q' "$T1"
+    printf '\n%s\n\n' "$H56_MARKER"
+    printf '    run:    %s\n    commit: deadbee\n    tree:   abc123\n' "$1"
+    printf '    result: pass (1 ran, 0 unconfigured, 0 known)\n    PASS         unit (0s)\n\n'
+    printf '## Notes\n'
+  } > "$FIX/t1.new" && mv "$FIX/t1.new" "$T1"
+  fix_commit "HARNESS-056 fixture: a record whose run: is $1"
+}
+h56_now()     { date -u +%Y-%m-%dT%H:%M:%SZ; }
+h56_section() { sed -n '/^## Gate results/,/^## Notes/p' "$T1"; }
+h56_runs()    { grep -c '^ *run: ' "$T1"; }
+# h56_run_lines   Every run: line of the story, verbatim, so a clobbered record
+# shows the value that replaced it.
+h56_run_lines() { awk '/^ *run: / { sub(/\r$/, ""); print }' "$T1"; }
+h56_stamp()   { tr -d '\r' < "$H56_STAMP"; }
+# h56_started <output>   The start time the decline line names, or empty.
+h56_started() { sed -n 's/^(not recorded: .* this one started at \([^,]*\), so the newer record stands)$/\1/p' <<< "$1"; }
+# h56_within <ts> <lo> <hi>   "yes" when lo <= ts <= hi as timestamps (digits
+# compared as integers, all three the same width), else what was wrong.
+h56_within() {
+  local t="${1//[!0-9]/}" l="${2//[!0-9]/}" h="${3//[!0-9]/}"
+  if [ -z "$t" ]; then printf 'no start time in the output'; return; fi
+  if [ "${#t}" != "${#l}" ]; then printf 'malformed start time %s' "$1"; return; fi
+  if [ "$t" -ge "$l" ] && [ "$t" -le "$h" ]; then printf yes; else printf '%s is not within [%s, %s]' "$1" "$2" "$3"; fi
+}
+
+h56_plant 2099-01-01T00:00:00Z
+assert_eq "fixture precondition: the checkout is on story/T-1-fixture" story/T-1-fixture "$(git -C "$FIX" branch --show-current)"
+assert_eq "fixture precondition: the planted record's run: is 2099" 1 \
+  "$(count_line '    run:    2099-01-01T00:00:00Z' "$(tr -d '\r' < "$T1")")"
+assert_eq "fixture precondition: the planted record carries the tool's marker" 1 \
+  "$(count_line "$H56_MARKER" "$(tr -d '\r' < "$T1")")"
+assert_eq "fixture precondition: nothing gated is dirty or untracked" "" \
+  "$(git -C "$FIX" status --porcelain -- . ':!.claude/state')"
+h56_section > "$FIX/.claude/state/h56.before"
+
+# --- AC-1..AC-3: a passing run that started before the newer record ----------
+H56_LO="$(h56_now)"
+out="$(gates)"; rc=$?
+H56_HI="$(h56_now)"
+h56_section > "$FIX/.claude/state/h56.after"
+assert_eq "AC-1: a run that started before a newer record does not say it recorded" 0 "$(count_re "$H56_RECORDED" "$out")"
+assert_eq "AC-1: exactly one line begins '(not recorded: '" 1 "$(count_re '^\(not recorded: ' "$out")"
+assert_eq "AC-1: and it is the decline naming the story file, the standing 2099 record and this run's start" 1 \
+  "$(count_re "$H56_DECLINE" "$out")"
+assert_eq "AC-1: the start time the decline names is this run's own (between the clock before and after it)" yes \
+  "$(h56_within "$(h56_started "$out")" "$H56_LO" "$H56_HI")"
+if cmp -s "$FIX/.claude/state/h56.before" "$FIX/.claude/state/h56.after"; then h56_same=yes; else h56_same=no; fi
+assert_eq "AC-2: ## Gate results is byte-for-byte what it was before the run" yes "$h56_same"
+assert_eq "AC-2: the newer record's run: still reads 2099-01-01T00:00:00Z (the run: lines of the story, as written)" "    run:    2099-01-01T00:00:00Z" \
+  "$(h56_run_lines)"
+assert_eq "AC-2: the story holds exactly one run: line (nothing appended)" 1 "$(h56_runs)"
+assert_eq "AC-3: declining to record leaves the exit status the gates' verdict, 0" 0 "$rc"
+assert_eq "AC-3: last-gate-run says RESULT=pass" 1 "$(count_line 'RESULT=pass' "$(h56_stamp)")"
+assert_eq "AC-3: last-gate-run says FULL=yes" 1 "$(count_line 'FULL=yes' "$(h56_stamp)")"
+
+# --- AC-4: a failing run may not overwrite what a passing one may not ---------
+git -C "$FIX" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  0 passed\n'; exit 1
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+h56_section > "$FIX/.claude/state/h56.before"
+H56_LO="$(h56_now)"
+out="$(gates)"; rc=$?
+H56_HI="$(h56_now)"
+h56_section > "$FIX/.claude/state/h56.after"
+assert_eq "AC-4: a failing run that started before the newer record does not say it recorded" 0 "$(count_re "$H56_RECORDED" "$out")"
+assert_eq "AC-4: it prints the same decline, once" 1 "$(count_re "$H56_DECLINE" "$out")"
+assert_eq "AC-4: and no other '(not recorded: ' line" 1 "$(count_re '^\(not recorded: ' "$out")"
+assert_eq "AC-4: naming this run's own start time" yes \
+  "$(h56_within "$(h56_started "$out")" "$H56_LO" "$H56_HI")"
+assert_eq "AC-4: the 2099 record still stands (the run: lines of the story, as written)" "    run:    2099-01-01T00:00:00Z" \
+  "$(h56_run_lines)"
+if cmp -s "$FIX/.claude/state/h56.before" "$FIX/.claude/state/h56.after"; then h56_same=yes; else h56_same=no; fi
+assert_eq "AC-4: ## Gate results is byte-for-byte unchanged by the failing run" yes "$h56_same"
+if [ "$rc" != 0 ]; then h56_rc=non-zero; else h56_rc=zero; fi
+assert_eq "AC-4: the exit status is the failing verdict" non-zero "$h56_rc"
+
+# --- AC-5: the controls - an older record, and an empty section, are replaced -
+write_conf "$FIX" <<'EOF'
+gate     | unit | required | . | printf 'Tests  47 passed (47)\n'
+evidence | unit | Tests +[1-9][0-9]* passed
+EOF
+h56_plant 2000-01-01T00:00:00Z
+assert_eq "fixture precondition: the planted record's run: is 2000" 1 \
+  "$(count_line '    run:    2000-01-01T00:00:00Z' "$(tr -d '\r' < "$T1")")"
+H56_LO="$(h56_now)"
+out="$(gates)"; rc=$?
+H56_HI="$(h56_now)"
+assert_eq "AC-5 control: an older (2000) record is replaced: one 'recorded in' line" 1 "$(count_re "$H56_RECORDED" "$out")"
+assert_eq "AC-5 control: an older record: no '(not recorded:' line" 0 "$(count_re '^\(not recorded:' "$out")"
+assert_eq "AC-5 control: an older record: run: now holds a current-century time" 1 "$(count_re "$H56_RUN_NOW" "$(tr -d '\r' < "$T1")")"
+assert_eq "AC-5 control: an older record: and it is this run's (between the clock before and after it)" yes \
+  "$(h56_within "$(sed -n 's/^    run:    //p' "$T1" | tr -d '\r')" "$H56_LO" "$H56_HI")"
+assert_eq "AC-5 control: an older record: the 2000 run: is gone" 0 \
+  "$(count_line '    run:    2000-01-01T00:00:00Z' "$(tr -d '\r' < "$T1")")"
+assert_eq "AC-5 control: an older record: exactly one run: line" 1 "$(h56_runs)"
+assert_eq "AC-5 control: an older record: exit 0" 0 "$rc"
+
+story "$FIX" T-1 GATES </dev/null
+fix_commit "HARNESS-056 fixture: an empty ## Gate results (the template)"
+assert_eq "fixture precondition: the template story holds no run: line" 0 "$(h56_runs)"
+out="$(gates)"; rc=$?
+assert_eq "AC-5 control: an empty section is written: one 'recorded in' line" 1 "$(count_re "$H56_RECORDED" "$out")"
+assert_eq "AC-5 control: an empty section: no '(not recorded:' line" 0 "$(count_re '^\(not recorded:' "$out")"
+assert_eq "AC-5 control: an empty section: run: holds a current-century time" 1 "$(count_re "$H56_RUN_NOW" "$(tr -d '\r' < "$T1")")"
+assert_eq "AC-5 control: an empty section: exactly one run: line" 1 "$(h56_runs)"
+assert_eq "AC-5 control: an empty section: exit 0" 0 "$rc"
+# AC-6 is HARNESS-024 AC-1's existing --list process budget, unchanged.
+
+rm -f "$FIX/.claude/state/h56.before" "$FIX/.claude/state/h56.after"
+git -C "$FIX" checkout -q -- . 2>/dev/null
+git -C "$FIX" checkout -q main 2>/dev/null
+set_phase "$FIX" ""
+
 describe "HARNESS-046 AC-3  gates.sh --story refuses an id that is not one path component, before any gate runs"
 
 # A fixture of its own, so nothing here depends on the state $FIX was left in.
