@@ -4,8 +4,8 @@ title: A gate can declare that its evidence line carries no count, and a floor o
 slug: a-gate-can-declare-that-its-evidence-lin
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-055-a-gate-can-declare-that-its-evidence-lin
 depends_on: [HARNESS-052]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/profiles.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/skills/quality-gates/SKILL.md, .claude/skills/quality-gates/reference/configuring.md, .claude/skills/stack-profiles/reference/new-profile.md, .claude/skills/stack-profiles/reference/rust-cargo.md, .claude/skills/stack-profiles/reference/node-typescript.md, .claude/skills/stack-profiles/reference/python-uv.md, .claude/skills/stack-profiles/reference/web-static.md, .claude/harness/project.conf, README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1529,3 +1529,13 @@ latent timing dependence in that test block is filed as a follow-up, not
 fixed here (it is a test file, frozen, and out of this story's scope).
 
 PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/141 (opened 2026-10-14 from `5f8d05b`).
+
+### DONE (2026-10-14)
+
+Merged as #141 (`30fb6bb`, 2026-10-14T18:42:50Z). CI on the final head
+`646f7a0`: run 38612604849 `gates` success, run 38612604915 `boundaries`
+success. Timings read from the `gates` job: `Harness self-test` 18:08:28 ->
+18:10:56 (2m28s, every suite including `mutate` green on the unloaded
+runner) against the job's `timeout-minutes: 45`; the sigpipe and grep-count
+steps 4s and 3s. The 210-minute local run (PO decision 3) was the machine,
+not the code.
