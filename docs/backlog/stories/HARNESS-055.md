@@ -4,8 +4,8 @@ title: A gate can declare that its evidence line carries no count, and a floor o
 slug: a-gate-can-declare-that-its-evidence-lin
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-055-a-gate-can-declare-that-its-evidence-lin
 depends_on: [HARNESS-052]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/profiles.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/skills/quality-gates/SKILL.md, .claude/skills/quality-gates/reference/configuring.md, .claude/skills/stack-profiles/reference/new-profile.md, .claude/skills/stack-profiles/reference/rust-cargo.md, .claude/skills/stack-profiles/reference/node-typescript.md, .claude/skills/stack-profiles/reference/python-uv.md, .claude/skills/stack-profiles/reference/web-static.md, .claude/harness/project.conf, README.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1490,3 +1490,40 @@ run of the same mutation, restored and verified):
 so the suites and the full self-test before REVIEW are the judge. Each
 `gates` mutation run took 30-40 minutes with the `manga-translator`
 session's self-test sharing the machine (13 min alone).
+
+### Full self-test before REVIEW (AC-4 analogue; orchestrator, 2026-10-14)
+
+    $ time bash scripts/selftest.sh
+    gates: 619 passed, 0 failed
+    profiles: 116 passed, 0 failed
+    sigpipe: 82 passed, 0 failed
+    mutate: 187 passed, 2 failed
+    FAIL mutate  did 187 units of work, below the floor of 189 in .claude/tests/floors.conf
+    assertion floors: 25 of 26 suite(s) met their declared floor.
+    1 of 26 harness suite(s) FAILED.
+    real    210m1.562s
+    exit=1
+
+    $ time bash scripts/selftest.sh mutate        # alone, immediately after
+    mutate: 189 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (189 assertions executed, 189 declared).
+    real    3m22.433s
+
+The two red assertions were `C-1: HARNESS_MUTATION naming a live sentinel in
+this tree counts it out, exit 0` (got 1) and `C-1: and says the one in flight
+is that command's own` (got 0), in `mutate.test.sh`'s HARNESS-030 AC-6 block.
+This story touches neither `mutate.sh` nor `mutate.test.sh`, and nothing in
+that block runs `gates.sh`. What the evidence shows: the block's "live" pid is
+a bounded `sleep 30 &` (`mutate.test.sh:536`), the full run took 210 minutes
+with another session's self-test sharing the machine throughout (checked at
+10:23: 7 foreign `selftest.sh` processes), and the same suite passed 189/0
+alone three minutes later. A pid that has exited is exactly what `--check`
+reports with exit 1. The block's elapsed time under load was not measured, so
+the cause is consistent with the evidence rather than shown by it.
+
+**PO decision 3 (2026-10-14).** The story proceeds to REVIEW on this evidence:
+25 of 26 suites green in the full run, the 26th green alone, the failing
+assertions in a suite and a mechanism this story does not touch, and CI runs
+the same full self-test on an unloaded runner as a required check. The
+latent timing dependence in that test block is filed as a follow-up, not
+fixed here (it is a test file, frozen, and out of this story's scope).
