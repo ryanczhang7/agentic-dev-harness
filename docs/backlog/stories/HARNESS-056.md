@@ -4,8 +4,8 @@ title: A gate run that started earlier never overwrites a newer gate record
 slug: a-gate-run-that-started-earlier-never-ov
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-056-a-gate-run-that-started-earlier-never-ov
 depends_on: [HARNESS-055]      # 052, 055 and 056 all edit scripts/gates.sh and the sigpipe line pins; serialise
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/skills/quality-gates/SKILL.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1072,3 +1072,19 @@ budget is 20; the traced `--list` count measured directly, 5 -> 6, the one
 `result: pass (0 ran, 7 unconfigured, 0 known)` against `13f2bdd`. Each
 `gates` run took 30-60 minutes with other sessions' self-tests sharing the
 machine (13 min alone).
+
+### Full self-test before REVIEW (orchestrator, 2026-10-15)
+
+    $ time bash scripts/selftest.sh
+    gates: 654 passed, 0 failed
+    sigpipe: 82 passed, 0 failed
+    mutate: 189 passed, 0 failed
+    ...
+    assertion floors: all 26 suite(s) met their declared floor (3383 assertions executed, 3157 declared).
+    26 harness suite(s) passed.
+    real    135m51.106s
+    exit=0
+
+Every suite green, every floor met, sigpipe C-5 finding its pin at `:640`.
+The duration is the shared machine again (other sessions' self-tests
+throughout); this worktree's lock was held by this run alone.
