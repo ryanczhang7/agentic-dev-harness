@@ -1088,3 +1088,5 @@ machine (13 min alone).
 Every suite green, every floor met, sigpipe C-5 finding its pin at `:640`.
 The duration is the shared machine again (other sessions' self-tests
 throughout); this worktree's lock was held by this run alone.
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/142 (opened 2026-10-15 from `bd854ac`).
