@@ -5,7 +5,7 @@ slug: a-gate-run-that-started-earlier-never-ov
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-056-a-gate-run-that-started-earlier-never-ov
 depends_on: [HARNESS-055]      # 052, 055 and 056 all edit scripts/gates.sh and the sigpipe line pins; serialise
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/skills/quality-gates/SKILL.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -458,6 +458,7 @@ name, below the table.
 **Resolved:**
 
 - RED, `test-developer`, 2026-10-14: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
+- GREEN, `feature-developer`, 2026-10-14: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
 - PLANNED, `lead-po`, 2026-10-12: **Fable 5.1** (`claude-fable-5-1`) - the
   agent's declared `model:`, matching the plan; no override reported.
 
@@ -927,3 +928,40 @@ passes, so the suite also sits 12 below its new floor until GREEN.
     check-grep-count: scanned 49 shell file(s), 0 finding(s)
     $ bash scripts/gates.sh --fast
     All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+### GREEN verification (orchestrator, 2026-10-14)
+
+The feature-developer's diff was read in full. `scripts/gates.sh` (+20/-7):
+`RUN_STARTED_AT` set inside the lock block directly after
+`run_lock_acquire` (`:255`); `RECORD_SKIPPED=""` beside `record_in_story`,
+which gains the Contract's awk-over-the-section read, the digits/same-width/
+strictly-greater comparison, and `return 1` before any write; the `run:`
+line now writes `$RUN_STARTED_AT`; the caller tests the return value and
+prints the Contract's two lines character for character. No pipe added.
+`sigpipe.test.sh:568` moved `:630` -> `:640` - ten lines, not the "about
+six" the Contract estimated, the difference being comment lines; the grep
+justifies it. `SKILL.md` says "the UTC time the run started" and carries the
+decline sentence. Nothing else changed.
+
+Orchestrator's own runs against the shipped tree:
+
+    $ bash scripts/selftest.sh sigpipe
+    sigpipe: 82 passed, 0 failed    (floor 82 met; C-5 finds the pin at :640)
+    $ time bash scripts/selftest.sh gates
+    gates: 654 passed, 0 failed     (floor 654 met)   real 48m29s (shared machine)
+    $ bash scripts/gates.sh --audit
+    Manifest audit passed.
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+    $ bash scripts/check-sigpipe.sh
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    $ bash scripts/check-grep-count.sh
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+Every control landed on its "expected after GREEN" value: the twelve RED
+assertions now pass (decline line whole, 2099 record byte-identical, start
+time inside the clock window), AC-3's exit 0 / `RESULT=pass` / `FULL=yes`
+hold on a declined record, AC-5's older record and empty section are
+written, and HARNESS-024's `--list` process budget is unchanged. The
+feature-developer measured the same table against the shipped script with
+no divergence. DV-1 and DV-2 are GATES' to run.

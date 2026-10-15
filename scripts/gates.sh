@@ -252,6 +252,7 @@ if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ]; then
   trap 'exit 130' INT
   trap 'exit 143' TERM
   run_lock_acquire "$ROOT" "$RUN_LOCK_SELF" || exit 2
+  RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"   # here, not top level: --list has a process budget
 fi
 
 # table_lookup <table> <id>   Echoes the value. Exact string comparison, never
@@ -308,17 +309,26 @@ commit_with_note() {
 }
 
 # Replace the body of the story's "## Gate results" section with a block this
-# script wrote: the marker check-boundaries.sh looks for, the UTC time, the
-# commit, the tree hash of the code the gates saw, and the summary. If the
-# section is missing (an older story file) it is appended.
+# script wrote: the marker check-boundaries.sh looks for, the UTC time the run
+# started, the commit, the tree hash of the code the gates saw, and the
+# summary. If the section is missing (an older story file) it is appended.
+# Returns 1, writing nothing, when the section already holds a record from a
+# run that started later than this one; RECORD_SKIPPED then holds its run:.
+RECORD_SKIPPED=""
 record_in_story() { # <story-file> <result-text> <summary-lines>
-  local f="$1" res="$2" body="$3" commit tree block
+  local f="$1" res="$2" body="$3" commit tree block prev pn cn
+  # Never overwrite a record whose run: is LATER than this run's start. Digits
+  # compared as integers, so only between same-width stamps; a malformed run:
+  # is replaced, and a record from the same second is overwritten.
+  prev="$(awk '/^## Gate results/ { b = 1; next } b && /^## / { exit } b && $1 == "run:" { print $2; exit }' "$f")"
+  pn="${prev//[!0-9]/}"; cn="${RUN_STARTED_AT//[!0-9]/}"
+  if [ -n "$pn" ] && [ "${#pn}" = "${#cn}" ] && [ "$pn" -gt "$cn" ]; then RECORD_SKIPPED="$prev"; return 1; fi
   commit="$(commit_with_note)"
   tree="$(gate_tree_hash)"
   block="$(printf '%s\n' \
     "$GATE_MARKER" \
     "" \
-    "    run:    $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "    run:    $RUN_STARTED_AT" \
     "    commit: $commit" \
     "    tree:   $tree" \
     "    result: $res" \
@@ -1067,8 +1077,11 @@ else
   elif [ "$REFUSED" = 1 ]; then
     printf '\n(not recorded: %s)\n' "$REFUSED_WHY"
   else
-    record_in_story "$STORY_FILE" "$result" "$(printf '%b' "$results")"
-    printf '\nrecorded in docs/backlog/stories/%s.md (## Gate results)\n' "$STORY"
+    if record_in_story "$STORY_FILE" "$result" "$(printf '%b' "$results")"; then
+      printf '\nrecorded in docs/backlog/stories/%s.md (## Gate results)\n' "$STORY"
+    else
+      printf '\n(not recorded: docs/backlog/stories/%s.md already holds a record from a gate run that started at %s; this one started at %s, so the newer record stands)\n' "$STORY" "$RECORD_SKIPPED" "$RUN_STARTED_AT"
+    fi
   fi
 fi
 
