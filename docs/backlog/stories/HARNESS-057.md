@@ -5,7 +5,7 @@ slug: gates-sh-looks-up-a-gate-s-settings-with
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-057-gates-sh-looks-up-a-gate-s-settings-with
 depends_on: [HARNESS-056]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -636,10 +636,21 @@ against the shipped file, and are not a substitute for them.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-15T20:48:12Z
+    commit: 3e22256
+    tree:   52e07d15525a252e41656307883a8dd7368009f8
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -800,3 +811,66 @@ pass (22 = 22 in both modes, 0 forking lookups), AC-1's ten names and
 AC-2's `ok g10` hold, and every HARNESS-024 golden and externals assertion
 (AC-3) is still green - so the forks went without a lookup going wrong.
 DV-1 (a) and (b) are GATES' to run.
+
+### DV-1 results (GATES, orchestrator, 2026-10-15)
+
+**(a) The `exp` site reverted to the forking form.** Exactly AC-1, AC-2 and
+AC-4 red (668/3): one lookup back inside a `$(...)` costs 29 nested for one
+gate and 227 for ten (1 and 10 forking lookups), and the text check counts
+one line. AC-3's goldens stayed green - a forking lookup returns the same
+value, so the entry's "AC-3 also goes red" was wrong and the equality is
+what catches this defect. Restored and verified:
+
+```
+$ bash scripts/mutate.sh scripts/gates.sh 's|table_get exp "$EVIDENCE" "$id"|exp=$(table_lookup "$EVIDENCE" "$id")|' -- bash scripts/selftest.sh gates
+=== mutate: scripts/gates.sh (1 line(s) changed by ...) ===
+    FAIL AC-1: gates.sh --list runs as many nested commands over ten gates as over one
+         nested commands (trace lines at depth >= 2): one gate 29, ten gates 227
+         of which $(table_lookup ...) substitutions: one gate 1, ten gates 10
+    FAIL AC-2: gates.sh --audit runs as many nested commands over ten gates as over one
+         nested commands (trace lines at depth >= 2): one gate 29, ten gates 227
+         of which $(table_lookup ...) substitutions: one gate 1, ten gates 10
+    FAIL AC-4: no line of scripts/gates.sh contains $(table_lookup   (expected 0, actual 1)
+gates: 668 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T203355Z.505758.bak) ===
+```
+
+**(b) `table_get` assigns the id instead of the value.** The AC-1/AC-2
+equalities stayed green (22 = 22: the fork count does not move) while AC-3's
+nine goldens went red with 164 more assertions that read a looked-up value
+- and, as RED's handoff corrected, AC-2's two exit-0 assertions and its
+"audit passes" went red too, because `g01`'s floor now reads `g01` and the
+audit exits 1. That is the control: the count oracle alone would wave a
+wrong lookup through, and the goldens are what guard correctness. Restored
+and verified:
+
+```
+$ bash scripts/mutate.sh scripts/gates.sh 's|printf -v "$1" %s "$_tg_val"|printf -v "$1" %s "$_tg_id"|' -- bash scripts/selftest.sh gates
+=== mutate: scripts/gates.sh (1 line(s) changed by ...) ===
+    FAIL a live gate passes                                   (expected PASS         unit; actual empty)
+    FAIL a floor without an evidence line                     (actual: FAIL unit         floor 'unit' is not a number)
+    FAIL --list shows the no-count reason beside the gate     (actual: the gate's own command line)
+    ...
+    FAIL AC-3: gates.sh --list over project.conf is byte-identical to the pre-rewrite golden
+    FAIL AC-3: gates.sh --audit over project.conf is byte-identical to the pre-rewrite golden
+    FAIL AC-3: gates.sh full run over project.conf is byte-identical to the pre-rewrite golden
+    FAIL AC-3: (the same three for broken.conf and crlf.conf)
+    FAIL AC-4 -f3-: an evidence regex keeps its alternation   (actual: short ... <unconfigured>)
+    ...
+    FAIL the traced one-gate --audit exits 0                  (expected 0, actual 1)
+    FAIL the traced ten-gate --audit exits 0                  (expected 0, actual 1)
+    FAIL AC-2: and the ten-gate --audit passes                (expected 1, actual 0)
+    ...
+gates: 498 passed, 173 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T203947Z.536533.bak) ===
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+### GATES (orchestrator, 2026-10-15)
+
+DV-1 (a) and (b) ran through `scripts/mutate.sh` against the `gates` suite
+before the gate run, both restored byte for byte, `--check` clean. Then
+`bash scripts/gates.sh` recorded `result: pass (0 ran, 7 unconfigured,
+0 known)` against `3e22256`; every gate is unconfigured on this repository,
+so the suites and the full self-test before REVIEW are the judge.
