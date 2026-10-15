@@ -4,8 +4,8 @@ title: A gate run that started earlier never overwrites a newer gate record
 slug: a-gate-run-that-started-earlier-never-ov
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-056-a-gate-run-that-started-earlier-never-ov
 depends_on: [HARNESS-055]      # 052, 055 and 056 all edit scripts/gates.sh and the sigpipe line pins; serialise
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/skills/quality-gates/SKILL.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1090,3 +1090,12 @@ The duration is the shared machine again (other sessions' self-tests
 throughout); this worktree's lock was held by this run alone.
 
 PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/142 (opened 2026-10-15 from `bd854ac`).
+
+### DONE (2026-10-15)
+
+Merged as #142 (`9483d8b`, 2026-10-15T15:49:54Z). CI on the final head
+`084737f`: run 38705679411 `gates` success, run 38705679387 `boundaries`
+success. Timings read from the `gates` job: `Harness self-test` 08:26:38 ->
+08:28:55 (2m17s, all 26 suites) against the job's `timeout-minutes: 45`;
+the sigpipe and grep-count steps 2s and 3s. The 136-minute local run was
+the shared machine, not the code.
