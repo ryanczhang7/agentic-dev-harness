@@ -5,7 +5,7 @@ slug: a-gate-run-that-started-earlier-never-ov
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-056-a-gate-run-that-started-earlier-never-ov
 depends_on: [HARNESS-055]      # 052, 055 and 056 all edit scripts/gates.sh and the sigpipe line pins; serialise
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/skills/quality-gates/SKILL.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -411,6 +411,40 @@ MC-026 shape whichever lock window is real. The path reproduction stays cut
 
   Paste the failing assertion names and the restore line here.
 
+  **Result (GATES, orchestrator, 2026-10-14), the `-lt` form.** Nineteen
+  red: AC-1 x4, AC-2 x2 and AC-4 x6 (the 2099 record clobbered by this
+  run's start time, `2026-10-15T02:19:57Z`), AC-5's five older-record
+  assertions (the 2000 record now wrongly declined), and two pre-existing
+  assertions in other describes whose fixtures hold an older record and
+  were therefore declined too (`AC-1 control: the failing full run recorded
+  into T-1`, `AC-2 manifest-required: ## Gate results records result:
+  blocked`) - the same inversion seen from elsewhere, and exactly what an
+  inverted comparison should do. AC-3 (exit status, `last-gate-run`) and
+  AC-5's empty-section case stayed green. Restored and verified:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh 's/"$pn" -gt "$cn"/"$pn" -lt "$cn"/' -- bash scripts/selftest.sh gates
+  === mutate: scripts/gates.sh (1 line(s) changed by s/"$pn" -gt "$cn"/"$pn" -lt "$cn"/) ===
+      FAIL AC-1: a run that started before a newer record does not say it recorded      (expected 0, actual 1)
+      FAIL AC-1: exactly one line begins '(not recorded: '                               (expected 1, actual 0)
+      FAIL AC-1: and it is the decline naming the story file, the standing 2099 record and this run's start
+      FAIL AC-1: the start time the decline names is this run's own                      (no start time in the output)
+      FAIL AC-2: ## Gate results is byte-for-byte what it was before the run
+      FAIL AC-2: the newer record's run: still reads 2099-01-01T00:00:00Z
+           actual:       run:    2026-10-15T02:19:57Z
+      FAIL AC-4: (the same six for the failing run; clobbered to 2026-10-15T02:20:17Z)
+      FAIL AC-5 control: an older (2000) record is replaced: one 'recorded in' line      (expected 1, actual 0)
+      FAIL AC-5 control: an older record: no '(not recorded:' line                       (expected 0, actual 1)
+      FAIL AC-5 control: an older record: run: now holds a current-century time
+      FAIL AC-5 control: an older record: and it is this run's
+           actual:   2000-01-01T00:00:00Z is not within [2026-10-15T02:20:36Z, 2026-10-15T02:20:45Z]
+      FAIL AC-5 control: an older record: the 2000 run: is gone
+      FAIL AC-1 control: the failing full run recorded into T-1
+      FAIL AC-2 manifest-required: ## Gate results records result: blocked
+  gates: 635 passed, 19 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T015756Z.747423.bak) ===
+  ```
+
 - **DV-2 (earning the controls)** — AC-3, AC-5 and AC-6 are green on the
   unpatched tree, so RED cannot watch them fail. They are earned by the
   mutation in DV-1 (AC-5 under `-lt`), and AC-3 by a second `sed` on the
@@ -421,6 +455,52 @@ MC-026 shape whichever lock window is real. The path reproduction stays cut
   is there to satisfy; moving `RUN_STARTED_AT` to top level with
   `scripts/mutate.sh` MUST raise the traced `--list` process count by one -
   paste the count, red or not, and say which. Owner: GATES.
+
+  **Result, the `exit 1` mutation (GATES, orchestrator, 2026-10-14).**
+  AC-3's exit-code assertion went red (the target, earned). Six more went
+  red with it - the AC-1/AC-4 assertions that read the decline line -
+  because the `sed` replaced the printf *line* with `exit 1` rather than
+  adding after it, as the entry's wording ("replaces the else branch's
+  printf") says; so "nothing else" held for everything that does not read
+  that line: AC-2's byte-identical section, AC-3's `RESULT=pass` and
+  `FULL=yes` (the stamp is written before the block, as the Contract says),
+  AC-5, and the rest of the suite. Restored and verified:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh '/so the newer record stands/s/^.*$/      exit 1/' -- bash scripts/selftest.sh gates
+  === mutate: scripts/gates.sh (1 line(s) changed by /so the newer record stands/s/^.*$/      exit 1/) ===
+      FAIL AC-1: exactly one line begins '(not recorded: '                          (expected 1, actual 0)
+      FAIL AC-1: and it is the decline naming the story file, the standing 2099 record and this run's start
+      FAIL AC-1: the start time the decline names is this run's own                 (no start time in the output)
+      FAIL AC-3: declining to record leaves the exit status the gates' verdict, 0   (expected 0, actual 1)
+      FAIL AC-4: it prints the same decline, once
+      FAIL AC-4: and no other '(not recorded: ' line
+      FAIL AC-4: naming this run's own start time
+  gates: 647 passed, 7 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T024449Z.793717.bak) ===
+  ```
+
+  **Result, `RUN_STARTED_AT` moved to top level (AC-6).** Not red: the
+  `gates` suite stayed 654/0 under the mutation, because the HARNESS-024
+  budget is "at most 20" and `--list` is nowhere near it. The count, measured
+  with the suite's own instrument (`trace_script` over the synthetic
+  manifest, `ext_count … TOTAL`), rose by exactly the one `date` the entry
+  predicted:
+
+  ```
+  --- baseline (shipped gates.sh)
+  rc=0  TOTAL=5  date=0
+  --- DV-2b mutation (255d; 50a RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+  === mutate: scripts/gates.sh (2 line(s) changed by 255d; 50a RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)") ===
+  rc=0  TOTAL=6  date=1
+  === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T035240Z.864783.bak) ===
+  $ bash scripts/mutate.sh --check
+  mutate: no stranded mutation; nothing of a previous run is in the tree.
+  ```
+
+  So the lock-block placement is doing what it is there for (5, not 6), and
+  AC-6's existing assertion would notice only a change fifteen processes
+  larger than this one. Recorded as the entry asked - the count, and which.
 
 That is the rules.md budget plus the controls the law owes: the central
 claim's defect put back, and one mutation per test that arrives green.
@@ -822,10 +902,21 @@ the snippet verbatim.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-15T03:50:23Z
+    commit: 13f2bdd
+    tree:   6413e703290f6e13ed31894a498c6a4e398be09c
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -965,3 +1056,19 @@ hold on a declined record, AC-5's older record and empty section are
 written, and HARNESS-024's `--list` process budget is unchanged. The
 feature-developer measured the same table against the shipped script with
 no divergence. DV-1 and DV-2 are GATES' to run.
+
+### GATES (orchestrator, 2026-10-14)
+
+Both deferred verifications ran through `scripts/mutate.sh` before the gate
+run, each against the `gates` suite, each restored byte for byte; results
+pasted in `## Deferred verifications`. DV-1 (`-gt` -> `-lt`): 635/19 - the
+twelve AC-1/2/4 assertions, AC-5's five older-record assertions, and two
+pre-existing record assertions whose fixtures hold an older record, all
+flipped by the one inversion. DV-2a (decline -> `exit 1`): 647/7 - AC-3's
+exit-code assertion (the target) plus the six that read the printf the
+mutation replaced. DV-2b (`RUN_STARTED_AT` at top level): 654/0 as the
+budget is 20; the traced `--list` count measured directly, 5 -> 6, the one
+`date`. `mutate.sh --check` clean. `bash scripts/gates.sh` then recorded
+`result: pass (0 ran, 7 unconfigured, 0 known)` against `13f2bdd`. Each
+`gates` run took 30-60 minutes with other sessions' self-tests sharing the
+machine (13 min alone).
