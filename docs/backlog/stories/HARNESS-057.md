@@ -5,7 +5,7 @@ slug: gates-sh-looks-up-a-gate-s-settings-with
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-057-gates-sh-looks-up-a-gate-s-settings-with
 depends_on: [HARNESS-056]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -400,6 +400,7 @@ name, below the table.
 **Resolved:**
 
 - RED, `test-developer`, 2026-10-15: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
+- GREEN, `feature-developer`, 2026-10-15: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -755,3 +756,47 @@ goldens; the equalities themselves stay green (22 = 22 on RED's candidate).
 DV-1 (a)'s gap is one lookup's loop body per gate (about 7 nested lines),
 22 -> 29 and 22 -> 227 on the candidate, not "one substitution". The `exp`
 site is `:451` today. GATES reads DV-1 with these corrections.
+
+### GREEN verification (orchestrator, 2026-10-15)
+
+The feature-developer's diff was read in full. `scripts/gates.sh` (+21/-10):
+`table_get` verbatim from C-1 directly after `table_lookup()` (`:269-279`);
+all ten forking sites converted by text with every suffix untouched (`:431`
+`ondwhy; is_ondemand=$?`, `:462` `exp || exp="<none>"`, `:463-467`,
+`:468` `nocountwhy; is_nocount=$?`, `:647` `extra`, `:903` `creq`); the
+three predicate callers untouched. `grep -c -F '$(table_lookup'` = 0 and
+`grep -c -E '^table_lookup\(\) \{'` = 1 on the tree. `sigpipe.test.sh:568`
+moved `:640` -> `:651`, the eleven lines of C-1, exactly as C-5 estimated;
+the `:77` pin did not move. Nothing else changed.
+
+Orchestrator's own measurement with C-3's oracle, on the shipped script:
+
+    one --list   rc=0 nested=22 table_lookup_subst=0
+    ten --list   rc=0 nested=22 table_lookup_subst=0
+    one --audit  rc=0 nested=22 table_lookup_subst=0
+    ten --audit  rc=0 nested=22 table_lookup_subst=0
+
+81 -> 891 on arrival is 22 -> 22 now, and no `table_lookup` runs inside a
+fork. The constant 22 is what the Contract expected (not pinned; the AC is
+the equality).
+
+Orchestrator's own suite runs against the shipped tree:
+
+    $ bash scripts/selftest.sh sigpipe
+    sigpipe: 82 passed, 0 failed    (floor 82 met; C-5 finds the pin at :651)
+    $ time bash scripts/selftest.sh gates
+    gates: 671 passed, 0 failed     (floor 671 met)   real 3m51s
+    $ bash scripts/gates.sh --audit
+    Manifest audit passed.
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+    $ bash scripts/check-sigpipe.sh
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    $ bash scripts/check-grep-count.sh
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+Every control landed where the handoff expected: the three RED assertions
+pass (22 = 22 in both modes, 0 forking lookups), AC-1's ten names and
+AC-2's `ok g10` hold, and every HARNESS-024 golden and externals assertion
+(AC-3) is still green - so the forks went without a lookup going wrong.
+DV-1 (a) and (b) are GATES' to run.
