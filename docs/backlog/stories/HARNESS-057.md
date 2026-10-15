@@ -4,8 +4,8 @@ title: gates.sh looks up a gate's settings without forking, so --list and --audi
 slug: gates-sh-looks-up-a-gate-s-settings-with
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-057-gates-sh-looks-up-a-gate-s-settings-with
 depends_on: [HARNESS-056]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -399,6 +399,8 @@ name, below the table.
 
 **Resolved:**
 
+- RED, `test-developer`, 2026-10-15: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -439,28 +441,197 @@ override was reported to this dispatch).
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One new section in `.claude/tests/gates.test.sh`, "HARNESS-057: a gate's
+settings are looked up without forking" (`:1499-1627`), placed after
+HARNESS-024's AC-6 and before HARNESS-026. Level: integration - the real
+`scripts/gates.sh`, copied into two `make_project_fixture` trees, run under
+`bash -x` (AC-1, AC-2); a static count over the shipped file (AC-4). It uses
+its own fixtures, not `MFX`, because C-3's manifests are `write_conf` bodies.
+
+Helpers, all local to `gates.test.sh` (C-3; nothing in `_lib.sh`):
+`nested_measure` exactly as C-3 gives it (unchanged; `exec 9>` +
+`BASH_XTRACEFD=9` works on this Git Bash), `_h57_one` / `_h57_ten` (C-3's
+manifests verbatim, the simple shape - not downstream's `i % 5` variant), and
+`_h57_same` (the equality, whose failure message prints both nested counts and
+both `^++ table_lookup` counts).
+
+| # | Assertion (test name, abridged) | AC | On arrival |
+|---|---|---|---|
+| 1 | one-gate manifest declares exactly one gate line | fixture | green (precondition) |
+| 2 | ten-gate manifest declares exactly ten gate lines | fixture (C-3 "asserts ten gate lines") | green (precondition) |
+| 3 | every gate command is one line with its `\n` intact (fixed-string count = 10) | fixture | green (precondition) |
+| 4 | ten-gate manifest is exactly 25 lines | fixture | green (precondition) |
+| 5, 9 | traced one-gate `--list` / `--audit` exits 0 | AC-1, AC-2 | green |
+| 6, 10 | traced ten-gate `--list` / `--audit` exits 0 | AC-1, AC-2 | green |
+| 7, 11 | control: one-gate nested count `> 0` (prints the count) | AC-1, AC-2 control | green (81) |
+| 8 | **`--list` nested count equal over ten gates and one** | AC-1 | **RED** (81 vs 891) |
+| 12 | **`--audit` nested count equal over ten gates and one** | AC-2 | **RED** (81 vs 891) |
+| 13 | ten-gate `--list` names g01..g10, once each (`^gNN +(optional\|required) `) | AC-1 | green |
+| 14 | ten-gate `--audit` prints `^ok +g10 +evidence: ` exactly once | AC-2 | green |
+| 15 | ten-gate `--audit` prints `^Manifest audit passed\.$` | AC-2 | green |
+| 16 | **`grep -c -F '$(table_lookup' scripts/gates.sh` = 0** | AC-4 | **RED** (10) |
+| 17 | `grep -c -E '^table_lookup\(\) \{' scripts/gates.sh` = 1 | AC-4 (anti-vacuity) | green |
+
+AC-3 has **no new assertion** (C-4: settled). It is read out of the existing
+HARNESS-024 blocks, unchanged: the C-3 instrument controls (`:1265`), the
+AC-1 `trace_externals` assertions (`:1303`; zero sed, zero cut, at most 20
+externals over `--list`), AC-2 `same_count` and padded goldens (`:1321`),
+AC-3's nine goldens for `project`, `broken`, `crlf` x `list`, `audit`, `run`
+(`:1351`), and AC-4's whole-value needles (`:1368`). All green on arrival in the run below.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+**Model.** RED ran on `opus` (Claude Opus 5.5, `claude-opus-5-5`), the
+agent's own `model:`; no override was reported to this dispatch.
+
+**Commands.**
+
+    bash .claude/tests/gates.test.sh          # the suite (about 4 min here)
+    bash scripts/selftest.sh gates            # the same, with the floor check
+
+**Failure output on arrival** (`bash scripts/selftest.sh gates`, this tree,
+`gates.sh` unchanged, 2026-10-15, wall 4m05s; excerpt - every other section
+printed only its describe line):
+
+```
+  HARNESS-057 fixtures: the ten-gate manifest declares ten gates, the one-gate manifest one
+
+  HARNESS-057 AC-1: gates.sh --list runs no more nested commands for nine more gates
+    FAIL AC-1: gates.sh --list runs as many nested commands over ten gates as over one
+         nested commands (trace lines at depth >= 2): one gate 81, ten gates 891
+         of which $(table_lookup ...) substitutions: one gate 8, ten gates 80
+
+  HARNESS-057 AC-2: gates.sh --audit runs no more nested commands for nine more gates
+    FAIL AC-2: gates.sh --audit runs as many nested commands over ten gates as over one
+         nested commands (trace lines at depth >= 2): one gate 81, ten gates 891
+         of which $(table_lookup ...) substitutions: one gate 8, ten gates 80
+
+  HARNESS-057 AC-4: gates.sh has no $(table_lookup substitution, and still defines table_lookup
+    FAIL AC-4: no line of scripts/gates.sh contains $(table_lookup
+         expected: 0
+         actual:   10
+
+gates: 668 passed, 3 failed
+
+assertion floors: all 1 suite(s) met their declared floor (668 assertions executed, 654 declared).
+1 of 1 harness suite(s) FAILED.
+```
+
+(That floor line predates the floor raise below; against 671 the suite now
+sits 3 below its floor until GREEN.) Exactly the three intended assertions are
+red, each for the defect: 81 -> 891 nested, 8 -> 80 forking lookups - the
+re-anchored figures exactly - and ten matching lines. Nothing else in the
+suite is red. The section alone (extracted into a scratch script with
+`VERBOSE=1`) printed `h57: 14 passed, 3 failed` and every green assertion
+named in the Test plan.
+
+**Files touched (RED).**
+
+- `.claude/tests/gates.test.sh` - the new section (`:1499-1627`).
+- `.claude/tests/floors.conf` - `gates 654 -> 671` (`:44`) and the dated
+  measurement comment at the end of the file.
+- `.claude/tests/selftest.test.sh` - the mirrored `COUNTS` row, `gates 671`
+  (`:535`).
+- this story: `## Test plan`, `## Handoff: RED -> GREEN`.
+
+Not touched: `scripts/gates.sh` (GREEN's), `.claude/tests/sigpipe.test.sh`
+(C-5: GREEN's).
+
+**Floor (PO decision 1).** `gates` raised 654 -> **671** in both tables =
+the EXECUTED count (668 passed + 3 failed) read off the run above. The new
+section adds exactly 17 (4 fixture + 2 x 4 in the mode loop + 1 + 2 + 2; the
+`> 0` control is an if/else with one assertion per arm, so the count is
+unconditional). `bash scripts/selftest.sh selftest`: `selftest: 268 passed,
+0 failed`. Floors count passes, so the suite is 3 below its floor until GREEN.
+Note that `## Out of scope` and C-6's "Floors" paragraph still say the floor
+is not raised; PO decision 1 supersedes both and I did not edit them.
+
+**Export shape the tests pin.** The tests import nothing from `gates.sh`;
+they pin behaviour and text:
+
+- Over C-3's manifests, `--list` and `--audit` must run the **same** number of
+  `^++` trace lines for one gate and for ten. This means every per-gate lookup
+  on the paths `--list`/`--audit` reach must be fork-free - all eight per gate
+  line today (`:420`, `:451-457`). The two failure/coverage-only sites (`:636`,
+  `:892`) are not reached by these runs; AC-4 is what makes them convert.
+- No line of `scripts/gates.sh` may contain the literal `$(table_lookup`
+  (fixed string; `"$(table_lookup` contains it). All ten C-2 sites, including
+  HARNESS-055's `:457` (`table_get nocountwhy "$NOCOUNTS" "$id"; is_nocount=$?`).
+  A comment must not quote the old form with `$(`.
+- `table_lookup() {` must still start a line (count exactly 1): the
+  function stays, as do its three predicate callers (`:447`, `:776`, `:822`).
+- Not pinned by a new test but by C-1 and AC-3's goldens: `table_get <var>
+  <table> <id>`, status 0 and the whole remainder after the first tab assigned
+  on a hit, status 1 and `""` on a miss, exact string compare on the id,
+  no trim or re-split.
+- **Unconstrained:** where `table_get` sits in the file (C-1 says after
+  `table_lookup`, the tests do not), its local names (the `_tg_` prefix is C-1's
+  shadowing argument, not a test), comment wording, and whether the redundant
+  `|| x=""` suffixes stay. The absolute nested constant (22 measured below) is
+  not pinned - only the equality.
+- `grep -rn 'table_lookup\|table_get' .claude/tests/` is no longer empty:
+  the new section names `table_lookup` (AC-4's needle and messages). Nothing
+  names `table_get`.
+
+**Passed on arrival, and what earns each.**
+
+| Assertion | Earned by |
+|---|---|
+| AC-3 goldens + `trace_externals` (HARNESS-024, existing) | DV-1 (b), GATES: wrong-value mutation must turn them red |
+| fixture checks 1-4 | probed off-framework: a manifest whose `\n` had been expanded into a real newline (my own first draft did this) gives 0 on check 3, not 10; check 4 counts 25 lines against 34 for that broken shape |
+| `> 0` controls (7, 11) | measured 81 on arrival; off-framework, the guard expression returns false for an empty count and for 0 |
+| exits 0, ten gates named, `ok g10`, audit passed | measured on arrival; the ten-gate outputs were read by eye (all ten `ok` lines, `Manifest audit passed.`); DV-1 (b) turns `--audit`'s exits red (see below) |
+| AC-4 `table_lookup()` defined | anti-vacuity guard; a GREEN that deleted the function would turn it red |
+
+**Expected values (controls), measured off-framework on a CANDIDATE.** I
+applied C-1 and the C-2 conversions with `awk`/`sed` to the COPY of
+`gates.sh` inside two temp `make_project_fixture` trees (never the tree), and
+ran `nested_measure` over C-3's manifests. These are claims about the
+candidate; GREEN confirms them against its own `gates.sh`.
+
+| Condition | Mode | one gate (rc/nested) | ten gates (rc/nested) | Assertions expected |
+|---|---|---|---|---|
+| shipped (RED, measured in suite) | --list | 0/81 | 0/891 | AC-1 eq RED |
+| shipped (RED, measured in suite) | --audit | 0/81 | 0/891 | AC-2 eq RED |
+| C-1 + C-2 applied (GREEN) | --list | 0/22 | 0/22 | all green; `$(table_lookup` count 0 |
+| C-1 + C-2 applied (GREEN) | --audit | 0/22 | 0/22 | all green |
+| DV-1 (a): `:451`'s `exp` site reverted | --list | 0/29 | 0/227 | AC-1 eq RED; AC-4 RED with 1 |
+| DV-1 (a) | --audit | 0/29 | 0/227 | AC-2 eq RED |
+| DV-1 (b): `table_get` assigns `$_tg_id` | --list | 0/22 | 0/22 | AC-1 eq green; `--list` shows `evidence: g01`, `floor: g01` |
+| DV-1 (b) | --audit | **1**/22 | **1**/22 | AC-2 eq green, but AC-2's two exits-0 and `audit passed` go RED too |
+
+Threshold for every equality: exact. Candidate range: none (22 = 22 matches
+C-3's downstream figure; a different equal constant also passes). The `> 0`
+control's threshold is 1; measured 81 (shipped) and 22 (candidate).
+
+**Discovered, for GREEN and GATES.**
+
+- DV-1 (a)'s gap is +7 nested for one gate (22 -> 29) and +205 for ten
+  (22 -> 227), not "one substitution's worth" per gate in a literal sense: one
+  reverted lookup costs about 7 nested lines per gate it runs for (the
+  substitution plus its loop body). The equality goes red either way.
+- DV-1 (b) does NOT leave AC-2 wholly green as the DV text says: the audit
+  fails on a floor of `g01` (not a number), exits 1, and AC-2's exits-0 and
+  `Manifest audit passed` assertions go red alongside AC-3's goldens. The
+  equality assertions themselves stay green (22 = 22), which is the point of
+  the condition. Record it as measured when GATES runs DV-1.
+- C-5: GREEN pins the sigpipe line to whatever
+  `grep -n 'could not launch: \$(' scripts/gates.sh` prints (`:640` today;
+  `:648` in my candidate with an uncommented eight-line `table_get`, so about
+  `:651` with C-1's comment) and confirms with `bash scripts/selftest.sh sigpipe`.
+- DV-1's commands quote the `exp` site; it is `:451` today, not `:413`.
+
+**Other checks run in RED.** `bash scripts/check-sigpipe.sh`: `check-sigpipe:
+scanned 49 shell file(s), 45 with pipefail, 0 finding(s)`.
+`bash scripts/check-grep-count.sh`: `check-grep-count: scanned 49 shell
+file(s), 0 finding(s)`. `bash scripts/gates.sh --fast`: `All required gates
+passed (0 ran, 5 unconfigured, 0 known).` - nothing runs here
+(`BOOTSTRAPPED=no`), as expected.
+
+**Deferred verifications.** DV-1 (a) and (b) are owned by GATES and I could
+not run them: they mutate `table_get`, which does not exist in RED. The
+candidate measurements above are on a temp copy, not a `mutate.sh` run
+against the shipped file, and are not a substitute for them.
 
 ## Gate results
 
@@ -535,3 +706,52 @@ which is the same `while IFS= read -r line` shape and drops the same line, so
 the gate is missing from the declared list as well as from the run. Fix
 shape, for whoever cuts it: `while IFS= read -r line || [ -n "$line" ]; do`
 in both loops, with the reproduction above as the failing case.
+
+### RED verification (orchestrator, 2026-10-15)
+
+RED dispatched to `test-developer`; it reported running on `opus`. Its diff
+was read in full: one section in `gates.test.sh` (+130, 17 assertions) with
+C-3's `nested_measure` and manifests verbatim, four fixture checks, the
+two-mode loop (exits, the `> 0` control, the equality with both nested and
+lookup counts in its failure message), AC-1's ten names and AC-2's `ok g10`
+anchored, and AC-4's zero count paired with "`table_lookup()` still
+defined"; `gates` floor 654 -> 671 in both tables. Nothing outside test
+files and this story.
+
+Orchestrator's own run against the unpatched `scripts/gates.sh`:
+
+    $ time bash scripts/selftest.sh gates
+      HARNESS-057 AC-1: gates.sh --list runs no more nested commands for nine more gates
+        FAIL AC-1: gates.sh --list runs as many nested commands over ten gates as over one
+             (one gate 81, ten gates 891; $(table_lookup ...) substitutions 8 and 80)
+      HARNESS-057 AC-2: gates.sh --audit runs no more nested commands for nine more gates
+        FAIL AC-2: gates.sh --audit runs as many nested commands over ten gates as over one
+      HARNESS-057 AC-4: gates.sh has no $(table_lookup substitution, and still defines table_lookup
+        FAIL AC-4: no line of scripts/gates.sh contains $(table_lookup   (expected 0, actual 10)
+    gates: 668 passed, 3 failed
+    FAIL gates  did 668 units of work, below the floor of 671
+    real    3m55s   (a quiet machine, for once)
+
+    $ bash scripts/selftest.sh selftest
+    selftest: 268 passed, 0 failed
+    $ bash scripts/check-sigpipe.sh
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    $ bash scripts/check-grep-count.sh
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+Right failure: exactly the two equalities and the text check are red, with
+the counts the PO re-measured (81 vs 891, 8 vs 80 forking lookups, ten
+matching lines); every HARNESS-024 golden and externals assertion stays
+green. Floors count passes, so the suite also sits 3 below its new floor
+until GREEN.
+
+**Contract notes from the handoff, accepted (2026-10-15):** DV-1 (b)'s
+"AC-1 and AC-2 stay green" is amended - with the value replaced by the id,
+`g01`'s floor reads a non-number and the audit exits 1, so AC-2's two
+exit-0 assertions and its "audit passed" assertion go red beside AC-3's
+goldens; the equalities themselves stay green (22 = 22 on RED's candidate).
+DV-1 (a)'s gap is one lookup's loop body per gate (about 7 nested lines),
+22 -> 29 and 22 -> 227 on the candidate, not "one substitution". The `exp`
+site is `:451` today. GATES reads DV-1 with these corrections.

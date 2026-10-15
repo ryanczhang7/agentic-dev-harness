@@ -1496,6 +1496,136 @@ for _f in trim from_field field rest; do
     "defined same same" "$_verdict"
 done
 
+# ============================================================================
+# HARNESS-057: a gate's settings are looked up without forking
+# ============================================================================
+#
+# HARNESS-024 made the per-LINE parse cost builtin. The per-GATE cost was left:
+# every gate line ran `x=$(table_lookup ...)` eight times, and a `$(...)` forks
+# whether or not its body execs anything. trace_externals counts exec'd
+# programs only, so it cannot see those forks - HARNESS-024's assertions above
+# hold over a manifest whose gate count drives eighty of them, and they stay as
+# the guard on correctness (AC-3: a lookup that forks less by looking up less,
+# or by returning the wrong value, changes the goldens).
+#
+# The oracle here is the one that sees a fork that execs nothing: bash -x with
+# PS4='+ ' marks a command inside a command substitution or subshell with `++`,
+# so `grep -c '^++'` counts commands run in a fork. Nine more gates must cost no
+# more of them. The trace goes to fd 9 so stdout and stderr stay what a user
+# sees. Each oracle covers the other's blind spot: this one is blind to a
+# top-level pipeline, which trace_externals sees.
+
+# nested_measure <fixture> <out-prefix> <mode>   gates.sh <mode> under bash -x
+# with the trace on fd 9. Sets N_RC, N_NESTED (lines at depth >= 2), and
+# leaves stdout in <out-prefix>.out, stderr in <out-prefix>.err.
+nested_measure() {
+  local fix="$1" pre="$2" mode="$3"
+  (
+    cd "$fix" || exit 99
+    exec 9> "$pre.trace"
+    BASH_XTRACEFD=9 PS4='+ ' bash -x scripts/gates.sh "$mode" > "$pre.out" 2> "$pre.err"
+  )
+  N_RC=$?
+  N_NESTED=$(grep -c '^++' "$pre.trace")
+}
+
+# The one-gate manifest carries every table kind that can sit on one gate
+# without failing the audit (no-count cannot share a gate with a floor). The
+# ten-gate manifest is those six lines plus a gate and an evidence line for each
+# of g02..g10 (story C-3).
+_h57_one() {
+  printf '%s\n' \
+    "gate      | g01 | optional | . | printf 'Tests  47 passed (47)\\n'" \
+    "evidence  | g01 | Tests +[1-9][0-9]* passed" \
+    "floor     | g01 | 40" \
+    "waiver    | g01 | flaky on the fixture runner, see MC-000" \
+    "slow      | g01 | builds a release bundle" \
+    "ci-factor | g01 | 3.4 | measured from CI run 12345"
+}
+_h57_ten() {
+  local i id
+  _h57_one
+  for i in 2 3 4 5 6 7 8 9 10; do
+    id="$(printf 'g%02d' "$i")"
+    printf '%s\n' \
+      "gate      | $id | required | . | printf 'Tests  47 passed (47)\\n'" \
+      "evidence  | $id | Tests +[1-9][0-9]* passed"
+  done
+}
+_h57="$(mktemp -d 2>/dev/null || mktemp -d -t h057.XXXXXX)"
+_h57_f1="$(make_project_fixture)"
+_h57_f10="$(make_project_fixture)"
+_h57_one | write_conf "$_h57_f1"
+_h57_ten | write_conf "$_h57_f10"
+
+describe "HARNESS-057 fixtures: the ten-gate manifest declares ten gates, the one-gate manifest one"
+
+assert_eq "the one-gate manifest declares exactly one gate line" \
+  1 "$(count_re '^gate +\| g[0-9][0-9] +\| ' "$(cat "$_h57_f1/.claude/harness/project.conf")")"
+assert_eq "the ten-gate manifest declares exactly ten gate lines" \
+  10 "$(count_re '^gate +\| g[0-9][0-9] +\| ' "$(cat "$_h57_f10/.claude/harness/project.conf")")"
+# Fixed-string, so no regex layer reinterprets the backslash: the needle is the
+# command text with its literal \n, which a manifest whose escape was expanded
+# into a real newline (the command split over two lines) does not contain.
+assert_eq "and every gate command is one line with its \\n escape intact (none split over two lines)" \
+  10 "$(grep -c -F "printf 'Tests  47 passed (47)\\n'" "$_h57_f10/.claude/harness/project.conf")"
+assert_eq "and the ten-gate manifest is exactly BOOTSTRAPPED=yes plus 6 + 9 x 2 lines" \
+  25 "$(awk 'END { print NR }' "$_h57_f10/.claude/harness/project.conf")"
+
+# _h57_same <what> <one> <ten> <mode>   the equality, with a message naming both
+# counts and the lookups that ran inside a fork, so a failure reads as the bug.
+_h57_same() {
+  if [ "$2" = "$3" ]; then _ok "$1"; else
+    _bad "$1" "nested commands (trace lines at depth >= 2): one gate $2, ten gates $3
+of which \$(table_lookup ...) substitutions: one gate $(grep -c '^++ table_lookup' "$_h57/one.$4.trace"), ten gates $(grep -c '^++ table_lookup' "$_h57/ten.$4.trace")"
+  fi
+}
+
+for _m in list audit; do
+  describe "HARNESS-057 AC-$([ "$_m" = list ] && printf 1 || printf 2): gates.sh --$_m runs no more nested commands for nine more gates"
+
+  nested_measure "$_h57_f1" "$_h57/one.$_m" "--$_m"; _one_rc=$N_RC; _one_n=$N_NESTED
+  nested_measure "$_h57_f10" "$_h57/ten.$_m" "--$_m"; _ten_rc=$N_RC; _ten_n=$N_NESTED
+  assert_eq "the traced one-gate --$_m exits 0" 0 "$_one_rc"
+  assert_eq "the traced ten-gate --$_m exits 0" 0 "$_ten_rc"
+  # The control on the equality: a trace that was never written satisfies 0 = 0.
+  if [ "${_one_n:-0}" -gt 0 ] 2>/dev/null; then
+    _ok "control: the one-gate --$_m trace records nested commands at all ($_one_n)"
+  else
+    _bad "control: the one-gate --$_m trace records nested commands at all" \
+      "counted '${_one_n}' lines beginning ++ in $_h57/one.$_m.trace; stderr: $(cat "$_h57/one.$_m.err")"
+  fi
+  _h57_same "AC-$([ "$_m" = list ] && printf 1 || printf 2): gates.sh --$_m runs as many nested commands over ten gates as over one" \
+    "$_one_n" "$_ten_n" "$_m"
+done
+
+_out="$(cat "$_h57/ten.list.out")"
+_named=""
+for _i in 01 02 03 04 05 06 07 08 09 10; do
+  [ "$(count_re "^g$_i +(optional|required) " "$_out")" = 1 ] && _named="$_named g$_i"
+done
+assert_eq "AC-1: the ten-gate --list names every one of the ten gates, once each" \
+  " g01 g02 g03 g04 g05 g06 g07 g08 g09 g10" "$_named"
+
+_out="$(cat "$_h57/ten.audit.out")"
+assert_eq "AC-2: the ten-gate --audit prints an ok line for the tenth gate, g10" \
+  1 "$(count_re '^ok +g10 +evidence: ' "$_out")"
+assert_eq "AC-2: and the ten-gate --audit passes" 1 "$(count_re '^Manifest audit passed\.$' "$_out")"
+
+describe "HARNESS-057 AC-4: gates.sh has no \$(table_lookup substitution, and still defines table_lookup"
+
+# A fixed-string count over the shipped file. "$(table_lookup contains the
+# needle, so the quoted form is caught too; a comment naming the function
+# without `$(` is not. The predicate callers (`table_lookup ... >/dev/null`)
+# fork nothing and do not match.
+assert_eq "AC-4: no line of scripts/gates.sh contains \$(table_lookup" \
+  0 "$(grep -c -F '$(table_lookup' "$REPO_ROOT/scripts/gates.sh")"
+# So AC-4 cannot be satisfied by deleting the function and its predicate callers.
+assert_eq "AC-4: and scripts/gates.sh still defines table_lookup()" \
+  1 "$(grep -c -E '^table_lookup\(\) \{' "$REPO_ROOT/scripts/gates.sh")"
+
+rm -rf "$_h57" "$_h57_f1" "$_h57_f10"
+
 
 # ============================================================================
 # HARNESS-026: the audit counts only required gates, and a run from another
