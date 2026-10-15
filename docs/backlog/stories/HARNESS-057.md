@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-057-gates-sh-looks-up-a-gate-s-settings-with
 depends_on: [HARNESS-056]      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
+touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -120,7 +120,37 @@ more site for C-2's list, and C-2's status semantics keep it working.
 **RED may amend any block below in place, with a reason stated in the block;
 GREEN builds what the amended block says.**
 
-**Writes:** `scripts/gates.sh`, `.claude/tests/gates.test.sh`, `.claude/tests/sigpipe.test.sh`
+**Writes:** `scripts/gates.sh`, `.claude/tests/gates.test.sh`, `.claude/tests/sigpipe.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+
+**Re-anchored 2026-10-15 (Lead PO, before RED), after HARNESS-052, -055 and
+-056 landed.** `scripts/gates.sh` is 1122 lines. Verified by grep today:
+`table_lookup()` at `:261`; **ten** forking call sites, not nine - C-2's
+nine at `:420`, `:451-456`, `:636`, `:892`, plus HARNESS-055's
+`nocountwhy=$(table_lookup "$NOCOUNTS" "$id"); is_nocount=$?` at `:457`,
+which C-2 anticipated and which converts to
+`table_get nocountwhy "$NOCOUNTS" "$id"; is_nocount=$?` (the `is_*` status
+shape); the three predicate callers at `:447`, `:776`, `:822` stay. The
+sigpipe pins (`sigpipe.test.sh:567-568`) read `scripts/gates.sh:77:` and
+`scripts/gates.sh:640:`; C-1's eleven lines land after `:271`, so the second
+moves to about `:651` - **GREEN pins what `grep -n 'could not launch: \$('`
+prints**. No test names `table_lookup` or `table_get` (grep over
+`.claude/tests/`: 0 lines). **Re-measured on this tree with C-3's manifests
+and oracle:**
+
+    one --list   rc=0 nested=81  table_lookup_subst=8   gates_named=1
+    ten --list   rc=0 nested=891 table_lookup_subst=80  gates_named=10
+    one --audit  rc=0 nested=81  table_lookup_subst=8
+    ten --audit  rc=0 nested=891 table_lookup_subst=80
+
+Eight forking lookups per gate line now (the tenth site), 81 -> 891; the
+AC is the equality and is failed the same way. RED records what it measures.
+
+**PO decision 1 (2026-10-15).** C-6's "raises nothing" is reversed: the
+`gates` floor is **654** today (`floors.conf:44`, mirrored at
+`selftest.test.sh:535`), and the sibling-collision reason for leaving it is
+gone - 052, 055 and 056 are DONE and 058 touches neither file. RED raises it
+to the executed count it reads off its own run, in both tables, as every
+story this round did (`touches:` and `**Writes:**` widened accordingly).
 
 ### C-1 `table_get`: name, signature, semantics
 
