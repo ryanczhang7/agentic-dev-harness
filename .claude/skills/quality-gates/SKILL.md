@@ -522,11 +522,14 @@ broader: `[1-9][0-9]* skipped`, not `skipped`.
 ## The gate record is written by the tool
 
 A full run of `gates.sh` writes its own summary into the active story's
-`## Gate results` (or `--story <id>`): a marker line, the UTC time, the commit,
+`## Gate results` (or `--story <id>`): a marker line, the UTC time the run
+started, the commit,
 a hash of every source, test and config file plus the harness's scripts and
 manifests (not its prompts - no gate reads a command file) as they were on disk
 when the gates ran, and the summary. `--gate` and `--required` runs are not recorded,
-because a partial run is not evidence that the story passes its gates.
+because a partial run is not evidence that the story passes its gates. A full
+run that finds a record from a run that started later declines to record, says
+so on a `(not recorded: …)` line, and leaves the newer record standing.
 
 Nobody pastes it and nobody edits it. `check-boundaries.sh` refuses a PR whose
 section has no marker, whose recorded result is not `pass`, or whose recorded

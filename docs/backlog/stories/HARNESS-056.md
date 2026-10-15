@@ -4,8 +4,8 @@ title: A gate run that started earlier never overwrites a newer gate record
 slug: a-gate-run-that-started-earlier-never-ov
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-056-a-gate-run-that-started-earlier-never-ov
 depends_on: [HARNESS-055]      # 052, 055 and 056 all edit scripts/gates.sh and the sigpipe line pins; serialise
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/skills/quality-gates/SKILL.md]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -203,6 +203,33 @@ below in place, with a reason beside it; GREEN builds what the amended block
 says. Line numbers are release 94's and will have moved once HARNESS-055
 (the `no-count` port, which also edits `gates.sh`) is merged; GREEN re-greps.
 
+**Re-anchored 2026-10-14 (Lead PO, before RED), after HARNESS-052 and
+HARNESS-055 landed.** `scripts/gates.sh` is 1109 lines. Today's positions,
+every one verified by grep: `set -uo pipefail` `:50`; the lock block
+`if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ]; then` `:249`, `run_lock_acquire`
+`:254`; `record_in_story()` `:314`, its `run:` line with the write-time
+`$(date …)` `:321`; the `(not recorded:` lines `:1064-1068`; the caller
+`record_in_story "$STORY_FILE" …` `:1070` and the `recorded in` printf
+`:1071`. The sigpipe pins (`sigpipe.test.sh:567-568`) read
+`scripts/gates.sh:77:` and `scripts/gates.sh:630:`; the `:77` pin does not
+move, the `:630` one moves by however many lines land above it (about six:
+one in the lock block, `RECORD_SKIPPED=""`, the comment and comparison lines
+in `record_in_story`) - **GREEN pins what `grep -n 'could not launch: \$('`
+prints**, as HARNESS-055 did. `gates.test.sh` helpers: `count_re` `:769`;
+the HARNESS-026 record-refusal describes `:1509` and `:1593`, the
+HARNESS-024 AC-1 process budget `:1303`; the record cases that run on
+`story/T-1-fixture` begin at `:2234`. The `gates` floor is now **619**
+(`floors.conf:44`, mirrored in `selftest.test.sh`); RED raises it to the
+executed count it reads off its own run. `check-boundaries.sh` still reads
+no `run:` (`:163` is a comment). The SKILL.md passage is `:522-525`.
+
+**PO decision 1 (2026-10-14).** The planner's open question - ship the
+record-level invariant without a reproduced real path to two runs on one
+story file - is answered *yes*, for the planner's reasons: the fixture plants
+the newer record and is deterministic, the check is cheap, and it catches the
+MC-026 shape whichever lock window is real. The path reproduction stays cut
+(Out of scope). The user may overrule this before GREEN.
+
 - **The run's start time: `RUN_STARTED_AT`.** A global, UTC to the second in
   the shape `run:` already uses, set *inside* the existing lock block
   `if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ]; then … fi` (`scripts/gates.sh:244-250`),
@@ -384,6 +411,40 @@ says. Line numbers are release 94's and will have moved once HARNESS-055
 
   Paste the failing assertion names and the restore line here.
 
+  **Result (GATES, orchestrator, 2026-10-14), the `-lt` form.** Nineteen
+  red: AC-1 x4, AC-2 x2 and AC-4 x6 (the 2099 record clobbered by this
+  run's start time, `2026-10-15T02:19:57Z`), AC-5's five older-record
+  assertions (the 2000 record now wrongly declined), and two pre-existing
+  assertions in other describes whose fixtures hold an older record and
+  were therefore declined too (`AC-1 control: the failing full run recorded
+  into T-1`, `AC-2 manifest-required: ## Gate results records result:
+  blocked`) - the same inversion seen from elsewhere, and exactly what an
+  inverted comparison should do. AC-3 (exit status, `last-gate-run`) and
+  AC-5's empty-section case stayed green. Restored and verified:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh 's/"$pn" -gt "$cn"/"$pn" -lt "$cn"/' -- bash scripts/selftest.sh gates
+  === mutate: scripts/gates.sh (1 line(s) changed by s/"$pn" -gt "$cn"/"$pn" -lt "$cn"/) ===
+      FAIL AC-1: a run that started before a newer record does not say it recorded      (expected 0, actual 1)
+      FAIL AC-1: exactly one line begins '(not recorded: '                               (expected 1, actual 0)
+      FAIL AC-1: and it is the decline naming the story file, the standing 2099 record and this run's start
+      FAIL AC-1: the start time the decline names is this run's own                      (no start time in the output)
+      FAIL AC-2: ## Gate results is byte-for-byte what it was before the run
+      FAIL AC-2: the newer record's run: still reads 2099-01-01T00:00:00Z
+           actual:       run:    2026-10-15T02:19:57Z
+      FAIL AC-4: (the same six for the failing run; clobbered to 2026-10-15T02:20:17Z)
+      FAIL AC-5 control: an older (2000) record is replaced: one 'recorded in' line      (expected 1, actual 0)
+      FAIL AC-5 control: an older record: no '(not recorded:' line                       (expected 0, actual 1)
+      FAIL AC-5 control: an older record: run: now holds a current-century time
+      FAIL AC-5 control: an older record: and it is this run's
+           actual:   2000-01-01T00:00:00Z is not within [2026-10-15T02:20:36Z, 2026-10-15T02:20:45Z]
+      FAIL AC-5 control: an older record: the 2000 run: is gone
+      FAIL AC-1 control: the failing full run recorded into T-1
+      FAIL AC-2 manifest-required: ## Gate results records result: blocked
+  gates: 635 passed, 19 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T015756Z.747423.bak) ===
+  ```
+
 - **DV-2 (earning the controls)** — AC-3, AC-5 and AC-6 are green on the
   unpatched tree, so RED cannot watch them fail. They are earned by the
   mutation in DV-1 (AC-5 under `-lt`), and AC-3 by a second `sed` on the
@@ -394,6 +455,52 @@ says. Line numbers are release 94's and will have moved once HARNESS-055
   is there to satisfy; moving `RUN_STARTED_AT` to top level with
   `scripts/mutate.sh` MUST raise the traced `--list` process count by one -
   paste the count, red or not, and say which. Owner: GATES.
+
+  **Result, the `exit 1` mutation (GATES, orchestrator, 2026-10-14).**
+  AC-3's exit-code assertion went red (the target, earned). Six more went
+  red with it - the AC-1/AC-4 assertions that read the decline line -
+  because the `sed` replaced the printf *line* with `exit 1` rather than
+  adding after it, as the entry's wording ("replaces the else branch's
+  printf") says; so "nothing else" held for everything that does not read
+  that line: AC-2's byte-identical section, AC-3's `RESULT=pass` and
+  `FULL=yes` (the stamp is written before the block, as the Contract says),
+  AC-5, and the rest of the suite. Restored and verified:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh '/so the newer record stands/s/^.*$/      exit 1/' -- bash scripts/selftest.sh gates
+  === mutate: scripts/gates.sh (1 line(s) changed by /so the newer record stands/s/^.*$/      exit 1/) ===
+      FAIL AC-1: exactly one line begins '(not recorded: '                          (expected 1, actual 0)
+      FAIL AC-1: and it is the decline naming the story file, the standing 2099 record and this run's start
+      FAIL AC-1: the start time the decline names is this run's own                 (no start time in the output)
+      FAIL AC-3: declining to record leaves the exit status the gates' verdict, 0   (expected 0, actual 1)
+      FAIL AC-4: it prints the same decline, once
+      FAIL AC-4: and no other '(not recorded: ' line
+      FAIL AC-4: naming this run's own start time
+  gates: 647 passed, 7 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T024449Z.793717.bak) ===
+  ```
+
+  **Result, `RUN_STARTED_AT` moved to top level (AC-6).** Not red: the
+  `gates` suite stayed 654/0 under the mutation, because the HARNESS-024
+  budget is "at most 20" and `--list` is nowhere near it. The count, measured
+  with the suite's own instrument (`trace_script` over the synthetic
+  manifest, `ext_count … TOTAL`), rose by exactly the one `date` the entry
+  predicted:
+
+  ```
+  --- baseline (shipped gates.sh)
+  rc=0  TOTAL=5  date=0
+  --- DV-2b mutation (255d; 50a RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+  === mutate: scripts/gates.sh (2 line(s) changed by 255d; 50a RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)") ===
+  rc=0  TOTAL=6  date=1
+  === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T035240Z.864783.bak) ===
+  $ bash scripts/mutate.sh --check
+  mutate: no stranded mutation; nothing of a previous run is in the tree.
+  ```
+
+  So the lock-block placement is doing what it is there for (5, not 6), and
+  AC-6's existing assertion would notice only a change fifteen processes
+  larger than this one. Recorded as the entry asked - the count, and which.
 
 That is the rules.md budget plus the controls the law owes: the central
 claim's defect put back, and one mutation per test that arrives green.
@@ -430,6 +537,8 @@ name, below the table.
 
 **Resolved:**
 
+- RED, `test-developer`, 2026-10-14: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
+- GREEN, `feature-developer`, 2026-10-14: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
 - PLANNED, `lead-po`, 2026-10-12: **Fable 5.1** (`claude-fable-5-1`) - the
   agent's declared `model:`, matching the plan; no override reported.
 
@@ -489,6 +598,72 @@ out, not redesigned. Nothing is oracle-free. Pin exactly, and plant the
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One new `describe` in `.claude/tests/gates.test.sh`,
+**"HARNESS-056 AC-1..AC-5  a gate run that started earlier never overwrites a
+newer gate record"**, placed directly after the HARNESS-026 AC-4..AC-6 block
+and before HARNESS-046 AC-3 (which builds its own fixture, so nothing after it
+depends on the state this block leaves). Level: integration - the real
+`scripts/gates.sh` copied into `make_project_fixture`'s `$FIX`, run as
+`bash scripts/gates.sh` with a one-gate `printf` manifest. 35 assertions.
+
+Fixture discipline (HARNESS-026's): `git checkout -q -B story/T-1-fixture`,
+`write_conf` (passing `unit` gate with evidence), `story "$FIX" T-1 GATES
+</dev/null`, `fix_commit`, `set_phase "$FIX" GATES`. `h56_plant <run-value>`
+is the Contract's planting snippet verbatim (marker read from
+`$FIX/.claude/hooks/lib.sh`), followed by `fix_commit` rather than the
+snippet's raw `git add -A` - `fix_commit` excludes `.claude/state`, as every
+other record case in the file does. The newer record is PLANTED with
+`run: 2099-01-01T00:00:00Z`: no `sleep`, no background process, no race. The
+block ends on `main` with no active story, as the HARNESS-026 block did.
+
+Start-time check: the block reads `date -u` immediately before and after
+each run (`H56_LO`/`H56_HI`) and `h56_within` asserts the start time the
+decline line names lies in `[LO, HI]` (digits compared as integers, same
+width). That is how "this run's own start time" is pinned so that the
+planted 2099 value cannot stand in for it (2099 is above `HI`).
+
+| # | Assertion (as named in the suite) | AC | On arrival |
+|---|---|---|---|
+| p1-p4 | fixture preconditions: on `story/T-1-fixture`; planted `run:` is 2099; marker present; nothing gated dirty or untracked | - | green |
+| 1 | `AC-1: a run that started before a newer record does not say it recorded` - `count_re '^recorded in docs/backlog/stories/T-1\.md \(## Gate results\)$'` = 0 | AC-1 | **red** (1) |
+| 2 | `AC-1: exactly one line begins '(not recorded: '` | AC-1 | **red** (0) |
+| 3 | `AC-1: and it is the decline naming the story file, the standing 2099 record and this run's start` - the Contract's printf line, whole-line regex | AC-1 | **red** (0) |
+| 4 | `AC-1: the start time the decline names is this run's own (between the clock before and after it)` | AC-1 | **red** ("no start time in the output") |
+| 5 | `AC-2: ## Gate results is byte-for-byte what it was before the run` (`sed -n '/^## Gate results/,/^## Notes/p'`, `cmp`) | AC-2 | **red** (no) |
+| 6 | `AC-2: the newer record's run: still reads 2099-01-01T00:00:00Z (the run: lines of the story, as written)` | AC-2 | **red** (actual = this run's write time) |
+| 7 | `AC-2: the story holds exactly one run: line (nothing appended)` | AC-2 | green - control (today REPLACES, does not append) |
+| 8 | `AC-3: declining to record leaves the exit status the gates' verdict, 0` | AC-3 | green - DV-2 (`exit 1` in the else branch) |
+| 9 | `AC-3: last-gate-run says RESULT=pass` (whole line) | AC-3 | green - DV-2 |
+| 10 | `AC-3: last-gate-run says FULL=yes` (whole line) | AC-3 | green - DV-2 |
+| 11 | `AC-4: a failing run that started before the newer record does not say it recorded` | AC-4 | **red** (1) |
+| 12 | `AC-4: it prints the same decline, once` | AC-4 | **red** (0) |
+| 13 | `AC-4: and no other '(not recorded: ' line` | AC-4 | **red** (0) |
+| 14 | `AC-4: naming this run's own start time` | AC-4 | **red** |
+| 15 | `AC-4: the 2099 record still stands (the run: lines of the story, as written)` | AC-4 | **red** (actual = write time) |
+| 16 | `AC-4: ## Gate results is byte-for-byte unchanged by the failing run` | AC-4 | **red** |
+| 17 | `AC-4: the exit status is the failing verdict` (non-zero) | AC-4 | green - control |
+| p5 | fixture precondition: the planted record's run: is 2000 | - | green |
+| 18 | `AC-5 control: an older (2000) record is replaced: one 'recorded in' line` | AC-5 | green - DV-1 `-lt` form |
+| 19 | `AC-5 control: an older record: no '(not recorded:' line` | AC-5 | green - DV-1 `-lt` |
+| 20 | `AC-5 control: an older record: run: now holds a current-century time` (`^    run:    20[2-9][0-9]-…Z$`, no intervals) | AC-5 | green - DV-1 `-lt` |
+| 21 | `AC-5 control: an older record: and it is this run's (between the clock before and after it)` | AC-5 | green - DV-1 `-lt` |
+| 22 | `AC-5 control: an older record: the 2000 run: is gone` | AC-5 | green - DV-1 `-lt` |
+| 23 | `AC-5 control: an older record: exactly one run: line` | AC-5 | green |
+| 24 | `AC-5 control: an older record: exit 0` | AC-5 | green |
+| p6 | fixture precondition: the template story holds no run: line | - | green |
+| 25-29 | `AC-5 control: an empty section is written: …` - one `recorded in`, no `(not recorded:`, current-century `run:`, one `run:` line, exit 0 | AC-5 | green - stays green under every DV mutation (no `run:` to compare: `pn` empty) |
+
+**AC-6** gets no new assertion, by design: it is HARNESS-024 AC-1's existing
+"`--list` over the synthetic manifest spawns no sed, no cut, and at most 20
+processes" (`gates.test.sh:1303` describe), unchanged. Earned by DV-2's
+top-level `RUN_STARTED_AT` mutation.
+
+Needles: no bare `assert_contains "not recorded"` anywhere. Every output
+needle is an anchored `count_re` (no `{n}` intervals - the file's convention)
+or a whole-line `count_line`. The decline regex, the `recorded in` regex, the
+`h56_started` extractor and `h56_within` were checked outside the framework
+against the Contract's own printf output (see Handoff, "needle checks").
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -508,6 +683,197 @@ out, not redesigned. Nothing is oracle-free. Pin exactly, and plant the
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**Run on:** Opus 5.5 (`claude-opus-5-5`), the test-developer's declared
+`model:`; no override was reported to this dispatch.
+
+**Command.** `bash scripts/selftest.sh gates` (whole `gates.test.sh`; about
+25-30 min wall on this machine today). The new block alone, for iteration,
+was also run from a scratch harness that sources `_lib.sh`, builds `$FIX`,
+defines `gates()`/`count_line`/`count_re`/`fix_commit` and then runs the
+block verbatim - 1m20s, `h56: 23 passed, 12 failed`, identical red set.
+
+**The failure, verbatim** (`bash scripts/selftest.sh gates`, 2026-10-14,
+unpatched `scripts/gates.sh`):
+
+```
+  HARNESS-056 AC-1..AC-5  a gate run that started earlier never overwrites a newer gate record
+    FAIL AC-1: a run that started before a newer record does not say it recorded
+         expected: 0
+         actual:   1
+    FAIL AC-1: exactly one line begins '(not recorded: '
+         expected: 1
+         actual:   0
+    FAIL AC-1: and it is the decline naming the story file, the standing 2099 record and this run's start
+         expected: 1
+         actual:   0
+    FAIL AC-1: the start time the decline names is this run's own (between the clock before and after it)
+         expected: yes
+         actual:   no start time in the output
+    FAIL AC-2: ## Gate results is byte-for-byte what it was before the run
+         expected: yes
+         actual:   no
+    FAIL AC-2: the newer record's run: still reads 2099-01-01T00:00:00Z (the run: lines of the story, as written)
+         expected:     run:    2099-01-01T00:00:00Z
+         actual:       run:    2026-10-14T19:57:05Z
+    FAIL AC-4: a failing run that started before the newer record does not say it recorded
+         expected: 0
+         actual:   1
+    FAIL AC-4: it prints the same decline, once
+         expected: 1
+         actual:   0
+    FAIL AC-4: and no other '(not recorded: ' line
+         expected: 1
+         actual:   0
+    FAIL AC-4: naming this run's own start time
+         expected: yes
+         actual:   no start time in the output
+    FAIL AC-4: the 2099 record still stands (the run: lines of the story, as written)
+         expected:     run:    2099-01-01T00:00:00Z
+         actual:       run:    2026-10-14T19:57:33Z
+    FAIL AC-4: ## Gate results is byte-for-byte unchanged by the failing run
+         expected: yes
+         actual:   no
+...
+gates: 642 passed, 12 failed
+```
+
+**Why it is the right failure.** It is the triage's shape exactly: the run
+prints `recorded in …` (count 1), prints no `(not recorded:` line, and the
+planted 2099 `run:` is replaced by this run's own WRITE time
+(`2026-10-14T19:57:05Z`, `…19:57:33Z` for the failing run) - the clobber,
+visible in the `actual:` value. AC-4 shows a failing verdict clobbers it the
+same way. Exactly these 12 are red; the other 642 assertions of the suite,
+including all 23 other new ones, pass. Before this block the suite executed
+619 and passed all 619 (HARNESS-055's floor), so nothing else moved.
+
+**Files touched (RED):**
+- `.claude/tests/gates.test.sh` - the new describe, inserted after the
+  HARNESS-026 AC-4..AC-6 block (now `:1720`), before HARNESS-046 AC-3.
+- `.claude/tests/floors.conf` - `gates` 619 -> 654 (`:44`), dated
+  measurement comment appended.
+- `.claude/tests/selftest.test.sh` - the mirrored floor table, `gates 654`
+  (`:535`).
+- `docs/backlog/stories/HARNESS-056.md` - `## Test plan`, this handoff.
+- NOT touched: `scripts/gates.sh`, `.claude/skills/quality-gates/SKILL.md`,
+  `.claude/tests/sigpipe.test.sh` (all GREEN's).
+
+**What the tests pin, as fact** (shell, so no import shape; these are the
+strings and behaviours an assertion reads):
+
+- The decline line, whole-line, exactly the Contract's printf:
+  `(not recorded: docs/backlog/stories/T-1.md already holds a record from a gate run that started at 2099-01-01T00:00:00Z; this one started at <TS>, so the newer record stands)`
+  with `<TS>` = `YYYY-MM-DDTHH:MM:SSZ`. The regex is per line, so the
+  leading `\n` in the Contract's printf is not pinned. Regex used:
+  `^\(not recorded: docs/backlog/stories/T-1\.md already holds a record from a gate run that started at 2099-01-01T00:00:00Z; this one started at [0-9]…Z, so the newer record stands\)$`.
+  `<TS>` must lie between `date -u` read just before `bash scripts/gates.sh`
+  and just after it - i.e. it must be THIS run's time (`RUN_STARTED_AT`).
+- Exactly one line beginning `(not recorded: ` per declined run - so no
+  other decline (branch, untracked, no-story) may fire alongside it in this
+  fixture, and the decline is printed once, not per gate.
+- The success line, whole-line:
+  `recorded in docs/backlog/stories/T-1.md (## Gate results)` - unchanged
+  from today.
+- On decline, `## Gate results` through `## Notes` is byte-identical (cmp),
+  and the story has exactly one `^ *run: ` line, reading
+  `    run:    2099-01-01T00:00:00Z`.
+- On decline, exit status is the gates' verdict: 0 for the passing gate,
+  non-zero for `printf 'Tests  0 passed\n'; exit 1`. `last-gate-run` holds
+  the whole lines `RESULT=pass` and `FULL=yes` after the passing declined run.
+- On a written record (older 2000 record, or the template's empty section):
+  the `run:` line is `^    run:    20[2-9][0-9]-MM-DDTHH:MM:SSZ$` AND lies in
+  `[before, after]` of the run; the 2000 value is gone; one `run:` line.
+  Because the window check passes for a write-time stamp too, the tests do
+  NOT distinguish `run:` = start time from `run:` = write time on a written
+  record (both are inside the window). The Contract's "`run:` writes
+  `$RUN_STARTED_AT`" is pinned only indirectly, by the decline line naming
+  the start time; GREEN should still do it as the Contract says.
+
+**Not constrained** (implementer's choice): where `RUN_STARTED_AT` sits
+inside the lock block (before or after `run_lock_acquire`); the comment
+wording; whether the comparison is spelled as the downstream awk/`${//}`
+form; where `RECORD_SKIPPED=""` is initialised; whether `record_in_story`
+also refuses on a `run:` of a different digit width (the tests plant only
+14-digit values). The comparison semantics are the Contract's (strictly
+later, same width, digits only) and are NOT re-derived by the tests: the same
+second is never exercised (no test plants a record equal to the start time).
+
+**Passed on arrival - the controls, and what earns each** (RED cannot run
+these: the comparison does not exist yet; owner GATES, per DV-1/DV-2):
+
+| Assertion(s) | AC | Earned by | Expected under that mutation |
+|---|---|---|---|
+| `AC-2: the story holds exactly one run: line (nothing appended)` | AC-2 | DV-1 (either form) leaves it green - it is a guard that the record is replaced, not appended; today's code already replaces | stays 1 |
+| `AC-3: … exit status …, 0`; `RESULT=pass`; `FULL=yes` | AC-3 | DV-2: else-branch `printf` -> `exit 1` | exit-code assertion red (actual 1); `RESULT=pass`/`FULL=yes` stay green (stamp is written before the record block); nothing else red |
+| `AC-4: the exit status is the failing verdict` | AC-4 | a control on the failing fixture; green today and after GREEN | non-zero throughout |
+| `AC-5 control: an older (2000) record …` x7 | AC-5 | DV-1 `-lt` form | `recorded in` count 0 (red), `(not recorded:` count 1 (red), `run:` still 2000 (current-century count 0, window check red, "2000 gone" count 1 red); `exactly one run:` and `exit 0` stay green |
+| `AC-5 control: an empty section …` x5 | AC-5 | none needed per mutation: an empty section has no `run:`, so `pn` is empty and both DV-1 forms still write; MUST stay green under both | green |
+| HARNESS-024 AC-1 `--list` process budget (`:1303` describe, existing) | AC-6 | DV-2: `RUN_STARTED_AT=…` moved to top level via `mutate.sh` | traced `--list` count +1 (`date`); red only if that crosses 20 - paste the count either way |
+
+**Expected values of the controls after GREEN, and under DV-1 deleted-`return`
+form:** with GREEN, all 35 assertions in the block pass (`gates: 654 passed,
+0 failed`). Under DV-1's deleted-`return 1` form, AC-1 x4, AC-2 x2 and AC-4 x6
+go red again with the clobbering `run:` equal to this run's START time (the
+Contract writes `$RUN_STARTED_AT`), and AC-5 x12 stay green. Under the `-lt`
+form, the same 12 go red AND the 2000-record AC-5 assertions listed above go
+red (the 2099 record is then "older" and replaced; the 2000 one is "newer"
+and kept); the empty-section five stay green.
+
+**Needle checks, run outside the framework** (2026-10-14, the suite's own
+regexes and helpers `eval`ed out of `gates.test.sh`, fed the Contract's printf
+lines with `RUN_STARTED_AT` = now). These are claims about the needles, not
+about `gates.sh`, and GREEN confirms them against the shipped script:
+
+```
+decline matches contract line: 1
+recorded matches contract line: 1
+decline vs recorded: 0 / recorded vs decline: 0
+extracted: 2026-10-14T19:27:43Z  within(now): yes
+swapped args: decline=0 within=2099-01-01T00:00:00Z is not within [2026-10-14T19:27:43Z, 2026-10-14T19:27:43Z]
+other decline: 0
+run-now 2099: 1 2000: 0 now: 1
+within 2099: 2099-01-01T00:00:00Z is not within [2026-10-14T19:27:43Z, 2026-10-14T19:27:43Z]
+```
+
+"swapped args" is the Contract printf with the two timestamps transposed:
+the decline regex refuses it and the window check refuses 2099 as a start
+time. The AC-5 `run:` regex alone DOES accept 2099 (`20[2-9][0-9]`, as AC-5
+words it) - which is why every `run:` value the block reads is also put
+through the `[before, after]` window.
+
+**Floor.** `gates` 619 -> **654** in `floors.conf:44` and
+`selftest.test.sh:535`: the EXECUTED count read off this RED's own
+`bash scripts/selftest.sh gates` (`gates: 642 passed, 12 failed`). Floors
+count passes, so until GREEN lands the suite sits 12 below its floor as well
+as failing. `sigpipe` stays 82. The mirrored table checked:
+`bash scripts/selftest.sh selftest` -> `selftest: 268 passed, 0 failed`.
+`bash scripts/check-sigpipe.sh` -> `scanned 49 shell file(s), 45 with
+pipefail, 0 finding(s)`; `bash scripts/check-grep-count.sh` -> `scanned 49
+shell file(s), 0 finding(s)`.
+
+**Timings** (all local, this machine, 2026-10-14; none from CI): full gates
+suite ~25-30 min wall; the block alone 1m20s for five full `gates.sh` runs.
+The block adds no timeout and no hook; each `gates.sh` run is the same
+one-gate `printf` fixture every other record case uses.
+
+**For GREEN:**
+1. Implement per the Contract (it held: no amendment from RED).
+2. `sigpipe` pin: after your hunk, run
+   `grep -n 'could not launch: \$(' scripts/gates.sh` and set
+   `.claude/tests/sigpipe.test.sh:568` (`scripts/gates.sh:630:why="could not launch: $(`)
+   to the line it prints; `:567` (`scripts/gates.sh:77:`) does not move.
+   Confirm with `bash scripts/selftest.sh sigpipe`.
+3. `bash scripts/selftest.sh gates` -> expect `gates: 654 passed, 0 failed`,
+   and confirm the AC-2/AC-4 `run:` values in the table above. Then the full
+   `bash scripts/selftest.sh` before REVIEW (CI runs every suite).
+4. `bash scripts/gates.sh --fast` runs nothing in this repo
+   (`BOOTSTRAPPED=no`).
+
+**Discovered, for the record.** The Contract's planting snippet ends with a
+raw `git add -A`; the block uses the file's `fix_commit` (which excludes
+`.claude/state`) instead, matching every other record case - otherwise the
+planted commit would carry the fixture's state files. The planting itself is
+the snippet verbatim.
 
 ## Regressions
 
@@ -536,10 +902,21 @@ out, not redesigned. Nothing is oracle-free. Pin exactly, and plant the
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-15T03:50:23Z
+    commit: 13f2bdd
+    tree:   6413e703290f6e13ed31894a498c6a4e398be09c
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -598,3 +975,118 @@ out, not redesigned. Nothing is oracle-free. Pin exactly, and plant the
   deterministic to test, cheap, and the defence that catches the MC-026
   shape regardless of which lock window is real; the path reproduction is
   cut separately if wanted (Out of scope).
+
+### RED verification (orchestrator, 2026-10-14)
+
+RED dispatched to `test-developer`; it reported running on `opus`. Its diff
+was read in full: one describe in `gates.test.sh` (+150 lines, 35
+assertions) after the HARNESS-026 AC-4..AC-6 block; the planted record in
+the tool's own shape with `run:` 2099; whole-line and anchored needles; the
+decline's start time checked against a clock window so the planted value
+cannot satisfy it; the `gates` floor 619 -> 654 in both tables. Nothing
+outside test files and this story. Its one deviation from the Contract's
+planting snippet (`fix_commit` in place of `git add -A`, excluding
+`.claude/state` as every other record case does) is recorded in the handoff.
+
+Orchestrator's own run against the unpatched `scripts/gates.sh`:
+
+    $ time bash scripts/selftest.sh gates
+      HARNESS-056 AC-1..AC-5  a gate run that started earlier never overwrites a newer gate record
+        FAIL AC-1: a run that started before a newer record does not say it recorded   (expected 0, actual 1)
+        FAIL AC-1: exactly one line begins '(not recorded: '                            (expected 1, actual 0)
+        FAIL AC-1: and it is the decline naming the story file, the standing 2099 record and this run's start
+        FAIL AC-1: the start time the decline names is this run's own                   (no start time in the output)
+        FAIL AC-2: ## Gate results is byte-for-byte what it was before the run
+        FAIL AC-2: the newer record's run: still reads 2099-01-01T00:00:00Z
+             expected:     run:    2099-01-01T00:00:00Z
+             actual:       run:    2026-10-14T21:03:05Z
+        FAIL AC-4: (the same six, for the failing run; clobbered to 2026-10-14T21:03:42Z)
+    gates: 642 passed, 12 failed
+    FAIL gates  did 642 units of work, below the floor of 654
+    real    59m37s   (another session's self-test sharing the machine; 13-20 min alone)
+
+Right failure: exactly AC-1, AC-2 and AC-4 are red, with the triage's shape -
+`recorded in` printed, no `(not recorded:` line, and the 2099 record replaced
+by this run's own write time. AC-3 and the twelve AC-5 controls are green, as
+predicted; the 619 pre-existing assertions are untouched. Floors count
+passes, so the suite also sits 12 below its new floor until GREEN.
+
+    $ bash scripts/selftest.sh selftest
+    selftest: 268 passed, 0 failed
+    $ bash scripts/check-sigpipe.sh
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    $ bash scripts/check-grep-count.sh
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+### GREEN verification (orchestrator, 2026-10-14)
+
+The feature-developer's diff was read in full. `scripts/gates.sh` (+20/-7):
+`RUN_STARTED_AT` set inside the lock block directly after
+`run_lock_acquire` (`:255`); `RECORD_SKIPPED=""` beside `record_in_story`,
+which gains the Contract's awk-over-the-section read, the digits/same-width/
+strictly-greater comparison, and `return 1` before any write; the `run:`
+line now writes `$RUN_STARTED_AT`; the caller tests the return value and
+prints the Contract's two lines character for character. No pipe added.
+`sigpipe.test.sh:568` moved `:630` -> `:640` - ten lines, not the "about
+six" the Contract estimated, the difference being comment lines; the grep
+justifies it. `SKILL.md` says "the UTC time the run started" and carries the
+decline sentence. Nothing else changed.
+
+Orchestrator's own runs against the shipped tree:
+
+    $ bash scripts/selftest.sh sigpipe
+    sigpipe: 82 passed, 0 failed    (floor 82 met; C-5 finds the pin at :640)
+    $ time bash scripts/selftest.sh gates
+    gates: 654 passed, 0 failed     (floor 654 met)   real 48m29s (shared machine)
+    $ bash scripts/gates.sh --audit
+    Manifest audit passed.
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+    $ bash scripts/check-sigpipe.sh
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    $ bash scripts/check-grep-count.sh
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+Every control landed on its "expected after GREEN" value: the twelve RED
+assertions now pass (decline line whole, 2099 record byte-identical, start
+time inside the clock window), AC-3's exit 0 / `RESULT=pass` / `FULL=yes`
+hold on a declined record, AC-5's older record and empty section are
+written, and HARNESS-024's `--list` process budget is unchanged. The
+feature-developer measured the same table against the shipped script with
+no divergence. DV-1 and DV-2 are GATES' to run.
+
+### GATES (orchestrator, 2026-10-14)
+
+Both deferred verifications ran through `scripts/mutate.sh` before the gate
+run, each against the `gates` suite, each restored byte for byte; results
+pasted in `## Deferred verifications`. DV-1 (`-gt` -> `-lt`): 635/19 - the
+twelve AC-1/2/4 assertions, AC-5's five older-record assertions, and two
+pre-existing record assertions whose fixtures hold an older record, all
+flipped by the one inversion. DV-2a (decline -> `exit 1`): 647/7 - AC-3's
+exit-code assertion (the target) plus the six that read the printf the
+mutation replaced. DV-2b (`RUN_STARTED_AT` at top level): 654/0 as the
+budget is 20; the traced `--list` count measured directly, 5 -> 6, the one
+`date`. `mutate.sh --check` clean. `bash scripts/gates.sh` then recorded
+`result: pass (0 ran, 7 unconfigured, 0 known)` against `13f2bdd`. Each
+`gates` run took 30-60 minutes with other sessions' self-tests sharing the
+machine (13 min alone).
+
+### Full self-test before REVIEW (orchestrator, 2026-10-15)
+
+    $ time bash scripts/selftest.sh
+    gates: 654 passed, 0 failed
+    sigpipe: 82 passed, 0 failed
+    mutate: 189 passed, 0 failed
+    ...
+    assertion floors: all 26 suite(s) met their declared floor (3383 assertions executed, 3157 declared).
+    26 harness suite(s) passed.
+    real    135m51.106s
+    exit=0
+
+Every suite green, every floor met, sigpipe C-5 finding its pin at `:640`.
+The duration is the shared machine again (other sessions' self-tests
+throughout); this worktree's lock was held by this run alone.
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/142 (opened 2026-10-15 from `bd854ac`).
