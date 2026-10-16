@@ -4,8 +4,8 @@ title: mutate.sh leaves the tree as it found it - --check sees dot-named sentine
 slug: mutate-sh-leaves-the-tree-as-it-found-it
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-059-mutate-sh-leaves-the-tree-as-it-found-it
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -873,3 +873,14 @@ deferred verifications. DV-1, DV-1b, DV-2 and DV-3 are those runs, and each
 turned exactly its criterion's assertions red (see `## Deferred verifications`).
 
 PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/146 (opened 2026-10-16 from `4a27ff7`).
+
+**CI (REVIEW -> DONE, 2026-10-16).** PR #146 merged as `4b394fc`. The PR's
+`gates` run, https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38980131785,
+took 2m37s (23:12:10Z to 23:14:47Z) against the workflow's 45-minute limit, and
+its self-test step ended:
+
+    assertion floors: all 26 suite(s) met their declared floor (3546 assertions executed, 3320 declared).
+    26 harness suite(s) passed.
+
+The `boundaries` run, https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/38980132034,
+passed in 9 s. No gate reached REVIEW marked pending CI.
