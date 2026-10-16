@@ -5,7 +5,7 @@ slug: mutate-sh-leaves-the-tree-as-it-found-it
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-059-mutate-sh-leaves-the-tree-as-it-found-it
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -721,3 +721,42 @@ Contract's "Callers of changed signatures: none" holds.
 
 ## Notes
 
+**GREEN (2026-10-16, `feature-developer`, Opus 5.5 `claude-opus-5-5`, no
+override).** Only `scripts/mutate.sh` changed, in three places:
+- C-1: `--check` loops over `"$MUTDIR"/*.active "$MUTDIR"/.*.active`, keeping
+  the existing `[ -f "$a" ] || continue` guard. No `dotglob`.
+- C-2: the apply step is `sed --sandbox -e "$EXPR" "$BAK" > "$NEW"`. The
+  existing rejection path (exit 2, `mutate: sed rejected the expression:`,
+  backup removed) is unchanged.
+- PO decision 1: `sed --sandbox -e '' </dev/null >/dev/null 2>&1` is probed
+  after the self-mutation refusal and before `mkdir`/backup. On failure it
+  prints the Contract's exact line and exits 2 through a plain printf, not
+  `die`, so no usage text follows. Nothing has been created at that point,
+  so nothing is left behind.
+
+Before the change, `mutate.test.sh` gave `248 passed, 60 failed`, the same as
+RED. After it:
+
+    mutate: 308 passed, 0 failed
+    gates: 682 passed, 0 failed
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).
+    mutate.sh --check: no stranded mutation; nothing of a previous run is in the tree.
+
+Controls, measured against the shipped script in a scratch git fixture
+outside the suite:
+- A dead-pid `scripts_gates.sh` sentinel planted beside a `.claude_hooks_lib.sh`
+  one: `--check` exits 1, names `  scripts/gates.sh` and
+  `  .claude/hooks/lib.sh`, and counts 2.
+- `1s#a#b#g`: exit 0, no rejection line, file restored.
+- `1s/a/b/2` (on a line with two `a`s): exit 0, no rejection line, restored.
+- `1s#a#b#w out`: exit 2, the rejection line, and no `out`.
+- No `--`: exit 2 with the C-3 message. With `--`: exit 0.
+- A fake sed that refuses `--sandbox` (PATH given as `/c/...`; a `C:/` entry
+  splits on its colon and is silently ignored): exit 2, the exact PO-1 line,
+  no `ran-marker`, only `log` in mutations/, and FILE unchanged.
+
+All of these match RED's table. The only divergence is in my own fixture: my
+first `1s/a/b/2` gave exit 3 because the line had one `a`. The script was not
+at fault.
