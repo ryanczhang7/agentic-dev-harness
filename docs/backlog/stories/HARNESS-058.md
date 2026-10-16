@@ -5,7 +5,7 @@ slug: the-rust-profile-runs-every-test-binary
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-058-the-rust-profile-runs-every-test-binary
 depends_on: [HARNESS-055] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/stack-profiles/reference/rust-cargo.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -188,6 +188,30 @@ shipped file). Nothing here is settled by judgement.
   `--ignore-run-fail`" passes on arrival. With `--ignore-run-fail` appended to
   the shipped `coverage` line (`mutate.sh ... '/gate | coverage/s/$/ --ignore-run-fail/'
   -- bash scripts/selftest.sh profiles`), it MUST fail. Owner: GATES.
+
+**Results (GATES, orchestrator, 2026-10-16).** Each mutation turned exactly
+the one targeted assertion red, nothing else, and the profile came back
+byte for byte:
+
+```
+$ bash scripts/mutate.sh .claude/skills/stack-profiles/reference/rust-cargo.md '/gate | unit/s/ --no-fail-fast//' -- bash scripts/selftest.sh profiles
+=== mutate: .claude/skills/stack-profiles/reference/rust-cargo.md (1 line(s) changed by /gate | unit/s/ --no-fail-fast//) ===
+    FAIL AC-1: the rust `unit` gate runs every test binary (--no-fail-fast, as a whole word)
+         expected: 1
+         actual:   0
+profiles: 131 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_stack-profiles_reference_rust-cargo.md.20261016T023937Z.1013260.bak) ===
+
+$ bash scripts/mutate.sh .claude/skills/stack-profiles/reference/rust-cargo.md '/gate | coverage/s/$/ --ignore-run-fail/' -- bash scripts/selftest.sh profiles
+=== mutate: .claude/skills/stack-profiles/reference/rust-cargo.md (1 line(s) changed by /gate | coverage/s/$/ --ignore-run-fail/) ===
+    FAIL AC-2: no `gate |` line in the rust profile carries --ignore-run-fail
+         expected: 0
+         actual:   1
+profiles: 131 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_stack-profiles_reference_rust-cargo.md.20261016T023959Z.1014543.bak) ===
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
      the phase that wants it; omit the section otherwise. Written by the Lead PO
@@ -514,10 +538,21 @@ not read the profile, so they should not move).
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-16T02:40:21Z
+    commit: 4ae26fe
+    tree:   b0f5384c2530bba83b1e8d51e95cc75fc9358c28
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -624,3 +659,14 @@ Orchestrator's own runs against the shipped profile:
 The six RED assertions pass; the `--workspace` check, the `--ignore-run-fail`
 guard and the four fixture controls stayed green (the suite prints only
 failures). DV-1 and DV-2 are GATES' to run.
+
+### GATES (orchestrator, 2026-10-16)
+
+DV-1 and DV-2 ran through `scripts/mutate.sh` against the `profiles` suite
+before the gate run - the flag removed from the `unit` line, and
+`--ignore-run-fail` appended to the `coverage` line - each caught by exactly
+its one targeted assertion (131/1 both times), each restored byte for byte,
+`--check` clean; results pasted in `## Deferred verifications`. Then
+`bash scripts/gates.sh` recorded `result: pass (0 ran, 7 unconfigured,
+0 known)` against `4ae26fe`; every gate is unconfigured on this repository,
+so the suites and the full self-test before REVIEW are the judge.
