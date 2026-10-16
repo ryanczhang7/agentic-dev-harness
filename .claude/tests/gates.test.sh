@@ -2731,8 +2731,39 @@ assert_eq "AC-6 control: and the gate never ran" absent "$(h30_mark)"
 kill "$H30_SLEEP" 2>/dev/null; wait "$H30_SLEEP" 2>/dev/null; H30_SLEEP=""
 rm -f "$H30_ACT2" "${H30_ACT2%.active}.bak"
 
+# --- HARNESS-059 AC-2: refused behind a stranded mutation of a .claude/ file ---
+# F1 at the gate: the sentinel for a target under .claude/ is named with a
+# leading `.`, and gates.sh learns of stranded mutations only through
+# `mutate.sh --check` (gates.sh:233). A GONE sentinel for .claude/hooks/lib.sh,
+# its backup DIFFERING from the fixture's file - the backup is made to differ,
+# so the fixture's lib.sh, which gates.sh may read, is not edited.
+H59_DEAD="$(bash -c 'echo $$')"
+if kill -0 "$H59_DEAD" 2>/dev/null; then h59_alive=alive; else h59_alive=gone; fi
+assert_eq "HARNESS-059 AC-2 precondition: the planted pid belongs to a process that has exited" gone "$h59_alive"
+H59_ACT="$H30MUT/.claude_hooks_lib.sh.20261016T053548Z.$H59_DEAD.active"
+printf 'not what lib.sh holds\n' > "${H59_ACT%.active}.bak"
+h30_plant "$H59_ACT" "$H59_DEAD" .claude/hooks/lib.sh
+if cmp -s "${H59_ACT%.active}.bak" "$FIX/.claude/hooks/lib.sh"; then h59_differs=matches; else h59_differs=differs; fi
+assert_eq "HARNESS-059 AC-2 precondition: the planted backup differs from the fixture's .claude/hooks/lib.sh" differs "$h59_differs"
+h30_fresh
+out="$(gates)"; rc=$?
+assert_eq "HARNESS-059 AC-2: behind a stranded .claude/ mutation gates.sh exits 2" 2 "$rc"
+assert_eq "HARNESS-059 AC-2: it prints the refusal, whole" 1 "$(count_line "$H30_REFUSAL" "$out")"
+assert_eq "HARNESS-059 AC-2: after --check's unaccounted-for line" 1 "$(count_line "$H30_UNACCOUNTED" "$out")"
+assert_eq "HARNESS-059 AC-2: which names .claude/hooks/lib.sh" 1 "$(count_line '  .claude/hooks/lib.sh' "$out")"
+assert_eq "HARNESS-059 AC-2: no line says the run recorded" 0 "$(count_re "$H30_RECORDED" "$out")"
+assert_eq "HARNESS-059 AC-2: and the gate command never ran (marker absent)" absent "$(h30_mark)"
+h30_fresh
+out="$(gates --gate unit)"; rc=$?
+assert_eq "HARNESS-059 AC-2: gates.sh --gate unit is refused too, exit 2" 2 "$rc"
+assert_eq "HARNESS-059 AC-2: --gate unit prints the refusal, whole" 1 "$(count_line "$H30_REFUSAL" "$out")"
+assert_eq "HARNESS-059 AC-2: and --gate unit never ran the gate" absent "$(h30_mark)"
+rm -f "$H59_ACT" "${H59_ACT%.active}.bak"
+
+# The glob sees dot-named sentinels too (the story's C-4): `*.active` alone
+# would report this fixture clean over a stranded .claude/ mutation.
 assert_eq "HARNESS-030: no sentinel is left in the shared fixture" "" \
-  "$(for a in "$H30MUT"/*.active; do [ -e "$a" ] && printf '%s ' "${a##*/}"; done)"
+  "$(for a in "$H30MUT"/*.active "$H30MUT"/.*.active; do [ -e "$a" ] && printf '%s ' "${a##*/}"; done)"
 rm -f "$H30MARK"
 git -C "$FIX" checkout -q -- . 2>/dev/null
 git -C "$FIX" checkout -q main 2>/dev/null
