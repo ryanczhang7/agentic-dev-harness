@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-059-mutate-sh-leaves-the-tree-as-it-found-it
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/gates.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
+touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -116,6 +116,89 @@ refused, and without the check the first word of the command is silently eaten.
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
+**Writes:** `scripts/mutate.sh`, `.claude/tests/mutate.test.sh`, `.claude/tests/gates.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+
+RED may amend any block below in place, with a reason; GREEN builds what the
+amended block says. Anchors verified by reading the tree at `2d2d1fb` (main
+after #145), 2026-10-16.
+
+**C-1. `--check` enumerates every sentinel (GREEN, `scripts/mutate.sh`).**
+`mutate.sh:122` reads `for a in "$MUTDIR"/*.active; do`. Sentinel names are
+`$SAFE.$STAMP.$$.active`, with `SAFE` the target's repository-relative path with
+`/`, `\` and space turned to `_` (`:218`). A target under `.claude/` therefore
+names a dotfile, which a bash glob skips. After this story the loop visits both
+`"$MUTDIR"/*.active` and `"$MUTDIR"/.*.active`, each entry guarded by the existing
+`[ -f "$a" ] || continue`, and **without** `shopt -s dotglob`. `dotglob`
+would change every other glob in the script, and `.`/`..` are not
+`.active` files. Nothing else in `--check` changes: the report lines, the
+`found` count, exit 1, and "the file DIFFERS from the original. Put it back:" all
+apply as they do for a `scripts/` target. A dot-named sentinel is reported with
+its `file` value (`.claude/...`), as recorded in the sentinel.
+
+**C-2. Writing, reading and executing sed commands are refused (GREEN).** The
+apply step (`mutate.sh:331`, `sed -e "$EXPR" "$BAK" > "$NEW"`) becomes
+`sed --sandbox -e "$EXPR" "$BAK" > "$NEW"`. GNU sed's sandbox mode rejects `e`,
+`r`, `R`, `w` and `W`, as commands and as `s` flags, **at parse time**, before
+anything is written. Measured on this host (GNU sed 4.9, Git Bash):
+`sed --sandbox '1s/a/b/w /tmp/x'` prints
+`sed: -e expression #1, char 8: e/r/w commands disabled in sandbox mode`,
+exits 1, and `/tmp/x` does not exist afterwards. The same holds for `1e date`,
+`1R /etc/hosts` and `1W /tmp/y`, while `1s#a#b#g` runs. CI's Ubuntu ships GNU
+sed 4.8, and `--sandbox` exists since 4.3. The existing rejection path then
+applies unchanged: `mutate: sed rejected the expression:`, sed's text indented,
+the backup removed, exit 2, FILE untouched, and no `.active` written (the
+sentinel is written later, `:435`).
+
+**PO decision 1 (2026-10-16): a sed with no `--sandbox` makes `mutate.sh`
+refuse, rather than run unguarded.** BSD sed (macOS) has no sandbox mode. A
+lexical scan of a sed script for `w` is exactly the kind of private parser
+`rules.md` warns about. Running unguarded would make AC-3 true only on some
+hosts. So before the apply step `mutate.sh` probes `sed --sandbox -e ''
+</dev/null >/dev/null 2>&1`. If that fails, it exits 2 with
+`mutate: this sed has no --sandbox mode, so an expression could write files the restore never sees; install GNU sed (gsed) and put it first on PATH`
+and touches nothing. RED can pin this with a fake `sed` on `PATH` that
+rejects `--sandbox` and passes everything else through to the real one. This is
+a portability cost on macOS, stated here so it can be overruled before GREEN.
+
+**C-3. The `--` separator (no code change).** `mutate.sh:191` already refuses
+a missing `--` with exit 2 and
+`mutate: the command must be separated from the expression by -- <command>`.
+AC-4 pins it. It passes on arrival and is earned by DV-3.
+
+**C-4. AC-2 lives in `gates.test.sh`**, beside the HARNESS-030 sentinel
+blocks (`:2700-2740`, which use `h30_plant`, `h30_fresh` and `H30MUT`). The
+fixture plants a GONE (dead-pid) sentinel named
+`.claude_hooks_lib.sh.<STAMP>.<pid>.active`, with its `.bak` differing from the
+fixture's file. `gates.sh` then exits non-zero through the existing
+`mutation_report` refusal (`gates.sh:233`), and its output names
+`.claude/hooks/lib.sh`. The block's own trailing "no sentinel is left" check
+(`:2735`) also globs `*.active` only. Widen it to see dot-named sentinels too,
+or it would report a clean fixture over a stranded one: the same defect, in
+the test.
+
+**C-5. Floors.** Every new assertion raises its suite's floor in
+`.claude/tests/floors.conf` (`mutate` at `:47`, `gates` at `:44`) and in the
+mirror in `.claude/tests/selftest.test.sh` (`gates` at `:535`, `mutate` at `:538`), to the EXECUTED count
+RED reads off its own run, as HARNESS-055 to 058 did. Record the measurement in
+the comment block at the foot of `floors.conf`.
+
+**Oracle partition.** All four criteria are mechanical (exit codes, exact
+lines, file existence, byte equality). No metric is invented. The negative
+controls are named in the ACs: a `scripts/` sentinel still reported, `g` and
+numeric `s` flags still accepted, and `--` present still runs.
+
+**Callers of changed signatures.** None. The CLI (`mutate.sh FILE EXPR --
+CMD`, `--check`) keeps its arguments, exit codes and messages; only the set of
+accepted expressions narrows. Callers that pass an expression, all checked by
+`git grep -n 'mutate.sh'` to use `s` and `{...}` forms only: `gates.sh:233`
+(`--check`), `.claude/commands/*.md`, `rules.md` and the stories' recorded
+`## Deferred verifications`. `.claude/state/README.md` needs no new row: no new
+state file.
+
+**Required gate.** The harness self-test, `mutate` and `gates` suites, run by
+CI's `selftest` job; `gates.sh` has no configured gates for this repository
+(`gates.sh --list`: every gate `<unconfigured>`), as for every HARNESS story.
+
 ## Deferred verifications
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
@@ -149,6 +232,26 @@ refused, and without the check the first word of the command is silently eaten.
      perfectly. Exhaustive earning of assertions that passed on arrival is not
      an entry here; it goes to `/audit-mutations`. -->
 
+`mutate.sh` refuses to mutate itself (`:211`), so each entry below runs a
+byte-identical copy of it, the audit's method: `mkdir -p
+.claude/state/selfmut/scripts && cp scripts/mutate.sh
+.claude/state/selfmut/scripts/ && cmp scripts/mutate.sh
+.claude/state/selfmut/scripts/mutate.sh`. Then `bash
+.claude/state/selfmut/scripts/mutate.sh scripts/mutate.sh 'EXPR' -- bash
+.claude/tests/mutate.test.sh` (`gates.test.sh` for DV-1b). Remove the copy
+afterwards.
+
+- **DV-1, the defect put back.** With the `.*.active` half of C-1's loop
+  removed (`--check` back to `"$MUTDIR"/*.active` alone), AC-1's "reported as
+  unaccounted for" assertion MUST fail in `mutate.test.sh`. DV-1b: the same
+  mutation MUST fail AC-2's refusal assertion in `gates.test.sh`.
+  Owner: GATES. Cannot run in RED: C-1 is not built.
+- **DV-2.** With `--sandbox` removed from the apply step, AC-3's "no file
+  exists at the `w` target" assertion MUST fail. Owner: GATES.
+- **DV-3, AC-4 earned.** AC-4 passes on arrival. With `[ "${1:-}" = "--" ] ||
+  die` replaced by `true || die` (the audit's M11), AC-4 MUST fail.
+  Owner: GATES.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -164,38 +267,26 @@ refused, and without the check the first word of the command is silently eaten.
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-059` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
