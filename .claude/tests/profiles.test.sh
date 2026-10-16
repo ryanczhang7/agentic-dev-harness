@@ -543,4 +543,112 @@ for f in "$NODE" "$RUST"; do
   fi
 done
 
+# ---------------------------------------------------------------------------
+describe "the rust profile runs every test binary on its test gates and warns off --ignore-run-fail (HARNESS-058, AC-1..AC-3)"
+
+# The matchers, ONE copy, used on the shipped profile and on the heredoc
+# fixtures alike, so a matcher that cannot fail is caught by the controls
+# below rather than by a later story (C-2).
+# gate_lines <id-ERE> <text>   every `gate | <id> |` line in the text. The id
+# is matched whole, between bars, so `unit` does not also select `unit-x`.
+# `[|]` rather than `\|` because awk -v processes escapes (C-4's reason).
+gate_lines() {
+  printf '%s\n' "$2" | tr -d '\r' \
+    | awk -v re="^[[:space:]]*gate[[:space:]]*[|][[:space:]]*$1[[:space:]]*[|]" '$0 ~ re'
+}
+# word_count <flag> <text>   how many lines carry the flag as a WHOLE word:
+# `--no-fail-fast-x` is not `--no-fail-fast`. grep -c prints 0 itself on no
+# match; `|| true` swallows only its exit status.
+word_count() {
+  grep -cE -- "(^|[[:space:]])$1([[:space:]]|\$)" <<< "$2" || true
+}
+# nonblank <text>   how many non-blank lines.
+nonblank() { grep -c . <<< "$1" || true; }
+# prose_paras_with <needle> <text>   the paragraphs containing the needle that
+# are PROSE: an indented (4-space) block is a configuration block, and a gate
+# line carrying a flag is not a warning about it.
+prose_paras_with() {
+  printf '%s\n' "$2" | paras | awk -v n="$1" 'index($0, n) && $0 !~ /^    /'
+}
+
+RUST_GATES="$(section '## Gate commands for project.conf' "$RUST")"
+RUST_TEXT="$(tr -d '\r' < "$RUST")"
+rust_unit="$(gate_lines unit "$RUST_GATES")"
+rust_cov="$(gate_lines coverage "$RUST_GATES")"
+
+# Preconditions: each line found once, so a flag count of 0 below means the
+# flag is missing, not that the section reader found nothing.
+assert_eq "precondition: the Gate commands section has exactly one \`gate | unit\` line" \
+  1 "$(nonblank "$rust_unit")"
+assert_eq "precondition: the Gate commands section has exactly one \`gate | coverage\` line" \
+  1 "$(nonblank "$rust_cov")"
+
+# AC-1: both test gates run every test binary, and unit keeps --workspace.
+assert_eq "AC-1: the rust \`unit\` gate runs every test binary (--no-fail-fast, as a whole word)" \
+  1 "$(word_count --no-fail-fast "$rust_unit")"
+assert_eq "AC-1: the rust \`unit\` gate still tests every workspace member (--workspace)" \
+  1 "$(word_count --workspace "$rust_unit")"
+assert_eq "AC-1: the rust \`coverage\` gate runs every test binary (--no-fail-fast, as a whole word)" \
+  1 "$(word_count --no-fail-fast "$rust_cov")"
+
+# AC-1 negative controls: the same matchers over a fixture, not over the file.
+FIX_AC1="$(cat <<'FIXTURE'
+## Gate commands for project.conf
+
+    gate | unit      | required | . | cargo test --workspace
+    gate | unit-x    | required | . | cargo test --workspace --no-fail-fast
+    gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast-x --fail-under-lines 100
+    # gate | unit | a comment that mentions --no-fail-fast
+
+Prose that mentions --no-fail-fast is not a gate line.
+FIXTURE
+)"
+assert_eq "AC-1 control: a \`unit\` line of plain \`cargo test --workspace\` is reported missing the flag" \
+  0 "$(word_count --no-fail-fast "$(gate_lines unit "$FIX_AC1")")"
+assert_eq "AC-1 control: \`--no-fail-fast-x\` on the coverage line is not the flag" \
+  0 "$(word_count --no-fail-fast "$(gate_lines coverage "$FIX_AC1")")"
+FIX_AC1_OK='    gate | unit      | required | . | cargo test --workspace --no-fail-fast'
+assert_eq "AC-1 control: the matcher does find the flag on a unit line that carries it" \
+  1 "$(word_count --no-fail-fast "$(gate_lines unit "$FIX_AC1_OK")")"
+
+# AC-2 (guard, green on arrival; earned by DV-2): no gate line, anywhere in the
+# profile, grades a failing test as a pass. The gate lines are counted first so
+# that "none carries it" cannot be "none was read".
+rust_all_gates="$(gate_lines '[^|]*' "$RUST_TEXT")"
+if [ "$(nonblank "$rust_all_gates")" -ge 5 ]; then
+  _ok "precondition: the AC-2 guard reads at least the five required gate lines"
+else
+  _bad "precondition: the AC-2 guard reads at least the five required gate lines" \
+    "read $(nonblank "$rust_all_gates") gate lines"
+fi
+assert_eq "AC-2: no \`gate |\` line in the rust profile carries --ignore-run-fail" \
+  0 "$(word_count --ignore-run-fail "$rust_all_gates")"
+# AC-2 negative control.
+FIX_AC2="$(cat <<'FIXTURE'
+    gate | unit      | required | . | cargo test --workspace --no-fail-fast
+    gate | coverage | required | . | cargo llvm-cov --workspace --ignore-run-fail
+FIXTURE
+)"
+assert_eq "AC-2 control: a coverage gate carrying --ignore-run-fail is refused by the same matcher" \
+  1 "$(word_count --ignore-run-fail "$(gate_lines '[^|]*' "$FIX_AC2")")"
+
+# AC-2 (prose): the profile names --ignore-run-fail with the fact that it exits
+# 0 when tests fail. Matched per paragraph, so the wrap and the bold markers of
+# C-1's `**exits 0** when tests fail` do not matter.
+ignore_para="$(prose_paras_with '--ignore-run-fail' "$RUST_TEXT" | awk 'index($0, "exits 0") && index($0, "tests fail")')"
+assert_eq "AC-2: one prose paragraph names --ignore-run-fail and says it exits 0 when tests fail" \
+  1 "$(nonblank "$ignore_para")"
+
+# AC-3: the reason, after the --workspace paragraph and before Evidence of work.
+WHY_WINDOW="$(tr -d '\r' < "$RUST" | awk '/^\*\*`--workspace` on every command/ { on = 1 } on && /^## Evidence of work$/ { exit } on')"
+assert_contains "precondition: AC-3's window starts at the --workspace paragraph" \
+  '`--workspace` on every command' "${WHY_WINDOW:-<no --workspace paragraph>}"
+assert_eq "AC-3: between the --workspace paragraph and Evidence of work, one paragraph says cargo stops at the 'first test *binary*'" \
+  1 "$(count_paras 'first test *binary*' "$WHY_WINDOW")"
+why_para="$(para_with 'first test *binary*' "$WHY_WINDOW")"
+assert_contains "AC-3: that paragraph says --no-fail-fast still exits non-zero" \
+  'still exits non-zero' "${why_para:-<no paragraph naming first test *binary*>}"
+assert_contains "AC-3: that paragraph says a passing run leaves evidence lines and floors unchanged" \
+  'evidence lines and floors' "${why_para:-<no paragraph naming first test *binary*>}"
+
 summary "profiles"

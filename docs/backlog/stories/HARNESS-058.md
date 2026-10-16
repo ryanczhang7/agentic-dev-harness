@@ -4,11 +4,11 @@ title: The Rust profile runs every test binary on its test gates and warns off -
 slug: the-rust-profile-runs-every-test-binary
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-058-the-rust-profile-runs-every-test-binary
 depends_on: [HARNESS-055] # story ids; phase.sh refuses to start this story until they are DONE
-touches: [.claude/skills/stack-profiles/reference/rust-cargo.md, .claude/tests/profiles.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
+touches: [.claude/skills/stack-profiles/reference/rust-cargo.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -116,7 +116,26 @@ story, and `depends_on` orders it after 055 to avoid the textual collision.
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
-**Writes:** `.claude/skills/stack-profiles/reference/rust-cargo.md`, `.claude/tests/profiles.test.sh`
+**Writes:** `.claude/skills/stack-profiles/reference/rust-cargo.md`, `.claude/tests/profiles.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+
+**Re-anchored 2026-10-16 (Lead PO, before RED), after HARNESS-055 landed.**
+Verified by grep today: the gate block is `rust-cargo.md:9-13` (`unit` at `:11`,
+`coverage` at `:12`), the `--workspace` paragraph starts at `:25` and
+`## Evidence of work` is `:32`, with 055's three `no-count` lines at `:42-44`
+below the evidence lines - C-1's paragraph goes between `:25-31` and `:32`.
+`profiles.test.sh` defines `line_of` at `:445`, `section` at `:448` and `RUST`
+at `:453` - AFTER the describes at `:130-321` - so the new describe must sit
+after `:453` (after the HARNESS-041 AC-5 block at `:517` is the natural place).
+Both files classify as `harness` (`bash scripts/classify.sh`), so the lock
+permits GREEN's profile edit and no `## Scaffold inventory` is owed for this
+`chore`. No file in the tree mentions `--no-fail-fast` or `--ignore-run-fail`.
+
+**PO decision 1 (2026-10-16).** The Contract's "no floor change" is reversed
+for the same reason as HARNESS-057's: the `profiles` floor is **116** today
+(`floors.conf:54`, mirrored at `selftest.test.sh:545` and in the sentence at
+`:564`), and HARNESS-055, the story the Contract waited on, is DONE. RED raises
+it to the executed count it reads off its own run, in all three places;
+`touches:` and `**Writes:**` widened accordingly.
 
 **C-1. The profile text (GREEN), verbatim from downstream `b23198c`'s final
 state**, adapted only in the attribution sentence:
@@ -169,6 +188,30 @@ shipped file). Nothing here is settled by judgement.
   `--ignore-run-fail`" passes on arrival. With `--ignore-run-fail` appended to
   the shipped `coverage` line (`mutate.sh ... '/gate | coverage/s/$/ --ignore-run-fail/'
   -- bash scripts/selftest.sh profiles`), it MUST fail. Owner: GATES.
+
+**Results (GATES, orchestrator, 2026-10-16).** Each mutation turned exactly
+the one targeted assertion red, nothing else, and the profile came back
+byte for byte:
+
+```
+$ bash scripts/mutate.sh .claude/skills/stack-profiles/reference/rust-cargo.md '/gate | unit/s/ --no-fail-fast//' -- bash scripts/selftest.sh profiles
+=== mutate: .claude/skills/stack-profiles/reference/rust-cargo.md (1 line(s) changed by /gate | unit/s/ --no-fail-fast//) ===
+    FAIL AC-1: the rust `unit` gate runs every test binary (--no-fail-fast, as a whole word)
+         expected: 1
+         actual:   0
+profiles: 131 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_stack-profiles_reference_rust-cargo.md.20261016T023937Z.1013260.bak) ===
+
+$ bash scripts/mutate.sh .claude/skills/stack-profiles/reference/rust-cargo.md '/gate | coverage/s/$/ --ignore-run-fail/' -- bash scripts/selftest.sh profiles
+=== mutate: .claude/skills/stack-profiles/reference/rust-cargo.md (1 line(s) changed by /gate | coverage/s/$/ --ignore-run-fail/) ===
+    FAIL AC-2: no `gate |` line in the rust profile carries --ignore-run-fail
+         expected: 0
+         actual:   1
+profiles: 131 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_stack-profiles_reference_rust-cargo.md.20261016T023959Z.1014543.bak) ===
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
      the phase that wants it; omit the section otherwise. Written by the Lead PO
@@ -233,6 +276,9 @@ name, below the table.
 
 **Resolved:**
 
+- RED, `test-developer`, 2026-10-15: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
+- GREEN, `feature-developer`, 2026-10-15: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -254,8 +300,52 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One new `describe` in `.claude/tests/profiles.test.sh`, placed after the
+HARNESS-041 AC-5 block and before `summary "profiles"` (so after `line_of`,
+`section`, `paras`, `count_paras`, `para_with` and `$RUST` are defined; the
+re-anchored line numbers held: helpers at `:445-453`, AC-5 block at `:517`).
+Level: a text-consistency check over the shipped profile, the only level at
+which these criteria exist. All three ACs are mechanical; nothing is tuned.
+
+Three local helpers carry the matching, ONE copy each, used on the shipped
+file and on the heredoc fixtures alike (C-2):
+
+- `gate_lines <id-ERE> <text>` - `awk` with
+  `^[[:space:]]*gate[[:space:]]*[|][[:space:]]*<id>[[:space:]]*[|]`; the id sits
+  between bars, so `unit` does not select `unit-x`, and a `# gate | unit` comment
+  line is not a gate line.
+- `word_count <flag> <text>` - `grep -cE -- '(^|[[:space:]])<flag>([[:space:]]|$)'`
+  on a here-string, `|| true` for the exit status only (no printing fallback).
+- `prose_paras_with <needle> <text>` - the paragraphs (via the file's `paras`)
+  containing the needle that do NOT start with four spaces, so a config block
+  carrying a flag is not mistaken for a warning about it.
+
+| # | Assertion (as the failure message reads) | AC | On arrival |
+|---|---|---|---|
+| 1 | precondition: the Gate commands section has exactly one `gate \| unit` line | AC-1 | green |
+| 2 | precondition: ... exactly one `gate \| coverage` line | AC-1 | green |
+| 3 | AC-1: the rust `unit` gate runs every test binary (--no-fail-fast, as a whole word) | AC-1 | **red** |
+| 4 | AC-1: the rust `unit` gate still tests every workspace member (--workspace) | AC-1 | green (regression guard; the flag exists today and must survive the edit) |
+| 5 | AC-1: the rust `coverage` gate runs every test binary (--no-fail-fast, as a whole word) | AC-1 | **red** |
+| 6 | AC-1 control: a `unit` line of plain `cargo test --workspace` is reported missing the flag | AC-1 neg. control | green (control) |
+| 7 | AC-1 control: `--no-fail-fast-x` on the coverage line is not the flag | AC-1 neg. control | green (control) |
+| 8 | AC-1 control: the matcher does find the flag on a unit line that carries it | AC-1 pos. control | green (control) |
+| 9 | precondition: the AC-2 guard reads at least the five required gate lines | AC-2 | green |
+| 10 | AC-2: no `gate \|` line in the rust profile carries --ignore-run-fail | AC-2 | green (guard; earned by DV-2) |
+| 11 | AC-2 control: a coverage gate carrying --ignore-run-fail is refused by the same matcher | AC-2 neg. control | green (control) |
+| 12 | AC-2: one prose paragraph names --ignore-run-fail and says it exits 0 when tests fail | AC-2 | **red** |
+| 13 | precondition: AC-3's window starts at the --workspace paragraph | AC-3 | green |
+| 14 | AC-3: between the --workspace paragraph and Evidence of work, one paragraph says cargo stops at the 'first test *binary*' | AC-3 | **red** |
+| 15 | AC-3: that paragraph says --no-fail-fast still exits non-zero | AC-3 | **red** |
+| 16 | AC-3: that paragraph says a passing run leaves evidence lines and floors unchanged | AC-3 | **red** |
+
+Preconditions 1, 2, 9 and 13 exist so that a "0" or an absence below them
+means the flag/phrase is missing, not that the reader found nothing.
+
+Floor (PO decision 1): `profiles` 116 -> **132** in `floors.conf:54`, the mirrored
+table in `selftest.test.sh` (`profiles 132`) and the sentence/value at
+`selftest.test.sh:564-565`, with a dated measurement note at the foot of
+`floors.conf`.
 
 ## Handoff: RED -> GREEN
 
@@ -276,6 +366,150 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**Run on:** `claude-opus-5-5` (Opus 5.5), as `test-developer`; no override.
+
+**Commands**
+
+    bash scripts/selftest.sh profiles     # the suite holding every new assertion (~22 s here)
+    bash scripts/selftest.sh selftest     # the floor table (profiles 132)
+    bash scripts/check-sigpipe.sh         # 0 findings
+    bash scripts/check-grep-count.sh      # 0 findings
+
+`bash scripts/gates.sh --fast` runs nothing in this repository
+(`0 ran, 5 unconfigured`), so the suites above are the gate.
+
+**Failure output on this tree (rust-cargo.md unchanged), verbatim:**
+
+```
+  the rust profile runs every test binary on its test gates and warns off --ignore-run-fail (HARNESS-058, AC-1..AC-3)
+    FAIL AC-1: the rust `unit` gate runs every test binary (--no-fail-fast, as a whole word)
+         expected: 1
+         actual:   0
+    FAIL AC-1: the rust `coverage` gate runs every test binary (--no-fail-fast, as a whole word)
+         expected: 1
+         actual:   0
+    FAIL AC-2: one prose paragraph names --ignore-run-fail and says it exits 0 when tests fail
+         expected: 1
+         actual:   0
+    FAIL AC-3: between the --workspace paragraph and Evidence of work, one paragraph says cargo stops at the 'first test *binary*'
+         expected: 1
+         actual:   0
+    FAIL AC-3: that paragraph says --no-fail-fast still exits non-zero
+         expected to contain: still exits non-zero
+         actual:               <no paragraph naming first test *binary*>
+    FAIL AC-3: that paragraph says a passing run leaves evidence lines and floors unchanged
+         expected to contain: evidence lines and floors
+         actual:               <no paragraph naming first test *binary*>
+
+profiles: 126 passed, 6 failed
+FAIL profiles  did 126 units of work, below the floor of 132 in .claude/tests/floors.conf
+```
+
+It is the right failure: every other describe in the suite is unchanged and
+green, the four preconditions are green (the readers found the lines and the
+window), and the six reds are exactly the shipped-file assertions for AC-1's
+two flags, AC-2's prose and AC-3. Unlike an import-failing RED, every
+assertion in this block **did execute** - the controls below ran inside the
+framework against their fixtures and passed.
+
+`selftest: 268 passed, 0 failed` (floor table with `profiles 132`);
+`check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)`;
+`check-grep-count: scanned 49 shell file(s), 0 finding(s)`.
+
+**Assertions -> AC:** the table in `## Test plan` (16 rows; 6 red, 10 green).
+
+**Files touched**
+
+- `.claude/tests/profiles.test.sh` - the new describe (+108 lines), before `summary "profiles"`
+- `.claude/tests/floors.conf` - `floor | profiles | 132`, measurement note at the foot
+- `.claude/tests/selftest.test.sh` - `profiles 132` in the COUNTS table; the
+  `profiles is floored at its 132 executed assertions` sentence and its value
+- this story (`## Test plan`, `## Handoff`)
+
+**What the tests pin in `rust-cargo.md` (GREEN's only file)** - there are no
+exports; the "shape" is text:
+
+- In `## Gate commands for project.conf`, exactly one line matching
+  `gate | unit |` and one matching `gate | coverage |`; each carries
+  `--no-fail-fast` as a whitespace-delimited word; the unit line also carries
+  `--workspace`. C-1's two lines satisfy it verbatim:
+
+      gate | unit      | required | . | cargo test --workspace --no-fail-fast
+      gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 100
+
+- No line anywhere in the file matching `gate | <anything> |` carries
+  `--ignore-run-fail` as a word; at least five gate lines exist.
+- Exactly one paragraph between the line beginning
+  ``**`--workspace` on every command`` and the line `## Evidence of work`
+  contains the literal `first test *binary*` (asterisks included), and that
+  paragraph contains `still exits non-zero` and `evidence lines and floors`.
+  Paragraphs are joined across line wraps (the suite's `paras`), so C-1's wrap
+  of `first` / `test *binary*` and `evidence` / `lines and floors` is fine.
+- Exactly one non-indented paragraph anywhere in the file contains
+  `--ignore-run-fail`, `exits 0` and `tests fail` (the `**` around `exits 0`
+  does not matter; the same paragraph as above, in C-1).
+
+**Left to GREEN:** the paragraph's wording beyond those phrases, its exact
+position inside the window (it must be after the `--workspace` paragraph's
+first line and before `## Evidence of work`), its heading/bold lead, and the
+attribution sentence. Not constrained: the `task | test` line (out of scope,
+and nothing reads it), the order of the flags on each gate line, the other
+gate lines. Keep `--ignore-run-fail` out of every `gate |` line, and do not
+put the warning in an indented block - an indented paragraph is read as
+configuration, not prose.
+
+**Checked before handing over (outside the real file):** C-1's text applied
+verbatim to a scratch copy of `rust-cargo.md` and the suite pointed at it
+(only `RUST=` changed in a scratch copy of the test) gave
+`profiles: 132 passed, 0 failed`. DV-1 and DV-2's `sed` expressions applied to
+that scratch copy each gave exactly one failure, the assertion they target:
+
+```
+DV-1
+    FAIL AC-1: the rust `unit` gate runs every test binary (--no-fail-fast, as a whole word)
+profiles: 131 passed, 1 failed
+DV-2
+    FAIL AC-2: no `gate |` line in the rust profile carries --ignore-run-fail
+profiles: 131 passed, 1 failed
+```
+
+That is a rehearsal on a scratch copy, **not** DV-1/DV-2: both still have to
+be run in GATES with `scripts/mutate.sh` against the shipped file, and RED
+declines them in writing here - in RED the flag is not in the file, so DV-1
+cannot run, and DV-2 belongs to the phase that owns it.
+
+**Passed on arrival, and what earns each**
+
+| Assertion | Earned by |
+|---|---|
+| 1, 2, 9, 13 preconditions | fail if the reader breaks; each is the denominator of a red below |
+| 4 unit keeps `--workspace` | regression guard for an invariant the profile already states; DV-1's rehearsal deletes the neighbouring flag only - a mutation dropping `--workspace` belongs to `/audit-mutations` |
+| 6, 7, 8, 11 controls | themselves: they ran in the framework against heredoc fixtures |
+| 10 no gate carries `--ignore-run-fail` | DV-2 (GATES); rehearsed above |
+
+**Negative controls - measured, in the framework, on this tree**
+
+| Control | Fixture | Threshold | Expected | Measured |
+|---|---|---|---|---|
+| 6 | `gate \| unit \| ... \| cargo test --workspace` | `word_count == 0` | 0 | 0 |
+| 7 | `gate \| coverage \| ... --no-fail-fast-x ...` | `word_count == 0` | 0 | 0 |
+| 8 (positive) | `gate \| unit \| ... --workspace --no-fail-fast` | `word_count == 1` | 1 | 1 |
+| 11 | `gate \| coverage \| required \| . \| cargo llvm-cov --workspace --ignore-run-fail` | `word_count == 1` (refused) | 1 | 1 |
+
+The AC-1 fixture also carries a `gate | unit-x` line WITH the flag, a
+`# gate | unit | ... --no-fail-fast` comment and a prose mention, none of
+which may be selected as the unit line - control 6 would read 1 if any were.
+GREEN: confirm the four still read as above once the profile changes (they do
+not read the profile, so they should not move).
+
+**Discovered**
+
+- AC-2's text says its guard is "earned by DV-1"; it is DV-2 that earns it
+  (DV-1 removes `--no-fail-fast`). Not an AC change worth an amendment - the
+  DV block is right - but noted so REVIEW does not chase it.
+- The Contract's re-anchor block is dated 2026-10-16; this RED ran 2026-10-15.
+  The line numbers it gives all held.
 
 ## Regressions
 
@@ -304,10 +538,21 @@ name, below the table.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-16T02:40:21Z
+    commit: 4ae26fe
+    tree:   b0f5384c2530bba83b1e8d51e95cc75fc9358c28
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -344,3 +589,99 @@ HARNESS-055 at that planner's recommendation. Source commits:
 Both commit messages say the change was "probed both ways"; the probe output
 is in downstream's `docs/backlog/stories/MC-057.md` and `MC-058.md`, which this
 planner did not re-read or re-run.
+
+### RED verification (orchestrator, 2026-10-15)
+
+RED dispatched to `test-developer`; it reported running on `opus`. Its diff
+was read in full: one describe in `profiles.test.sh` (+108, 16 assertions)
+after the HARNESS-041 AC-5 block, with one copy of each matcher used on the
+shipped profile and on heredoc fixtures alike (`gate_lines` anchored by id
+between bars, `word_count` whole-word, `prose_paras_with` excluding indented
+blocks), two preconditions, AC-1 x3 plus three fixture controls, the AC-2
+guard with its precondition and control, AC-2's prose paragraph, AC-3's
+window precondition and three paragraph phrases; `profiles` floor 116 -> 132
+in all three places. Nothing outside test files and this story.
+
+Orchestrator's own run against the unchanged `rust-cargo.md`:
+
+    $ bash scripts/selftest.sh profiles
+        FAIL AC-1: the rust `unit` gate runs every test binary (--no-fail-fast, as a whole word)      (expected 1, actual 0)
+        FAIL AC-1: the rust `coverage` gate runs every test binary (--no-fail-fast, as a whole word)  (expected 1, actual 0)
+        FAIL AC-2: one prose paragraph names --ignore-run-fail and says it exits 0 when tests fail    (expected 1, actual 0)
+        FAIL AC-3: between the --workspace paragraph and Evidence of work, one paragraph says cargo stops at the 'first test *binary*'
+        FAIL AC-3: that paragraph says --no-fail-fast still exits non-zero          (<no paragraph naming first test *binary*>)
+        FAIL AC-3: that paragraph says a passing run leaves evidence lines and floors unchanged
+    profiles: 126 passed, 6 failed
+    FAIL profiles  did 126 units of work, below the floor of 132
+    $ bash scripts/selftest.sh selftest
+    selftest: 268 passed, 0 failed
+    $ bash scripts/check-sigpipe.sh
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    $ bash scripts/check-grep-count.sh
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+Right failure: exactly the six shipped-file assertions are red (AC-1's two
+flags, AC-2's prose, AC-3's paragraph and its two phrases); the `--workspace`
+check, the AC-2 guard and all four fixture controls are green, as predicted.
+Floors count passes, so the suite also sits 6 below its new floor until GREEN.
+RED rehearsed C-1's text on a scratch copy (132/0 there, and each DV `sed`
+reddening exactly one assertion) - a rehearsal, not the DVs, which GATES runs.
+
+**Two corrections from the handoff, accepted:** AC-2's text says its guard is
+"earned by DV-1" and means DV-2 (the DV section is right; the AC wording is
+not amended - it is a cross-reference, not a criterion). The Contract's
+re-anchor block is dated 2026-10-16 but was written on 2026-10-15; the line
+numbers in it held.
+
+### GREEN verification (orchestrator, 2026-10-15)
+
+The feature-developer's diff was read in full: `rust-cargo.md` only
+(+13/-2) - the two gate lines are C-1's verbatim, `task | test` untouched,
+and C-1's paragraph sits unindented between the `--workspace` paragraph and
+`## Evidence of work`, word for word. Nothing else changed.
+
+Orchestrator's own runs against the shipped profile:
+
+    $ bash scripts/selftest.sh profiles
+    profiles: 132 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (132 assertions executed, 132 declared).
+    $ bash scripts/gates.sh --audit
+    Manifest audit passed.
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+    $ bash scripts/check-sigpipe.sh
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    $ bash scripts/check-grep-count.sh
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+The six RED assertions pass; the `--workspace` check, the `--ignore-run-fail`
+guard and the four fixture controls stayed green (the suite prints only
+failures). DV-1 and DV-2 are GATES' to run.
+
+### GATES (orchestrator, 2026-10-16)
+
+DV-1 and DV-2 ran through `scripts/mutate.sh` against the `profiles` suite
+before the gate run - the flag removed from the `unit` line, and
+`--ignore-run-fail` appended to the `coverage` line - each caught by exactly
+its one targeted assertion (131/1 both times), each restored byte for byte,
+`--check` clean; results pasted in `## Deferred verifications`. Then
+`bash scripts/gates.sh` recorded `result: pass (0 ran, 7 unconfigured,
+0 known)` against `4ae26fe`; every gate is unconfigured on this repository,
+so the suites and the full self-test before REVIEW are the judge.
+
+### Full self-test before REVIEW (orchestrator, 2026-10-15)
+
+    $ time bash scripts/selftest.sh
+    profiles: 132 passed, 0 failed
+    gates: 671 passed, 0 failed
+    ...
+    assertion floors: all 26 suite(s) met their declared floor (3416 assertions executed, 3190 declared).
+    26 harness suite(s) passed.
+    real    51m18.123s
+    exit=0
+
+Every suite green, every floor met.
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/144 (opened 2026-10-15 from `01ad466`).
