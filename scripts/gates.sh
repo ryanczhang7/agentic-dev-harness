@@ -266,6 +266,17 @@ table_lookup() {
   return 1
 }
 
+# table_get <var> <table> <id>   table_lookup, assigning <var> instead of echoing,
+# so a per-gate lookup costs no fork. <var> is empty and status 1 when no line.
+table_get() {
+  local _tg_id _tg_val
+  while IFS="$TAB" read -r _tg_id _tg_val; do
+    if [ "$_tg_id" = "$3" ]; then printf -v "$1" %s "$_tg_val"; return 0; fi
+  done <<< "$2"
+  printf -v "$1" %s ""
+  return 1
+}
+
 # A gate's log as the regex should see it: no ANSI colour, no CR.
 clean_log() {
   sed -e "s/${ESC}\[[0-9;]*[a-zA-Z]//g" -e 's/\r$//' "$1"
@@ -417,7 +428,7 @@ while IFS= read -r line; do
   # It is counted in none of ran, unconfigured or known. A line with no reason,
   # or on a gate project.conf itself requires, is a manifest fault - a required
   # gate no full run executes is a hole shaped like a gate.
-  ondwhy=$(table_lookup "$ONDEMANDS" "$id"); is_ondemand=$?
+  table_get ondwhy "$ONDEMANDS" "$id"; is_ondemand=$?
   if [ "$LIST" = 0 ] && [ "$is_ondemand" = 0 ]; then
     ond_broken=""
     if [ -z "$ondwhy" ]; then
@@ -448,13 +459,13 @@ while IFS= read -r line; do
     skipped="$skipped $id"; continue
   fi
 
-  exp=$(table_lookup "$EVIDENCE" "$id") || exp="<none>"
-  waiver=$(table_lookup "$WAIVERS" "$id") || waiver=""
-  slowwhy=$(table_lookup "$SLOWS" "$id"); is_slow=$?
-  floor=$(table_lookup "$FLOORS" "$id") || floor=""
-  skippat=$(table_lookup "$SKIPPEDWHEN" "$id") || skippat=""
-  cifactor=$(table_lookup "$CIFACTORS" "$id") || cifactor=""
-  nocountwhy=$(table_lookup "$NOCOUNTS" "$id"); is_nocount=$?
+  table_get exp "$EVIDENCE" "$id" || exp="<none>"
+  table_get waiver "$WAIVERS" "$id" || waiver=""
+  table_get slowwhy "$SLOWS" "$id"; is_slow=$?
+  table_get floor "$FLOORS" "$id" || floor=""
+  table_get skippat "$SKIPPEDWHEN" "$id" || skippat=""
+  table_get cifactor "$CIFACTORS" "$id" || cifactor=""
+  table_get nocountwhy "$NOCOUNTS" "$id"; is_nocount=$?
   logrel=".claude/state/gate-logs/$id.log"
 
   if [ "$LIST" = 1 ]; then
@@ -633,7 +644,7 @@ while IFS= read -r line; do
     # exited non-zero, and only against patterns describing a process that
     # could not be launched.
     blockpat="$BLOCKED_DEFAULT"
-    extra=$(table_lookup "$BLOCKEDWHEN" "$id") || extra=""
+    table_get extra "$BLOCKEDWHEN" "$id" || extra=""
     [ -n "$extra" ] && blockpat="$blockpat|$extra"
     if clean_log "$log" | awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "$blockpat"; then
       outcome=blocked
@@ -889,7 +900,7 @@ if [ -n "$COVERS" ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
       while IFS="$TAB" read -r cid cglob; do
         [ -n "$cid" ] && [ -n "$cglob" ] || continue
         glob_matches "$cglob" "$path" || continue
-        creq="$(table_lookup "$GATE_REQ" "$cid")" || creq=""
+        table_get creq "$GATE_REQ" "$cid" || creq=""
         case " $reqs $opts " in *" $cid "*) continue ;; esac
         if [ "$creq" = "required" ]; then reqs="$reqs $cid"; else opts="$opts $cid"; fi
       done <<< "$COVERS"
