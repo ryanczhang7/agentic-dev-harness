@@ -4,8 +4,8 @@ title: mutate.sh leaves the tree as it found it - --check sees dot-named sentine
 slug: mutate-sh-leaves-the-tree-as-it-found-it
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-059-mutate-sh-leaves-the-tree-as-it-found-it
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -252,6 +252,92 @@ afterwards.
   die` replaced by `true || die` (the audit's M11), AC-4 MUST fail.
   Owner: GATES.
 
+
+**Results (GATES, orchestrator, 2026-10-16).** Each mutation of the real
+`scripts/mutate.sh`, run by a `cmp`-identical copy under `.claude/state/selfmut/`
+(removed afterwards), turned red exactly the assertions of the criterion it
+targets and nothing else, and the file came back byte for byte. The AC-3 FAIL
+lines under DV-2 are abridged to one line per expression; the full output was
+45 FAIL lines, five per write/execute expression and four per read one. The
+`$` lines name the target as `scripts/mutate.sh`; the copy was passed the
+absolute `$ROOT/scripts/mutate.sh`, as each `===` line shows, because it
+resolves a relative path against its own root.
+
+```
+$ cmp scripts/mutate.sh .claude/state/selfmut/scripts/mutate.sh   # identical
+--- DV-1
+$ bash .claude/state/selfmut/scripts/mutate.sh scripts/mutate.sh '127s| "$MUTDIR"/\.\*\.active||' -- bash -c "cd $ROOT && bash .claude/tests/mutate.test.sh"
+=== mutate: $ROOT/scripts/mutate.sh (1 line(s) changed by 127s| "$MUTDIR"/\.\*\.active||) ===
+  127 -   for a in "$MUTDIR"/*.active "$MUTDIR"/.*.active; do
+  127 +   for a in "$MUTDIR"/*.active; do
+=== mutate: running bash -c cd $ROOT && bash .claude/tests/mutate.test.sh ===
+    FAIL HARNESS-059 AC-1: a stranded dot-named sentinel makes --check exit 1
+    FAIL HARNESS-059 AC-1: and --check does not print the clean line on stdout
+    FAIL HARNESS-059 AC-1: it opens with the unaccounted-for line
+    FAIL HARNESS-059 AC-1: it names the .claude/ target, as recorded
+    FAIL HARNESS-059 AC-1: and reports its process as GONE
+    FAIL HARNESS-059 AC-1: the file differs from its backup, and it says so
+    FAIL HARNESS-059 AC-1: with the exact cp && cmp && rm -f remedy naming the dot-named sentinel
+    FAIL HARNESS-059 AC-1: and counts it
+    FAIL HARNESS-059 AC-1 (C-1): it names the .claude/ target
+    FAIL HARNESS-059 AC-1 (C-1): and counts two
+    FAIL HARNESS-059 AC-1 (C-1): a dot-named sentinel whose file matches still exits 1
+    FAIL HARNESS-059 AC-1 (C-1): and prints the exact rm -f remedy for it
+mutate: 296 passed, 12 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harne
+scripts/mutate.sh matches HEAD after the run
+--- DV-1b
+$ bash .claude/state/selfmut/scripts/mutate.sh scripts/mutate.sh '127s| "$MUTDIR"/\.\*\.active||' -- bash -c "cd $ROOT && bash .claude/tests/gates.test.sh"
+=== mutate: $ROOT/scripts/mutate.sh (1 line(s) changed by 127s| "$MUTDIR"/\.\*\.active||) ===
+  127 -   for a in "$MUTDIR"/*.active "$MUTDIR"/.*.active; do
+  127 +   for a in "$MUTDIR"/*.active; do
+=== mutate: running bash -c cd $ROOT && bash .claude/tests/gates.test.sh ===
+    FAIL HARNESS-059 AC-2: behind a stranded .claude/ mutation gates.sh exits 2
+    FAIL HARNESS-059 AC-2: it prints the refusal, whole
+    FAIL HARNESS-059 AC-2: after --check's unaccounted-for line
+    FAIL HARNESS-059 AC-2: which names .claude/hooks/lib.sh
+    FAIL HARNESS-059 AC-2: no line says the run recorded
+    FAIL HARNESS-059 AC-2: and the gate command never ran (marker absent)
+    FAIL HARNESS-059 AC-2: gates.sh --gate unit is refused too, exit 2
+    FAIL HARNESS-059 AC-2: --gate unit prints the refusal, whole
+    FAIL HARNESS-059 AC-2: and --gate unit never ran the gate
+gates: 673 passed, 9 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harne
+scripts/mutate.sh matches HEAD after the run
+--- DV-2
+$ bash .claude/state/selfmut/scripts/mutate.sh scripts/mutate.sh '349s|sed --sandbox -e|sed -e|' -- bash -c "cd $ROOT && bash .claude/tests/mutate.test.sh"
+=== mutate: $ROOT/scripts/mutate.sh (1 line(s) changed by 349s|sed --sandbox -e|sed -e|) ===
+  349 - if ! sed --sandbox -e "$EXPR" "$BAK" > "$NEW" 2>"$NEW.err"; then
+  349 + if ! sed -e "$EXPR" "$BAK" > "$NEW" 2>"$NEW.err"; then
+=== mutate: running bash -c cd $ROOT && bash .claude/tests/mutate.test.sh ===
+    FAIL HARNESS-059 AC-3 1s#a#b#w out (w flag, # delimiter): exits 2
+    FAIL HARNESS-059 AC-3 1s/a/b/w h59-w-slash (w flag, /): exits 2
+    FAIL HARNESS-059 AC-3 1s|a|b|gw h59-w-pipe (gw flags, |): exits 2
+    FAIL HARNESS-059 AC-3 1w h59-w-cmd (w command): exits 2
+    FAIL HARNESS-059 AC-3 1W h59-W-cmd (W command): exits 2
+    FAIL HARNESS-059 AC-3 1e touch h59-e-cmd (e command): exits 2
+    FAIL HARNESS-059 AC-3 1s/.*/touch h59-e-flag/e (e flag): exits 2
+    FAIL HARNESS-059 AC-3 w on the second line of a two-line expression: exits 2
+    FAIL HARNESS-059 AC-3 1r src/main.ts (r command): exits 2
+    FAIL HARNESS-059 AC-3 1R src/main.ts (R command): exits 2
+mutate: 263 passed, 45 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harne
+scripts/mutate.sh matches HEAD after the run
+--- DV-3
+$ bash .claude/state/selfmut/scripts/mutate.sh scripts/mutate.sh '196s#\[ "${1:-}" = "--" \] || die#true || die#' -- bash -c "cd $ROOT && bash .claude/tests/mutate.test.sh"
+=== mutate: $ROOT/scripts/mutate.sh (1 line(s) changed by 196s#\[ "${1:-}" = "--" \] || die#true || die#) ===
+  196 - [ "${1:-}" = "--" ] || die "the command must be separated from the expression by -- <command>"
+  196 + true || die "the command must be separated from the expression by -- <command>"
+=== mutate: running bash -c cd $ROOT && bash .claude/tests/mutate.test.sh ===
+    FAIL HARNESS-059 AC-4: no -- before the command exits 2
+    FAIL HARNESS-059 AC-4: and names the missing --, as a whole line
+mutate: 306 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harne
+scripts/mutate.sh matches HEAD after the run
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+DV-DONE
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -286,6 +372,8 @@ name, below the table.
 
 - PLANNED: `lead-po` orchestrator session, Fable 5.1 (`claude-fable-5-1`).
 - RED: `test-developer`, dispatched with `model: opus`; it reported Opus 5.5 (`claude-opus-5-5`).
+- GREEN: `feature-developer`, dispatched with `model: opus`; it reported Opus 5.5 (`claude-opus-5-5`).
+- GATES: run by the orchestrator session itself (no dispatch), then on Opus 5.5 (`claude-opus-5-5`); the session switched from Fable 5.1 to Opus 5.5 between RED and GREEN.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -688,10 +776,21 @@ Contract's "Callers of changed signatures: none" holds.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-16T22:21:43Z
+    commit: 0278488
+    tree:   d97c40b6157bfe1a33567bbc02673ce19ccf134e
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -760,3 +859,15 @@ outside the suite:
 All of these match RED's table. The only divergence is in my own fixture: my
 first `1s/a/b/2` gave exit 3 because the line had one `a`. The script was not
 at fault.
+
+**Self-test at GATES (orchestrator, 2026-10-16).** `bash scripts/selftest.sh`,
+run detached and alone after `bash scripts/gates.sh` recorded a pass, exited 0
+in 2894 s (about 48 minutes, against the 25 once recorded on this host; nothing
+else ran in the worktree during it):
+
+    assertion floors: all 26 suite(s) met their declared floor (3546 assertions executed, 3320 declared).
+    26 harness suite(s) passed.
+
+**Handoff check.** RED's mutation table was not re-run beyond the story's
+deferred verifications. DV-1, DV-1b, DV-2 and DV-3 are those runs, and each
+turned exactly its criterion's assertions red (see `## Deferred verifications`).
