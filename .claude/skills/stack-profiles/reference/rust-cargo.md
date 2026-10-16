@@ -8,8 +8,8 @@ that a JavaScript or Godot front end drives.
     gate | format    | optional | . | cargo fmt --all --check
     gate | lint      | required | . | cargo clippy --workspace --all-targets -- -D warnings
     gate | typecheck | required | . | cargo check --workspace --all-targets
-    gate | unit      | required | . | cargo test --workspace
-    gate | coverage  | required | . | cargo llvm-cov --workspace --fail-under-lines 100
+    gate | unit      | required | . | cargo test --workspace --no-fail-fast
+    gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 100
     gate | build     | required | . | cargo build --release --workspace
     gate | mutation  | optional | . | cargo mutants
     ondemand | mutation | cargo mutants re-runs the suite once per mutant; run it with /audit-mutations, not per story
@@ -28,6 +28,17 @@ the shape Tauri produces - a bare `cargo test` builds and tests *only the root
 package* and silently skips every member. It exits 0 having run nothing. This
 profile recommends exactly that layout below, so the flag and the layout have to
 be adopted together.
+
+**`--no-fail-fast` on the test gates.** By default cargo stops at the first
+test *binary* with a failing test and never runs the rest, so a change that
+breaks five suites reports one, and the other four surface one re-run at a
+time. `--no-fail-fast` runs them all and still exits non-zero, so the gate
+still fails. On a passing run it changes nothing in the output, so evidence
+lines and floors read the same numbers. Found on a consuming project's
+unit gate, then its coverage gate. `cargo llvm-cov` also offers
+`--ignore-run-fail`, which runs every test too but **exits 0** when tests
+fail and the report succeeds. On a required gate that is a failing test
+graded as a pass: never use it there.
 
 ## Evidence of work
 

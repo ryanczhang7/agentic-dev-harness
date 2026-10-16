@@ -5,7 +5,7 @@ slug: the-rust-profile-runs-every-test-binary
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-058-the-rust-profile-runs-every-test-binary
 depends_on: [HARNESS-055] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/stack-profiles/reference/rust-cargo.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -253,6 +253,7 @@ name, below the table.
 **Resolved:**
 
 - RED, `test-developer`, 2026-10-15: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
+- GREEN, `feature-developer`, 2026-10-15: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -598,3 +599,28 @@ reddening exactly one assertion) - a rehearsal, not the DVs, which GATES runs.
 not amended - it is a cross-reference, not a criterion). The Contract's
 re-anchor block is dated 2026-10-16 but was written on 2026-10-15; the line
 numbers in it held.
+
+### GREEN verification (orchestrator, 2026-10-15)
+
+The feature-developer's diff was read in full: `rust-cargo.md` only
+(+13/-2) - the two gate lines are C-1's verbatim, `task | test` untouched,
+and C-1's paragraph sits unindented between the `--workspace` paragraph and
+`## Evidence of work`, word for word. Nothing else changed.
+
+Orchestrator's own runs against the shipped profile:
+
+    $ bash scripts/selftest.sh profiles
+    profiles: 132 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (132 assertions executed, 132 declared).
+    $ bash scripts/gates.sh --audit
+    Manifest audit passed.
+    $ bash scripts/gates.sh --fast
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+    $ bash scripts/check-sigpipe.sh
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    $ bash scripts/check-grep-count.sh
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+The six RED assertions pass; the `--workspace` check, the `--ignore-run-fail`
+guard and the four fixture controls stayed green (the suite prints only
+failures). DV-1 and DV-2 are GATES' to run.
