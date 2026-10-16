@@ -4,8 +4,8 @@ title: The Rust profile runs every test binary on its test gates and warns off -
 slug: the-rust-profile-runs-every-test-binary
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-058-the-rust-profile-runs-every-test-binary
 depends_on: [HARNESS-055] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/stack-profiles/reference/rust-cargo.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -685,3 +685,11 @@ so the suites and the full self-test before REVIEW are the judge.
 Every suite green, every floor met.
 
 PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/144 (opened 2026-10-15 from `01ad466`).
+
+### DONE (2026-10-16)
+
+Merged as #144 (`8a45267`, 2026-10-16T03:52:32Z). CI on the final head
+`9a8e122`: run 38846402626 `gates` success, run 38846402635 `boundaries`
+success. Timings read from the `gates` job: `Harness self-test` 03:37:04 ->
+03:39:15 (2m11s, all 26 suites) against the job's `timeout-minutes: 45`;
+the sigpipe and grep-count steps 3s and 2s.
