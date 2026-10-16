@@ -919,3 +919,5 @@ so the suites and the full self-test before REVIEW are the judge.
 Every suite green, every floor met, sigpipe C-5 finding its pin at `:651`.
 A quiet machine this time: 33 minutes, against 136-210 for the previous
 three stories on a shared one.
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/143 (opened 2026-10-15 from `046be11`).
