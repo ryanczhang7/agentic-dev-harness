@@ -871,3 +871,5 @@ else ran in the worktree during it):
 **Handoff check.** RED's mutation table was not re-run beyond the story's
 deferred verifications. DV-1, DV-1b, DV-2 and DV-3 are those runs, and each
 turned exactly its criterion's assertions red (see `## Deferred verifications`).
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/146 (opened 2026-10-16 from `4a27ff7`).
