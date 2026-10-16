@@ -4,8 +4,8 @@ title: gates.sh looks up a gate's settings without forking, so --list and --audi
 slug: gates-sh-looks-up-a-gate-s-settings-with
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-057-gates-sh-looks-up-a-gate-s-settings-with
 depends_on: [HARNESS-056]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -921,3 +921,11 @@ A quiet machine this time: 33 minutes, against 136-210 for the previous
 three stories on a shared one.
 
 PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/143 (opened 2026-10-15 from `046be11`).
+
+### DONE (2026-10-16)
+
+Merged as #143 (`2ff9ceb`, 2026-10-16T00:13:46Z). CI on the final head
+`fbeef66`: run 38827211435 `gates` success, run 38827211491 `boundaries`
+success. Timings read from the `gates` job: `Harness self-test` 00:03:09 ->
+00:05:54 (2m45s, all 26 suites) against the job's `timeout-minutes: 45`;
+the sigpipe and grep-count steps 4s and 5s.
