@@ -4,8 +4,8 @@ title: gates.sh looks up a gate's settings without forking, so --list and --audi
 slug: gates-sh-looks-up-a-gate-s-settings-with
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-057-gates-sh-looks-up-a-gate-s-settings-with
 depends_on: [HARNESS-056]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -379,6 +379,35 @@ raises the figure to the measured count then.
   `bash scripts/mutate.sh scripts/gates.sh 's|printf -v "\$1" %s "\$_tg_val"|printf -v "$1" %s "$_tg_id"|' -- bash .claude/tests/gates.test.sh`.
   For both: confirm the suite is green again on the restored file and paste
   `mutate.sh`'s `restored (verified ...)` line with the red lines here.
+
+  **Result (GATES, orchestrator, 2026-10-15).** Both ran; the full red
+  lists are in `## Notes`, "DV-1 results". (a) exactly AC-1, AC-2 and AC-4
+  red, AC-3's goldens green (a same-value fork changes no output, so the
+  entry's "AC-3 also goes red" was wrong; the equality is what catches it).
+  (b) the equalities green, AC-3's nine goldens red with 164 other value
+  readers, and - as RED's handoff corrected - AC-2's exit-0 and
+  audit-passed assertions red too. Both restored byte for byte:
+
+  ```
+  $ bash scripts/mutate.sh scripts/gates.sh 's|table_get exp "$EVIDENCE" "$id"|exp=$(table_lookup "$EVIDENCE" "$id")|' -- bash scripts/selftest.sh gates
+      FAIL AC-1: gates.sh --list runs as many nested commands over ten gates as over one
+           nested commands (trace lines at depth >= 2): one gate 29, ten gates 227
+           of which $(table_lookup ...) substitutions: one gate 1, ten gates 10
+      FAIL AC-2: gates.sh --audit runs as many nested commands over ten gates as over one
+      FAIL AC-4: no line of scripts/gates.sh contains $(table_lookup   (expected 0, actual 1)
+  gates: 668 passed, 3 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T203355Z.505758.bak) ===
+
+  $ bash scripts/mutate.sh scripts/gates.sh 's|printf -v "$1" %s "$_tg_val"|printf -v "$1" %s "$_tg_id"|' -- bash scripts/selftest.sh gates
+      FAIL AC-3: gates.sh --list over project.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-3: gates.sh --audit over project.conf is byte-identical to the pre-rewrite golden
+      FAIL AC-3: gates.sh full run over project.conf is byte-identical to the pre-rewrite golden
+      (and the same three for broken.conf and crlf.conf, plus 164 value readers)
+  gates: 498 passed, 173 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261015T203947Z.536533.bak) ===
+  $ bash scripts/mutate.sh --check
+  mutate: no stranded mutation; nothing of a previous run is in the tree.
+  ```
 
 ## Model guidance
 
@@ -874,3 +903,19 @@ before the gate run, both restored byte for byte, `--check` clean. Then
 `bash scripts/gates.sh` recorded `result: pass (0 ran, 7 unconfigured,
 0 known)` against `3e22256`; every gate is unconfigured on this repository,
 so the suites and the full self-test before REVIEW are the judge.
+
+### Full self-test before REVIEW (orchestrator, 2026-10-15)
+
+    $ time bash scripts/selftest.sh
+    gates: 671 passed, 0 failed
+    sigpipe: 82 passed, 0 failed
+    mutate: 189 passed, 0 failed
+    ...
+    assertion floors: all 26 suite(s) met their declared floor (3400 assertions executed, 3174 declared).
+    26 harness suite(s) passed.
+    real    33m24.454s
+    exit=0
+
+Every suite green, every floor met, sigpipe C-5 finding its pin at `:651`.
+A quiet machine this time: 33 minutes, against 136-210 for the previous
+three stories on a shared one.
