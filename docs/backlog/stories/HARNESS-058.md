@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-058-the-rust-profile-runs-every-test-binary
 depends_on: [HARNESS-055] # story ids; phase.sh refuses to start this story until they are DONE
-touches: [.claude/skills/stack-profiles/reference/rust-cargo.md, .claude/tests/profiles.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
+touches: [.claude/skills/stack-profiles/reference/rust-cargo.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -116,7 +116,26 @@ story, and `depends_on` orders it after 055 to avoid the textual collision.
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
-**Writes:** `.claude/skills/stack-profiles/reference/rust-cargo.md`, `.claude/tests/profiles.test.sh`
+**Writes:** `.claude/skills/stack-profiles/reference/rust-cargo.md`, `.claude/tests/profiles.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+
+**Re-anchored 2026-10-16 (Lead PO, before RED), after HARNESS-055 landed.**
+Verified by grep today: the gate block is `rust-cargo.md:9-13` (`unit` at `:11`,
+`coverage` at `:12`), the `--workspace` paragraph starts at `:25` and
+`## Evidence of work` is `:32`, with 055's three `no-count` lines at `:42-44`
+below the evidence lines - C-1's paragraph goes between `:25-31` and `:32`.
+`profiles.test.sh` defines `line_of` at `:445`, `section` at `:448` and `RUST`
+at `:453` - AFTER the describes at `:130-321` - so the new describe must sit
+after `:453` (after the HARNESS-041 AC-5 block at `:517` is the natural place).
+Both files classify as `harness` (`bash scripts/classify.sh`), so the lock
+permits GREEN's profile edit and no `## Scaffold inventory` is owed for this
+`chore`. No file in the tree mentions `--no-fail-fast` or `--ignore-run-fail`.
+
+**PO decision 1 (2026-10-16).** The Contract's "no floor change" is reversed
+for the same reason as HARNESS-057's: the `profiles` floor is **116** today
+(`floors.conf:54`, mirrored at `selftest.test.sh:545` and in the sentence at
+`:564`), and HARNESS-055, the story the Contract waited on, is DONE. RED raises
+it to the executed count it reads off its own run, in all three places;
+`touches:` and `**Writes:**` widened accordingly.
 
 **C-1. The profile text (GREEN), verbatim from downstream `b23198c`'s final
 state**, adapted only in the attribution sentence:
