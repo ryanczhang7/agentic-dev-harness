@@ -4,8 +4,8 @@ title: The Rust profile runs every test binary on its test gates and warns off -
 slug: the-rust-profile-runs-every-test-binary
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-058-the-rust-profile-runs-every-test-binary
 depends_on: [HARNESS-055] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/stack-profiles/reference/rust-cargo.md, .claude/tests/profiles.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -670,3 +670,16 @@ its one targeted assertion (131/1 both times), each restored byte for byte,
 `bash scripts/gates.sh` recorded `result: pass (0 ran, 7 unconfigured,
 0 known)` against `4ae26fe`; every gate is unconfigured on this repository,
 so the suites and the full self-test before REVIEW are the judge.
+
+### Full self-test before REVIEW (orchestrator, 2026-10-15)
+
+    $ time bash scripts/selftest.sh
+    profiles: 132 passed, 0 failed
+    gates: 671 passed, 0 failed
+    ...
+    assertion floors: all 26 suite(s) met their declared floor (3416 assertions executed, 3190 declared).
+    26 harness suite(s) passed.
+    real    51m18.123s
+    exit=0
+
+Every suite green, every floor met.
