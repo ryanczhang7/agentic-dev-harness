@@ -769,3 +769,5 @@ shows nothing more than that.
 **Handoff check.** RED's predicted DV-2 shape, `4 5 8 9`, is what DV-2 measured
 against the shipped guard (`## Deferred verifications`). The rest of the table
 belongs to `/audit-mutations`.
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/148 (opened 2026-10-17 from `10439b9`).
