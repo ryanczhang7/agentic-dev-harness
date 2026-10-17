@@ -5,7 +5,7 @@ slug: check-sigpipe-recognises-the-early-exit
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-061-check-sigpipe-recognises-the-early-exit
 depends_on: [HARNESS-060] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-sigpipe.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -290,6 +290,7 @@ name, below the table.
 
 - PLANNED: `lead-po` orchestrator session, Fable 5.1 (`claude-fable-5-1`).
 - RED: `test-developer`, dispatched with `model: opus`; it reported Opus 5.5 (`claude-opus-5-5`).
+- GREEN: `feature-developer`, dispatched with `model: opus`; it reported Opus 5.5 (`claude-opus-5-5`).
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -589,3 +590,63 @@ nothing of a previous run is in the tree.`; `git status --short` shows
 
 ## Notes
 
+**GREEN, 2026-10-17, `feature-developer`, resolved model Opus 5.5
+(`claude-opus-5-5`), dispatched as planned with no override.** Local Windows /
+Git Bash.
+
+*What changed* (`scripts/check-sigpipe.sh` only, inside `AWK_RULE`; no test,
+`floors.conf` or `selftest.test.sh` touched):
+- two new awk functions before `early_reader`: `is_assign(t)` (a token matching
+  `^[A-Za-z_][A-Za-z0-9_]*=` that carries no `;&|)}<>`, so `x=1; grep -q y`
+  does not skip into the next command) and `cmd_index(a, n)` (index of the
+  command word past leading assignments and a leading `env` with its own; a
+  `-` token after `env` returns n + 1, i.e. not a reader). `early_reader` takes
+  `w` from `a[cmd_index(a, n)]` and starts the option loop after it.
+- option loop: `--regexp`/`--file` as whole tokens, and a short bundle matching
+  `^-[A-Za-z]*[ef]$` (covers `-e`, `-f`, `-Fe`), skip the next token. The
+  `[qlLm]` test stays first, so `-qe x` is still a reader.
+- `scan_line`: `|&` calls `early_reader(substr(s, i + 2))`, keeps column `i`,
+  and skips the `&`; `||` is still skipped first.
+
+*Measured.* `bash .claude/tests/sigpipe.test.sh` -> `sigpipe: 91 passed, 0
+failed` (floor 91). Real tree: `check-sigpipe: scanned 49 shell file(s), 45 with
+pipefail, 0 finding(s)`; `check-grep-count: scanned 49 shell file(s), 0
+finding(s)`. Also `selftest: 268 passed, 0 failed`, `lib: 324 passed, 0
+failed`, `grep-count: 38 passed, 0 failed`. `gates.sh --fast`: all gates
+UNCONFIGURED here, exit 0 (judges nothing). `mutate.sh --check`: clean.
+
+*Controls, against the shipped guard* (run directly on a scratch fixture repo
+holding a verbatim copy of `p_h61.sh`; the mis-fix rows on a scratch copy of the
+guard, never the tree). All match the handoff's table:
+
+    unmutated tree before GREEN       4 5 13            3 finding(s)   (RED: 4 5 13)
+    shipped guard                     4 5 6 7 8 9       6 finding(s)   (RED candidate: same)
+      controls 10 11 12 13 14         none reported                    (RED: not, all five)
+    mis-fix: skip non-option words    4 5 6 7 8 9 13    7 finding(s)   (RED: same)
+    mis-fix: every |& a finding       4 5 6 7 8 9 14    7 finding(s)   (RED: same)
+    DV-2 shape (j = 1)                4 5 8 9           4 finding(s)   (RED: same)
+
+Line 12 remains weak as RED said. C-2 shapes the fixture does not carry, also
+measured on the shipped guard (unpinned): reported - `--regexp x -q`,
+`--regexp=x -q`, `-Fe x -q`, `-qe x`, `-f pats -q`, `A=1 B=2 grep -q`,
+`env A=1 B=2 grep -q`, `LC_ALL="a b" grep -q`; not reported - `env -i grep -q x`
+(env option ends the skip, per C-2), `--regexp -q x`, `-Fe -q x`,
+`cmd | x=1; grep -q y`.
+
+*DV-2 expression* (removes the prefix skipping at its one call site; lines 6
+and 7 must leave the set, giving `4 5 8 9`):
+
+    bash scripts/mutate.sh scripts/check-sigpipe.sh 's#j = cmd_index(a, n)#j = 1#' -- bash .claude/tests/sigpipe.test.sh
+
+Checked to apply and restore, with a quick command in place of the suite (the
+suite run itself is GATES' to paste):
+
+    === mutate: scripts/check-sigpipe.sh (1 line(s) changed by s#j = cmd_index(a, n)#j = 1#) ===
+      157 -   j = cmd_index(a, n)
+      157 +   j = 1
+    === mutate: running bash scripts/check-sigpipe.sh ===
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    === mutate: command exited 0; restored (verified byte-for-byte against .../scripts_check-sigpipe.sh.20261017T173609Z.43655.bak) ===
+      157:   j = cmd_index(a, n)
+
+Not committed (per dispatch).
