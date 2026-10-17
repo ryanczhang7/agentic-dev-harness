@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-061-check-sigpipe-recognises-the-early-exit
 depends_on: [HARNESS-060] # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/check-sigpipe.sh, .claude/tests/sigpipe.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
+touches: [scripts/check-sigpipe.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -111,6 +111,90 @@ latent gap: the next instance would pass CI.
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
+**Writes:** `scripts/check-sigpipe.sh`, `.claude/tests/sigpipe.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+
+RED may amend any block below in place, with a reason; GREEN builds what the
+amended block says. Anchors read off the tree at `1b89cab` (main after
+HARNESS-060), 2026-10-17. A named mechanism here is checkable, not sacred.
+
+**C-1. Where the reader is recognised.** `scripts/check-sigpipe.sh:129-155`,
+`early_reader(s)`: `s` is the text after a `|`, split on whitespace; `a[1]`
+through `bname` is the command word; `head` is a reader; for `grep`/`egrep`/
+`fgrep` the loop over `a[2..n]` returns 1 at the first early-exit option
+(`--quiet|--silent|--max-count|--files-with-matches|--files-without-match`, or
+a short bundle matching `^-[A-Za-z]*[qlLm]`), returns 0 at `--`, and
+**returns 0 at the first token that is not an option** (`:151`, "the pattern:
+options are over"). `scan_line` (`:162-175`) calls it with the text after a
+`|` and skips `||` (`:171`). The three misses follow directly:
+
+- `LC_ALL=C grep -q x` and `env LC_ALL=C grep -q x`: `a[1]` is the
+  assignment (or `env`), not `grep`.
+- `grep -e x -q`: `-e` is an option, but its operand `x` is the next token and
+  ends the loop before `-q` is seen.
+- `|& grep -q x`: `scan_line` hands `early_reader` the text starting at `&`,
+  whose first word is `&`, so it is nothing.
+
+**C-2. The fix (GREEN, `early_reader` and `scan_line`).**
+- Command-word prefixes: before taking `a[1]` as the command word, skip every
+  leading token that is a shell assignment (`^[A-Za-z_][A-Za-z0-9_]*=`), and a
+  leading `env` together with the assignments after it. `env`'s own options
+  (`-i`, `-u NAME`) are out of scope; a token starting with `-` after `env`
+  ends the skip and the word is not a reader.
+- Option operands: `-e` and `-f` as whole tokens consume the next token as
+  their operand and the loop continues; `--regexp` and `--file` as whole
+  tokens do the same; `--regexp=X`, `--file=X` and a bundle ending in `e`/`f`
+  (`-Fe x`) are single tokens whose operand follows: treat a short bundle whose
+  LAST letter is `e` or `f` as consuming the next token too. A bundle that
+  carries `q`, `l`, `L` or `m` before that letter still returns 1 first, as
+  today (`-qe x` is a reader). `-m` followed by a separate count already
+  returns 1 at `-m`.
+- `|&`: in `scan_line`, when the character after `|` is `&`, call
+  `early_reader` on the text after the `&` and keep the column of the `|`.
+  `||` stays skipped.
+Nothing else changes: draining readers (`-c`, `-v`, `-o` alone, `sed`, `awk`,
+`wc`) stay unreported, and the AC-3 controls `LC_ALL=C grep -c x` and
+`grep -e x -c` pin that the prefix and operand rules do not make `-c` a reader.
+
+**C-3. What RED pins (`.claude/tests/sigpipe.test.sh`).** One new describe
+before `summary "sigpipe"` (`:1298`), on a `make_project_fixture` with a
+`scripts/probes/*.sh` file like `p_readers.sh` (AC-2 describe, `:390-396`,
+`assert_flagged <file> "<line numbers>"`): a pipefail file whose numbered lines
+hold, as `if` conditions, AC-1's `--max-count=1`, AC-2's `cmd | grep -q x ||
+echo no` (a top-level pipeline whose status the `||` reads), AC-3's four
+shapes, and the two AC-3 controls plus `cmd | env -i grep -c x` as a third.
+`assert_flagged` pins the exact set of reported lines, so the controls are
+pinned in the same assertion as the positives. AC-1 and AC-2 pass on arrival;
+AC-3's four fail today (the file is reported at fewer lines).
+
+**C-4. Earning AC-1 and AC-2 (RED, `## Regressions`).** Both pass against
+code that already exists, so RED earns each with one `mutate.sh` run on
+`scripts/check-sigpipe.sh` against this suite, pasting the output: S03,
+`'143s#|max-count##'` (the `--max-count` alternative removed; AC-1's line must
+drop out of the set), and S06, `'256s# || (index(grp, "||") > 0)##'` (the `||`
+disposition removed; AC-2's line must drop out). Line numbers to be re-read at
+RED; the audit's are from `c78917d`. If the mutated suite reports the whole
+`assert_flagged` set as one FAIL, that is the expected shape: say which line
+left the set.
+
+**C-5. Floors.** `sigpipe` 89 (`floors.conf:61`, mirror `selftest.test.sh:553`),
+raised to the executed count RED measures, recorded at the foot of
+`floors.conf`.
+
+**Oracle partition.** Mechanical throughout: an exact set of reported line
+numbers per fixture file, and the exact census line.
+
+**Callers of changed signatures.** None: `early_reader` and `scan_line` are
+awk functions private to `AWK_RULE` in `check-sigpipe.sh`, called only at
+`:173` and `:260-262` (`git grep -n 'early_reader\|scan_line' scripts/`).
+`check-grep-count.sh` has its own `scan_line` for a different operator and is
+untouched. The real tree has none of the three AC-3 shapes today (`git grep
+-nE '\| *(LC_ALL=[A-Za-z]+ |env )grep|\|& *grep|grep -e [^|]* -[a-zA-Z]*q' --
+'*.sh'` is empty), so the census stays `0 finding(s)` after the fix; AC-4's
+probes are what show the new rules fire on real text.
+
+**Required gate.** The harness self-test (`sigpipe` suite) in CI's `selftest`
+job, and CI's `check-sigpipe.sh` step. No `gates.sh` gate is configured here.
+
 ## Deferred verifications
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
@@ -144,6 +228,21 @@ latent gap: the next instance would pass CI.
      perfectly. Exhaustive earning of assertions that passed on arrival is not
      an entry here; it goes to `/audit-mutations`. -->
 
+- **DV-1, AC-4: the rule probed against the tree it judges.** With
+  `scripts/check-boundaries.sh:527` (`if printf '%s\n' "$dv" | has_owner;
+  then`, under the file's pipefail) mutated into each of
+  `| LC_ALL=C grep -qi owner;`, `| grep -e owner -qi;` and `|& grep -qi
+  owner;`, `bash scripts/check-sigpipe.sh` MUST report
+  `scripts/check-boundaries.sh:527` and exit 1, three runs, each via
+  `bash scripts/mutate.sh scripts/check-boundaries.sh '527s#| has_owner;#<shape>#' -- bash scripts/check-sigpipe.sh`;
+  and with the file restored MUST report `0 finding(s)`. Owner: GATES (the
+  audit measured 0 findings on each; the fix is not built in RED). The result
+  is also `## Gate probes`.
+- **DV-2, the defect put back.** With the prefix-skipping of C-2 removed from
+  `early_reader` (the one `mutate.sh` expression GREEN names in `## Notes`),
+  AC-3's `LC_ALL=C` and `env` lines MUST leave the reported set in the new
+  describe, and nothing outside it fails. Owner: GATES.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -159,38 +258,26 @@ latent gap: the next instance would pass CI.
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-061` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
