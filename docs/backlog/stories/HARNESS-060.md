@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-060-the-tree-guards-stay-sighted-past-a-quot
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/check-grep-count.sh, scripts/check-sigpipe.sh, .claude/hooks/lib.sh, .claude/tests/grep-count.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/lib.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
+touches: [.claude/hooks/lib.sh, scripts/check-grep-count.sh, .claude/tests/lib.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -134,6 +134,104 @@ left. The audit's mutant C07, which removes the folding, survives for that reaso
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
+**Writes:** `.claude/hooks/lib.sh`, `scripts/check-grep-count.sh`, `.claude/tests/lib.test.sh`, `.claude/tests/grep-count.test.sh`, `.claude/tests/sigpipe.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+
+RED may amend any block below in place, with a reason; GREEN builds what the
+amended block says. Anchors read off the tree at `4b07ac2` (main after
+HARNESS-059), 2026-10-16. A named mechanism here is checkable, not sacred.
+
+**C-1. The cause, located (Lead PO, by reading `mask_shell_quotes`).**
+`.claude/hooks/lib.sh:111-247` is the masker. Inside a double-quoted string a
+`$(` moves it to `state = "subst"` with `depth = 1` (`:181-183`), and in that
+state the only characters it interprets are `(` (depth++) and `)` (depth--,
+back to `double` at zero); every other character, a quote included, is masked
+(`:187-193`). So `x="$(f '(a')"` reaches depth 2 inside the single quotes,
+comes back to 1 at the real `)`, and never returns to `double`, let alone
+`none`: from there to the end of the file every operator is masked and both
+guards see prose. That is why `x="$(f 'a)')"` and `x="$(f '(a)')"` are seen
+(the counts happen to balance) and `x="$(f '(a')"`, `x="$(f "(a")"` and
+`x="$(f \()"` are not. It is one state machine in one place, so the fix is one
+place too: `mask_shell_quotes` (GREEN, `lib.sh`), with no second parser.
+
+**C-2. The fix (GREEN, `lib.sh`, `state == "subst"` branch).** While in
+`subst`, the masker tracks the inner quoting before it counts a paren:
+a `'` opens a span in which nothing counts until the next `'`; a `"` opens a
+span in which nothing counts until the next unescaped `"`, with `\"`, `\\`,
+`\$` and `` \` `` consumed as pairs as the `double` state already does
+(`:170-176`); a `\` outside those spans consumes the next character; a nested
+`$(` is already a `(` and still counts. Every character inside the
+substitution stays MASKED as today, spans included: lib.sh's trap 2 ("`"$(
+... )"` is blanked wholesale") is deliberate for the phase lock, and this story
+changes only where the substitution ENDS, never what is visible inside it. The
+output for every input the current `lib.test.sh` masks must be byte-identical
+(RED pins that with a round-trip, below). A `#` inside the substitution is not
+a comment and is not treated as one.
+
+**C-3. `unwrap_quoted_subst` (GREEN, `scripts/check-grep-count.sh:277-295`)**
+counts parens the same way, ignoring quotes, so a `"$(f '(a')"` is never
+unwrapped. It gets the same rule as C-2: a `'`-span, a `"`-span with the
+escape pairs, and `\` outside them are stepped over while looking for the
+matching `)`. Two copies of one rule is what `rules.md` forbids, so GREEN
+prefers moving the paren-matching into one awk function in `lib.sh` that both
+`mask_shell_quotes` and this helper call (`lib.sh` is sourced by the guard
+already: `CLAUDE_PROJECT_DIR` is set for it at `:90`). If GREEN keeps two
+copies it says why in `## Notes`.
+
+**C-4. Continuation lines (GREEN, `check-grep-count.sh:201-221`).** The END
+block folds a backslash-continued group into `grp` (`:215`) but then calls
+`scan_line(raw[k])` per physical line (`:220`), so a `||` on the second line
+has no `grep -c` to its left. GREEN scans the folded group as one line: the
+text `raw[start]..raw[last]` joined with the trailing `\` and newline of each
+line replaced by a single space, passed once to `scan_line`, and a hit
+reported at `start` (the logical line, as AC-4 says). `D` is still reset per
+group. A continuation INSIDE a quoted string (`"a \` / `b"`) is masked by the
+masker before this code runs and is unaffected.
+
+**C-5. What RED pins, by file.**
+- `.claude/tests/lib.test.sh`, in the `mask_shell_quotes` describes
+  (`:108-250`): for each of the three AC-1 openers, masking
+  `x="$(f '(a')"` NEWLINE `y=a || b` leaves the second line's `||` unmasked
+  (and `echo "a || b"` after it masked, AC-5); and a round trip
+  (`mask | unmask`) of every existing fixture in those describes is unchanged.
+  The spans inside the substitution stay masked (trap 2).
+- `.claude/tests/grep-count.test.sh`, a new describe before `summary`
+  (`:288`): AC-1's three files (finding at line 2), its `|| true` control,
+  AC-4's continuation file (finding at line 1) and its control, AC-5's prose
+  line. Fixtures go under the fixture project's `scripts/`, as the existing
+  describes do (`:128-220`), never under the real tree.
+- `.claude/tests/sigpipe.test.sh`, a new describe before `summary` (`:1247`),
+  on a `make_project_fixture` like C-11's (`:639`): AC-2's file, reported at
+  line 3, with the `echo "a || printf 0"` prose line not reported.
+- AC-3 is a real-tree probe and is owned by GATES (DV-1 below); RED writes no
+  test that mutates the real tree. The existing AC-4 block of
+  `grep-count.test.sh` (`:265`) already asserts the real tree is clean, and
+  stays.
+
+**C-6. Floors.** `grep-count` 20 (`floors.conf:45`), `sigpipe` 82 (`:61`),
+`lib` 283 (`:46`), mirrored in `selftest.test.sh` (`:536`, `:553`, `:537`),
+raised to the executed counts RED measures, with the measurement recorded at
+the foot of `floors.conf`.
+
+**Oracle partition.** Every criterion is mechanical: which line a guard
+reports, or none, on a named fixture. No invented metric. Negative controls are
+in the criteria (`|| true`, the prose line) and C-5's round trip.
+
+**Callers of changed signatures.** No signature changes. `mask_shell_quotes`
+is read from stdin by `masked_lines` (`lib.sh:316-317`, both guards),
+`phase-guard.sh:145` (the lock's command parsing) and `lib.test.sh:110`,
+`:111`, `:601`, `:684`. `unmask_shell_quotes` at `lib.sh:1029` and
+`phase-guard.sh:211`. `unwrap_quoted_subst` only at `check-grep-count.sh:300`.
+All checked with `git grep` on 2026-10-16. The lock is a consumer of C-2:
+after a `"$(f '(a')"` it will now SEE the rest of a command where it used to
+see prose, which is the direction the lock wants (an unmasked redirect is
+judged; a masked one failed open). `phase-guard.test.sh` (378) and
+`worktree.test.sh` (73) judge that at the GATES self-test.
+
+**Required gate.** The harness self-test (`lib`, `grep-count`, `sigpipe`
+suites) in CI's `selftest` job, and CI's `check-grep-count.sh` /
+`check-sigpipe.sh` steps. No `gates.sh` gate is configured for this
+repository.
+
 ## Deferred verifications
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
@@ -167,6 +265,22 @@ left. The audit's mutant C07, which removes the folding, survives for that reaso
      perfectly. Exhaustive earning of assertions that passed on arrival is not
      an entry here; it goes to `/audit-mutations`. -->
 
+- **DV-1, AC-3: the rule probed against the tree it judges.** With
+  `.claude/tests/gates.test.sh:1894` mutated into
+  `h56_runs()    { grep -c '^ *run: ' "$T1" || printf 0; }`,
+  `bash scripts/check-grep-count.sh` MUST report
+  `.claude/tests/gates.test.sh:1894` and exit 1; and with the file restored,
+  MUST report 0 findings. Run via
+  `bash scripts/mutate.sh .claude/tests/gates.test.sh '1894s#"$T1"; }#"$T1" || printf 0; }#' -- bash scripts/check-grep-count.sh`.
+  Owner: GATES (the fix is not built in RED; the audit measured 0 findings on
+  this exact probe). The result is also the story's `## Gate probes` entry.
+- **DV-2, the defect put back.** With C-2's quote tracking removed from the
+  `subst` state of `mask_shell_quotes` (the mutation GREEN names in
+  `## Notes`, one `mutate.sh` expression on `.claude/hooks/lib.sh`), AC-1's
+  and AC-2's assertions MUST fail, in `grep-count.test.sh` and
+  `sigpipe.test.sh` respectively, and nothing else in those suites. Owner:
+  GATES.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -182,38 +296,26 @@ left. The audit's mutant C07, which removes the folding, survives for that reaso
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-060` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
