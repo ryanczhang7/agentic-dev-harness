@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-062-check-boundaries-matches-gate-names-owne
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [.claude/tests/boundaries.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
+touches: [.claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -101,6 +101,133 @@ survives `boundaries.test.sh` (125 passed, 0 failed), and each loosens a match
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
+**Writes:** `.claude/tests/boundaries.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+
+**Pinned by the Lead PO on 2026-10-17, on main at `c54d8ca` (HARNESS-061
+DONE).** `scripts/check-boundaries.sh` is NOT written by this story: the audit
+judged the four lines correct and the tests absent, and the Context above
+restates that. If RED finds a line wrong, that is an escalation, not a fix.
+Every path here classifies as `harness` (`bash scripts/classify.sh`), so the
+lock permits each phase to write any of them; the role table in `rules.md` is
+what keeps RED out of `check-boundaries.sh`. No `## Scaffold inventory` is owed:
+a `chore` owes one only when a source file changes without tests, and none does.
+RED may amend any block below in place with a reason; what the amended block
+says is what the story claims.
+
+**C-0. The lines under test, verified by `grep -n` today.** Line numbers are
+read from the tree, not from the audit, and RED re-reads them before using
+the expressions in C-5, because `sed` addresses by line:
+
+    scripts/check-boundaries.sh:99    has_waiver   exit (tolower(s) ~ /(^|[^a-z])waived([^a-z]|$)/) ? 0 : 1
+    scripts/check-boundaries.sh:116   has_owner    ... owner[^a-z]*:?[^a-z]*(red|green|gates|review|done)([^a-z]|$) ...
+    scripts/check-boundaries.sh:459   3e-i         REVIEW|DONE)
+    scripts/check-boundaries.sh:462   3e-i         "^[[:space:]]*PASS[[:space:]]+$g( |\(|$)"
+
+**C-1. Where the tests go, and with what.** New assertions in
+`.claude/tests/boundaries.test.sh`, inside the existing `describe` blocks that
+own each rule, or new `describe` blocks beside them - RED's choice, said in
+`## Test plan`. Everything they need exists in the file already:
+`run_boundaries` (sets `$out` and `$rc`), `refused <what> <needle>` (message
+AND non-zero exit), `assert_contains`, `assert_eq`, `whole_line`, `$WANT_3H`
+(`:101`, the exact 3h refusal line), `story_on_branch [type] [extra-frontmatter-line]`
+(`:72`, writes T-1 at `phase: REVIEW` with the body from stdin), `story_blocked
+<phase> [required_gates]` (`:532`, a REAL gate record from `gates.sh`, with a
+`unit` gate that passes), `gates_recorded <what>` (`:1390`), `write_conf`
+and `commit_all`. Rule 3e-i (`:459-468`) reads the `## Gate results` SECTION
+TEXT, so a pasted record is enough for it; the separate tree-hash rule (3e)
+will also refuse a pasted record, with a different message, which is why
+every refusal below asserts the 3e-i needle and every acceptance asserts the
+`ok` line rather than `$rc`.
+
+**C-2. One signature changes.** `story_on_branch` gains a THIRD optional
+argument, the phase, defaulting to `REVIEW`, so that every existing call
+writes the same bytes it writes today (the HARNESS-054 shape for its second
+argument). Callers, grep-listed today: 31 mentions in
+`.claude/tests/boundaries.test.sh`, of which 4 pass arguments (`:1397`,
+`:1407`, `:1422`, `:1432`, all `spike '...'`) and the rest pass none; no other
+file calls it (`git grep -l story_on_branch` today: this suite, and prose in
+the HARNESS-003, -006, -037 and -054 story files). RED's handoff states that this list was checked against
+the tree. RED may instead write a separate helper and leave `story_on_branch`
+alone, with a reason.
+
+**C-3. The fixtures, one per criterion, with the exact needles.**
+
+- *AC-1 (B08).* A REVIEW story with `required_gates: [unit]` whose
+  `## Gate results` carries `PASS         unit-slow (1s)` and no line
+  matching `PASS` + spaces + `unit` + (space, `(` or end of line). Pasted,
+  via `story_on_branch feature 'required_gates: [unit]'` with the section on
+  stdin, or real, via a `write_conf` naming a gate `unit-slow` (gate ids are
+  free-form fields; `gates.sh:148-157` accepts the hyphen) and
+  `gates_recorded` - either is fine; say which. Refusal needle, from `:465`:
+  `frontmatter requires gate 'unit', but the recorded run has no PASS for it`.
+  Negative controls, each asserted on the `ok` line from `:463`
+  (`ok    story-required gate 'unit' passed in the recorded run`): a pasted
+  `PASS         unit (12s)` and a pasted `PASS         unit` ending the line.
+  The existing `story_blocked REVIEW '[unit]'` case at `:1361` already covers
+  the real-record `(` form and stays as it is.
+- *AC-2 (B04).* A `## Deferred verifications` whose only owner line is
+  `owner: banana` (lower case, colon, one word - exactly the shape the mutant
+  admits), carrying a fenced result so that 3h does not fire first. Needle:
+  `does not declare an owner`. Control: the same section with `Owner: GREEN`
+  asserts `ok    ## Deferred verifications names the phase that owns each entry`
+  - every existing control says GATES, and the mutant keeps GATES.
+- *AC-3 (B05).* A `## Deferred verifications` with `Owner: GATES`, no fenced or
+  four-space-indented block, and the word `unwaived` in the prose (and no
+  `waived` as a word - re-read the prose for one). Needle: `## Deferred
+  verifications has no result and no waiver`, and `whole_line` against
+  `$WANT_3H`. Controls: `waived` lower case mid-sentence, and `Waived:` at the
+  start of a line, each asserting `ok    ## Deferred verifications carries an
+  explicit waiver`. The existing `WAIVED -` case at `:702` stays.
+- *AC-4 (B07).* A `phase: DONE` story with `required_gates: [unit]` and a
+  `## Gate results` carrying `PASS         unit-slow (1s)` and no `PASS unit`.
+  Needle: `frontmatter requires gate 'unit', but the recorded run has no PASS
+  for it`. This is the one case that needs C-2. Under B07 the rule is skipped at
+  DONE and the needle never prints; other rules still exit non-zero, which is
+  why `refused` checks the message as well as the status.
+
+**C-4. The floor.** `boundaries` is floored at **125** in
+`.claude/tests/floors.conf:39` and mirrored in the COUNTS table at
+`.claude/tests/selftest.test.sh:530`. RED raises both to the count it reads
+off its own run of `bash scripts/selftest.sh boundaries` (the `N` of
+`boundaries: N passed, M failed`, N+M executed), in the RED commit, with a
+dated comment in `selftest.test.sh` beside the HARNESS-054 one at `:446-455`.
+The audit measured **125 passed, 0 failed** on `d1db573`; the orchestrator's
+own baseline run on this tree is pasted in `## Notes` (it takes more than five
+minutes here, which matters for C-5).
+
+**C-5. What earns the tests.** Every assertion this story adds passes on
+arrival, because the four lines are correct today. So each is earned the way
+`rules.md` says a test written against existing code is earned: one mutation
+through `scripts/mutate.sh`, the one assertion it targets going red, the
+restore verified, the output pasted into `## Regressions` by RED (the Test
+Developer owns that section). The four expressions, dry-run today against the
+line numbers in C-0 so that each changes exactly its one line (shown here as
+typed inside single quotes at a shell; `\$` is deliberate):
+
+    B05  bash scripts/mutate.sh scripts/check-boundaries.sh '99s#(^|\[^a-z\])waived(\[^a-z\]|$)#waived#' -- bash scripts/selftest.sh boundaries
+    B04  bash scripts/mutate.sh scripts/check-boundaries.sh '116s#(red|green|gates|review|done)#[a-z]*#' -- bash scripts/selftest.sh boundaries
+    B07  bash scripts/mutate.sh scripts/check-boundaries.sh '459s#REVIEW|DONE)#REVIEW)#' -- bash scripts/selftest.sh boundaries
+    B08  bash scripts/mutate.sh scripts/check-boundaries.sh '462s#\$g( |\\(|\$)"#$g"#' -- bash scripts/selftest.sh boundaries
+
+Expected under each: the suite goes from N/0 to N-k passed, k failed, where k
+is the number of assertions that criterion's fixture makes and the failures
+name only that criterion; and `=== mutate: ... restored (verified byte-for-byte
+...) ===` closes each run, with `bash scripts/mutate.sh --check` clean after the
+last. Four runs of a five-minute suite is the budget here, and it is the one
+`rules.md` requires (one per test written against existing code); the
+"defect put back" for the story's central claim is these same four, not a
+fifth. Run them one at a time: the suite and `gates.sh` share a run lock
+(HARNESS-034), and nothing else may run in this tree while one is going.
+
+**C-6. Oracle partition.** All four criteria are mechanical: an exact message
+printed or not printed for an exact fixture. Nothing is settled by
+measurement and nothing needs an invented metric; the only numbers in the story
+are the line numbers in C-0 and the floor in C-4.
+
+**C-7. Not constrained.** The wording of RED's `describe` titles and assertion
+names; whether AC-1's fixture is pasted or real; whether C-2 is a third
+argument or a new helper.
+
 ## Deferred verifications
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
@@ -134,6 +261,17 @@ survives `boundaries.test.sh` (125 passed, 0 failed), and each loosens a match
      perfectly. Exhaustive earning of assertions that passed on arrival is not
      an entry here; it goes to `/audit-mutations`. -->
 
+- **DV-1 — RED's mutation table, checked by a run RED did not make.** RED's
+  `## Regressions` will claim four mutations, each turning only its own
+  criterion's assertions red. The orchestrator re-runs ONE of them, the one
+  whose predicted catch is the smallest number of assertions (B07, AC-4, unless
+  RED's table says otherwise), and compares the count RED recorded with the
+  count it sees, then confirms `bash scripts/selftest.sh boundaries` is back at
+  N/0 and `bash scripts/mutate.sh --check` is clean. Falsifiable condition:
+  the failing assertions are exactly the ones RED named, and no fewer. RED
+  cannot discharge this - it is a check on RED's claim, so it is made by
+  someone else. **Owner: GATES.**
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -149,38 +287,26 @@ survives `boundaries.test.sh` (125 passed, 0 failed), and each loosens a match
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-062` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
