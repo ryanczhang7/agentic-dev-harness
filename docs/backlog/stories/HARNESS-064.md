@@ -7,7 +7,7 @@ type: chore
 status: todo
 phase: PLANNED
 branch: story/HARNESS-064-gates-sh-story-refuses-an-id-that-is-not
-depends_on: [HARNESS-059] # story ids; phase.sh refuses to start this story until they are DONE
+depends_on: [HARNESS-059, HARNESS-060] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---

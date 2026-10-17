@@ -108,8 +108,57 @@ json_is_true() {
 # Control characters are used because no real command line contains them, so
 # the round trip cannot corrupt a path that had one of them already.
 
+# HARNESS_SUBST_AWK   The paren matcher for the inside of a `$( ... )`, as awk
+# source that a caller PREPENDS to its own program. ONE copy, two callers:
+# mask_shell_quotes below (where a quoted substitution ends) and
+# check-grep-count.sh unwrap_quoted_subst (which quotes to blank). rules.md is
+# explicit about what happens to a rule that gets a private copy per caller,
+# and HARNESS-060 measured the cost here: with a separate copy in the guard, the
+# guard suite stayed green with this matcher broken.
+#
+# THE DEFECT IT REPLACES (HARNESS-060): the matcher counted every paren, quoted
+# or not, so a quoted substitution whose argument held a quoted, unpaired
+# paren - x="$(f Q(aQ)" with Q a single quote - never came back to depth zero, and every operator from there to the end of the file was
+# masked. Both tree guards went blind past such a line.
+#
+# subst_step(s, j)   One unit of text inside a substitution, at column j of s.
+#   SUBST_IN   the inner quoting, held by the CALLER across calls and lines:
+#              "" (code), "s" (a single-quoted span), "d" (a double-quoted
+#              span). Reset it to "" on entering a substitution.
+#   returns    how many characters the unit spans (1, or 2 for an escape pair)
+#   SUBST_D    +1 for a paren that opens, -1 for one that closes, else 0. Only
+#              a paren in code counts; a nested `$(` is a paren and counts.
+# A single-quoted span ends at the next single quote; a double-quoted span at
+# the next double quote not escaped, with the four pairs bash honours there
+# (backslash before dollar, backtick, double quote, backslash) stepped over
+# whole; a backslash in code takes the next character with it. No apostrophe
+# appears in this program: it is a single-quoted shell string.
+HARNESS_SUBST_AWK='
+function subst_step(s, j,   c, nx) {
+  if (_SS_Q == "") { _SS_Q = sprintf("%c", 39); _SS_BS = sprintf("%c", 92) }
+  SUBST_D = 0
+  c = substr(s, j, 1)
+  if (SUBST_IN == "s") { if (c == _SS_Q) SUBST_IN = ""; return 1 }
+  if (SUBST_IN == "d") {
+    if (c == _SS_BS) {
+      nx = substr(s, j + 1, 1)
+      if (nx == "$" || nx == "`" || nx == "\"" || nx == _SS_BS) return 2
+      return 1
+    }
+    if (c == "\"") SUBST_IN = ""
+    return 1
+  }
+  if (c == _SS_BS) return (j < length(s)) ? 2 : 1
+  if (c == _SS_Q)  { SUBST_IN = "s"; return 1 }
+  if (c == "\"")   { SUBST_IN = "d"; return 1 }
+  if (c == "(")    SUBST_D = 1
+  else if (c == ")") SUBST_D = -1
+  return 1
+}
+'
+
 mask_shell_quotes() {
-  awk '
+  awk "$HARNESS_SUBST_AWK"'
     function maskchar(c) {
       if (c == "|")  return "\001"
       if (c == "&")  return "\002"
@@ -142,6 +191,16 @@ mask_shell_quotes() {
         # Inside a heredoc body: everything is data until the delimiter line.
         if (delim != "") {
           t = s; gsub(/^[ \t]+|[ \t]+$/, "", t)
+          if (state == "subst") {
+            # A body opened inside a quoted substitution: masked whole, its
+            # delimiter line too, and joined as the substitution was before
+            # HARNESS-060, so the bytes are unchanged and only the state
+            # after it is.
+            out = out maskstr(s)
+            if (t == delim) delim = ""
+            if (i < NR) out = out "\010"
+            continue
+          }
           if (t == delim) { out = out s; delim = "" } else out = out maskstr(s)
           if (i < NR) out = out "\n"
           continue
@@ -179,18 +238,38 @@ mask_shell_quotes() {
             # redirect in there is masked too, which fails open, as the guard
             # already does for any target with a `$` in it.
             if (c == "$" && substr(s, j + 1, 1) == "(") {
-              out = out c "("; state = "subst"; depth = 1; j += 2; continue
+              out = out c "("; state = "subst"; depth = 1; SUBST_IN = ""; j += 2; continue
             }
             if (c == "\"") { out = out c; state = "none" } else out = out maskchar(c)
             j++; continue
           }
           if (state == "subst") {
-            if (c == "(") depth++
-            else if (c == ")") {
+            # Where the substitution ENDS is decided by subst_step, which
+            # steps over quoted spans and escapes (HARNESS-060). What is
+            # emitted is unchanged: every character in here is masked, and
+            # only the closing paren is raw.
+            if (SUBST_IN == "") {
+              # A heredoc opened in here is a BODY, not code: the awk rules of
+              # both tree guards live in "$(cat <<AWKEOF ... )", full of
+              # unpaired quotes. `<<<` is a here-string and opens nothing.
+              if (c == "<" && substr(s, j, 3) == "<<<") { out = out maskstr("<<<"); j += 3; continue }
+              if (c == "<" && substr(s, j + 1, 1) == "<" && match(substr(s, j), HD)) {
+                w = substr(s, j, RLENGTH)
+                out = out maskstr(w)
+                j += RLENGTH
+                sub(/^<<-?[ \t]*/, "", w)
+                gsub("[\"" Q "]", "", w)
+                pending = w
+                continue
+              }
+            }
+            k = subst_step(s, j)
+            if (SUBST_D == 1) depth++
+            else if (SUBST_D == -1) {
               depth--
               if (depth == 0) { out = out c; state = "double"; j++; continue }
             }
-            out = out maskchar(c); j++; continue
+            out = out maskstr(substr(s, j, k)); j += k; continue
           }
 
           # Unquoted. A comment runs to the end of the line and is data: an

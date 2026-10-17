@@ -2111,7 +2111,7 @@ in_kept() {
 # entries <prefix>   gate-logs/ entries starting with <prefix>, sorted, space-separated.
 entries() { ( cd "$KLOG" 2>/dev/null && ls -1 | grep -F -- "$1" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//' ); }
 # lineno <exact line> <text>   1-based line of the first whole-line match, or empty.
-lineno() { printf '%s\n' "$2" | grep -m1 -nxF -- "$1" | cut -d: -f1; }
+lineno() { grep -m1 -nxF -- "$1" <<<"$2" | cut -d: -f1; }
 k_tree()   { ( cd "$FIX" && CLAUDE_PROJECT_DIR="$FIX" bash -c '. .claude/hooks/lib.sh; gate_tree_hash' 2>/dev/null ); }
 # k_commit   The commit line the contract specifies, computed here independently.
 k_commit() {
@@ -2902,14 +2902,14 @@ seam() {
 # assert_line <what> <line> <output>   <line> is a WHOLE line of <output>, not a
 # substring of one: a refusal naming `ab` must not pass for `b`.
 assert_line() {
-  if printf '%s\n' "$3" | grep -Fxq -- "$2"; then _ok "$1"
+  if grep -Fxq -- "$2" <<<"$3"; then _ok "$1"
   else _bad "$1" "expected a line exactly: $2
 actual:   $3"; fi
 }
 
 # assert_no_line <what> <line> <output>
 assert_no_line() {
-  if printf '%s\n' "$3" | grep -Fxq -- "$2"; then _bad "$1" "expected NO line: $2
+  if grep -Fxq -- "$2" <<<"$3"; then _bad "$1" "expected NO line: $2
 actual:   $3"
   else _ok "$1"; fi
 }
@@ -2940,16 +2940,16 @@ describe "HARNESS-052 AC-6: a gate that rewrites project.conf in place cannot ma
 #   other      anything else, which is not an acceptable outcome either
 ac1_outcome() {
   if [ "$2" = 0 ] \
-     && printf '%s\n' "$1" | grep -Fxq '=== gate: later (required) ===' \
-     && printf '%s\n' "$1" | grep -q '^PASS         later (' \
-     && printf '%s\n' "$1" | grep -Fxq 'All required gates passed (2 ran, 0 unconfigured, 0 known).'; then
+     && grep -Fxq '=== gate: later (required) ===' <<<"$1" \
+     && grep -q '^PASS         later (' <<<"$1" \
+     && grep -Fxq 'All required gates passed (2 ran, 0 unconfigured, 0 known).' <<<"$1"; then
     printf 'ran'
   elif [ "$2" = 1 ] \
-     && printf '%s\n' "$1" | grep -Fxq -- "$(refusal later)" \
-     && ! printf '%s\n' "$1" | grep -Fq 'All required gates passed'; then
+     && grep -Fxq -- "$(refusal later)" <<<"$1" \
+     && ! grep -Fq 'All required gates passed' <<<"$1"; then
     printf 'refused'
-  elif printf '%s\n' "$1" | grep -Fq 'All required gates passed' \
-     && ! printf '%s\n' "$1" | grep -Fq 'later'; then
+  elif grep -Fq 'All required gates passed' <<<"$1" \
+     && ! grep -Fq 'later' <<<"$1"; then
     printf 'false-cert'
   else
     printf 'other'
@@ -2982,7 +2982,7 @@ gate | later | required | . | exit 1
 EOF
 out="$(gates_isolated)"; rc=$?
 assert_eq "a failing required gate after an in-place rewrite fails the run" "1" "$rc"
-if printf '%s\n' "$out" | grep -q '^FAIL         later ('; then
+if grep -q '^FAIL         later (' <<<"$out"; then
   _ok "and the summary has a FAIL line for it, its own or the refusal"
 else
   _bad "and the summary has a FAIL line for it, its own or the refusal" \
@@ -3010,7 +3010,7 @@ banner_no="$(first_line_no '=== gate:' "$out_b")"
 if [ -n "$note_no" ]; then
   _ok "the seam announces itself with a note: GATES_FAULT_LOSE is set line"
   note_line="$(printf '%s\n' "$out_b" | sed -n "${note_no}p")"
-  if printf '%s\n' "$note_line" | tr -c 'A-Za-z0-9_.-' '\n' | grep -Fxq b; then
+  if grep -Fxq b <<<"$(tr -c 'A-Za-z0-9_.-' '\n' <<<"$note_line")"; then
     _ok "and the note names the gate it will lose"
   else
     _bad "and the note names the gate it will lose" "note line does not name 'b': $note_line"
@@ -3077,7 +3077,7 @@ git -C "$FIX" add -A 2>/dev/null
 rm -f "$FIX/.claude/state/last-gate-run"
 out="$(seam b --story T-47)"
 rec="$(awk '/^## Gate results/ { f = 1; next } f && /^## / { exit } f' "$FIX/docs/backlog/stories/T-47.md")"
-if printf '%s\n' "$rec" | grep -Eq '^ *result: fail( |$)'; then
+if grep -Eq '^ *result: fail( |$)' <<<"$rec"; then
   _ok "a full run that lost a gate records result: fail"
 else
   _bad "a full run that lost a gate records result: fail" "## Gate results:
