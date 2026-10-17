@@ -5,7 +5,7 @@ slug: check-boundaries-matches-gate-names-owne
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-062-check-boundaries-matches-gate-names-owne
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -313,6 +313,10 @@ name, below the table.
 | SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
 **Resolved:**
+
+- PLANNED, orchestrator (`lead-po` role, this session), 2026-10-17: **Fable 5.1** (`claude-fable-5-1`), the session's model. Planned `fable`; no change.
+- RED, `test-developer`, 2026-10-17: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override passed. Planned `opus`; no change.
+- GREEN, 2026-10-17: **no dispatch.** RED's handoff predicted a no-op and the orchestrator verified it rather than hand an agent nothing to do: `git diff f2181f4 ee345c2 --stat -- scripts .claude/hooks` is empty, and the boundaries suite re-run on the RED commit is pasted in `## Notes`.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -953,4 +957,41 @@ check rc=0
      named here. -->
 
 ## Notes
+
+1. **PO decision (PLANNED, 2026-10-17).** `scripts/check-boundaries.sh` is
+   not written by this story: the audit judged the four lines correct, and
+   every criterion is earned by its mutant rather than by a red run. GREEN is
+   therefore expected to be a no-op, and is verified by the orchestrator
+   rather than dispatched (`## Model guidance`).
+2. **The orchestrator's baseline run says nothing, and here is why.** A
+   `bash scripts/selftest.sh boundaries` started on the clean tree at
+   2026-10-17T20:43:49Z (before RED) ended with
+   `assertion floors: 0 of 1 suite(s) met their declared floor. 1 of 1
+   harness suite(s) FAILED.` - because RED raised the `boundaries` floor to
+   136 in `floors.conf` while that run was still going, and the floor is read
+   back at the end against the 125 the old tree executed. The per-suite output
+   was not captured. The audit's `125 passed, 0 failed` on `d1db573` and RED's
+   `136 passed, 0 failed` (handoff) stand; the GREEN re-run below is the
+   orchestrator's own count.
+3. **C-4 corrected by RED, accepted.** The floor-raise comments live in
+   `.claude/tests/floors.conf` (HARNESS-054's at `:446-455`), not in
+   `selftest.test.sh` as the Contract said; the COUNTS line at
+   `selftest.test.sh:530` is the only change there.
+4. **DV-1's target changes to B04.** RED's table shows AC-4 carrying two
+   assertions under B07 (the refusal and the ok line at DONE), so the single-
+   assertion catch is B04 (`owner: banana`, AC-2, 135/1). GATES runs B04.
+5. **GREEN verified as a no-op by the orchestrator (2026-10-17).** On the RED
+   commit `ee345c2`, with `git diff f2181f4 ee345c2 --stat -- scripts
+   .claude/hooks` empty, `nohup bash scripts/selftest.sh boundaries`
+   (started 22:00:38Z, finished 22:11:59Z, 11m21s, detached under the run
+   lock):
+
+    boundaries: 136 passed, 0 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (136 assertions executed, 136 declared).
+    1 harness suite(s) passed.
+
+   `bash scripts/gates.sh --fast` at the end of RED: `All required gates
+   passed (0 ran, 5 unconfigured, 0 known)` - this repository configures no
+   gates, so the self-test is the gate, as the Context says.
 
