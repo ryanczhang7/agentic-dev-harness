@@ -4,8 +4,8 @@ title: The tree guards stay sighted past a quoted paren inside a quoted substitu
 slug: the-tree-guards-stay-sighted-past-a-quot
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-060-the-tree-guards-stay-sighted-past-a-quot
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/check-grep-count.sh, .claude/tests/lib.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -364,6 +364,69 @@ repository.
   and AC-2's assertions MUST fail, in `grep-count.test.sh` and
   `sigpipe.test.sh` respectively, and nothing else in those suites. Owner:
   GATES.
+
+
+**Results (GATES, orchestrator, 2026-10-17).** DV-1: the real-tree probe that
+the audit measured at 0 findings is now reported at the mutated line, and the
+restored tree is clean. DV-2: the old count-every-paren rule, put back into
+the one shared matcher (`subst_step`, `lib.sh:139`), turns red the HARNESS-060
+assertions of both suites and nothing outside them. It turns red AC-1 and AC-2,
+and also the AC-5 and C-3 pins and the `|| true` controls that share the
+matcher. That is the reading of "nothing else" GREEN flagged: nothing
+outside the story's describes. AC-4 stays green under it, as it should,
+because C-4 does not use the matcher. Each file came back byte for byte.
+
+```
+--- DV-1 (AC-3, real-tree probe)
+$ bash scripts/mutate.sh .claude/tests/gates.test.sh '1894s#"$T1"; }#"$T1" || printf 0; }#' -- bash scripts/check-grep-count.sh
+=== mutate: .claude/tests/gates.test.sh (1 line(s) changed by 1894s#"$T1"; }#"$T1" || printf 0; }#) ===
+  1894 - h56_runs()    { grep -c '^ *run: ' "$T1"; }
+  1894 + h56_runs()    { grep -c '^ *run: ' "$T1" || printf 0; }
+=== mutate: running bash scripts/check-grep-count.sh ===
+.claude/tests/gates.test.sh:1894: grep -c prints 0 AND exits 1 on no-match, so this printing fallback appends a second value; the caller gets "0\n0", which equals neither the count nor zero
+check-grep-count: scanned 49 shell file(s), 1 finding(s)
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/.claude_tests_gates.test.sh.20261017T055646Z.356698.bak) ===
+$ bash scripts/check-grep-count.sh   # restored tree
+check-grep-count: scanned 49 shell file(s), 0 finding(s)
+--- DV-2 (grep-count half)
+$ bash scripts/mutate.sh .claude/hooks/lib.sh 's#^  SUBST_D = 0$#  SUBST_D = 0; c = substr(s, j, 1); if (c == "(") SUBST_D = 1; else if (c == ")") SUBST_D = -1; return 1#' -- bash .claude/tests/grep-count.test.sh
+=== mutate: .claude/hooks/lib.sh (1 line(s) changed by s#^  SUBST_D = 0$#  SUBST_D = 0; c = substr(s, j, 1); if (c == "(") SUBST_D = 1; else if (c == ")") SUBST_D = -1; return 1#) ===
+  139 -   SUBST_D = 0
+  139 +   SUBST_D = 0; c = substr(s, j, 1); if (c == "(") SUBST_D = 1; else if (c == ")") SUBST_D = -1; return 1
+=== mutate: running bash .claude/tests/grep-count.test.sh ===
+    FAIL HARNESS-060 AC-1: after the SQ opener, a printing fallback on line 2 is reported
+    FAIL HARNESS-060 AC-1 control: after the SQ opener, || true is silent and the printing fallback below it is not
+    FAIL HARNESS-060 AC-5: after the SQ opener, quoted || prose is not reported and the real fallback after it is
+    FAIL HARNESS-060 AC-1: after the DQ opener, a printing fallback on line 2 is reported
+    FAIL HARNESS-060 AC-1 control: after the DQ opener, || true is silent and the printing fallback below it is not
+    FAIL HARNESS-060 AC-5: after the DQ opener, quoted || prose is not reported and the real fallback after it is
+    FAIL HARNESS-060 AC-1: after the BS opener, a printing fallback on line 2 is reported
+    FAIL HARNESS-060 AC-1 control: after the BS opener, || true is silent and the printing fallback below it is not
+    FAIL HARNESS-060 AC-5: after the BS opener, quoted || prose is not reported and the real fallback after it is
+    FAIL HARNESS-060 AC-1: the census names three files and three findings
+    FAIL HARNESS-060 AC-1: and the guard exits non-zero on them
+    FAIL HARNESS-060 C-3: a printing fallback inside a quoted substitution is reported even when its pattern holds a quoted paren
+grep-count: 26 passed, 12 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/.claude_hooks_lib.sh.20261017T060357Z.369700.bak) ===
+--- DV-2 (sigpipe half)
+$ bash scripts/mutate.sh .claude/hooks/lib.sh 's#^  SUBST_D = 0$#  SUBST_D = 0; c = substr(s, j, 1); if (c == "(") SUBST_D = 1; else if (c == ")") SUBST_D = -1; return 1#' -- bash .claude/tests/sigpipe.test.sh
+=== mutate: .claude/hooks/lib.sh (1 line(s) changed by s#^  SUBST_D = 0$#  SUBST_D = 0; c = substr(s, j, 1); if (c == "(") SUBST_D = 1; else if (c == ")") SUBST_D = -1; return 1#) ===
+  139 -   SUBST_D = 0
+  139 +   SUBST_D = 0; c = substr(s, j, 1); if (c == "(") SUBST_D = 1; else if (c == ")") SUBST_D = -1; return 1
+=== mutate: running bash .claude/tests/sigpipe.test.sh ===
+    FAIL HARNESS-060 AC-2: after the SQ opener, a pipeline into grep -q under pipefail on line 3 is reported
+    FAIL HARNESS-060 AC-5: after the SQ opener, quoted pipelines are not reported and the real one after them is
+    FAIL HARNESS-060 AC-2: after the DQ opener, a pipeline into grep -q under pipefail on line 3 is reported
+    FAIL HARNESS-060 AC-5: after the DQ opener, quoted pipelines are not reported and the real one after them is
+    FAIL HARNESS-060 AC-2: after the BS opener, a pipeline into grep -q under pipefail on line 3 is reported
+    FAIL HARNESS-060 AC-5: after the BS opener, quoted pipelines are not reported and the real one after them is
+    FAIL HARNESS-060 AC-2: the census is exact - three files, three with pipefail, three findings
+sigpipe: 82 passed, 7 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/.claude_hooks_lib.sh.20261017T061006Z.380973.bak) ===
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+DV-DONE
+```
 
 ## Amendments
 
@@ -768,10 +831,21 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-17T06:28:24Z
+    commit: 676a68f
+    tree:   03267c64d3b8a57971d10638888b937fc2741ac0
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -786,6 +860,24 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
        * what was broken, and where
        * the gate output proving it failed
        * confirmation the probe was reverted -->
+
+**GP-1 (GATES, 2026-10-17): `check-grep-count.sh` probed against a real line
+of the tree.** It is the same run as DV-1 in `## Deferred verifications`, where
+the full output is pasted: `.claude/tests/gates.test.sh:1894` mutated into a
+printing fallback is reported. Before this story the same probe reported
+`scanned 49 shell file(s), 0 finding(s)` (audit F2, R00).
+
+    --- DV-1 (AC-3, real-tree probe)
+    $ bash scripts/mutate.sh .claude/tests/gates.test.sh '1894s#"$T1"; }#"$T1" || printf 0; }#' -- bash scripts/check-grep-count.sh
+    === mutate: .claude/tests/gates.test.sh (1 line(s) changed by 1894s#"$T1"; }#"$T1" || printf 0; }#) ===
+      1894 - h56_runs()    { grep -c '^ *run: ' "$T1"; }
+      1894 + h56_runs()    { grep -c '^ *run: ' "$T1" || printf 0; }
+    === mutate: running bash scripts/check-grep-count.sh ===
+    .claude/tests/gates.test.sh:1894: grep -c prints 0 AND exits 1 on no-match, so this printing fallback appends a second value; the caller gets "0\n0", which equals neither the count nor zero
+    check-grep-count: scanned 49 shell file(s), 1 finding(s)
+    === mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/.claude_tests_gates.test.sh.20261017T055646Z.356698.bak) ===
+    $ bash scripts/check-grep-count.sh   # restored tree
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
 
 ## Scaffold inventory
 
@@ -865,3 +957,20 @@ nothing else" is met if "nothing else" means outside the HARNESS-060 describe.
 It is not met if it means AC-1's lines alone, because the AC-5 and C-3 pins in
 that describe share the matcher and fail with it.
 
+
+**Self-test at GATES (orchestrator, 2026-10-17).** `bash scripts/selftest.sh`,
+run detached and alone after `bash scripts/gates.sh` recorded a pass, exited 0
+in 5433 s (about 90 minutes). That is nearly twice HARNESS-059's 2894 s on this
+host the day before. Afterwards no self-test, gate or mutation process was
+left running (`ps -ef` showed none), so no orphaned run explains it. Cause not
+known; the suites this story touches grew by 66 assertions, which does not
+account for it either.
+
+    assertion floors: all 26 suite(s) met their declared floor (3612 assertions executed, 3386 declared).
+    26 harness suite(s) passed.
+
+**Handoff check.** RED's mutation claims were run once each, through the
+story's deferred verifications: DV-2's one expression on the shared matcher
+reddened grep-count 12 and sigpipe 7, matching the handoff's per-suite counts
+(13 and 7 red in RED, less AC-4's one, which does not use the matcher). The rest
+of the table is `/audit-mutations`' work.
