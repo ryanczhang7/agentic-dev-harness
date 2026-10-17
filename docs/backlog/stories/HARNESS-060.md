@@ -4,8 +4,8 @@ title: The tree guards stay sighted past a quoted paren inside a quoted substitu
 slug: the-tree-guards-stay-sighted-past-a-quot
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-060-the-tree-guards-stay-sighted-past-a-quot
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/check-grep-count.sh, .claude/tests/lib.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -976,3 +976,18 @@ reddened grep-count 12 and sigpipe 7, matching the handoff's per-suite counts
 of the table is `/audit-mutations`' work.
 
 PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/147 (opened 2026-10-17 from `fce54b7`).
+
+**CI (REVIEW -> DONE, 2026-10-17).** PR #147 merged as `1c4f74a`. The `gates`
+run on the PR's last commit `582e209`,
+https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/39015794500,
+took 2m20s (08:01:15Z to 08:03:35Z) against the workflow's 45-minute limit.
+That is in line with HARNESS-059's 2m37s, so the 90-minute local self-test
+reflects this host on that day, not the change. Its log:
+
+    assertion floors: all 26 suite(s) met their declared floor (3612 assertions executed, 3386 declared).
+    26 harness suite(s) passed.
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+The `boundaries` run, https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/39015794507,
+passed in 10 s. No gate reached REVIEW marked pending CI.
