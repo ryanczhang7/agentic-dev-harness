@@ -5,7 +5,7 @@ slug: the-tree-guards-stay-sighted-past-a-quot
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-060-the-tree-guards-stay-sighted-past-a-quot
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/lib.sh, scripts/check-grep-count.sh, .claude/tests/lib.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -399,6 +399,7 @@ name, below the table.
 
 - PLANNED: `lead-po` orchestrator session, Fable 5.1 (`claude-fable-5-1`).
 - RED: `test-developer`, dispatched with `model: opus`; it reported Opus 5.5 (`claude-opus-5-5`). The C-7 rewrite of nine `gates.test.sh` lines was made by the orchestrator session itself, then on Opus 5.5.
+- GREEN: `feature-developer`, dispatched with `model: opus`; it reported Opus 5.5 (`claude-opus-5-5`).
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -799,4 +800,68 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
      named here. -->
 
 ## Notes
+
+**GREEN (feature-developer, 2026-10-17, resolved model Opus 5.5
+`claude-opus-5-5`, no override).**
+
+What changed:
+- `.claude/hooks/lib.sh`: new `HARNESS_SUBST_AWK`, awk source holding ONE
+  function, `subst_step(s, j)`. It is the paren matcher for the inside of a
+  `$( ... )`, with the inner quoting in the caller-held global `SUBST_IN`
+  (`""`, `"s"`, `"d"`). It returns the unit's width (1, or 2 for an escape
+  pair) and sets `SUBST_D` to +1/-1/0. `mask_shell_quotes` prepends it
+  (`awk "$HARNESS_SUBST_AWK"'...'`) and uses it in `state == "subst"` (C-2).
+  Emitted bytes are unchanged: every character inside is still `maskchar`ed
+  and only the closing `)` is raw. The C-2 heredoc amendment lives in the
+  masker, not in the shared function, because only the masker sees lines: in
+  `subst` with `SUBST_IN == ""`, `<<<` is stepped over and a `HD` opener sets
+  `pending`. A body opened inside a substitution is masked whole, delimiter line
+  included, and joined with `\010` exactly as before, so its bytes do not change
+  and only the state after it does.
+- `scripts/check-grep-count.sh`: `unwrap_quoted_subst` prepends the same
+  `HARNESS_SUBST_AWK` and finds the matching `)` with `subst_step` (C-3). There
+  is one copy of the rule, so DV-2 needs one expression. C-4: the END block
+  joins `raw[start..last]` (each trailing `\` plus whitespace replaced by one
+  space), calls `scan_line` once, and reports at `start`. `D` is still reset per
+  group.
+
+Measured counts: `lib: 324 passed, 0 failed`, `grep-count: 38 passed, 0
+failed`, `sigpipe: 89 passed, 0 failed`, `phase-guard: 378 passed, 0 failed`,
+`worktree: 73 passed, 0 failed`. Real tree: `check-sigpipe: scanned 49 shell
+file(s), 45 with pipefail, 0 finding(s)` and `check-grep-count: scanned 49
+shell file(s), 0 finding(s)`. `gates.sh --fast`: `All required gates passed (0
+ran, 5 unconfigured, 0 known)`. `mutate.sh --check`: clean.
+
+Negative controls, measured against the shipped code on a scratch fixture (a
+copy of `scripts/` and `.claude/hooks/` with the Test plan's files under
+`scripts/h/`). Every value matches RED's column (c):
+
+    grep-count c1_{SQ,DQ,BSL}   none          (RED c: none)
+    grep-count s1_*             3             (3)
+    grep-count p5_*             5             (5)
+    grep-count n4 / m4          none / 3      (none / 3)
+    grep-count k4 (AC-4)        1
+    grep-count u3 (C-3)         1 2           (1 2)
+    sigpipe   q60_*             6             (6)
+    lib AC-5 line 3             echo "a^F^A^A^Fb"   (as pinned)
+    real tree, both guards      0 findings    (0; sigpipe 0 because R-1 rewrote the nine)
+
+**DV-2 expression** (one, because the rule has one copy). It replaces the
+body of `subst_step` with the old count-every-paren rule (no quote spans, no
+escapes). The masker's heredoc-in-substitution rule is left in place:
+
+    bash scripts/mutate.sh .claude/hooks/lib.sh 's#^  SUBST_D = 0$#  SUBST_D = 0; c = substr(s, j, 1); if (c == "(") SUBST_D = 1; else if (c == ")") SUBST_D = -1; return 1#' -- bash .claude/tests/grep-count.test.sh
+
+Tried once in GREEN against `grep-count.test.sh` only, to check that the
+expression applies and is restored. This is not the DV-2 result; GATES owns
+that and the sigpipe half. The run gave `grep-count: 26 passed, 12 failed`, and
+all 12 were in the HARNESS-060 describe: AC-1 x3, the s1 AC-1 control x3, AC-5
+x3, the census and its exit, and C-3. C-3 goes red as well, which is what one
+shared function should do. AC-4's three pins stayed green, as expected,
+because they do not depend on the matcher. No assertion outside the describe
+went red. "Restored (verified byte-for-byte)" and `mutate.sh --check` was clean
+afterwards. GATES should note that DV-2's "AC-1's assertions MUST fail ... and
+nothing else" is met if "nothing else" means outside the HARNESS-060 describe.
+It is not met if it means AC-1's lines alone, because the AC-5 and C-3 pins in
+that describe share the matcher and fail with it.
 
