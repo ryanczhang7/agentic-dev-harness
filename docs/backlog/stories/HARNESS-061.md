@@ -4,8 +4,8 @@ title: check-sigpipe recognises the early-exit reader shapes it misses and pins 
 slug: check-sigpipe-recognises-the-early-exit
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-061-check-sigpipe-recognises-the-early-exit
 depends_on: [HARNESS-060] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-sigpipe.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -166,6 +166,19 @@ shapes, and the two AC-3 controls plus `cmd | env -i grep -c x` as a third.
 pinned in the same assertion as the positives. AC-1 and AC-2 pass on arrival;
 AC-3's four fail today (the file is reported at fewer lines).
 
+*Amended by RED, 2026-10-17.* Two controls added to the same file and the same
+set, both implied by C-2 rather than new behaviour: line 13 `cmd | grep -e -q x`
+(the `-q` is `-e`'s operand, i.e. the pattern, so this drains: it pins that `-e`
+CONSUMES its operand rather than the loop merely skipping non-option words, a
+cheaper fix that would satisfy every other line) and line 14 `cmd |& grep -c x`
+(pins that `|&` forwards to the reader test and is not itself a finding).
+**Line 13 is reported today** - the current loop reads `-e` as an option,
+`continue`s, and returns 1 at `-q`. So it is a false positive C-2's operand rule
+removes, and GREEN must remove it: the pinned set is `4 5 6 7 8 9` and today's is
+`4 5 13`. The fixture is `scripts/probes/p_h61.sh` in a `make_project_fixture`;
+the census pinned is `check-sigpipe: scanned 1 shell file(s), 1 with pipefail, 6
+finding(s)`.
+
 **C-4. Earning AC-1 and AC-2 (RED, `## Regressions`).** Both pass against
 code that already exists, so RED earns each with one `mutate.sh` run on
 `scripts/check-sigpipe.sh` against this suite, pasting the output: S03,
@@ -185,7 +198,7 @@ numbers per fixture file, and the exact census line.
 
 **Callers of changed signatures.** None: `early_reader` and `scan_line` are
 awk functions private to `AWK_RULE` in `check-sigpipe.sh`, called only at
-`:173` and `:260-262` (`git grep -n 'early_reader\|scan_line' scripts/`).
+`:171`, `:238` and `:270` (`git grep -n 'early_reader\|scan_line' scripts/`).
 `check-grep-count.sh` has its own `scan_line` for a different operator and is
 untouched. The real tree has none of the three AC-3 shapes today (`git grep
 -nE '\| *(LC_ALL=[A-Za-z]+ |env )grep|\|& *grep|grep -e [^|]* -[a-zA-Z]*q' --
@@ -275,6 +288,9 @@ name, below the table.
 
 **Resolved:**
 
+- PLANNED: `lead-po` orchestrator session, Fable 5.1 (`claude-fable-5-1`).
+- RED: `test-developer`, dispatched with `model: opus`; it reported Opus 5.5 (`claude-opus-5-5`).
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -295,6 +311,39 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Level: the guard's own suite, `.claude/tests/sigpipe.test.sh`, against a
+throwaway `make_project_fixture` repo (never the real tree - a probe file under
+`.claude/` classifies as harness and would be scanned by CI's real-tree step).
+One new describe before `summary "sigpipe"`:
+`HARNESS-061: assignment and env prefixes, -e operands and |& do not hide an early-exit reader`.
+
+Fixture `scripts/probes/p_h61.sh` (`set -uo pipefail` on line 2):
+
+| Line | Text | Role | Today | Pinned |
+|---|---|---|---|---|
+| 4 | `if cmd \| grep --max-count=1 x; then :; fi` | AC-1 | reported | reported |
+| 5 | `cmd \| grep -q x \|\| echo no` | AC-2 | reported | reported |
+| 6 | `if cmd \| LC_ALL=C grep -q x; then :; fi` | AC-3 | not | reported |
+| 7 | `if cmd \| env LC_ALL=C grep -q x; then :; fi` | AC-3 | not | reported |
+| 8 | `if cmd \| grep -e x -q; then :; fi` | AC-3 | not | reported |
+| 9 | `if cmd \|& grep -q x; then :; fi` | AC-3 | not | reported |
+| 10 | `if cmd \| LC_ALL=C grep -c x; then :; fi` | AC-3 control | not | not |
+| 11 | `if cmd \| grep -e x -c; then :; fi` | AC-3 control | not | not |
+| 12 | `if cmd \| env -i grep -c x; then :; fi` | C-3 control | not | not |
+| 13 | `if cmd \| grep -e -q x; then :; fi` | RED control (C-3 amended): `-q` is `-e`'s operand | **reported** | not |
+| 14 | `if cmd \|& grep -c x; then :; fi` | RED control (C-3 amended): `\|&` into a drain | not | not |
+
+Two assertions:
+
+1. `assert_flagged ... "scripts/probes/p_h61.sh" "4 5 6 7 8 9"` - AC-1, AC-2,
+   AC-3 and all five controls, as one exact set.
+2. census `check-sigpipe: scanned 1 shell file(s), 1 with pipefail, 6 finding(s)`
+   (anchored prefix via `count_prefix`) - the set cannot pass by the file going
+   unscanned or pipefail going unseen.
+
+AC-4 is not tested here: it is a real-tree probe owned by GATES (DV-1), and no
+test in this suite mutates the real tree.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -314,6 +363,122 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED by `test-developer`, resolved model **Opus 5.5 (`claude-opus-5-5`)**, as
+planned; no override. 2026-10-17, local Windows / Git Bash, all timings local.
+
+**Command.** `bash .claude/tests/sigpipe.test.sh` (about 4m20s locally; the new
+describe adds one fixture and one guard run). Floor check:
+`bash .claude/tests/selftest.test.sh`.
+
+**Verbatim failure (unmutated tree):**
+
+```
+    FAIL HARNESS-061 AC-1..AC-3: --max-count=1, a pipeline read by ||, LC_ALL=C grep -q, env LC_ALL=C grep -q, grep -e x -q and |& grep -q are reported; LC_ALL=C grep -c, grep -e x -c, env -i grep -c, grep -e -q x and |& grep -c are not
+         expected: 4 5 6 7 8 9
+         actual:   4 5 13
+    FAIL HARNESS-061: the census is exact - one file, one with pipefail, six findings
+         expected: 1
+         actual:   0
+
+sigpipe: 89 passed, 2 failed
+```
+
+Why it is the right failure: the fixture was scanned (lines 4 and 5 are
+reported, so pipefail was seen and the file enumerated); the four AC-3 lines 6-9
+are absent from the set, and line 13 is present. Run directly in a scratch
+fixture the guard prints `check-sigpipe: scanned 1 shell file(s), 1 with
+pipefail, 3 finding(s)` - so the census assertion fails on the finding count,
+not on a scan error. Every pre-existing assertion still passes (89).
+
+**Tests -> ACs.**
+- `HARNESS-061 AC-1..AC-3: ...` (assert_flagged, exact set `4 5 6 7 8 9`):
+  AC-1 (line 4), AC-2 (line 5), AC-3 positives (6-9), AC-3 controls (10, 11),
+  C-3 control (12), RED controls (13, 14).
+- `HARNESS-061: the census is exact - one file, one with pipefail, six findings`:
+  the exact census for that file; AC-3 (6 = 2 today + 4).
+
+**Files touched.** `.claude/tests/sigpipe.test.sh` (new describe before
+`summary "sigpipe"`), `.claude/tests/floors.conf` (`sigpipe` 89 -> 91 at :61,
+and a HARNESS-061 note at the foot), `.claude/tests/selftest.test.sh` (mirror
+`sigpipe 91` at :553), this story (Contract C-3 amendment, Test plan, Handoff,
+Regressions). `scripts/check-sigpipe.sh` untouched (`git status` clean for it;
+`mutate.sh --check` clean).
+
+**Interface the tests pin.** No new export: the suite runs
+`bash scripts/check-sigpipe.sh <pathspec>` in a fixture repo and reads its
+stdout. Pinned: one finding line per reported line, `<path>:<line>: ...`, and
+the census line `check-sigpipe: scanned N shell file(s), M with pipefail, K
+finding(s)` - both formats unchanged from today. NOT constrained: how
+`early_reader`/`scan_line` are restructured, the column `scan_line` returns for
+`|&` (the suite reads line numbers only), the finding message text after the
+line number, and every shape C-2 mentions but the fixture does not carry
+(`--regexp X`, `--file X`, `--regexp=X`, `-Fe x`, `-qe x`, `-f FILE`, multiple
+assignments, `env A=1 B=2 grep`). Those are C-2's design, unpinned; if GREEN
+wants them guarded it should say so and RED adds lines.
+
+**Callers checked.** `git grep -n 'early_reader\|scan_line' scripts/` on this
+tree: `check-sigpipe.sh:125,129,157,162,171,238,270` and
+`check-grep-count.sh:156,159,230` (its own, different `scan_line`, untouched).
+Matches the Contract's list; line numbers unchanged from `1b89cab`.
+
+**Passed on arrival.** AC-1 (line 4) and AC-2 (line 5) are in the set today.
+Earned by C-4's two mutants, output in `## Regressions`: under S03 line 4 leaves
+the set (`5 13`), under S06 line 5 leaves it (`4 13`). In RED the assertion is
+red with or without the mutant (AC-3 is missing either way), so the evidence is
+the line leaving the set, not a pass->fail flip; once GREEN lands the same two
+mutants turn a green assertion red.
+
+**Controls - expected values.** Measured outside the suite, by running the
+guard directly over `p_h61.sh` in a scratch fixture repo (copy of `scripts/`,
+`.claude/hooks`, `.claude/harness`), against today's guard and against a
+scratch candidate of C-2 built in the scratch copy only (not the real tree).
+"Reported" means the line is in the set; the threshold for every control is
+"not in the set".
+
+| Line | Control | Today | C-2 candidate | Mis-fix that the control catches, and what it measured |
+|---|---|---|---|---|
+| 10 | `LC_ALL=C grep -c x` | not | not | prefix rule that made any prefixed grep a reader (not built; by construction) |
+| 11 | `grep -e x -c` | not | not | `-c` read as a reader after an operand (not built) |
+| 12 | `env -i grep -c x` | not | not | **weak**: a mis-fix that skips every token after `env` until `grep` also gives `not` (measured: set `4 5 6 7 8 9`), because `-c` drains anyway. It pins only that `-c` stays a drain, not that `-i` ends the skip |
+| 13 | `grep -e -q x` | **reported** | not | "skip non-option words instead of consuming `-e`'s operand": measured set `4 5 6 7 8 9 13`, census `7 finding(s)` - fires |
+| 14 | `\|& grep -c x` | not | not | "every `\|&` is a finding": measured set `4 5 6 7 8 9 14`, census `7 finding(s)` - fires |
+| - | DV-2 shape: prefix skipping removed from the candidate | - | - | measured set `4 5 8 9`, census `4 finding(s)` - lines 6 and 7 leave, as DV-2 requires |
+
+C-2 candidate overall: set `4 5 6 7 8 9`, census `check-sigpipe: scanned 1
+shell file(s), 1 with pipefail, 6 finding(s)` - so the pinned set is
+achievable with exactly the Contract's design. These are claims about the
+scratch candidate; GREEN confirms them against the shipped guard.
+
+**Discovered - changes the approach.**
+- Line 13 is a false positive TODAY (`-e` is `continue`d as an option, then
+  `-q` returns 1). C-2's operand rule removes it, and GREEN must: the pinned set
+  excludes 13. A fix that only stops returning 0 at the first non-option word
+  would make 8 pass and leave 13 red.
+- The scratch candidate's `|&` handling was one line in `scan_line`, placed
+  directly after the `||` skip: `if (substr(s, i + 1, 1) == "&") { if (D == 0
+  && res == 0 && early_reader(substr(s, i + 2))) res = i; i++; continue }`.
+  Offered as evidence the pinned set is reachable, not as the implementation.
+- Line 12 is weak by design of the story (see table); `env -i grep -q x` would
+  pin "an `env` option ends the skip", but C-2 puts env options out of scope, so
+  it is not pinned. Orchestrator's call.
+
+**Deferred verifications.** DV-1 (AC-4, real-tree probes on
+`scripts/check-boundaries.sh:527`) and DV-2 (defect put back) are **declined by
+RED: they cannot run in RED** - DV-1 needs the fixed guard to report the
+mutated line (today the audit measured 0 findings on each shape, so it would
+only re-measure the defect), and DV-2 needs GREEN's prefix-skipping code to
+remove. Both are owned by GATES and left to it. RED wrote no test that mutates
+the real tree.
+
+**Other runs.** `bash .claude/tests/selftest.test.sh`: `selftest: 268 passed, 0
+failed`. `bash scripts/check-sigpipe.sh` (real tree): `check-sigpipe: scanned 49
+shell file(s), 45 with pipefail, 0 finding(s)`. `bash scripts/check-grep-count.sh`:
+`scanned 49 shell file(s), 0 finding(s)`. `bash scripts/mutate.sh --check`:
+clean. `bash scripts/gates.sh --fast`: every gate UNCONFIGURED in this repo
+(BOOTSTRAPPED=no), exit 0 - nothing there judges this suite; the binding check
+is the selftest job. Floor: `sigpipe` 89 -> 91 (executed count 91 = 89 passed +
+2 failed); until GREEN the suite passes 89, below its floor.
 
 ## Regressions
 
@@ -339,6 +504,55 @@ name, below the table.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+Not a return to RED. These are C-4's earnings of AC-1 and AC-2, which pass on
+arrival against code that already exists. Each mutant ran once through
+`mutate.sh` against the whole `sigpipe` suite, 2026-10-17, local. Baseline set
+for `p_h61.sh` on the unmutated tree: `4 5 13`. In both runs the only change is
+the AC's own line leaving the set; no other assertion in the suite moved
+(89 passed both times, the same 89 as unmutated).
+
+**S03 - `--max-count` removed from the long-option list (AC-1, line 4 leaves).**
+
+```
+=== mutate: scripts/check-sigpipe.sh (1 line(s) changed by 143s#|max-count##) ===
+  143 -       if (t ~ /^--(quiet|silent|max-count|files-with-matches|files-without-match)/) return 1
+  143 +       if (t ~ /^--(quiet|silent|files-with-matches|files-without-match)/) return 1
+=== mutate: running bash .claude/tests/sigpipe.test.sh ===
+    FAIL HARNESS-061 AC-1..AC-3: --max-count=1, a pipeline read by ||, LC_ALL=C grep -q, env LC_ALL=C grep -q, grep -e x -q and |& grep -q are reported; LC_ALL=C grep -c, grep -e x -c, env -i grep -c, grep -e -q x and |& grep -c are not
+         expected: 4 5 6 7 8 9
+         actual:   5 13
+    FAIL HARNESS-061: the census is exact - one file, one with pipefail, six findings
+         expected: 1
+         actual:   0
+sigpipe: 89 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nervous-snyder-2b307a/.claude/state/mutations/scripts_check-sigpipe.sh.20261017T165717Z.51467.bak) ===
+  143:       if (t ~ /^--(quiet|silent|max-count|files-with-matches|files-without-match)/) return 1
+rc=1
+```
+
+**S06 - the `||` disposition removed (AC-2, line 5 leaves).**
+
+```
+=== mutate: scripts/check-sigpipe.sh (1 line(s) changed by 256s# || (index(grp, "||") > 0)##) ===
+  256 -          (index(grp, "&&") > 0) || (index(grp, "||") > 0)
+  256 +          (index(grp, "&&") > 0)
+=== mutate: running bash .claude/tests/sigpipe.test.sh ===
+    FAIL HARNESS-061 AC-1..AC-3: --max-count=1, a pipeline read by ||, LC_ALL=C grep -q, env LC_ALL=C grep -q, grep -e x -q and |& grep -q are reported; LC_ALL=C grep -c, grep -e x -c, env -i grep -c, grep -e -q x and |& grep -c are not
+         expected: 4 5 6 7 8 9
+         actual:   4 13
+    FAIL HARNESS-061: the census is exact - one file, one with pipefail, six findings
+         expected: 1
+         actual:   0
+sigpipe: 89 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nervous-snyder-2b307a/.claude/state/mutations/scripts_check-sigpipe.sh.20261017T170501Z.66980.bak) ===
+  256:          (index(grp, "&&") > 0) || (index(grp, "||") > 0)
+rc=1
+```
+
+After both: `bash scripts/mutate.sh --check` -> `mutate: no stranded mutation;
+nothing of a previous run is in the tree.`; `git status --short` shows
+`scripts/check-sigpipe.sh` unmodified.
 
 ## Gate results
 

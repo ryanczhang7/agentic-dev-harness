@@ -550,7 +550,7 @@ security-audit 51
 selftest 268
 settings 70
 shipped-docs 14
-sigpipe 89
+sigpipe 91
 spawns 69
 worktree 73
 COUNTS

@@ -1294,5 +1294,59 @@ assert_eq "HARNESS-060 AC-2: the census is exact - three files, three with pipef
         'check-sigpipe: scanned 3 shell file(s), 3 with pipefail, 3 finding(s)')"
 rm -rf "$S60"
 
+# =============================================================================
+# HARNESS-061 - THE EARLY-EXIT READER SHAPES THE GUARD MISSED, AND THE TWO IT
+# ONLY IMPLIED.
+#
+# AC-1 (`--max-count=1`) and AC-2 (`cmd | grep -q x || echo no`) were reported
+# before this story but pinned by nothing: the audit's mutants S03 (the
+# `max-count` long-option alternative removed) and S06 (the `||` disposition
+# removed) both survived this suite. AC-3's four shapes were not reported at
+# all: an assignment or `env` before `grep` hid the command word, an `-e PAT`
+# operand ended the option loop before `-q`, and `|&` handed the reader `&`.
+#
+# ONE FILE, ONE EXACT SET, so the controls are pinned by the same assertion as
+# the positives and none of them can pass by the file going unscanned:
+#   FLAG  4 AC-1   5 AC-2   6-9 AC-3 (LC_ALL=C, env LC_ALL=C, -e x -q, |&)
+#   NOT  10-12     the story's three controls: a prefix or an operand does not
+#                  make -c a reader, and `env -i` ends the prefix skip (C-2)
+#   NOT  13        `-e -q x`: here -q IS the pattern, consumed by -e - pins
+#                  that -e consumes its operand rather than "skip any word"
+#   NOT  14        `|& grep -c x`: |& forwards to the reader test, it is not
+#                  itself a finding
+# Lines 13 and 14 are RED's additions to C-3's control list (Contract amended).
+# =============================================================================
+describe "HARNESS-061: assignment and env prefixes, -e operands and |& do not hide an early-exit reader"
+
+S61="$(make_project_fixture)"
+mkdir -p "$S61/scripts/probes"
+cat > "$S61/scripts/probes/p_h61.sh" <<'SH'
+#!/usr/bin/env bash
+set -uo pipefail
+# AC-1, AC-2, then AC-3's four shapes, then the drain controls.
+if cmd | grep --max-count=1 x; then :; fi
+cmd | grep -q x || echo no
+if cmd | LC_ALL=C grep -q x; then :; fi
+if cmd | env LC_ALL=C grep -q x; then :; fi
+if cmd | grep -e x -q; then :; fi
+if cmd |& grep -q x; then :; fi
+if cmd | LC_ALL=C grep -c x; then :; fi
+if cmd | grep -e x -c; then :; fi
+if cmd | env -i grep -c x; then :; fi
+if cmd | grep -e -q x; then :; fi
+if cmd |& grep -c x; then :; fi
+SH
+run_guard "$S61" scripts/probes/p_h61.sh
+
+assert_flagged "HARNESS-061 AC-1..AC-3: --max-count=1, a pipeline read by ||, LC_ALL=C grep -q, env LC_ALL=C grep -q, grep -e x -q and |& grep -q are reported; LC_ALL=C grep -c, grep -e x -c, env -i grep -c, grep -e -q x and |& grep -c are not" \
+  "scripts/probes/p_h61.sh" "4 5 6 7 8 9"
+
+# The exact census, so the set above cannot be satisfied by a guard that
+# scanned nothing or never saw the pipefail line.
+assert_eq "HARNESS-061: the census is exact - one file, one with pipefail, six findings" \
+  "1" "$(count_prefix "$GUARD_OUT" \
+        'check-sigpipe: scanned 1 shell file(s), 1 with pipefail, 6 finding(s)')"
+rm -rf "$S61"
+
 rm -rf "$FIX" "$FIX2" "$C7" "$G7" "$B7" "$AC7"
 summary "sigpipe"
