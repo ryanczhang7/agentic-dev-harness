@@ -754,9 +754,14 @@ Not committed (per dispatch).
 **Self-test at GATES (orchestrator, 2026-10-17).** `bash scripts/selftest.sh`,
 run detached and alone after `bash scripts/gates.sh` recorded a pass, exited 0
 in 7278 s (about 2 hours). HARNESS-059's run took 2894 s and HARNESS-060's 5433 s
-on this host, while CI ran HARNESS-060's whole job in 2m20s. No self-test, gate
-or mutation process was left running afterwards (`ps -ef`), so no orphan
-explains it. Cause not known.
+on this host, while CI ran HARNESS-060's whole job in 2m20s. No process from THIS
+worktree was left running afterwards. But `ps -ef` showed two other
+self-tests running on the same machine throughout: `bash scripts/selftest.sh`
+from `/d/adh-WORLD-132` (started 12:55, in its `sigpipe` suite) and from
+`/d/manga-translator` (started 14:10, in its `mutate` suite). They belong to
+other sessions and were left alone. Concurrent self-tests competing for the
+same host are a plausible contributor to the slowdown, and the evidence
+shows nothing more than that.
 
     assertion floors: all 26 suite(s) met their declared floor (3614 assertions executed, 3388 declared).
     26 harness suite(s) passed.
