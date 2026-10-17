@@ -1040,4 +1040,8 @@ check rc=0
     26 harness suite(s) passed.
 
    Log: `.claude/state/h062-selftest-full.log` (machine-local, not committed).
+7. `bash scripts/check-boundaries.sh origin/main` on `87b8800`: every line
+   `ok`, exit 0.
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/150 (opened 2026-10-17 from `87b8800`).
 
