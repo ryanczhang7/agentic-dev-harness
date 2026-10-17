@@ -1243,5 +1243,56 @@ b7_commit big-nofrontmatter
 assert_eq "AC-7 control: a 1.5 MB first line NOT beginning with --- is still refused" \
   "1" "$(says "$(b7_run)" 'missing YAML frontmatter')"
 
+# =============================================================================
+# HARNESS-060 - A QUOTED PAREN INSIDE A QUOTED SUBSTITUTION DOES NOT BLIND THE
+# GUARD. F2 of audit harness-mutants-2026-10-15.
+#
+# Inside `"$( ... )"` the masker counted parens without regard to quoting, so
+# `x="$(f '(a')"` left it inside the substitution for the rest of the file and
+# every `|` below arrived masked. This guard does not share check-grep-count's
+# unwrap helper and was blinded all the same, which is how the cause was placed
+# in the masker. Three openers: a single-quoted span, a double-quoted span, an
+# escape. h60_<o>.sh is exactly the criterion's three lines; q60_<o>.sh puts
+# the C-11 prose after the opener and a real finding after the prose, so the
+# fix can neither leave the guard blind nor unmask quoted text. Line 3 is the
+# criterion's own prose and holds no pipeline, so it is silent either way;
+# lines 4 and 5 are quoted pipelines inside one-line function bodies, the shape
+# that IS reported once its quotes stop masking (measured in RED against a
+# masker with double-quote masking removed: line 4 reported). A top-level
+# `echo "... | head -1"` would not do: its status is discarded, so the rule
+# passes it unmasked too.
+# =============================================================================
+describe "HARNESS-060: a quoted paren inside a quoted substitution does not blind the guard"
+
+S60="$(make_project_fixture)"
+mkdir -p "$S60/scripts/h60" "$S60/scripts/q60"
+H060_SQ="x=\"\$(f '(a')\""
+H060_DQ='x="$(f "(a")"'
+H060_BS='x="$(f \()"'
+for _o in SQ DQ BS; do
+  _v="H060_$_o"
+  printf '%s\n' "${!_v}" 'set -o pipefail' 'if cmd | grep -q x; then :; fi' > "$S60/scripts/h60/h60_$_o.sh"
+  printf '%s\n' 'set -o pipefail' "${!_v}" 'echo "a || printf 0"' 'p() { echo "run: cat x | head -1"; }' \
+    "q() { echo 'usage: foo | grep -q bar'; }" 'if cmd | grep -q x; then :; fi' > "$S60/scripts/q60/q60_$_o.sh"
+done
+
+for _o in SQ DQ BS; do
+  run_guard "$S60" "scripts/h60/h60_$_o.sh"
+  assert_flagged "HARNESS-060 AC-2: after the $_o opener, a pipeline into grep -q under pipefail on line 3 is reported" \
+    "scripts/h60/h60_$_o.sh" "3"
+  run_guard "$S60" "scripts/q60/q60_$_o.sh"
+  assert_flagged "HARNESS-060 AC-5: after the $_o opener, quoted pipelines are not reported and the real one after them is" \
+    "scripts/q60/q60_$_o.sh" "6"
+done
+
+# The exact census: three files, each seen to set pipefail, three findings.
+# The pipefail line comes AFTER the opener in these files, so "with pipefail"
+# is itself blind today.
+run_guard "$S60" scripts/h60
+assert_eq "HARNESS-060 AC-2: the census is exact - three files, three with pipefail, three findings" \
+  "1" "$(count_prefix "$GUARD_OUT" \
+        'check-sigpipe: scanned 3 shell file(s), 3 with pipefail, 3 finding(s)')"
+rm -rf "$S60"
+
 rm -rf "$FIX" "$FIX2" "$C7" "$G7" "$B7" "$AC7"
 summary "sigpipe"

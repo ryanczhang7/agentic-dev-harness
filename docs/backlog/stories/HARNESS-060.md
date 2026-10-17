@@ -4,11 +4,11 @@ title: The tree guards stay sighted past a quoted paren inside a quoted substitu
 slug: the-tree-guards-stay-sighted-past-a-quot
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-060-the-tree-guards-stay-sighted-past-a-quot
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [.claude/hooks/lib.sh, scripts/check-grep-count.sh, .claude/tests/lib.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
+touches: [.claude/hooks/lib.sh, scripts/check-grep-count.sh, .claude/tests/lib.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -134,7 +134,7 @@ left. The audit's mutant C07, which removes the folding, survives for that reaso
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
-**Writes:** `.claude/hooks/lib.sh`, `scripts/check-grep-count.sh`, `.claude/tests/lib.test.sh`, `.claude/tests/grep-count.test.sh`, `.claude/tests/sigpipe.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+**Writes:** `.claude/hooks/lib.sh`, `scripts/check-grep-count.sh`, `.claude/tests/lib.test.sh`, `.claude/tests/grep-count.test.sh`, `.claude/tests/sigpipe.test.sh`, `.claude/tests/gates.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
 
 RED may amend any block below in place, with a reason; GREEN builds what the
 amended block says. Anchors read off the tree at `4b07ac2` (main after
@@ -167,6 +167,22 @@ output for every input the current `lib.test.sh` masks must be byte-identical
 (RED pins that with a round-trip, below). A `#` inside the substitution is not
 a comment and is not treated as one.
 
+*Amended in RED (test-developer, 2026-10-16), reason: measured.* **A heredoc
+opened inside the substitution is a body, not code.** Both tree guards hold
+their rule in exactly that shape - `AWK_RULE="$(cat <<'AWKEOF'` ...
+`AWKEOF` / `)"` (`check-sigpipe.sh:102-289`, `check-grep-count.sh:97`) - and
+the awk program in the body is full of unpaired `'`, `"` and parens. A
+scratch candidate that implemented only the quote rule above (no heredoc rule)
+passed every AC pin but read the body's quotes as spans, so its state after
+`AWKEOF` depends on the body's quote parity: it changed the masking of
+`check-sigpipe.sh` from line 183 and of `lib.sh` from line 1062. So, in
+`subst`: a `<<WORD` / `<<-WORD` / `<<'WORD'` / `<<"WORD"` opener (not `<<<`)
+makes the following lines body, masked as heredoc bodies are today and with
+nothing counted, until the delimiter line; then the substitution resumes and
+its `)` ends it. Pinned in `lib.test.sh` (the "after a heredoc inside a quoted
+substitution" pair). The quote-only candidate fails that pin, so a GREEN that
+builds only the paragraph above is not finished.
+
 **C-3. `unwrap_quoted_subst` (GREEN, `scripts/check-grep-count.sh:277-295`)**
 counts parens the same way, ignoring quotes, so a `"$(f '(a')"` is never
 unwrapped. It gets the same rule as C-2: a `'`-span, a `"`-span with the
@@ -176,6 +192,20 @@ prefers moving the paren-matching into one awk function in `lib.sh` that both
 `mask_shell_quotes` and this helper call (`lib.sh` is sourced by the guard
 already: `CLAUDE_PROJECT_DIR` is set for it at `:90`). If GREEN keeps two
 copies it says why in `## Notes`.
+
+*Amended in RED (test-developer, 2026-10-16), reason: measured, and it bears
+on DV-2.* With a quote-aware unwrap in `check-grep-count.sh` as a SEPARATE
+copy and `lib.sh` at `4b07ac2` (no C-2 at all), `grep-count.test.sh` ran
+`38 passed, 0 failed`: the unwrap strips the outer quotes of `x="$(f '(a')"`,
+the masker then sees a bare `$( ... )` whose quotes it already tracks, and
+AC-1 and AC-5 pass without C-2. So DV-2's grep-count half ("AC-1's assertions
+MUST fail in grep-count.test.sh") holds only if the paren matching is ONE
+function both callers use. Two copies make DV-2 vacuous for grep-count; then
+DV-2 has to remove the rule from both, and `sigpipe.test.sh` (which does not
+unwrap) is the suite that discriminates C-2 alone. C-3 is pinned by
+`grep-count.test.sh` "HARNESS-060 C-3" (a printing fallback inside
+`"$(grep -c '(a' f || printf 0)"`), which C-2 alone does not satisfy (measured:
+`actual: 1`, expected `1 2`).
 
 **C-4. Continuation lines (GREEN, `check-grep-count.sh:201-221`).** The END
 block folds a backslash-continued group into `grp` (`:215`) but then calls
@@ -207,10 +237,41 @@ masker before this code runs and is unaffected.
   `grep-count.test.sh` (`:265`) already asserts the real tree is clean, and
   stays.
 
+*Amended in RED (test-developer, 2026-10-16), reason: a round trip cannot pin
+byte identity.* `mask | unmask` is the identity whatever was masked, so it
+cannot see C-2 changing what is masked. The byte-identity promise is pinned
+instead as a GOLDEN: the masked text (rendered with `cat -v`, newlines as
+`<NL>`) of each of the 23 inputs the mask describes feed the masker, as
+`4b07ac2` produces it. The three openers' round trips are kept as well. Added
+beyond the block above: the exact masked text of each opener and the two lines
+after it (C-2 in one comparison), the heredoc-in-substitution pair (C-2
+amendment), C-3's quoted-paren unwrap in `grep-count.test.sh`, and in
+`sigpipe.test.sh` AC-5's prose sits in one-line function bodies, because a
+top-level `echo "... | head -1"` has its status discarded and is silent even
+unmasked (measured).
+
+*Amended in RED (test-developer, 2026-10-16), reason: found.* **The fix makes
+nine real findings visible in `.claude/tests/gates.test.sh`**, at
+2114, 2905, 2912, 2943, 2948, 2951, 2985, 3013 and 3080. All are
+`printf ... | grep -q/-m1` pipelines under pipefail that today's masker hides
+(its state flips at `gates.test.sh:809`, a `"$(count_re '^\(not recorded: ...`
+line). With a scratch C-2 candidate, `check-sigpipe.sh` over the tree reports
+`scanned 49 shell file(s), 45 with pipefail, 9 finding(s)` and
+`sigpipe.test.sh` "C-3: and the real tree has no findings at all" goes red
+(`expected: 0, actual: 9`). That file is in neither `touches:` nor
+`**Writes:**`, and it is a test file. **Escalated to the orchestrator; not
+resolved in RED.**
+
 **C-6. Floors.** `grep-count` 20 (`floors.conf:45`), `sigpipe` 82 (`:61`),
 `lib` 283 (`:46`), mirrored in `selftest.test.sh` (`:536`, `:553`, `:537`),
 raised to the executed counts RED measures, with the measurement recorded at
 the foot of `floors.conf`.
+
+*Amended in RED (test-developer, 2026-10-16), reason: a third mirror.*
+`selftest.test.sh:566-567` also names lib's floor ("lib is floored at its N
+executed assertions") and failed `expected: 283, actual: 322` until raised.
+Raised: `grep-count` 20 -> 38, `lib` 283 -> 324, `sigpipe` 82 -> 89, at
+`floors.conf:45/:46/:61` and `selftest.test.sh:536/:537/:553/:566-567`.
 
 **Oracle partition.** Every criterion is mechanical: which line a guard
 reports, or none, on a named fixture. No invented metric. Negative controls are
@@ -226,6 +287,29 @@ after a `"$(f '(a')"` it will now SEE the rest of a command where it used to
 see prose, which is the direction the lock wants (an unmasked redirect is
 judged; a masked one failed open). `phase-guard.test.sh` (378) and
 `worktree.test.sh` (73) judge that at the GATES self-test.
+
+**C-7. PO decision 1 (2026-10-16, approved by the user): the defects the fix
+unhides are fixed here, in RED.** RED's candidate masker, measured in a scratch
+clone, made `check-sigpipe.sh` report 9 real findings in
+`.claude/tests/gates.test.sh` (lines 2114, 2905, 2912, 2943, 2948, 2951, 2985,
+3013, 3080 at `4b07ac2`), all `printf '%s\n' "$x" | grep -q/-Fxq/-m1 ...` under
+the pipefail `_lib.sh` sets (`_lib.sh:14`). They were hidden because the masker
+flips at `gates.test.sh:809`. With them, `sigpipe.test.sh`'s "C-3: and the
+real tree has no findings at all" fails and GREEN cannot reach green. The
+orchestrator reproduced the shape independently: those nine lines, extracted
+into a fixture with `set -uo pipefail` and judged by the CURRENT guard (no
+masker change), are reported.
+
+The options were rewriting them or marking each `# sigpipe-ok:`. The user
+chose the rewrite, in this story. Each pipeline becomes a here-string
+(`grep ... <<<"$x"`), and `3013`'s `printf | tr | grep` becomes
+`grep -Fxq b <<<"$(tr ... <<<"$note_line")"`. That is the idiom the tree
+already uses, as `grep-count.test.sh:275` does. The rewrite was made in RED,
+because `gates.test.sh` is a test file, and it is behaviour-preserving:
+`printf '%s\n' "$x"` and `<<<"$x"` feed the same bytes. It is earned by the
+`gates` suite staying 682/0 and by one probe recorded in `## Regressions`.
+`gates.test.sh` joins `touches:` and `**Writes:**`, and HARNESS-064, which
+also writes `gates.test.sh`, now `depends_on` this story.
 
 **Required gate.** The harness self-test (`lib`, `grep-count`, `sigpipe`
 suites) in CI's `selftest` job, and CI's `check-grep-count.sh` /
@@ -313,6 +397,9 @@ name, below the table.
 
 **Resolved:**
 
+- PLANNED: `lead-po` orchestrator session, Fable 5.1 (`claude-fable-5-1`).
+- RED: `test-developer`, dispatched with `model: opus`; it reported Opus 5.5 (`claude-opus-5-5`). The C-7 rewrite of nine `gates.test.sh` lines was made by the orchestrator session itself, then on Opus 5.5.
+
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -334,6 +421,33 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Every criterion is mechanical (which line a guard reports, or none, on a named
+fixture), so every pin is an exact line list, an exact census line, or exact
+masked text. Two levels:
+
+- **Unit, the masker** (`.claude/tests/lib.test.sh`, describe "HARNESS-060: a
+  quoted paren inside a quoted substitution does not hide the next line",
+  after the comment describe). Where the cause lives (C-1). Each of the three
+  openers `x="$(f '(a')"`, `x="$(f "(a")"`, `x="$(f \()"` followed by
+  `y=a || b` and `echo "a || b"`.
+- **Integration, each guard end to end** on a `make_project_fixture` with
+  files under the fixture's `scripts/`, never the real tree:
+  `.claude/tests/grep-count.test.sh` and `.claude/tests/sigpipe.test.sh`, one
+  new describe each, before `summary`.
+- **AC-3 is not tested in RED.** It is a real-tree probe, owned by GATES as
+  DV-1; no test here mutates the real tree.
+
+| AC | Where | What would break it |
+|---|---|---|
+| AC-1 | grep-count: a1_{SQ,DQ,BS}.sh -> `2`, census `scanned 3 shell file(s), 3 finding(s)`, exit 1; lib: line 2 is `y=a \|\| b` | the masker staying in the substitution |
+| AC-1 control | grep-count: c1_* (`\|\| true`, exactly the AC's two lines) -> none; s1_* (same plus a printing fallback on line 3) -> `3` | a fix that flags `\|\| true`; s1 stops c1 being satisfied by blindness |
+| AC-2 | sigpipe: h60_{SQ,DQ,BS}.sh -> `3`, census `scanned 3 shell file(s), 3 with pipefail, 3 finding(s)` | the same, in the guard that does not unwrap |
+| AC-4 | grep-count: k4.sh -> `1`; controls n4.sh -> none, m4.sh -> `3` | judging physical lines instead of the folded logical line |
+| AC-5 | grep-count p5_*: prose on 2-4 silent, positive on 5 -> `5`; sigpipe q60_*: prose on 3-5 silent, positive on 6 -> `6`; lib: line 3 masks to `echo "a^F^A^A^Fb"` | a fix that unmasks quoted text |
+| C-2 | lib: exact mask of each opener + two lines; heredoc-in-substitution pair; trap-2 interior x3; golden of 23 existing fixtures + census | the substitution ending in the wrong place, its interior unmasked, or any old input masked differently |
+| C-3 | grep-count u3.sh -> `1 2` | the unwrap still counting a quoted paren |
+| AC-3 | DV-1, GATES | - |
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -353,6 +467,239 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the test-developer, RED, 2026-10-16, resolved model Opus 5.5
+(`claude-opus-5-5`), no override.
+
+**STOP FIRST: one open escalation.** Once the masker is fixed, nine real
+findings in `.claude/tests/gates.test.sh` become visible to
+`check-sigpipe.sh` (Contract C-5 amendment lists them), and `sigpipe.test.sh`
+"C-3: and the real tree has no findings at all" goes red with `actual: 9`.
+That file is a test file outside `touches:`; RED was told not to touch it.
+The orchestrator has to decide who fixes those nine lines, and in which phase,
+before GREEN can reach green.
+
+**Commands** (from the worktree root):
+
+    bash .claude/tests/lib.test.sh          # ~1 min
+    bash .claude/tests/grep-count.test.sh   # ~1 min
+    bash .claude/tests/sigpipe.test.sh      # ~2.5 min
+    bash .claude/tests/selftest.test.sh     # the floors mirror, green now
+
+**Failure output, verbatim** (lib.sh and scripts/*.sh untouched):
+
+```
+    FAIL HARNESS-060 AC-1: after x="$(f '(a')" the next line's || is syntax again
+         expected: y=a || b
+         actual:   
+    FAIL HARNESS-060 AC-5: after x="$(f '(a')" a quoted || on a later line is still masked
+         expected: echo "a^F^A^A^Fb"
+         actual:   
+    FAIL HARNESS-060 AC-1: after x="$(f "(a")" the next line's || is syntax again
+         expected: y=a || b
+         actual:   
+    FAIL HARNESS-060 AC-5: after x="$(f "(a")" a quoted || on a later line is still masked
+         expected: echo "a^F^A^A^Fb"
+         actual:   
+    FAIL HARNESS-060 AC-1: after x="$(f \()" the next line's || is syntax again
+         expected: y=a || b
+         actual:   
+    FAIL HARNESS-060 AC-5: after x="$(f \()" a quoted || on a later line is still masked
+         expected: echo "a^F^A^A^Fb"
+         actual:   
+    FAIL HARNESS-060 C-2: the exact mask of the single-quote opener and the lines after it
+         expected: x="$(f^F'^Na')"<NL>y=a || b<NL>echo "a^F^A^A^Fb"
+         actual:   x="$(f^F'^Na'^O"^Hy=a^F^A^A^Fb^Hecho^F"a^F^A^A^Fb"
+    FAIL HARNESS-060 C-2: the exact mask of the double-quote opener and the lines after it
+         expected: x="$(f^F"^Na")"<NL>y=a || b<NL>echo "a^F^A^A^Fb"
+         actual:   x="$(f^F"^Na"^O"^Hy=a^F^A^A^Fb^Hecho^F"a^F^A^A^Fb"
+    FAIL HARNESS-060 C-2: the exact mask of the backslash opener and the lines after it
+         expected: x="$(f^F\^N)"<NL>y=a || b<NL>echo "a^F^A^A^Fb"
+         actual:   x="$(f^F\^N^O"^Hy=a^F^A^A^Fb^Hecho^F"a^F^A^A^Fb"
+    FAIL HARNESS-060 C-2: after a heredoc inside a quoted substitution, the next line's || is syntax again
+         expected: y=a || b
+         actual:   
+lib: 314 passed, 10 failed
+
+    FAIL HARNESS-060 AC-1: after the SQ opener, a printing fallback on line 2 is reported
+         expected: 2
+         actual:   
+    FAIL HARNESS-060 AC-1 control: after the SQ opener, || true is silent and the printing fallback below it is not
+         expected: 3
+         actual:   
+    FAIL HARNESS-060 AC-5: after the SQ opener, quoted || prose is not reported and the real fallback after it is
+         expected: 5
+         actual:   
+    (the same three for DQ and BS)
+    FAIL HARNESS-060 AC-1: the census names three files and three findings
+         expected: 1
+         actual:   0
+    FAIL HARNESS-060 AC-1: and the guard exits non-zero on them
+         expected: 1
+         actual:   0
+    FAIL HARNESS-060 C-3: a printing fallback inside a quoted substitution is reported even when its pattern holds a quoted paren
+         expected: 1 2
+         actual:   1
+    FAIL HARNESS-060 AC-4: a printing fallback on a continuation line is reported at the logical line
+         expected: 1
+         actual:   
+grep-count: 25 passed, 13 failed
+
+    FAIL HARNESS-060 AC-2: after the SQ opener, a pipeline into grep -q under pipefail on line 3 is reported
+         expected: 3
+         actual:   
+    FAIL HARNESS-060 AC-5: after the SQ opener, quoted pipelines are not reported and the real one after them is
+         expected: 6
+         actual:   
+    (the same two for DQ and BS)
+    FAIL HARNESS-060 AC-2: the census is exact - three files, three with pipefail, three findings
+         expected: 1
+         actual:   0
+sigpipe: 82 passed, 7 failed
+```
+
+**Why this is the right failure.** Every red line is the guard reporting
+nothing (`actual:` empty, census 0) or the masker emitting one
+`\010`-folded record where three lines should be: the operators past the
+opener are masked. No fixture error, no syntax error, no missing file:
+the unchanged assertions in all three suites still pass (`lib` 283 of 283
+old, `grep-count` 20 of 20, `sigpipe` 82 of 82). C-3's `actual: 1` is line 1
+(a balanced pattern) reported and line 2 (the quoted paren) not, so the miss
+is the paren and nothing else.
+
+**One line per test.** `lib.test.sh` (describe after "a comment is data"):
+- AC-1 x3 - after each opener, line 2 of the mask is exactly `y=a || b`.
+- AC-5 x3 - line 3, `echo "a || b"`, masks to exactly `echo "a^F^A^A^Fb"` (cat -v).
+- trap 2 x3 - the first record past `x="$(` holds no visible space, `(` or operator. Passes on arrival.
+- round trip x3 - mask | unmask of the three lines is the input. Passes on arrival.
+- C-2 exact mask x3 - the whole cat -v rendering, interior masked as today, `)"` unmasked, real newlines.
+- C-2 heredoc pair - after `X="$(cat <<'EOF'` / `it's (a || b` / `EOF` / `)"`, line 2 is `y=a || b` (red); the body's `||` is still masked (passes on arrival).
+- C-2 golden x23 + census - the cat -v mask of every input the mask describes feed the masker equals `4b07ac2`'s. Pass on arrival.
+
+`grep-count.test.sh` (describe before `summary`, fixture `$G60`):
+- AC-1 x3 - `scripts/h60/a1_<o>.sh`, the AC's two lines, reported at `2`.
+- AC-1 control x3 - `scripts/h60c/c1_<o>.sh`, `|| true` on line 2, reports nothing. Passes on arrival.
+- AC-1 control x3 - `scripts/h60c/s1_<o>.sh`, the same plus `z=$(grep -c x f || printf 0)` on line 3, reports `3`.
+- AC-5 x3 - `scripts/h60p/p5_<o>.sh`: opener, `echo "a || printf 0"`, `echo "a; grep -c x f || printf 0"`, `echo 'b; grep -c x f || printf 0'`, positive; reports `5`.
+- AC-1 census + exit - `check-grep-count: scanned 3 shell file(s), 3 finding(s)` (anchored prefix), exit 1.
+- C-3 - `scripts/h60k/u3.sh`, `m="$(grep -c '(a)' f || printf 0)"` then `n="$(grep -c '(a' f || printf 0)"`, reports `1 2`.
+- AC-4 - `k4.sh`, `y=$(grep -c x f \` / `  || printf 0)`, reports `1`.
+- AC-4 controls - `n4.sh` (`|| true`) nothing; `m4.sh` (same plus positive on 3) `3`. Pass on arrival.
+
+`sigpipe.test.sh` (describe before `summary`, fixture `$S60`):
+- AC-2 x3 - `scripts/h60/h60_<o>.sh`: opener, `set -o pipefail`, `if cmd | grep -q x; then :; fi`; reports `3`.
+- AC-5 x3 - `scripts/q60/q60_<o>.sh`: pipefail, opener, `echo "a || printf 0"`, `p() { echo "run: cat x | head -1"; }`, `q() { echo 'usage: foo | grep -q bar'; }`, the real pipeline; reports `6`.
+- AC-2 census - `check-sigpipe: scanned 3 shell file(s), 3 with pipefail, 3 finding(s)`.
+
+**Files touched:** `.claude/tests/lib.test.sh`, `.claude/tests/grep-count.test.sh`,
+`.claude/tests/sigpipe.test.sh`, `.claude/tests/floors.conf`,
+`.claude/tests/selftest.test.sh`, this story (Contract amendments, Test plan,
+Handoff). Not `.claude/hooks/lib.sh`, not `scripts/*.sh`.
+
+**Floors** (executed counts, measured above): `lib` 283 -> 324, `grep-count`
+20 -> 38, `sigpipe` 82 -> 89, at `floors.conf:45/:46/:61` and
+`selftest.test.sh:536/:537/:553` plus `:566-567` (a third mirror the Contract
+did not list; C-6 amended). `selftest: 268 passed, 0 failed`.
+
+**Shape the tests pin.** No new export is imported. They use
+`mask_shell_quotes` (stdin to stdout) and `unmask_shell_quotes` from
+`.claude/hooks/lib.sh`, sourced with `CLAUDE_PROJECT_DIR` set, exactly as the
+existing describes do; and the guards' CLI output, unchanged:
+`<path>:<line>:...` per finding, and the census lines
+`check-grep-count: scanned N shell file(s), M finding(s)` and
+`check-sigpipe: scanned N shell file(s), P with pipefail, M finding(s)`.
+The exact masked text pinned: inside a substitution every character is
+`maskchar`ed as today, quotes included; the `)` that ends it is emitted raw;
+a line break outside any quote is `\n`, not `\010`. **Not constrained:**
+where the shared paren matching lives or what it is called, how the state is
+held, and how C-4 joins the folded group, as long as a hit lands on the
+group's first line.
+
+**Passed on arrival, and what earns each.** 31 in lib, 5 in grep-count, 0 in
+sigpipe. Probed in RED against a scratch clone at `d783d60` carrying a
+candidate C-2 masker (quote spans and escapes inside `subst`, no heredoc rule),
+never against the real tree:
+
+| Pin | Mutation of the candidate | Result |
+|---|---|---|
+| trap 2 x3, C-2 exact x3, golden #6 (`git commit -m "$(printf ...)"`) | interior emitted unmasked (`out = out c` in subst's default branch) | all 7 red; `lib: 315 passed, 7 failed` |
+| trap 2 (SQ), C-2 exact (SQ) | the `'` span inside subst emitted unmasked | both red; `lib: 320 passed, 2 failed` |
+| grep-count AC-5 x3 | top-level double quotes stop masking | red, `actual: 3 5` |
+| grep-count AC-5 x3 | top-level single quotes stop masking | red, `actual: 4 5` |
+| sigpipe AC-5 x3 | double quotes stop masking | red, `actual: 4 6` |
+| sigpipe AC-5 x3 | single quotes stop masking | red, `actual: 5 6` |
+
+Not earned in RED: the 22 other golden entries (they pin "unchanged", and no
+candidate change touched them); the heredoc body-is-data pin; round trip x3;
+c1 x3, n4 and m4, which are silent today because the guard is blind or
+because of the existing rule. c1 is paired with s1 and n4/m4 with k4, all red
+until GREEN. DV-2 at GATES is where these get earned on the shipped code.
+
+**Negative controls, expected values.** Every number below was measured by
+running the real suites in that scratch clone, not in the framework of this
+tree: (a) unchanged code, (b) candidate C-2 only, (c) candidate C-2 plus a
+quote-aware unwrap (C-3) and a folded-group scan (C-4). GREEN confirms
+column (c) against what it ships.
+
+| Control | Pass condition | (a) today | (b) C-2 only | (c) C-2+C-3+C-4 |
+|---|---|---|---|---|
+| grep-count c1_* | none reported | none | none | none |
+| grep-count s1_* | exactly `3` | none | `3` | `3` |
+| grep-count p5_* prose | exactly `5` | none | `5` | `5` |
+| grep-count n4 / m4 | none / `3` | none / `3` | none / `3` | none / `3` |
+| grep-count C-3 u3 | `1 2` | `1` | `1` | `1 2` |
+| sigpipe q60_* prose | exactly `6` | none | `6` | `6` |
+| lib AC-5 line 3 | `echo "a^F^A^A^Fb"` | no line 3 | as pinned | as pinned |
+| real tree, check-grep-count | 0 findings | 0 | 0 | 0 |
+| real tree, check-sigpipe | 0 findings | 0 | **9** (gates.test.sh) | **9** |
+
+Suites in the clone: (b) `lib: 322 passed, 0 failed` (before the heredoc pair
+was added; with it, `323 passed, 1 failed`, the heredoc pin), `grep-count: 36
+passed, 2 failed` (C-3, AC-4), `sigpipe: 87 passed, 2 failed` (the real-tree
+C-3 pair, `actual: 9`); (c) `grep-count: 38 passed, 0 failed`. With (b) also
+`phase-guard: 378 passed, 0 failed` and `worktree: 73 passed, 0 failed`, the
+lock-side consumers C-2's caller paragraph names.
+
+**What changes the approach.**
+1. *Heredoc inside a quoted substitution* (C-2 amendment). The tree's two
+   guards hold their rules in `"$(cat <<'AWKEOF' ... )"`. Quote tracking
+   alone is not enough there; a heredoc opener inside `subst` must start a
+   body that nothing in is counted. The quote-only candidate fails the pin.
+2. *C-3 as a second copy makes DV-2 vacuous for grep-count* (C-3 amendment):
+   measured `grep-count: 38 passed, 0 failed` with the old masker and a
+   quote-aware unwrap. One shared function, or DV-2 has to break both copies.
+3. *The fix widens what the masker sees across the tree*: masked text changes
+   in `lib.sh` (from 1062), `_lib.sh` (321), `gates.test.sh` (809),
+   `lib.test.sh` (437), `run-lock.test.sh` (487), `security-audit.test.sh`
+   (145), `settings.test.sh` (107) and `check-sigpipe.sh` (183). Only
+   `gates.test.sh` gains findings (the nine above, escalated);
+   `check-grep-count.sh` stays at 0 over the tree.
+4. This file's own new lines are written so that neither the old nor the new
+   masker changes state on them (checked: the first masked difference in
+   `lib.test.sh` is the old line 437; none in the other two suites). The one
+   line that holds the tested shape uses a bare `$( )` on purpose, with a
+   comment saying why.
+
+**Declined to GATES, in those words.** DV-1 (AC-3, the real-tree probe at
+`gates.test.sh:1894`) and DV-2 (the defect put back) both need the fix to
+exist and are owned by GATES; RED did not run them and claims neither. The
+scratch-clone numbers above are candidates', not the shipped code's.
+
+**Callers checked** with
+`git grep -n 'mask_shell_quotes\|masked_lines\|unwrap_quoted_subst'` on
+2026-10-16: the Contract's list holds. `lib.test.sh`'s callers moved down by
+this story's insertion (`:110`, `:111`, `:246`, `:266` new, `:746`, `:829`,
+`:840`); no new caller outside tests.
+
+**Other checks run in RED:** `bash scripts/gates.sh --fast` - every gate
+UNCONFIGURED in this repository, `All required gates passed (0 ran, 5
+unconfigured, 0 known)`, so the self-test is the judge here;
+`bash scripts/check-sigpipe.sh` - `scanned 49 shell file(s), 45 with
+pipefail, 0 finding(s)`; `bash scripts/check-grep-count.sh` - `scanned 49
+shell file(s), 0 finding(s)` (fixtures live in temp fixtures and heredocs, so
+neither guard scans them); `bash scripts/mutate.sh --check` - no stranded
+mutation. No timeout budgets apply: these are bash suites with no framework
+timeout.
 
 ## Regressions
 
@@ -378,6 +725,45 @@ name, below the table.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+**R-1 (RED, orchestrator, 2026-10-17): nine `gates.test.sh` pipelines
+rewritten as here-strings (Contract C-7, PO decision 1).** What was wrong:
+`printf '%s\n' "$x" | grep -q ...` under pipefail at 2114, 2905, 2912,
+2942-2952 (six in `ac1_outcome`), 2985, 3013 and 3080. These are the shape
+`check-sigpipe.sh` exists to refuse, and they were hidden from it by the masker
+defect this story fixes. How it was found: RED's candidate masker reported
+them, and the orchestrator reproduced them on an extracted fixture with the
+current guard. What they assert instead: nothing different. `<<<"$x"` feeds
+grep the same bytes `printf '%s\n' "$x"` did, so every assertion keeps its
+meaning. Verified three ways:
+
+- the `gates` suite still passes, 682/0, after the rewrite;
+- with the subagent's candidate `lib.sh` in a scratch clone, both guards report
+  0 findings over the rewritten tree (`check-sigpipe: scanned 49 shell
+  file(s), 45 with pipefail, 0 finding(s)`, `check-grep-count: ... 0
+  finding(s)`);
+- one probe through `mutate.sh`, on a `gates.sh` line those helpers judge, went
+  red through `assert_line` and was restored:
+
+```
+$ bash .claude/tests/gates.test.sh
+gates: 682 passed, 0 failed
+$ bash scripts/mutate.sh scripts/gates.sh '1113s#never accounted for; this run#never accounted for. This run#' -- bash .claude/tests/gates.test.sh
+=== mutate: scripts/gates.sh (1 line(s) changed by 1113s#never accounted for; this run#never accounted for. This run#) ===
+  1113 -   printf '\n%d declared gate(s) never accounted for; this run certifies nothing.\n' "$lost"
+  1113 +   printf '\n%d declared gate(s) never accounted for. This run certifies nothing.\n' "$lost"
+=== mutate: running bash .claude/tests/gates.test.sh ===
+    FAIL (a) and the refusals are counted
+    FAIL (b) and both are counted
+    FAIL (c) and counted
+    FAIL (a) --fast: exactly one gate is counted lost
+    FAIL (b) --required: exactly one gate is counted lost
+    FAIL (c) --gate b: exactly one gate is counted lost
+    FAIL (d) --gate a: exactly one gate is counted lost
+gates: 675 passed, 7 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/nervous-snyder-2b307a/.claude/state/mutations/scripts_gates.sh.20261017T042641Z.42468.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 ## Gate results
 
