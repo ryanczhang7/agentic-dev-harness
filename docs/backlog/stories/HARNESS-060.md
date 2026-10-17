@@ -974,3 +974,5 @@ story's deferred verifications: DV-2's one expression on the shared matcher
 reddened grep-count 12 and sigpipe 7, matching the handoff's per-suite counts
 (13 and 7 red in RED, less AC-4's one, which does not use the matcher). The rest
 of the table is `/audit-mutations`' work.
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/147 (opened 2026-10-17 from `fce54b7`).
