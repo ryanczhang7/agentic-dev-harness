@@ -4,8 +4,8 @@ title: check-sigpipe recognises the early-exit reader shapes it misses and pins 
 slug: check-sigpipe-recognises-the-early-exit
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-061-check-sigpipe-recognises-the-early-exit
 depends_on: [HARNESS-060] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-sigpipe.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -771,3 +771,18 @@ against the shipped guard (`## Deferred verifications`). The rest of the table
 belongs to `/audit-mutations`.
 
 PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/148 (opened 2026-10-17 from `10439b9`).
+
+**CI (REVIEW -> DONE, 2026-10-17).** PR #148 merged as `dc023de`. The `gates`
+run on the PR's last commit `1444d8d`,
+https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/39065852697,
+took 2m32s (20:14:15Z to 20:16:47Z) against the workflow's 45-minute limit, in
+line with HARNESS-059's 2m37s and HARNESS-060's 2m20s. So the two-hour local
+self-test was this host under load, not the change. Its log:
+
+    assertion floors: all 26 suite(s) met their declared floor (3614 assertions executed, 3388 declared).
+    26 harness suite(s) passed.
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+    check-grep-count: scanned 49 shell file(s), 0 finding(s)
+
+The `boundaries` run, https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/39065852603,
+passed in 8 s. No gate reached REVIEW marked pending CI.
