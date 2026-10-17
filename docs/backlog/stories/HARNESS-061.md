@@ -4,8 +4,8 @@ title: check-sigpipe recognises the early-exit reader shapes it misses and pins 
 slug: check-sigpipe-recognises-the-early-exit
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-061-check-sigpipe-recognises-the-early-exit
 depends_on: [HARNESS-060] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-sigpipe.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -255,6 +255,62 @@ job, and CI's `check-sigpipe.sh` step. No `gates.sh` gate is configured here.
   `early_reader` (the one `mutate.sh` expression GREEN names in `## Notes`),
   AC-3's `LC_ALL=C` and `env` lines MUST leave the reported set in the new
   describe, and nothing outside it fails. Owner: GATES.
+
+
+**Results (GATES, orchestrator, 2026-10-17).** DV-1: each of the three
+shapes the audit measured at 0 findings (Q01-Q03) is now reported at
+`scripts/check-boundaries.sh:527`, and the restored tree is clean. DV-2:
+with the command-word prefix skipping removed (`j = 1` at `:157`), the
+`LC_ALL=C` and `env LC_ALL=C` lines (6, 7) leave the reported set, the census
+assertion fails with them, and nothing outside the HARNESS-061 describe moves
+(89 passed). Each file came back byte for byte.
+
+```
+--- DV-1 (AC-4, real-tree probes on check-boundaries.sh:527)
+$ bash scripts/mutate.sh scripts/check-boundaries.sh '527s#| has_owner;#| LC_ALL=C grep -qi owner;#' -- bash scripts/check-sigpipe.sh
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 527s#| has_owner;#| LC_ALL=C grep -qi owner;#) ===
+  527 -   if printf '%s\n' "$dv" | has_owner; then
+  527 +   if printf '%s\n' "$dv" | LC_ALL=C grep -qi owner; then
+=== mutate: running bash scripts/check-sigpipe.sh ===
+scripts/check-boundaries.sh:527
+check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 1 finding(s)
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/scripts_check-boundaries.sh.20261017T17531
+$ bash scripts/mutate.sh scripts/check-boundaries.sh '527s#| has_owner;#| grep -e owner -qi;#' -- bash scripts/check-sigpipe.sh
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 527s#| has_owner;#| grep -e owner -qi;#) ===
+  527 -   if printf '%s\n' "$dv" | has_owner; then
+  527 +   if printf '%s\n' "$dv" | grep -e owner -qi; then
+=== mutate: running bash scripts/check-sigpipe.sh ===
+scripts/check-boundaries.sh:527
+check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 1 finding(s)
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/scripts_check-boundaries.sh.20261017T17540
+$ bash scripts/mutate.sh scripts/check-boundaries.sh '527s#| has_owner;#|\& grep -qi owner;#' -- bash scripts/check-sigpipe.sh
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 527s#| has_owner;#|\& grep -qi owner;#) ===
+  527 -   if printf '%s\n' "$dv" | has_owner; then
+  527 +   if printf '%s\n' "$dv" |& grep -qi owner; then
+=== mutate: running bash scripts/check-sigpipe.sh ===
+scripts/check-boundaries.sh:527
+check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 1 finding(s)
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/scripts_check-boundaries.sh.20261017T17550
+$ bash scripts/check-sigpipe.sh   # restored tree
+check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
+--- DV-2 (defect put back)
+$ bash scripts/mutate.sh scripts/check-sigpipe.sh 's#j = cmd_index(a, n)#j = 1#' -- bash .claude/tests/sigpipe.test.sh
+=== mutate: scripts/check-sigpipe.sh (1 line(s) changed by s#j = cmd_index(a, n)#j = 1#) ===
+  157 -   j = cmd_index(a, n)
+  157 +   j = 1
+=== mutate: running bash .claude/tests/sigpipe.test.sh ===
+    FAIL HARNESS-061 AC-1..AC-3: --max-count=1, a pipeline read by ||, LC_ALL=C grep -q, env LC_ALL=C grep -q, grep -e x -q and |& grep -q are reported; LC_ALL=C grep -c, grep -e x -c, env -i grep -c,
+         expected: 4 5 6 7 8 9
+         actual:   4 5 8 9
+    FAIL HARNESS-061: the census is exact - one file, one with pipefail, six findings
+         expected: 1
+         actual:   0
+sigpipe: 89 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/scripts_check-sigpipe.sh.20261017T175738Z.
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+DV-DONE
+```
 
 ## Amendments
 
@@ -557,10 +613,21 @@ nothing of a previous run is in the tree.`; `git status --short` shows
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-17T18:03:37Z
+    commit: 40217f4
+    tree:   dc451ab6379175dd1db3af29418f1a85949c7d4f
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -575,6 +642,39 @@ nothing of a previous run is in the tree.`; `git status --short` shows
        * what was broken, and where
        * the gate output proving it failed
        * confirmation the probe was reverted -->
+
+**GP-1 (GATES, 2026-10-17): `check-sigpipe.sh` probed against a real line of
+the tree, three ways.** The same runs as DV-1 in `## Deferred verifications`,
+where the full output is pasted. Before this story each probe reported
+`45 with pipefail, 0 finding(s)` (audit Q01-Q03).
+
+    --- DV-1 (AC-4, real-tree probes on check-boundaries.sh:527)
+    $ bash scripts/mutate.sh scripts/check-boundaries.sh '527s#| has_owner;#| LC_ALL=C grep -qi owner;#' -- bash scripts/check-sigpipe.sh
+    === mutate: scripts/check-boundaries.sh (1 line(s) changed by 527s#| has_owner;#| LC_ALL=C grep -qi owner;#) ===
+      527 -   if printf '%s\n' "$dv" | has_owner; then
+      527 +   if printf '%s\n' "$dv" | LC_ALL=C grep -qi owner; then
+    === mutate: running bash scripts/check-sigpipe.sh ===
+    scripts/check-boundaries.sh:527
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 1 finding(s)
+    === mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/scripts_check-boundaries.sh.20261017T17531
+    $ bash scripts/mutate.sh scripts/check-boundaries.sh '527s#| has_owner;#| grep -e owner -qi;#' -- bash scripts/check-sigpipe.sh
+    === mutate: scripts/check-boundaries.sh (1 line(s) changed by 527s#| has_owner;#| grep -e owner -qi;#) ===
+      527 -   if printf '%s\n' "$dv" | has_owner; then
+      527 +   if printf '%s\n' "$dv" | grep -e owner -qi; then
+    === mutate: running bash scripts/check-sigpipe.sh ===
+    scripts/check-boundaries.sh:527
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 1 finding(s)
+    === mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/scripts_check-boundaries.sh.20261017T17540
+    $ bash scripts/mutate.sh scripts/check-boundaries.sh '527s#| has_owner;#|\& grep -qi owner;#' -- bash scripts/check-sigpipe.sh
+    === mutate: scripts/check-boundaries.sh (1 line(s) changed by 527s#| has_owner;#|\& grep -qi owner;#) ===
+      527 -   if printf '%s\n' "$dv" | has_owner; then
+      527 +   if printf '%s\n' "$dv" |& grep -qi owner; then
+    === mutate: running bash scripts/check-sigpipe.sh ===
+    scripts/check-boundaries.sh:527
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 1 finding(s)
+    === mutate: command exited 1; restored (verified byte-for-byte against $ROOT/.claude/state/mutations/scripts_check-boundaries.sh.20261017T17550
+    $ bash scripts/check-sigpipe.sh   # restored tree
+    check-sigpipe: scanned 49 shell file(s), 45 with pipefail, 0 finding(s)
 
 ## Scaffold inventory
 
@@ -650,3 +750,17 @@ suite run itself is GATES' to paste):
       157:   j = cmd_index(a, n)
 
 Not committed (per dispatch).
+
+**Self-test at GATES (orchestrator, 2026-10-17).** `bash scripts/selftest.sh`,
+run detached and alone after `bash scripts/gates.sh` recorded a pass, exited 0
+in 7278 s (about 2 hours). HARNESS-059's run took 2894 s and HARNESS-060's 5433 s
+on this host, while CI ran HARNESS-060's whole job in 2m20s. No self-test, gate
+or mutation process was left running afterwards (`ps -ef`), so no orphan
+explains it. Cause not known.
+
+    assertion floors: all 26 suite(s) met their declared floor (3614 assertions executed, 3388 declared).
+    26 harness suite(s) passed.
+
+**Handoff check.** RED's predicted DV-2 shape, `4 5 8 9`, is what DV-2 measured
+against the shipped guard (`## Deferred verifications`). The rest of the table
+belongs to `/audit-mutations`.
