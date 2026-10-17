@@ -4,8 +4,8 @@ title: check-boundaries matches gate names, owners and waivers as whole words, a
 slug: check-boundaries-matches-gate-names-owne
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-062-check-boundaries-matches-gate-names-owne
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -209,6 +209,16 @@ typed inside single quotes at a shell; `\$` is deliberate):
     B07  bash scripts/mutate.sh scripts/check-boundaries.sh '459s#REVIEW|DONE)#REVIEW)#' -- bash scripts/selftest.sh boundaries
     B08  bash scripts/mutate.sh scripts/check-boundaries.sh '462s#\$g( |\\(|\$)"#$g"#' -- bash scripts/selftest.sh boundaries
 
+*Note from RED, 2026-10-17 (not an amendment - the four expressions are right
+as written):* an agent's Bash tool halves a doubled backslash before the shell
+sees it, even inside single quotes (`printf '%s\n' 'a\\b'` prints `a\b`
+there). Typed through that tool verbatim, B08 reaches sed as `\(` and is
+refused - `mutate: sed rejected the expression: sed: -e expression #1, char
+23: Unmatched ( or \(`, exit 2, nothing run. An agent re-running B08 (DV-1)
+must type `\\\\(` to deliver C-5's `\\(`; the `=== mutate:` header in
+`## Regressions` prints the expression sed actually received, and it is C-5's,
+byte for byte.
+
 Expected under each: the suite goes from N/0 to N-k passed, k failed, where k
 is the number of assertions that criterion's fixture makes and the failures
 name only that criterion; and `=== mutate: ... restored (verified byte-for-byte
@@ -324,6 +334,48 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All eleven new assertions are integration-level: each builds a real two-branch
+fixture repository with `story_on_branch`, runs the real
+`scripts/check-boundaries.sh main` through `run_boundaries`, and reads `$out`
+(and `$rc`, through `refused`). That is the cheapest level that can falsify
+any of the four criteria - the rules under test are awk regexes inside a
+script, reached only by running the script. All four criteria are mechanical
+(C-6): exact needles, exact fixtures, no measured thresholds.
+
+Placement (C-1, RED's choice): beside the existing case that owns each rule,
+appended at the end of its describe.
+
+- **AC-2 and AC-3** at the end of `describe "a deferred verification is
+  discharged or waived, never just filed"`, after the HARNESS-037 AC-3 (d) case.
+- **AC-1 and AC-4** at the end of `describe "a gate the story escalated for
+  itself appears in the record"`, after `"and the run is clean"`.
+
+| AC | Assertion name | Kind | Fixture |
+|---|---|---|---|
+| AC-1 | `HARNESS-062 AC-1: a PASS for unit-slow does not satisfy a required unit` | `refused` (needle + non-zero exit) | REVIEW, `required_gates: [unit]`, pasted `PASS         unit-slow (1s)` |
+| AC-1 | `HARNESS-062 AC-1: PASS unit followed by its timing satisfies a required unit` | control, ok line | pasted `PASS         unit (12s)` |
+| AC-1 | `HARNESS-062 AC-1: PASS unit ending the line satisfies a required unit` | control, ok line | pasted `PASS         unit` |
+| AC-2 | `HARNESS-062 AC-2: an owner line naming no phase (owner: banana) is refused` | `refused` | `owner: banana`, fenced result |
+| AC-2 | `HARNESS-062 AC-2: the same section with Owner: GREEN is accepted as owned` | control, ok line | `Owner: GREEN`, fenced result |
+| AC-3 | `HARNESS-062 AC-3: 'unwaived' is not a waiver, so the entry has no result and no waiver` | `refused` | `Owner: GATES.`, no block, `unwaived` |
+| AC-3 | `HARNESS-062 AC-3: and the refusal is the whole 3h line` | `whole_line` vs `$WANT_3H` | same run |
+| AC-3 | `HARNESS-062 AC-3: 'waived' in lower case mid-sentence is a waiver` | control, ok line | `The PO waived it on ...` |
+| AC-3 | `HARNESS-062 AC-3: 'Waived:' starting a line is a waiver` | control, ok line | `Waived: the encoder moved ...` at column 0 |
+| AC-4 | `HARNESS-062 AC-4: at DONE, a PASS for unit-slow does not satisfy a required unit` | `refused` | DONE, `required_gates: [unit]`, pasted `PASS         unit-slow (1s)` |
+| AC-4 | `HARNESS-062 AC-4: at DONE, a recorded PASS unit is reported as passing` | ok line (second direction of the same rule at DONE) | DONE, pasted `PASS         unit (12s)` |
+
+AC-1's record is PASTED, not run through `gates.sh` (C-3 left the choice):
+rule 3e-i reads only the section text, and a pasted record keeps the fixture
+to one heredoc. The tree-hash rule refuses every pasted record with its own
+message, so the controls assert the `ok` line and never `$rc`.
+
+AC-4 has a second assertion the brief did not ask for: at DONE, a passing
+record is SAID to pass. It is the same rule from the other side and it goes
+red under B07 as well (the rule does not run, so no ok line), which makes the
+DONE arm pinned in both directions.
+
+Out of scope and not pinned: B09 (`## Out of scope`).
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -343,6 +395,148 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the Test Developer (agent definition `model: opus`; dispatched
+without an override, so far as this agent can see - the orchestrator records
+what it resolved to).
+
+**GREEN is expected to be a no-op: no source changes.** The four lines in
+`scripts/check-boundaries.sh` (C-0, re-read with `grep -n` on this tree: 99,
+116, 459, 462 - unchanged) are correct; every new assertion passes on arrival
+and is earned by its audit mutant instead (`## Regressions`). Nothing found in
+RED says otherwise.
+
+**Command.**
+
+    bash scripts/selftest.sh boundaries
+
+Takes about 9 minutes on this machine (8m46s measured locally for the first
+clean run); it holds the run lock, so nothing else may run alongside it.
+
+**Clean run on this tree** (after the floor was raised to 136, with
+`check-boundaries.sh` untouched):
+
+    boundaries: 136 passed, 0 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (136 assertions executed, 136 declared).
+    1 harness suite(s) passed.
+
+136 executed (125 before + 11 new). The `selftest` suite, which mirrors the
+floor in its COUNTS table, also ran clean after the change:
+`selftest: 268 passed, 0 failed`. `bash scripts/gates.sh --fast`: every gate
+UNCONFIGURED (this repository is not bootstrapped), `All required gates passed
+(0 ran, 5 unconfigured, 0 known)` - nothing a gate could trip on.
+
+**There is no red to hand over** - the right "failure" here is the mutant runs,
+one per criterion, pasted in full in `## Regressions`.
+
+**Files touched.**
+
+- `.claude/tests/boundaries.test.sh` - `story_on_branch` gains a third
+  argument (below); eleven new assertions.
+- `.claude/tests/floors.conf` - `boundaries` 125 -> 136 (line 39), and a dated
+  HARNESS-062 comment appended after the HARNESS-061 one at the end of the
+  file. The brief placed the HARNESS-054 comment at `selftest.test.sh:446-455`;
+  on this tree it is at `floors.conf:446-455`, and every floor-raise comment
+  lives in `floors.conf`, so the new one went there too.
+- `.claude/tests/selftest.test.sh` - COUNTS table `boundaries 125` -> `136`
+  (line 530). Nothing else.
+- this story: `## Test plan`, `## Handoff: RED -> GREEN`, `## Regressions`,
+  and a note (not an amendment) under C-5 about typing B08 through an agent's
+  Bash tool.
+
+**Assertions, by name, and the AC each covers.**
+
+| AC | Assertion |
+|---|---|
+| AC-1 | `HARNESS-062 AC-1: a PASS for unit-slow does not satisfy a required unit` |
+| AC-1 control | `HARNESS-062 AC-1: PASS unit followed by its timing satisfies a required unit` |
+| AC-1 control | `HARNESS-062 AC-1: PASS unit ending the line satisfies a required unit` |
+| AC-2 | `HARNESS-062 AC-2: an owner line naming no phase (owner: banana) is refused` |
+| AC-2 control | `HARNESS-062 AC-2: the same section with Owner: GREEN is accepted as owned` |
+| AC-3 | `HARNESS-062 AC-3: 'unwaived' is not a waiver, so the entry has no result and no waiver` |
+| AC-3 | `HARNESS-062 AC-3: and the refusal is the whole 3h line` |
+| AC-3 control | `HARNESS-062 AC-3: 'waived' in lower case mid-sentence is a waiver` |
+| AC-3 control | `HARNESS-062 AC-3: 'Waived:' starting a line is a waiver` |
+| AC-4 | `HARNESS-062 AC-4: at DONE, a PASS for unit-slow does not satisfy a required unit` |
+| AC-4 | `HARNESS-062 AC-4: at DONE, a recorded PASS unit is reported as passing` |
+
+**C-2, as built: a third optional argument, not a new helper.**
+`story_on_branch [type] [extra-frontmatter-line] [phase]`, phase defaulting to
+`REVIEW`. The frontmatter printf changed from a literal `phase: REVIEW` to
+`phase: %s` fed `"$phase"`, so every call that passes no third argument writes
+the same bytes as before. The only new callers passing it are the two AC-4
+cases (`story_on_branch feature 'required_gates: [unit]' DONE`). Callers
+checked against the tree by this agent: `git grep -l story_on_branch` returns
+`.claude/tests/boundaries.test.sh` and prose in the HARNESS-003, -006, -037,
+-054 and -062 story files only; in the suite, 31 mentions before this change
+(comment, definition, and 29 calls - 4 with arguments, the `spike '...'` ones
+at the old `:1397,:1407,:1422,:1432`), matching C-2. The full suite running
+136/0 with the three-argument form is the evidence that none of them changed
+behaviour.
+
+**Export shape.** Not applicable in the module sense: the tests run
+`scripts/check-boundaries.sh main` as a process and pin its output lines,
+exactly:
+
+- `frontmatter requires gate 'unit', but the recorded run has no PASS for it`
+  (substring, with a non-zero exit)
+- `ok    story-required gate 'unit' passed in the recorded run`
+- `does not declare an owner` (substring, non-zero exit)
+- `ok    ## Deferred verifications names the phase that owns each entry`
+- `## Deferred verifications has no result and no waiver` (substring,
+  non-zero exit) and the whole line `$WANT_3H`
+- `ok    ## Deferred verifications carries an explicit waiver`
+
+All of these strings exist unchanged in `check-boundaries.sh` today. Not
+constrained: anything else the script prints, and its exit status on the
+acceptance controls (the tree-hash rule refuses every pasted `## Gate results`,
+so those runs exit 1 whatever 3e-i says).
+
+**Mutation table** (each against the whole `boundaries` suite, 136 assertions
+at the time, floor still 125; full output in `## Regressions`):
+
+| Mutant | Expression (as sed received it - C-5's, verbatim) | Assertions red | k | Suite under mutant |
+|---|---|---|---|---|
+| B05 (AC-3) | `99s#(^\|\[^a-z\])waived(\[^a-z\]\|$)#waived#` | `HARNESS-062 AC-3: 'unwaived' is not a waiver, so the entry has no result and no waiver`; `HARNESS-062 AC-3: and the refusal is the whole 3h line` | 2 | 134 passed, 2 failed |
+| B04 (AC-2) | `116s#(red\|green\|gates\|review\|done)#[a-z]*#` | `HARNESS-062 AC-2: an owner line naming no phase (owner: banana) is refused` | 1 | 135 passed, 1 failed |
+| B07 (AC-4) | `459s#REVIEW\|DONE)#REVIEW)#` | `HARNESS-062 AC-4: at DONE, a PASS for unit-slow does not satisfy a required unit`; `HARNESS-062 AC-4: at DONE, a recorded PASS unit is reported as passing` | 2 | 134 passed, 2 failed |
+| B08 (AC-1) | `462s#\$g( \|\\(\|\$)"#$g"#` | `HARNESS-062 AC-1: a PASS for unit-slow does not satisfy a required unit`; `HARNESS-062 AC-4: at DONE, a PASS for unit-slow does not satisfy a required unit` | 2 | 134 passed, 2 failed |
+
+(`\|` in the table is markdown escaping for the pipe; the expressions are the
+C-5 lines.) `bash scripts/mutate.sh --check` after the last run: `mutate: no
+stranded mutation; nothing of a previous run is in the tree.`
+
+**Cross-criterion catch, stated rather than hidden.** B08 also turns AC-4's
+refusal red. That is the fixture working, not a leak: AC-4's DONE story carries
+the same `unit-slow` record, so a prefix match satisfies it at DONE as it does
+AC-1's at REVIEW. No other mutant touches another criterion, and no pre-existing
+assertion went red under any of the four.
+
+**For DV-1 (owner GATES).** The smallest predicted catch is now **B04, k=1**,
+not B07 (k=2, because AC-4 gained a second, acceptance-side assertion). Re-run
+whichever the orchestrator chooses; if the re-run is made through an agent's
+Bash tool, B08 must be typed with `\\\\(` (C-5's note).
+
+**Negative controls: expected values.** All mechanical, so each "value" is a
+line present or absent, and all were measured in the clean run above (the
+suite does not fail at import - every assertion executed, 136/0):
+
+| Control | Expected | Measured (clean) | Under its criterion's mutant |
+|---|---|---|---|
+| AC-1 `PASS unit (12s)` | ok line printed | printed | still printed (B08 loosens) |
+| AC-1 `PASS unit` at end of line | ok line printed | printed | still printed (B08 loosens) |
+| AC-2 `Owner: GREEN` | ok owner line printed | printed | still printed (B04 loosens) |
+| AC-3 `waived` mid-sentence | ok waiver line printed | printed | still printed (B05 loosens) |
+| AC-3 `Waived:` at column 0 | ok waiver line printed | printed | still printed (B05 loosens) |
+
+What these controls are NOT earned by: each audit mutant loosens a match, and
+an acceptance control cannot go red under a looser match. They guard the other
+direction - a change that over-tightens. Dropping the `|$` alternative at line
+462 would turn the end-of-line control red; dropping `green` from line 116's
+list would turn the Owner: GREEN control red; dropping `tolower` at line 99
+would turn the `Waived:` control red. None of those tightening mutants was run; per `rules.md` "Mutation work per story" that is `/audit-mutations`
+work, not this story's.
 
 ## Regressions
 
@@ -368,6 +562,362 @@ name, below the table.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+**Not a return to RED.** This story never left RED; the section carries the
+probes that earn the eleven assertions written against a `check-boundaries.sh`
+that was already correct, as `rules.md` requires of a test written while the
+implementation exists. One mutant per criterion, each run through
+`scripts/mutate.sh` against the whole `boundaries` suite (the one suite that
+holds the assertions), one at a time, before the floor was raised (so the floor
+line reads 125). Clean baseline on the same tree, after the eleven were added:
+`boundaries: 136 passed, 0 failed`.
+
+The trailing `Bnn rc=N` line in each block is the exit status, appended by the
+wrapper that ran it; everything above it is mutate.sh's and selftest.sh's own
+output, unedited.
+
+### AC-3 - B05, line 99: `waived` matched as a substring
+
+2 red, both AC-3's refusal case; the two AC-3 waiver controls stay green (B05
+loosens, so the controls cannot be what it catches - see the handoff).
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 99s#(^|\[^a-z\])waived(\[^a-z\]|$)#waived#) ===
+  99 -          exit (tolower(s) ~ /(^|[^a-z])waived([^a-z]|$)/) ? 0 : 1
+  99 +          exit (tolower(s) ~ /waived/) ? 0 : 1
+
+=== mutate: running bash scripts/selftest.sh boundaries ===
+
+=== boundaries ===
+
+  a return to RED has to show the red
+
+  the story comes from GITHUB_HEAD_REF where CI sets it
+
+  a PR is opened from REVIEW, as committed
+
+  the same rule covers gate probes
+
+  acceptance criteria are frozen
+
+  criteria freeze at the last committed PLANNED state (HARNESS-033)
+
+  a BLOCKED gate can reach REVIEW, but only with the decision written down
+
+  a deferred verification is discharged or waived, never just filed
+    FAIL HARNESS-062 AC-3: 'unwaived' is not a waiver, so the entry has no result and no waiver
+         expected a refusal saying: ## Deferred verifications has no result and no waiver
+         actual:                    ok    story files validated
+         ok    harness state not tracked
+         ok    source changes accompanied by test changes (0 source, 0 test)
+         ok    story T-1 is in REVIEW
+         ok    branch matches the story's frontmatter
+         ok    acceptance criteria unchanged since main
+         FAIL  story T-1: ## Gate results was not written by scripts/gates.sh. Run 'bash scripts/gates.sh' - it records its own result; a pasted summary is not evidence.
+         ok    ## Handoff is filled in
+         ok    ## Deferred verifications names the phase that owns each entry
+         ok    ## Deferred verifications carries an explicit waiver
+    FAIL HARNESS-062 AC-3: and the refusal is the whole 3h line
+         expected: 1
+         actual:   0
+
+  a harness change bumps the stamp
+
+  RED may add a test dependency, and only a test dependency
+
+  the story is found by what claims the branch, not by the branch's name
+
+  a story is located by its filename, so the id inside must agree
+
+  the handoff is the only channel to the next agent
+
+  a gate the story escalated for itself appears in the record
+
+  a spike that escalates a gate has to have run it
+
+  machine-local state is never committed
+
+  a section is not empty because it was too big to read
+
+  the gate record is a stamp on a tree, not a sentence about one
+
+  the local verdict and CI's verdict agree about an untracked file (HARNESS-014, AC-2)
+
+  production code arrives with tests, or with an inventory
+
+  a story that predates touches: is still accepted (HARNESS-006, AC-5 control)
+
+boundaries: 134 passed, 2 failed
+
+assertion floors: all 1 suite(s) met their declared floor (134 assertions executed, 125 declared).
+1 of 1 harness suite(s) FAILED.
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261017T210733Z.1832.bak) ===
+  99:          exit (tolower(s) ~ /(^|[^a-z])waived([^a-z]|$)/) ? 0 : 1
+B05 rc=1
+```
+
+### AC-2 - B04, line 116: the owner's phase list widened to `[a-z]*`
+
+1 red, AC-2's refusal; its Owner: GREEN control stays green.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 116s#(red|green|gates|review|done)#[a-z]*#) ===
+  116 -          exit (tolower(s) ~ /(^|[^a-z])owner[^a-z]*:?[^a-z]*(red|green|gates|review|done)([^a-z]|$)/) ? 0 : 1
+  116 +          exit (tolower(s) ~ /(^|[^a-z])owner[^a-z]*:?[^a-z]*[a-z]*([^a-z]|$)/) ? 0 : 1
+
+=== mutate: running bash scripts/selftest.sh boundaries ===
+
+=== boundaries ===
+
+  a return to RED has to show the red
+
+  the story comes from GITHUB_HEAD_REF where CI sets it
+
+  a PR is opened from REVIEW, as committed
+
+  the same rule covers gate probes
+
+  acceptance criteria are frozen
+
+  criteria freeze at the last committed PLANNED state (HARNESS-033)
+
+  a BLOCKED gate can reach REVIEW, but only with the decision written down
+
+  a deferred verification is discharged or waived, never just filed
+    FAIL HARNESS-062 AC-2: an owner line naming no phase (owner: banana) is refused
+         expected a refusal saying: does not declare an owner
+         actual:                    ok    story files validated
+         ok    harness state not tracked
+         ok    source changes accompanied by test changes (0 source, 0 test)
+         ok    story T-1 is in REVIEW
+         ok    branch matches the story's frontmatter
+         ok    acceptance criteria unchanged since main
+         FAIL  story T-1: ## Gate results was not written by scripts/gates.sh. Run 'bash scripts/gates.sh' - it records its own result; a pasted summary is not evidence.
+         ok    ## Handoff is filled in
+         ok    ## Deferred verifications names the phase that owns each entry
+         ok    ## Deferred verifications carries its result
+
+  a harness change bumps the stamp
+
+  RED may add a test dependency, and only a test dependency
+
+  the story is found by what claims the branch, not by the branch's name
+
+  a story is located by its filename, so the id inside must agree
+
+  the handoff is the only channel to the next agent
+
+  a gate the story escalated for itself appears in the record
+
+  a spike that escalates a gate has to have run it
+
+  machine-local state is never committed
+
+  a section is not empty because it was too big to read
+
+  the gate record is a stamp on a tree, not a sentence about one
+
+  the local verdict and CI's verdict agree about an untracked file (HARNESS-014, AC-2)
+
+  production code arrives with tests, or with an inventory
+
+  a story that predates touches: is still accepted (HARNESS-006, AC-5 control)
+
+boundaries: 135 passed, 1 failed
+
+assertion floors: all 1 suite(s) met their declared floor (135 assertions executed, 125 declared).
+1 of 1 harness suite(s) FAILED.
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261017T211733Z.19317.bak) ===
+  116:          exit (tolower(s) ~ /(^|[^a-z])owner[^a-z]*:?[^a-z]*(red|green|gates|review|done)([^a-z]|$)/) ? 0 : 1
+B04 rc=1
+```
+
+### AC-4 - B07, line 459: the required-gates rule dropped at DONE
+
+2 red, both AC-4's (the refusal and the acceptance at DONE: the rule does not
+run, so neither its FAIL nor its ok line is printed).
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 459s#REVIEW|DONE)#REVIEW)#) ===
+  459 -   REVIEW|DONE)
+  459 +   REVIEW)
+
+=== mutate: running bash scripts/selftest.sh boundaries ===
+
+=== boundaries ===
+
+  a return to RED has to show the red
+
+  the story comes from GITHUB_HEAD_REF where CI sets it
+
+  a PR is opened from REVIEW, as committed
+
+  the same rule covers gate probes
+
+  acceptance criteria are frozen
+
+  criteria freeze at the last committed PLANNED state (HARNESS-033)
+
+  a BLOCKED gate can reach REVIEW, but only with the decision written down
+
+  a deferred verification is discharged or waived, never just filed
+
+  a harness change bumps the stamp
+
+  RED may add a test dependency, and only a test dependency
+
+  the story is found by what claims the branch, not by the branch's name
+
+  a story is located by its filename, so the id inside must agree
+
+  the handoff is the only channel to the next agent
+
+  a gate the story escalated for itself appears in the record
+    FAIL HARNESS-062 AC-4: at DONE, a PASS for unit-slow does not satisfy a required unit
+         expected a refusal saying: frontmatter requires gate 'unit', but the recorded run has no PASS for it
+         actual:                    ok    story files validated
+         ok    harness state not tracked
+         ok    source changes accompanied by test changes (0 source, 0 test)
+         ok    story T-1 is in DONE
+         ok    branch matches the story's frontmatter
+         ok    acceptance criteria unchanged since main
+         FAIL  story T-1: ## Gate results was not written by scripts/gates.sh. Run 'bash scripts/gates.sh' - it records its own result; a pasted summary is not evidence.
+         ok    ## Handoff is filled in
+    FAIL HARNESS-062 AC-4: at DONE, a recorded PASS unit is reported as passing
+         expected to contain: ok    story-required gate 'unit' passed in the recorded run
+         actual:               ok    story files validated
+         ok    harness state not tracked
+         ok    source changes accompanied by test changes (0 source, 0 test)
+         ok    story T-1 is in DONE
+         ok    branch matches the story's frontmatter
+         ok    acceptance criteria unchanged since main
+         FAIL  story T-1: ## Gate results was not written by scripts/gates.sh. Run 'bash scripts/gates.sh' - it records its own result; a pasted summary is not evidence.
+         ok    ## Handoff is filled in
+
+  a spike that escalates a gate has to have run it
+
+  machine-local state is never committed
+
+  a section is not empty because it was too big to read
+
+  the gate record is a stamp on a tree, not a sentence about one
+
+  the local verdict and CI's verdict agree about an untracked file (HARNESS-014, AC-2)
+
+  production code arrives with tests, or with an inventory
+
+  a story that predates touches: is still accepted (HARNESS-006, AC-5 control)
+
+boundaries: 134 passed, 2 failed
+
+assertion floors: all 1 suite(s) met their declared floor (134 assertions executed, 125 declared).
+1 of 1 harness suite(s) FAILED.
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261017T212739Z.37236.bak) ===
+  459:   REVIEW|DONE)
+B07 rc=1
+```
+
+### AC-1 - B08, line 462: the gate id's terminator dropped
+
+2 red: AC-1's refusal, and AC-4's refusal as well. That second one is not
+noise: AC-4's DONE fixture uses the same `unit-slow` record, so under a prefix
+match it is satisfied at DONE exactly as AC-1's is at REVIEW. The two AC-1
+controls stay green (B08 loosens). The first attempt at this run was refused by
+sed before anything ran, because the agent's Bash tool halves a doubled backslash (C-5's
+note); the header below shows the expression sed received, and it is C-5's.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 462s#\$g( |\\(|\$)"#$g"#) ===
+  462 -       if awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "^[[:space:]]*PASS[[:space:]]+$g( |\(|$)" <<< "$gr"; then
+  462 +       if awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "^[[:space:]]*PASS[[:space:]]+$g" <<< "$gr"; then
+
+=== mutate: running bash scripts/selftest.sh boundaries ===
+
+=== boundaries ===
+
+  a return to RED has to show the red
+
+  the story comes from GITHUB_HEAD_REF where CI sets it
+
+  a PR is opened from REVIEW, as committed
+
+  the same rule covers gate probes
+
+  acceptance criteria are frozen
+
+  criteria freeze at the last committed PLANNED state (HARNESS-033)
+
+  a BLOCKED gate can reach REVIEW, but only with the decision written down
+
+  a deferred verification is discharged or waived, never just filed
+
+  a harness change bumps the stamp
+
+  RED may add a test dependency, and only a test dependency
+
+  the story is found by what claims the branch, not by the branch's name
+
+  a story is located by its filename, so the id inside must agree
+
+  the handoff is the only channel to the next agent
+
+  a gate the story escalated for itself appears in the record
+    FAIL HARNESS-062 AC-1: a PASS for unit-slow does not satisfy a required unit
+         expected a refusal saying: frontmatter requires gate 'unit', but the recorded run has no PASS for it
+         actual:                    ok    story files validated
+         ok    harness state not tracked
+         ok    source changes accompanied by test changes (0 source, 0 test)
+         ok    story T-1 is in REVIEW
+         ok    branch matches the story's frontmatter
+         ok    acceptance criteria unchanged since main
+         FAIL  story T-1: ## Gate results was not written by scripts/gates.sh. Run 'bash scripts/gates.sh' - it records its own result; a pasted summary is not evidence.
+         ok    story-required gate 'unit' passed in the recorded run
+         ok    ## Handoff is filled in
+    FAIL HARNESS-062 AC-4: at DONE, a PASS for unit-slow does not satisfy a required unit
+         expected a refusal saying: frontmatter requires gate 'unit', but the recorded run has no PASS for it
+         actual:                    ok    story files validated
+         ok    harness state not tracked
+         ok    source changes accompanied by test changes (0 source, 0 test)
+         ok    story T-1 is in DONE
+         ok    branch matches the story's frontmatter
+         ok    acceptance criteria unchanged since main
+         FAIL  story T-1: ## Gate results was not written by scripts/gates.sh. Run 'bash scripts/gates.sh' - it records its own result; a pasted summary is not evidence.
+         ok    story-required gate 'unit' passed in the recorded run
+         ok    ## Handoff is filled in
+
+  a spike that escalates a gate has to have run it
+
+  machine-local state is never committed
+
+  a section is not empty because it was too big to read
+
+  the gate record is a stamp on a tree, not a sentence about one
+
+  the local verdict and CI's verdict agree about an untracked file (HARNESS-014, AC-2)
+
+  production code arrives with tests, or with an inventory
+
+  a story that predates touches: is still accepted (HARNESS-006, AC-5 control)
+
+boundaries: 134 passed, 2 failed
+
+assertion floors: all 1 suite(s) met their declared floor (134 assertions executed, 125 declared).
+1 of 1 harness suite(s) FAILED.
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261017T213709Z.1857.bak) ===
+  462:       if awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "^[[:space:]]*PASS[[:space:]]+$g( |\(|$)" <<< "$gr"; then
+B08 rc=1
+```
+
+### After the last mutant
+
+```
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+check rc=0
+```
 
 ## Gate results
 
