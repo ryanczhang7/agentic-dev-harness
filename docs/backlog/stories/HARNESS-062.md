@@ -282,6 +282,24 @@ argument or a new helper.
   cannot discharge this - it is a check on RED's claim, so it is made by
   someone else. **Owner: GATES.**
 
+  **Result (GATES, orchestrator, 2026-10-17).** Target moved to B04 per
+  `## Notes` 4 (RED's table has AC-4 at two assertions, AC-2 at one). Run
+  detached under the run lock on commit `0288fec`, 22:12:28Z to 22:26Z; the
+  count, the assertion and the restore all match what RED recorded:
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 116s#(red|green|gates|review|done)#[a-z]*#) ===
+=== mutate: running bash scripts/selftest.sh boundaries ===
+    FAIL HARNESS-062 AC-2: an owner line naming no phase (owner: banana) is refused
+boundaries: 135 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261017T221229Z.27372.bak)
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+  The suite was 136/0 on this tree before the run (`## Notes` 5) and the full
+  gate run that follows judges the restored tree.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -925,10 +943,21 @@ check rc=0
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-17T22:27:02Z
+    commit: 0288fec
+    tree:   4b842be7af804d360fb4b150649a9561895c9d72
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
