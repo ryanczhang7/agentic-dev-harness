@@ -4,8 +4,8 @@ title: check-boundaries matches gate names, owners and waivers as whole words, a
 slug: check-boundaries-matches-gate-names-owne
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-062-check-boundaries-matches-gate-names-owne
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -1023,4 +1023,21 @@ check rc=0
    `bash scripts/gates.sh --fast` at the end of RED: `All required gates
    passed (0 ran, 5 unconfigured, 0 known)` - this repository configures no
    gates, so the self-test is the gate, as the Context says.
+6. **Full self-test at GATES (orchestrator, 2026-10-17).** `nohup bash
+   scripts/selftest.sh` on commit `03eb337`, detached under the run lock,
+   alone in the tree, started 22:27:07Z and finished 23:49Z - **1h22m** on
+   this Windows host (the previous record here was about 25 minutes; the
+   `boundaries` and `phase-guard` suites took most of it and no orphaned
+   run was present - the lock named one pid throughout). Every suite green;
+   the exit status was not captured through `nohup ... &`, and the last two
+   lines are the ones `selftest.sh` prints only on exit 0:
+
+    boundaries: 136 passed, 0 failed
+    ...
+    worktree: 73 passed, 0 failed
+
+    assertion floors: all 26 suite(s) met their declared floor (3625 assertions executed, 3399 declared).
+    26 harness suite(s) passed.
+
+   Log: `.claude/state/h062-selftest-full.log` (machine-local, not committed).
 
