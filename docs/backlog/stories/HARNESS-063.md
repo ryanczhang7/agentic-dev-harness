@@ -238,6 +238,23 @@ an exact command. No signature changes, so no caller list is owed.
   `bash scripts/mutate.sh --check` is clean. RED cannot discharge this - it is
   a check on RED's own claim. **Owner: GATES.**
 
+  **Result (GATES, orchestrator, 2026-10-18).** Run detached on commit
+  `34f7e63`, 04:05:25Z to about 04:23Z. The same four assertions RED named
+  went red, no others, and the guard was restored:
+
+```
+=== mutate: .claude/hooks/phase-guard.sh (1 line(s) changed by 58s#; PHASE=$sv_phase##) ===
+=== mutate: running bash scripts/selftest.sh phase-guard ===
+    FAIL AC-1: after a legal test write into B (RED), A's own test write is refused by A's story
+    FAIL AC-1: under A's phase GREEN, not B's RED
+    FAIL AC-1: on A's own path tests/main.test.ts
+    FAIL AC-2: a source write into B (GREEN) then a test write in A (RED) is allowed
+phase-guard: 384 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_phase-guard.sh.20261018T040526Z.114177.bak) ===
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -578,10 +595,21 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-18T04:24:01Z
+    commit: 34f7e63
+    tree:   64995feb5a26569d58602d2adf1dce35eabb8c13
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
