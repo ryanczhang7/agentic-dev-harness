@@ -5,7 +5,7 @@ slug: phase-guard-restores-the-session-s-phase
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-063-phase-guard-restores-the-session-s-phase
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/phase-guard.test.sh, .claude/tests/worktree.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -269,6 +269,10 @@ name, below the table.
 | SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
 **Resolved:**
+
+- PLANNED, orchestrator (`lead-po` role, this session), 2026-10-18: **Opus 5.5** (`claude-opus-5-5`), the session's model at the time. Planned `fable`; the session model was switched by the user's app, not by this story. Nothing in PLANNED depended on it beyond the contract, which RED then checked against the tree.
+- RED, `test-developer`, 2026-10-18: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override passed. Planned `opus`; no change.
+- GREEN, 2026-10-18: **no dispatch.** RED's handoff predicted a no-op; the orchestrator verified it (`## Notes` 2) instead of handing an agent nothing to do.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -618,3 +622,19 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
    worktree" half moved to the control, where a refusal exists to carry it.
    Changed while PLANNED, so no `## Amendments` entry is owed.
 
+2. **GREEN verified as a no-op by the orchestrator (2026-10-18).** On the RED
+   commit `d771f8b`, `git diff 8b8af9f HEAD --stat -- .claude/hooks scripts`
+   is empty, and `nohup bash scripts/selftest.sh phase-guard` (03:42:43Z to
+   about 04:05Z, detached under the run lock) printed:
+
+    phase-guard: 388 passed, 0 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (388 assertions executed, 388 declared).
+    1 harness suite(s) passed.
+
+3. **RED's sort-order finding checked, accepted.** `phase-guard.sh:162` builds
+   the candidates with `... | sort -u`, so targets are judged in collation
+   order, not command order. The orchestrator's PLANNED probe (C-4) had
+   already shown the absolute B target judged first on this host. RED's
+   premise assertion makes a collation that reorders them fail loudly rather
+   than leave AC-1 and AC-2 passing without pinning anything.
