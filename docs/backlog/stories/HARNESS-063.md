@@ -4,8 +4,8 @@ title: phase-guard restores the session's phase after judging a write into anoth
 slug: phase-guard-restores-the-session-s-phase
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-063-phase-guard-restores-the-session-s-phase
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/phase-guard.test.sh, .claude/tests/worktree.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -666,3 +666,14 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
    already shown the absolute B target judged first on this host. RED's
    premise assertion makes a collation that reorders them fail loudly rather
    than leave AC-1 and AC-2 passing without pinning anything.
+4. **Full self-test at GATES (orchestrator, 2026-10-18).** `nohup bash
+   scripts/selftest.sh` on commit `37e5096`, detached under the run lock and
+   alone in the tree, 04:24:03Z to 05:33Z, **1h09m** on this Windows host.
+   Every suite green; the exit status was not captured through `nohup ... &`,
+   and these last lines print only on exit 0:
+
+    phase-guard: 388 passed, 0 failed
+    ...
+    worktree: 73 passed, 0 failed
+    assertion floors: all 26 suite(s) met their declared floor (3635 assertions executed, 3409 declared).
+    26 harness suite(s) passed.
