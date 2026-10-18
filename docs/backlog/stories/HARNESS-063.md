@@ -4,8 +4,8 @@ title: phase-guard restores the session's phase after judging a write into anoth
 slug: phase-guard-restores-the-session-s-phase
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-063-phase-guard-restores-the-session-s-phase
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/phase-guard.test.sh, .claude/tests/worktree.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -117,6 +117,13 @@ loops over every write target of one command and calls `check_path` for each;
 `deny` exits at the FIRST refusal, so a command is refused on its first
 refused target and nothing after it is judged.
 
+*Amended by RED, 2026-10-17:* "first" means first in **`sort -u` order**, not
+command order. The Bash branch builds `CANDIDATES` through
+`grep -vE ... | sort -u` (phase-guard.sh, the line after the `$`-filter
+comment, :162) and the loop at :187-235 reads that sorted list. Nothing
+the test writes in the command can change which target is judged first; the
+collation does. See C-2.
+
 **C-1. Where the tests go.** New assertions in `.claude/tests/phase-guard.test.sh`,
 in a new `describe "HARNESS-063 ..."` block placed after the HARNESS-035 AC-4
 block (`:1485`), reusing the HARNESS-035 fixture as it stands: `H035_A` (the
@@ -135,6 +142,20 @@ The first target is absolute (so `check_path` takes the cross-worktree branch)
 and comes first in the command; the second is relative to A. RED re-reads the
 target loop and confirms the order targets are judged in is the order they
 appear; if it is not, the command is reordered, not the claim.
+
+*Amended by RED, 2026-10-17, with the reason:* the order is NOT the order they
+appear. Targets are judged in `sort -u` order (C-0), so reordering the command
+cannot help and was not done; the commands stay as above. What puts B's target
+first is that `$H035_B` is an absolute path beginning with `/` (or a drive
+letter), which collates before `t` byte-wise - true under `C`/`C.UTF-8` (the
+default on ubuntu-latest and in Git Bash here, where `LANG` is unset; also
+measured with `LC_ALL=en_US.UTF-8` on this host: absolute first). A
+punctuation-ignoring glibc locale could compare `tmp...` with `tests...` and put
+A's target first, and then AC-1 and AC-2 would pass unmutated AND under G03 -
+toothless, silently. So the block opens with a **premise assertion** that runs
+the same `sort -u` over the two targets and requires B's first; on such a
+machine it goes red instead of letting the two criteria pass without pinning
+anything.
 
 **C-3. The needles.**
 - *AC-1* (A=GREEN, B=RED): refused, and the reason contains `story:    T-A`,
@@ -268,6 +289,31 @@ None.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One level: the hook driven end to end through `guard` (stdin JSON in, the
+`permissionDecision` out), the same level as HARNESS-035's cases, because the
+claim is about what one Bash command's verdict is - check_path's restore is
+not reachable any cheaper. All in one new describe in
+`.claude/tests/phase-guard.test.sh`, directly after HARNESS-035 AC-4, on the
+HARNESS-035 fixture (A = session tree, B = real linked worktree). Each case
+sets both trees' state first.
+
+| # | Assertion (name as printed) | Covers |
+|---|---|---|
+| 1 | `premise: the guard's sort judges B's absolute target before A's relative one` | precondition for AC-1/AC-2 to pin G03 at all (C-0/C-2 amendment) |
+| 2 | `AC-1: after a legal test write into B (RED), A's own test write is refused by A's story` | AC-1 |
+| 3 | `AC-1: under A's phase GREEN, not B's RED` | AC-1 |
+| 4 | `AC-1: on A's own path tests/main.test.ts` | AC-1 |
+| 5 | `AC-1: judged in the session's own tree, so with no worktree line` | AC-1 |
+| 6 | `AC-2: a source write into B (GREEN) then a test write in A (RED) is allowed` | AC-2 |
+| 7 | `AC-2 control: with B in RED the command is refused by B's story` | AC-2 control |
+| 8 | `AC-2 control: under B's phase RED` | AC-2 control |
+| 9 | `AC-2 control: on B's relative path src/main.ts` | AC-2 control |
+| 10 | `AC-2 control: naming B as the worktree it was judged in` | AC-2 control |
+
+Out of scope, not pinned: the other four restored variables (`STORY_ID`,
+`STORY_SLUG`, `STORY_TYPE`, `BRANCH`). `STORY_ID` happens to be observed by #2
+(`story:    T-A`), but no mutant of those was asked for or run.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -287,6 +333,82 @@ None.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the Test Developer (agent definition `model: opus`; dispatched with
+no model override), 2026-10-17.
+
+**Command.**
+
+    bash scripts/selftest.sh phase-guard
+
+It takes `.claude/state/run.lock`; exit 2 means another run holds it - wait.
+Measured on this host (Windows, Git Bash): **1339 s** clean, 1032 s under G03.
+Local timings only; no CI run was taken. (ubuntu-latest runs the whole
+selftest in about 31 s per gates.yml.)
+
+**Clean result, this tree, `phase-guard.sh` unchanged:**
+
+    phase-guard: 388 passed, 0 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (388 assertions executed, 378 declared).
+    1 harness suite(s) passed.
+
+388 executed = 378 before + 10 new. The floor is now 388 in both
+`.claude/tests/floors.conf:50` and `.claude/tests/selftest.test.sh:541`, with a
+dated HARNESS-063 comment appended to the end of `floors.conf`.
+
+**Every new assertion passed on arrival** (the guard is already correct), so
+there is no RED failure to show from the plain run. What earns them is G03,
+pasted in full under `## Regressions`:
+
+| Mutant | Expression | Red under it | Count |
+|---|---|---|---|
+| G03 | `bash scripts/mutate.sh .claude/hooks/phase-guard.sh '58s#; PHASE=$sv_phase##' -- bash scripts/selftest.sh phase-guard` | `AC-1: after a legal test write into B (RED), A's own test write is refused by A's story`; `AC-1: under A's phase GREEN, not B's RED`; `AC-1: on A's own path tests/main.test.ts`; `AC-2: a source write into B (GREEN) then a test write in A (RED) is allowed` | `phase-guard: 384 passed, 4 failed` |
+
+Exactly the predicted direction both ways (C-4 reproduced on the real suite):
+AC-1 was ALLOWED under G03 (empty reason, so all three positive needles
+failed), AC-2 was REFUSED naming `story:    T-A`, `phase:    GREEN`,
+`path:     tests/main.test.ts`. Green under G03, as expected: the premise, the
+AC-1 `worktree:` absence (vacuously - the reason is empty), all four AC-2
+control assertions, and all 378 pre-existing assertions. Restored byte for
+byte; `mutate.sh --check` clean.
+
+**Negative control, expected values** (measured, not claims - the suite loads,
+so every assertion here has executed):
+
+| Control | Expected | Unmutated (measured) | Under G03 (measured) |
+|---|---|---|---|
+| AC-2 control (A RED, B RED, same command as AC-2) | refused: `story:    T-B`, `phase:    RED`, `path:     src/main.ts`, `worktree: $H035_B` | refused, all four needles present (4/4 green) | unchanged, 4/4 green - the refusal comes before any restore |
+| premise (`sort -u` order) | B's absolute target first | B first (green) | B first (green) |
+
+**Export shape.** None: no module is imported; the tests drive
+`.claude/hooks/phase-guard.sh` through `_lib.sh`'s `guard`. They constrain the
+denial text's `story:`, `phase:`, `path:` and `worktree:` lines (already pinned
+by HARNESS-035) and that a Bash command's targets after a cross-worktree one are
+judged under the session tree's PHASE. They do not constrain how check_path
+saves or restores state.
+
+**GREEN is expected to be a no-op.** No source changes; `phase-guard.sh` is not
+in this story's Writes. GREEN should run the command above and confirm 388/0.
+
+**Discovered - Contract amended in place (C-0, C-2).** The guard judges a Bash
+command's targets in `sort -u` order (phase-guard.sh:162), not command order.
+The criteria still hold here because the absolute B path collates before
+`tests/...` under C / C.UTF-8 (and under en_US.UTF-8 on this host), but on a
+punctuation-ignoring collation A's target could be judged first and AC-1/AC-2
+would pass under G03 without pinning it. The premise assertion (#1) makes that
+case red rather than silently toothless. It reproduces the guard's `sort -u`
+rather than asking the guard - a deliberate, narrow duplication; if the
+guard's pipeline ever stops sorting, the premise stays green while the order
+it claims to mirror changes, so a change to line 162 should revisit this block.
+
+**Files touched:** `.claude/tests/phase-guard.test.sh` (new describe),
+`.claude/tests/floors.conf` (line 50, plus appended comment),
+`.claude/tests/selftest.test.sh` (line 541), this story (C-0, C-2 amendments,
+`## Test plan`, this handoff, `## Regressions`).
+
+**Deferred verifications.** DV-1 is owned by GATES and is a re-run of RED's own
+claim; RED cannot discharge it and did not.
 
 ## Regressions
 
@@ -312,6 +434,143 @@ None.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+Not a return from GREEN or GATES: this story's tests were written against a
+guard that already satisfies them, so every one passed on arrival and is earned
+here instead (rules.md, Non-negotiables). One mutation, audit mutant G03:
+line 58's `PHASE=$sv_phase` restore removed. Re-read first:
+`grep -n sv_phase .claude/hooks/phase-guard.sh` gave `58:      STORY_ID=$sv_id; STORY_SLUG=$sv_slug; PHASE=$sv_phase`.
+Run 2026-10-17 on this tree, 1032 s. Exactly the AC-1 (three positive needles)
+and AC-2 assertions went red; the AC-2 control, the premise and all 378
+pre-existing assertions stayed green. (The floor was raised 378 -> 388 in
+`floors.conf` while this run was in flight; its floor line below still reads
+378 declared, and reports 384 executed against the 388 the summary line
+counts - not investigated, and not something this story changes.)
+
+    bash scripts/mutate.sh .claude/hooks/phase-guard.sh '58s#; PHASE=$sv_phase##' -- bash scripts/selftest.sh phase-guard
+
+```
+=== mutate: .claude/hooks/phase-guard.sh (1 line(s) changed by 58s#; PHASE=$sv_phase##) ===
+  58 -       STORY_ID=$sv_id; STORY_SLUG=$sv_slug; PHASE=$sv_phase
+  58 +       STORY_ID=$sv_id; STORY_SLUG=$sv_slug
+
+=== mutate: running bash scripts/selftest.sh phase-guard ===
+
+=== phase-guard ===
+
+  RED: quoted arguments are not shell syntax
+
+  RED: real writes to source are still blocked
+
+  RED: a here-string does not open a heredoc
+
+  RED may declare what its tests need, and nothing else
+
+  a redirect belongs to the redirect rule and to no other
+
+  an option's argument is not the file being written
+
+  RED: a path in a variable is still a path
+
+  scripts/mutate.sh is the sanctioned way to mutate a frozen file
+
+  RED: the seven false positives reported from the field
+
+  RED: four more false positives, all of them read-only commands
+
+  A read-only command with no write in it, in any phase
+
+  RED: the harness's own vocabulary in a commit message
+
+  RED: a double-quoted Windows path keeps its backslashes
+
+  RED: three holes found by probing, closed
+
+  RED: a parse the guard cannot believe declines rather than denies
+
+  RED: relative paths resolve against the command's own cwd
+
+  GREEN: tests are frozen, source is not
+
+  Generated output is not source
+
+  No active story means no lock
+
+  a phase the table does not list is refused, not waved through
+
+  WORLD-080: a filename containing -i is not the sed -i option
+
+  HARNESS-010 AC-1: C-1's twenty-two commands under the union rule
+
+  HARNESS-010 AC-3: mv removes its source, so the source operand is judged
+
+  HARNESS-010 AC-3: -t and --target-directory invert the destination
+
+  HARNESS-010 AC-2: every operand of an in-place edit, not the last word
+
+  HARNESS-010 AC-4: a write that parsed to no target leaves a trace
+
+  HARNESS-010 AC-5: the denial names the operand's role
+
+  HARNESS-010 AC-6 and C-4: the hook asks lib.sh rather than re-deriving
+
+  HARNESS-010 C-6: what the reconciled parser must NOT start refusing
+
+  HARNESS-011 AC-2: GREEN freezes the tests DIRECTORY, not only the files
+
+  HARNESS-011 AC-3: RED may write the bare directories RED owns
+
+  HARNESS-031: a project rule X/** covers bare X, through the guard
+
+  HARNESS-035 premise: B and W are linked worktrees of A, C is not
+
+  HARNESS-035 AC-1: the session's tree follows the hook input's cwd
+
+  HARNESS-035 AC-2: an absolute path into a sibling worktree is judged by its lock
+
+  HARNESS-035 AC-3: a worktree nested under the root is its own tree
+
+  HARNESS-035 AC-4: another repository, or a same-named folder, is still outside
+
+  HARNESS-063: the session's phase is restored after a cross-worktree target
+    FAIL AC-1: after a legal test write into B (RED), A's own test write is refused by A's story
+         expected to contain: story:    T-A
+         actual:               
+    FAIL AC-1: under A's phase GREEN, not B's RED
+         expected to contain: phase:    GREEN
+         actual:               
+    FAIL AC-1: on A's own path tests/main.test.ts
+         expected to contain: path:     tests/main.test.ts
+         actual:               
+    FAIL AC-2: a source write into B (GREEN) then a test write in A (RED) is allowed
+         expected: 
+         actual:   BLOCKED by the harness phase lock.    story:    T-A   phase:    GREEN   path:     tests/main.test.ts   category: test  Story is in GREEN. Tests are frozen: make the existing failing tests pass without changing them. If the tests are genuinely wrong, go back to RED rather than editing them here.  If this write is genuinely correct, change the phase deliberately rather than working around the lock:  bash scripts/phase.sh set T-A <PHASE>
+
+  HARNESS-045 AC-1: a git --output target is judged as a write
+
+  HARNESS-045 AC-2: the --output target is judged by its category, not refused outright
+
+  HARNESS-045 AC-3: read-only git stays read-only
+
+  HARNESS-045 AC-4: git mv and git rm keep the rules they already had
+
+  HARNESS-053: a paren inside a quoted argument is data (0937c76)
+
+phase-guard: 384 passed, 4 failed
+
+assertion floors: all 1 suite(s) met their declared floor (384 assertions executed, 378 declared).
+1 of 1 harness suite(s) FAILED.
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_phase-guard.sh.20261018T031732Z.277.bak) ===
+  58:       STORY_ID=$sv_id; STORY_SLUG=$sv_slug; PHASE=$sv_phase
+```
+
+Then:
+
+```
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 ## Gate results
 
