@@ -677,3 +677,5 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
     worktree: 73 passed, 0 failed
     assertion floors: all 26 suite(s) met their declared floor (3635 assertions executed, 3409 declared).
     26 harness suite(s) passed.
+
+PR: https://github.com/ryanczhang7/agentic-dev-harness/pull/151 (opened 2026-10-18 from `e76edf9`).
