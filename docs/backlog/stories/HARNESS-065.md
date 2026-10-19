@@ -239,6 +239,45 @@ model name, heading count or byte-identical section for an exact fixture.
   RED cannot run it meaningfully: before the fix the splice deletes that
   heading, so the mutant sees one heading and stays green. **Owner: GATES.**
 
+  **Results (GATES, orchestrator, 2026-10-19)**, on commit `3a195df` with the
+  fix in, each run detached through `scripts/mutate.sh` against `bash
+  scripts/selftest.sh plan`, one after the other. A first DV-1 attempt used
+  `#` as the sed delimiter, which `## Model` collides with; `mutate.sh`
+  refused it with `sed rejected the expression` before changing anything, and
+  it was re-run with `|`.
+
+  DV-1, the defect put back - the five AC-3 assertions RED watched fail go red
+  again, and nothing else:
+
+```
+=== mutate: scripts/plan.sh (1 line(s) changed by 401s|/^## Model guidance$/ {|/^## Model guidance/ {|) ===
+=== mutate: running bash scripts/selftest.sh plan ===
+    FAIL HARNESS-065 AC-3 (a): and its `## Model guidance notes` section survives the write byte for byte
+    FAIL HARNESS-065 AC-3 (a) control: every other heading is where it was, once
+    FAIL HARNESS-065 AC-3 (a) control: and the file minus the new section is the file it was
+    FAIL HARNESS-065 AC-3 (b): and its `## Model guidance notes` section survives the write byte for byte
+    FAIL HARNESS-065 AC-3 (b) control: and nothing outside `## Model guidance` moved
+plan: 279 passed, 5 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_plan.sh.20261019T181015Z.1447.bak) ===
+```
+
+  DV-2, P12 against the fixed splice - the post-condition now counts the notes
+  heading, refuses the write, and AC-3 (a) and (b) go red on exit status and
+  on the body:
+
+```
+=== mutate: scripts/plan.sh (1 line(s) changed by 419s|$0 == "## Model guidance"|/^## Model guidance/|) ===
+=== mutate: running bash scripts/selftest.sh plan ===
+    FAIL HARNESS-065 AC-3 (a): a story with only `## Model guidance notes` - exit / success lines / headings
+    FAIL HARNESS-065 AC-3 (a): and the new `## Model guidance` section's body is the rendered plan
+    FAIL HARNESS-065 AC-3 (b): a story with both headings - exit / success lines / headings
+    FAIL HARNESS-065 AC-3 (b): and the real section is replaced by the rendered plan, stale body gone
+plan: 280 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_plan.sh.20261019T175738Z.698.bak) ===
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -1113,10 +1152,21 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-19T18:22:15Z
+    commit: f948e07
+    tree:   4e1b1fb0e4fb71b476981bde9812ab94692a07cd
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
