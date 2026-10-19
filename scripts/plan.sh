@@ -398,7 +398,7 @@ cmd_write() {
   # Replace the section where the heading exists; append it where it does not.
   local new="$file.new"
   awk -v planfile="$tmp" '
-    /^## Model guidance/ { while ((getline line < planfile) > 0) print line; skip = 1; matched = 1; next }
+    /^## Model guidance$/ { while ((getline line < planfile) > 0) print line; skip = 1; matched = 1; next }
     skip && /^## / { skip = 0 }
     !skip { print }
     END { if (!matched) { print ""; while ((getline line < planfile) > 0) print line } }

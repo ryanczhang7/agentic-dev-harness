@@ -5,7 +5,7 @@ slug: plan-sh-s-edges-are-pinned-the-ac-count
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-065-plan-sh-s-edges-are-pinned-the-ac-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -270,6 +270,10 @@ name, below the table.
 | SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
 **Resolved:**
+
+- PLANNED, orchestrator (`lead-po` role, this session), 2026-10-19: **Opus 5.5** (`claude-opus-5-5`), the session model. Planned `fable`; the session model was the app's, not this story's choice.
+- RED, `test-developer`, 2026-10-19: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
+- GREEN, `feature-developer`, 2026-10-19: **Opus 5.5** (`claude-opus-5-5`), its declared `model:`; no override. Planned `opus`; no change.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -1168,3 +1172,15 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
    depends on `cmd_write` reading the plan with a PATH-resolved `tail`. RED
    recorded that in C-3, so a later rewrite of that line knows to move the
    shim with it.
+4. **GREEN verified by the orchestrator (2026-10-19).** `scripts/plan.sh`
+   differs from the RED commit by the one line C-2 names (`:401`,
+   `/^## Model guidance/` to `/^## Model guidance$/`), and `bash
+   scripts/selftest.sh plan`, 17:44:47Z to 17:57Z:
+
+    plan: 284 passed, 0 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (284 assertions executed, 284 declared).
+    1 harness suite(s) passed.
+
+   `gates.sh --fast`: `All required gates passed (0 ran, 5 unconfigured, 0
+   known)`; this repository configures no gates.
