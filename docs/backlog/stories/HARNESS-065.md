@@ -4,8 +4,8 @@ title: plan.sh edges are pinned - the AC-count threshold, first-match exceptions
 slug: plan-sh-s-edges-are-pinned-the-ac-count
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-065-plan-sh-s-edges-are-pinned-the-ac-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -1234,3 +1234,14 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
 
    `gates.sh --fast`: `All required gates passed (0 ran, 5 unconfigured, 0
    known)`; this repository configures no gates.
+5. **Full self-test at GATES (orchestrator, 2026-10-19).** `nohup bash
+   scripts/selftest.sh` on commit `a1080e6`, detached under the run lock and
+   alone in the tree, 18:22:18Z to 19:13Z, **51m**. Every suite green; the exit
+   status was not captured through `nohup ... &`, and these last lines print
+   only on exit 0:
+
+    plan: 284 passed, 0 failed
+    ...
+    worktree: 73 passed, 0 failed
+    assertion floors: all 26 suite(s) met their declared floor (3657 assertions executed, 3651 declared).
+    26 harness suite(s) passed.
