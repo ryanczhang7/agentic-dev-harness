@@ -312,6 +312,53 @@ while IFS= read -r line; do
 done <<< "$out"
 assert_eq "and names a model that can actually be dispatched" "" "$bad"
 
+# HARNESS-065 AC-2 (audit survivor P10). "Exceptions first, first match wins"
+# (plan.sh, cmd_models) - and MECHANISM_POLICY's three RED exceptions name the
+# same model, so deleting the `break` after the first match changed nothing any
+# assertion could see. Two exceptions that BOTH match a no-contract story and
+# name DIFFERENT models, neither the base row's `fable`, make the order
+# visible. Read off the rendered RED row in the WRITTEN story (`plan.sh write`,
+# which is what AC-2 names), compared as a whole line - model and reason - so
+# the second row's model, the base row's, or the first row's model with the
+# second's reason are all "differs".
+#
+# THE ORDER CONTROL. The same two rows swapped must render the other one. That
+# is what proves both rows can match at all: if only the first one could, the
+# missing `break` would be invisible and the first assertion vacuous.
+#
+# MECHANISM_POLICY is put back before any assertion, so a failure here cannot
+# leave later blocks running against this fixture.
+two_exceptions() { # <first model> <first why> <second model> <second why>
+  cat > "$FIX/.claude/harness/models.conf" <<POLICY
+# HARNESS-065 AC-2 fixture: two RED exceptions that both match a no-contract story.
+model  | PLANNED  | lead-po           | opus  | planning
+model  | RED      | test-developer    | fable | the base row, which neither exception names
+model  | GREEN    | feature-developer | opus  | green
+model  | GATES    | feature-developer | opus  | gates
+model  | REVIEW   | lead-po           | opus  | review
+model  | SCAFFOLD | lead-po           | opus  | scaffold
+
+except | RED | no-contract | $1 | $2
+except | RED | no-contract | $3 | $4
+POLICY
+}
+cp "$FIX/.claude/harness/models.conf" "$FIX/models.conf.mechanism"
+story_with T-7 feature PLANNED 2 <<'EOF'
+EOF
+story_with T-8 feature PLANNED 2 <<'EOF'
+EOF
+two_exceptions haiku 'the first matching exception' sonnet 'the second matching exception'
+plan write T-7 >/dev/null
+two_exceptions sonnet 'the first matching exception' haiku 'the second matching exception'
+plan write T-8 >/dev/null
+cp "$FIX/models.conf.mechanism" "$FIX/.claude/harness/models.conf"
+assert_eq "HARNESS-065 AC-2: of two exceptions matching the same phase, the FIRST one's model is written" \
+  '| RED | `test-developer` | `haiku` | the first matching exception |' \
+  "$(grep '^| RED ' "$FIX/docs/backlog/stories/T-7.md")"
+assert_eq "HARNESS-065 AC-2 control: the same two rows swapped write the other model - order decides, not the row" \
+  '| RED | `test-developer` | `sonnet` | the first matching exception |' \
+  "$(grep '^| RED ' "$FIX/docs/backlog/stories/T-8.md")"
+
 # ---------------------------------------------------------------------------
 describe "which command to drive the story with"
 
@@ -354,6 +401,35 @@ CONTRACT:`src/core/world.ts` exports `buildWorld`.
 EOF
 out="$(plan next T-14)"
 assert_contains "and one with many criteria" "advance-story" "$out"
+
+# HARNESS-065 AC-1 (audit survivor P04). The threshold is `-ge AC_MANY`, and
+# AC_MANY is 6: a story with EXACTLY six criteria is "many". T-14 above has
+# nine, so `-ge` -> `-gt` survived it - nothing pinned the boundary itself.
+# The five-criteria control is what makes six a boundary rather than a size:
+# without it, a threshold moved DOWN to `-ge 5` would pass this block too.
+# Both fixtures otherwise recommend complete-story (contract, nothing deferred,
+# not bootstrap, PLANNED, no dependency), so the count is the only signal left.
+# The first field is compared whole; the reason is matched on the clause that
+# only the many-criteria branch prints.
+story_with T-15 feature PLANNED 6 <<'EOF'
+CONTRACT:`src/core/world.ts` exports `buildWorld`.
+EOF
+out="$(plan next T-15)"
+assert_eq "HARNESS-065 AC-1: a story with exactly 6 criteria (AC_MANY) is driven one phase at a time" \
+  "advance-story" "$(printf '%s\n' "$out" | head -n 1 | cut -f1)"
+assert_contains "HARNESS-065 AC-1: and the reason cites the criteria count" \
+  "T-15 has 6 acceptance criteria (6 or more)." "$out"
+out="$(plan T-15)"
+assert_contains "HARNESS-065 AC-1: the bare form recommends advance-story for it too" \
+  "Recommended:  /advance-story T-15" "$out"
+story_with T-16 feature PLANNED 5 <<'EOF'
+CONTRACT:`src/core/world.ts` exports `buildWorld`.
+EOF
+out="$(plan next T-16)"
+assert_eq "HARNESS-065 AC-1 control: one with 5 criteria is not 'many' - it runs end to end" \
+  "complete-story" "$(printf '%s\n' "$out" | head -n 1 | cut -f1)"
+assert_contains "HARNESS-065 AC-1 control: as an ordinary cycle, with its count" \
+  "T-16 is an ordinary cycle: a contract to work from, 5 criteria," "$out"
 
 # A story whose dependency is not DONE cannot be driven by either command, and
 # saying `complete-story` here sends somebody into a refusal from phase.sh.
@@ -605,6 +681,118 @@ assert_eq "AC-4: and names the path it looked for, in one error line" \
 assert_eq "AC-4: and prints no success line" 0 "$(success_lines T-99 "$out")"
 assert_eq "AC-4: and creates neither the story nor any .new anywhere in the project" \
   "absent/" "$(present "$STORY_DIR/T-99.md")/$(find "$FIX" -name '*.new' -not -path '*/.git/*' 2>/dev/null)"
+
+# --- HARNESS-065 AC-3: a `## Model guidance notes` section is not the plan ---
+# THE DEFECT (story C-1, measured before RED). The splice in cmd_write matches
+# `/^## Model guidance/` as a PREFIX, so a story holding `## Model guidance
+# notes` has that heading and its whole body replaced by the plan - exit 0,
+# success line printed. The post-condition counts the heading by whole line,
+# sees exactly one (the plan's own), and lets it through. That is also why the
+# audit's P12 (widening that count to a prefix) survived: the clobber removes
+# the very heading a widened count would see.
+#
+# THE NEEDLE IS THE SECTION, NOT A SUBSTRING. The notes section - heading and
+# every line up to the next `## ` - is extracted before and after and compared
+# whole, so a fix that keeps the heading and loses the body, keeps the body
+# under a different heading, or reflows a line all read as "differs".
+#
+# (a) only the notes heading: the plan must be APPENDED (no real heading to
+#     replace), the notes section left byte-for-byte, nothing else moved.
+# (b) both: the real section replaced in place, the notes section intact.
+notes_section() { awk '$0 == "## Model guidance notes" { on = 1; print; next } on && /^## / { exit } on { print }' "$1"; }
+# notes_fixture <id> <layout>   notes | both
+notes_fixture() {
+  mkdir -p "$STORY_DIR"
+  {
+    printf -- '---\nid: %s\ntitle: Fixture story\nslug: fixture\ntype: feature\nstatus: todo\nphase: PLANNED\nbranch: story/%s-fixture\n---\n\n' "$1" "$1"
+    printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Contract\n\n`src/core/world.ts` exports `buildWorld(seed: number): World`.\n\n'
+    [ "$2" = both ] && printf -- '## Model guidance\n\nstale plan from an earlier run\n\n'
+    printf -- '## Model guidance notes\n\nkeep me: a hand-written note about the plan.\n- and a second line, with `code` in it.\n\n'
+    printf -- '## Notes\n\nhand-written notes.\n'
+  } > "$STORY_DIR/$1.md"
+}
+
+reference="$(rendered_plan T-54)"
+notes_fixture T-54 notes
+cp "$STORY_DIR/T-54.md" "$FIX/T-54.before"
+out="$(plan write T-54)"; rc=$?
+assert_eq "HARNESS-065 AC-3 (a): a story with only \`## Model guidance notes\` - exit / success lines / headings" \
+  "0/1/1" "$rc/$(success_lines T-54 "$out")/$(mg_count "$STORY_DIR/T-54.md")"
+assert_eq "HARNESS-065 AC-3 (a): and its \`## Model guidance notes\` section survives the write byte for byte" \
+  "$(notes_section "$FIX/T-54.before")" "$(notes_section "$STORY_DIR/T-54.md")"
+assert_eq "HARNESS-065 AC-3 (a): and the new \`## Model guidance\` section's body is the rendered plan" \
+  "$reference" "$(mg_body "$STORY_DIR/T-54.md")"
+assert_eq "HARNESS-065 AC-3 (a) control: every other heading is where it was, once" \
+  "$(headings "$FIX/T-54.before")" \
+  "$(headings "$STORY_DIR/T-54.md" | grep -vx '## Model guidance')"
+assert_eq "HARNESS-065 AC-3 (a) control: and the file minus the new section is the file it was" \
+  "$(cat "$FIX/T-54.before")" "$(without_mg "$STORY_DIR/T-54.md")"
+
+reference="$(rendered_plan T-55)"   # the plan names its story id, so one per id
+notes_fixture T-55 both
+cp "$STORY_DIR/T-55.md" "$FIX/T-55.before"
+out="$(plan write T-55)"; rc=$?
+assert_eq "HARNESS-065 AC-3 (b): a story with both headings - exit / success lines / headings" \
+  "0/1/1" "$rc/$(success_lines T-55 "$out")/$(mg_count "$STORY_DIR/T-55.md")"
+assert_eq "HARNESS-065 AC-3 (b): and its \`## Model guidance notes\` section survives the write byte for byte" \
+  "$(notes_section "$FIX/T-55.before")" "$(notes_section "$STORY_DIR/T-55.md")"
+assert_eq "HARNESS-065 AC-3 (b): and the real section is replaced by the rendered plan, stale body gone" \
+  "$reference" "$(mg_body "$STORY_DIR/T-55.md")"
+assert_eq "HARNESS-065 AC-3 (b) control: and nothing outside \`## Model guidance\` moved" \
+  "$(without_mg "$FIX/T-55.before")" "$(without_mg "$STORY_DIR/T-55.md")"
+
+# --- HARNESS-065 AC-4: a body that does not read back is refused -------------
+# The post-condition's second half, `[ "$body" != "$plan_body" ]` (audit
+# survivor P05), had never been seen to fire. WHY NO STORY OR models.conf CAN
+# REACH IT: the candidate's section body is read back from the line after the
+# first whole-line `## Model guidance` to the next `^## ` line; every line of
+# the rendered plan after its heading is fixed prose, blank, a `**Resolved:**`
+# marker, a comment, or a table row printed as `| %s | ...` - none can begin
+# `## `, and a models.conf field is one line of one row, so it cannot carry a
+# newline into the render. The splice always prints the whole plan file at the
+# first prefix match and resumes only at a `^## ` line. So from content alone
+# the body read back is always the plan rendered.
+#
+# THE FAULT IS INJECTED THROUGH THE ENVIRONMENT INSTEAD: a `tail` shim first on
+# PATH. cmd_write reads the rendered body with `tail -n +2 <plan-write temp>`
+# (its one use of tail); the shim passes every other call straight to the real
+# tail and, for that one, appends a line the candidate file does not hold. The
+# heading count is still exactly 1, so ONLY the body comparison can refuse it.
+# Nothing in plan.sh is edited. The shim logs each call it corrupts, and the
+# log is asserted, so a PATH the child ignored reads as a fixture failure
+# rather than as anything about plan.sh.
+TAIL_SHIM="$FIX/tail-shim"
+REAL_TAIL="$(command -v tail)"
+mkdir -p "$TAIL_SHIM"
+cat > "$TAIL_SHIM/tail" <<SHIM
+#!/usr/bin/env bash
+# HARNESS-065 AC-4 fault injection - see plan.test.sh.
+if [ "\$#" = 3 ] && [ "\$1" = -n ] && [ "\$2" = +2 ]; then
+  case "\$3" in
+    */plan-write.*.md)
+      printf '%s\n' "\$3" >> "$TAIL_SHIM/corrupted"
+      "$REAL_TAIL" "\$@"
+      printf '%s\n' 'a line the candidate file does not hold'
+      exit 0 ;;
+  esac
+fi
+exec "$REAL_TAIL" "\$@"
+SHIM
+chmod +x "$TAIL_SHIM/tail"
+write_fixture T-56 middle
+cp "$STORY_DIR/T-56.md" "$FIX/T-56.before"
+out="$( cd "$FIX" && PATH="$TAIL_SHIM:$PATH" bash scripts/plan.sh write T-56 2>&1 )"; rc=$?
+assert_eq "HARNESS-065 AC-4 fixture: the tail shim corrupted exactly one read, of the plan-write temp file" \
+  1 "$(grep -c '/plan-write\.[0-9]*\.md$' "$TAIL_SHIM/corrupted" 2>/dev/null || true)"
+assert_eq "HARNESS-065 AC-4: a body that does not read back from the candidate exits non-zero" \
+  non-zero "$(zero_or_not "$rc")"
+assert_eq "HARNESS-065 AC-4: and says it refuses to report the write, in one error line" \
+  1 "$(grep -cx 'plan: refusing to report a write: docs/backlog/stories/T-56\.md would not hold the rendered plan' <<<"$out" || true)"
+assert_eq "HARNESS-065 AC-4: and prints no success line" 0 "$(success_lines T-56 "$out")"
+assert_eq "HARNESS-065 AC-4: and leaves the story file byte-identical to what it was" \
+  identical "$(identical "$FIX/T-56.before" "$STORY_DIR/T-56.md")"
+assert_eq "HARNESS-065 AC-4: and leaves neither the .new candidate nor the temp file behind" \
+  "absent/" "$(present "$STORY_DIR/T-56.md.new")/$(find "$FIX/.claude" -name 'plan-write.*.md' 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
 describe "HARNESS-051: next, models and the bare id refuse a story that has no file"
