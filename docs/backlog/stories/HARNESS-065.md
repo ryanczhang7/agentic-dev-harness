@@ -3,12 +3,12 @@ id: HARNESS-065
 title: plan.sh edges are pinned - the AC-count threshold, first-match exceptions, and the write post-condition
 slug: plan-sh-s-edges-are-pinned-the-ac-count
 epic: 
-type: chore
+type: fix
 status: todo
 phase: PLANNED
 branch: story/HARNESS-065-plan-sh-s-edges-are-pinned-the-ac-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [.claude/tests/plan.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
+touches: [scripts/plan.sh, .claude/tests/plan.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -102,6 +102,88 @@ and each would let a later edit change behaviour without a test noticing:
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
+**Writes:** `scripts/plan.sh`, `.claude/tests/plan.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+
+**Pinned by the Lead PO on 2026-10-19, on main at `4490906`.** RED may amend
+any block below in place with a reason; GREEN builds what the amended block
+says. Every path classifies as `harness`. No exported signature changes, so no
+caller list is owed; `plan.sh write` keeps its interface and output.
+
+**C-0. The lines, verified by `grep -n` today.**
+
+    scripts/plan.sh:216   break                        (first matching except row wins)
+    scripts/plan.sh:236   AC_MANY=6
+    scripts/plan.sh:299   if [ "$acs" -ge "$AC_MANY" ]; then
+    scripts/plan.sh:401   /^## Model guidance/ { ... skip = 1; matched = 1; next }   (the splice)
+    scripts/plan.sh:419   found="$(awk '$0 == "## Model guidance" { n++ } ...)"     (post-condition count)
+    scripts/plan.sh:421   if [ "$found" != 1 ] || [ "$body" != "$plan_body" ]; then
+
+**C-1. The defect AC-3 exposes (measured by the orchestrator before RED).** The
+splice at `:401` matches `## Model guidance` as a PREFIX, so a story holding
+`## Model guidance notes` has that heading and its whole body replaced by the
+plan. Fixture: a story with `## Model guidance notes` / `keep me` and no
+`## Model guidance`. After `plan.sh write`: exit 0, success line printed,
+`keep me` gone (0 occurrences), the notes heading gone. With BOTH headings
+present, the notes section is likewise replaced. This is also why P12 survives:
+the clobber removes the very heading P12's widened count would see.
+
+**C-2. The fix (GREEN), one line.** `:401`'s pattern becomes whole-line,
+`/^## Model guidance$/`, the same match `:419` and `:420` already use. Nothing
+else in `plan.sh` changes. With it, a story that has only `## Model guidance
+notes` gets the plan appended at the end (the existing `!matched` path) and the
+notes section is left byte-for-byte; a story with both keeps the notes section
+and has the real one replaced.
+
+**C-3. Where the tests go.** `.claude/tests/plan.test.sh`, using its helpers:
+`story_with <id> <type> <phase> <ac-count>` (writes N criteria as
+`- **AC-n** - it works.`), `ordinary`, `plan`, and for write cases
+`write_fixture`, `mg_count`, `mg_body`, `headings`, `identical`, `present`,
+`success_lines` (WORLD-097 block, `:418-608`).
+- *AC-1 (P04).* Beside the "many criteria" case (`T-14`, 9 criteria, `:353`):
+  a story with exactly 6 criteria and a contract gets `advance-story` from
+  `plan.sh next`, and the reason names the count (`has 6 acceptance criteria`).
+  Control: 5 criteria gets `complete-story`.
+- *AC-2 (P10).* In or after "the exception mechanism (against
+  MECHANISM_POLICY)" (`:179`): a fixture `models.conf` (write it, run, put
+  MECHANISM_POLICY back) with two `except | RED | no-contract | <model> | ...`
+  rows naming DIFFERENT models; a story with no contract renders the FIRST
+  row's model for RED in `plan.sh models` / `write`. Choose two model names
+  that make the order visible (not the same as the base row's).
+- *AC-3 (P12, and C-1's defect).* In the WORLD-097 block: (a) a story with
+  `## Model guidance notes` plus body and NO `## Model guidance`; after write,
+  exactly one `## Model guidance` (whole line), the notes heading and its body
+  still there byte-for-byte, exit 0. (b) a story with both; after write, one
+  `## Model guidance`, notes section intact. Red today on the notes body.
+- *AC-4 (P05).* The `[ "$body" != "$plan_body" ]` branch fires only when the
+  candidate file's section body differs from the rendered plan. RED looks for
+  a fixture-only way to make that happen (a story or a fixture `models.conf`
+  whose rendered body cannot be read back unchanged) and if there is none,
+  records that under `## Amendments` with the reasoning, as the AC itself
+  directs, rather than weakening the criterion. The orchestrator's note: the
+  body is read back by an awk that stops at the next `^## ` line, and the plan
+  table's rows start with `|`, so a rendered `why` field cannot open a heading;
+  that is where to start looking, not a conclusion.
+
+**C-4. What earns what.** AC-1, AC-2 and (if reachable) AC-4 pass on arrival
+and are earned by their audit mutant through `scripts/mutate.sh`, output
+pasted in `## Regressions`. AC-3 is a real RED today (C-1); it is earned by
+watching it fail, and its P12 mutant is a GATES check (DV-2). The expressions,
+dry-run today to change exactly their line (RED re-reads the line numbers):
+
+    P04  bash scripts/mutate.sh scripts/plan.sh '299s#-ge "$AC_MANY"#-gt "$AC_MANY"#' -- bash scripts/selftest.sh plan
+    P10  bash scripts/mutate.sh scripts/plan.sh '216s#break#:#' -- bash scripts/selftest.sh plan
+    P05  bash scripts/mutate.sh scripts/plan.sh '421s# || \[ "$body" != "$plan_body" \]##' -- bash scripts/selftest.sh plan
+    P12  bash scripts/mutate.sh scripts/plan.sh '419s|$0 == "## Model guidance"|/^## Model guidance/|' -- bash scripts/selftest.sh plan
+
+**C-5. The floor.** `plan` is 42 at `.claude/tests/floors.conf:51` and in the
+COUNTS table at `.claude/tests/selftest.test.sh:542`. The suite executes far
+more (262 at the audit); the floor is a minimum. RED raises both to the
+executed count of its RED run (passes plus fails), with a dated comment
+appended at the end of `floors.conf`.
+
+**C-6. Oracle partition.** All four are mechanical: an exact recommendation,
+model name, heading count or byte-identical section for an exact fixture.
+
 ## Deferred verifications
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
@@ -135,6 +217,16 @@ and each would let a later edit change behaviour without a test noticing:
      perfectly. Exhaustive earning of assertions that passed on arrival is not
      an entry here; it goes to `/audit-mutations`. -->
 
+- **DV-1 — the defect put back.** With C-2's fix reverted (`:401` back to the
+  prefix match `/^## Model guidance/`), AC-3's notes-section assertions MUST
+  fail. RED cannot run this: the fix does not exist until GREEN. Run with
+  `scripts/mutate.sh` against `bash scripts/selftest.sh plan`. **Owner: GATES.**
+- **DV-2 — P12 against the fixed splice.** With `:419`'s count widened to
+  `/^## Model guidance/` (C-4's P12 expression, line re-read), AC-3 (b) MUST
+  fail: the post-condition counts the notes heading too and refuses the write.
+  RED cannot run it meaningfully: before the fix the splice deletes that
+  heading, so the mutant sees one heading and stays green. **Owner: GATES.**
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -150,43 +242,31 @@ and each would let a later edit change behaviour without a test noticing:
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-065` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
 
-Any change to `plan.sh` itself.
+Any change to `plan.sh` beyond the one line C-2 names (the splice match). PO decision 1 in `## Notes` says why that one is in.
 
 ## Design notes
 
@@ -277,4 +357,12 @@ Any change to `plan.sh` itself.
      named here. -->
 
 ## Notes
+
+1. **PO decision, approved by the user (2026-10-19, at PLANNED).** Filed as a
+   tests-only chore with any change to `plan.sh` out of scope. Probing AC-3
+   before RED showed it cannot pass that way: `plan.sh write` destroys a
+   `## Model guidance notes` section (C-1). The user chose to let this story
+   make the one-line fix (C-2) and keep AC-3 as written. Type changed from
+   `chore` to `fix`; `touches:` and Out of scope widened to match. Changed
+   while PLANNED, so no `## Amendments` entry is owed.
 
