@@ -4,8 +4,8 @@ title: gates.sh --story refuses an id that is not one path component, and a test
 slug: gates-sh-story-refuses-an-id-that-is-not
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: done
+phase: DONE
 branch: story/HARNESS-064-gates-sh-story-refuses-an-id-that-is-not
 depends_on: [HARNESS-059, HARNESS-060] # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -258,4 +258,61 @@ Any change to `gates.sh` itself: the code is right, the test is missing.
      named here. -->
 
 ## Notes
+
+### Closed as already delivered (2026-10-19)
+
+1. **PO decision, approved by the user:** closed without a RED→GREEN cycle.
+   The criterion was delivered on 2026-10-09 by HARNESS-046 (RED commit
+   `97ff105`), whose block `describe "HARNESS-046 AC-3  gates.sh --story
+   refuses an id that is not one path component, before any gate runs"` in
+   `.claude/tests/gates.test.sh` (`:2000-2047` today) runs `--story ../EXIST`
+   and asserts exit 2, the grammar message once as a whole line, no gate run,
+   and the file outside the stories directory byte-for-byte unchanged. Its
+   second half pins the same refusal for an id read from `current-story.env`.
+   A cycle would re-write tests that exist. No source or test file changes in
+   the closing commit.
+2. **Why A13 survived, measured before closing.** `gates.sh` checks the id
+   twice: at `:90` while parsing `--story`, and again at `:367` for whatever
+   id it ends up with (flag or state file), with the same message and exit 2.
+   Removing the first check leaves the second to refuse the same ids the same
+   way, so no test of the refusal can go red under A13. The one observable
+   difference is ordering: with a run lock already held, the first check
+   refuses with the grammar message, and without it the run lock refuses
+   first, with a different message and also exit 2. The user chose not to pin
+   that. Orchestrator probe, a fresh fixture with one `printf` gate, run
+   through `scripts/mutate.sh` so the file was restored and checked:
+
+```
+##### unmutated
+no lock,   --story ../x  rc=2  first line: error: story id '../x' is not one path component: an id is letters, di
+           stories dir:    state: gate-logs
+no lock,   --story a/b   rc=2  first line: error: story id 'a/b' is not one path component: an id is letters, dig
+           stories dir:    state: gate-logs
+lock held, --story ../x rc=2  first line: error: story id '../x' is not one path component: an id is letters, digits, '.', '_' or '-
+##### A13
+=== mutate: scripts/gates.sh (1 line(s) changed by 90s#valid_story_id "$STORY" ||#true ||#) ===
+no lock,   --story ../x  rc=2  first line: error: story id '../x' is not one path component: an id is letters, di
+           stories dir:    state: gate-logs
+no lock,   --story a/b   rc=2  first line: error: story id 'a/b' is not one path component: an id is letters, dig
+           stories dir:    state: gate-logs
+lock held, --story ../x rc=2  first line: run-lock: refusing to start scripts/gates.sh --story ../x: another harness run holds this
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261018T193606Z.8186.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+   `state: gate-logs` is the directory `gates.sh` creates on start; nothing
+   is written under `docs/backlog/stories/` and no record, stamp or log file
+   appears in `.claude/state/`.
+3. **AC-1 against the tree.** Exit 2 and the message for `../x`: the
+   HARNESS-046 block (`../EXIST`). `a/b`: shown by the probe above, not
+   asserted separately in the suite. Nothing written: the block's unchanged
+   file and "no gate header" assertions. The negative control, `--story T-1`
+   accepted on a fixture with that story: the HARNESS-026 AC-4 case at
+   `gates.test.sh:1752` (`_label="AC-4 (--story T-1)"`). There the id is
+   accepted and every gate runs (`RESULT=pass` in the stamp); the record is
+   refused for an unrelated reason, the run being on the wrong branch, and
+   that refusal is what the case asserts. It is the nearest existing control,
+   not a dedicated one.
+4. `phase.sh set HARNESS-064 DONE --force` was run on `main`, overriding the
+   branch check: there is no story branch because there is no code change.
 
