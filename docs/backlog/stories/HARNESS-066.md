@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-066-finished-worktrees-and-merged-branches-a
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, scripts/phase.sh, .claude/tests/phase.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md, .claude/commands/advance-story.md]touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, scripts/phase.sh, .claude/tests/phase.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md, .claude/commands/advance-story.md]touches: []         # files this story expects to write; `plan.sh conflicts` reads it
+touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, scripts/phase.sh, .claude/tests/phase.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md, .claude/commands/advance-story.md] # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -90,8 +90,9 @@ which is why it belongs in a script rather than in a person's memory.
   Otherwise it is `KEEP`, with the first failing reason as one of
   `unmerged`, `uncommitted`, `locked` or `recent`. Each reason has its own
   fixture, and each fixture differs from a `REMOVABLE` one in exactly that
-  fact. The main checkout and the current worktree are never listed, whatever
-  their state.
+  fact. A registered worktree whose folder no longer exists is
+  `KEEP <path>  missing`, checked before the four. The main checkout and the
+  current worktree are never listed, whatever their state.
 - **AC-3** — Merged local branches. A local branch matching `story/*` or
   `harness/*` is reported `DELETABLE <branch>` when:
   - its tip is an ancestor of `origin/main`;
@@ -118,10 +119,12 @@ which is why it belongs in a script rather than in a person's memory.
   with the command to run. *Negative control:* a registered worktree under
   `.claude/worktrees/` is never an `ORPHAN`.
 - **AC-6** — The DONE step tells the user. `bash scripts/phase.sh set ID DONE`
-  ends its report with the census line from AC-1 and, when any entry is
-  removable or deletable, the line `tidy: run bash scripts/tidy.sh --apply to
-  remove them`. It never applies anything itself. With nothing to tidy it adds
-  only the census line.
+  prints the census line from AC-1 and, when any entry is removable or
+  deletable, the line `tidy: run bash scripts/tidy.sh --apply to remove them`.
+  Both come after its `writes allowed:` line and before the blank line that
+  opens the `plan.sh after` report, so the report still ends with that
+  report's `Next:`. It never applies anything itself. With nothing to tidy it
+  adds only the census line.
 
 ## Contract
 
@@ -160,6 +163,143 @@ which is why it belongs in a script rather than in a person's memory.
          caller of it still compiles and is absent from RED's typecheck. One
          such file went missing and took 25 tests with it, silently, at GREEN. -->
 
+**Writes:** `scripts/tidy.sh`, `.claude/tests/tidy.test.sh`, `scripts/phase.sh`, `.claude/tests/phase.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, `CLAUDE.md`, `.claude/commands/advance-story.md`
+
+**Pinned by the Lead PO on 2026-10-19, on main at `bcbfa44`.** RED may amend
+any block below in place with a reason; GREEN builds what the amended block
+says. Every path here classifies as `harness`, so the lock permits it in every
+phase; the role table in `rules.md` is what keeps RED to the tests and GREEN to
+the scripts and docs. Bash, awk, git and coreutils only (`rules.md`,
+"Portability"): no python, no `ps`.
+
+**C-1. The command.** `scripts/tidy.sh`, run from anywhere inside a working
+tree of the repository it judges (its root is `git rev-parse --show-toplevel`
+of the cwd, not the script's own location, so a copy in a linked worktree
+judges the same repository).
+
+    bash scripts/tidy.sh [--apply] [--base REF] [--idle-hours N]
+
+- `--base REF` (default `origin/main`) is the ref "merged" is judged against.
+  A REF that does not resolve is an error: exit 2, one line
+  `tidy: base 'REF' does not resolve`, nothing printed or changed.
+- `--idle-hours N` (default 24), a whole number; anything else is exit 2.
+- Unknown option: exit 2. No network: the script never fetches, so "origin has
+  no branch of that name" means no `refs/remotes/origin/<name>`. A stale
+  remote-tracking ref therefore keeps a branch, which is the safe direction.
+
+**C-2. The output, in this order, every line exact.** Paths are printed as
+`git worktree list --porcelain` prints them (forward slashes on Windows). Two
+spaces separate a path from its reason.
+
+    REMOVABLE <path>
+    KEEP <path>  <reason>              reason: unmerged | uncommitted | locked | recent
+    ORPHAN <path>  empty               or  ORPHAN <path>  N file(s)
+    DELETABLE <branch>
+    tidy: N worktree(s), R removable, K kept; M merged branch(es) deletable
+
+Worktree lines in `git worktree list` order, then ORPHAN lines (sorted), then
+DELETABLE lines (sorted), then the census, always last. `N = R + K`; orphans
+are not worktrees and are not counted. With `--apply` the REMOVABLE and
+DELETABLE lines are printed first as the report, then each action prints one
+of `removed <path>`, `deleted <branch>`, or
+`LEFT <path>  <git's first error line>` followed on the next line by
+`  finish it: <command>`. The census is printed once, last, describing the
+state BEFORE the apply (it is the report the apply acted on).
+
+**C-3. The four facts (AC-2), checked in this order; the first that fails is
+the reason.**
+1. `unmerged`: `git merge-base --is-ancestor <HEAD of the worktree> <base>`
+   fails. A detached HEAD is judged the same way.
+2. `uncommitted`: `git -C <path> status --porcelain --untracked-files=all`
+   prints anything.
+3. `locked`: the worktree's `--porcelain` record has a `locked` line.
+4. `recent`: any file `git -C <path> ls-files -co --exclude-standard` lists
+   has an mtime newer than `--idle-hours` ago. Ignored files (build output,
+   `node_modules`) are deliberately not consulted: they are what a removal
+   frees, not evidence of work. Implementation free (`find ... -mmin -M` over
+   that list is one way; GNU and BSD `find` both have `-mmin`).
+A worktree whose directory no longer exists (git reports it `prunable`) is
+`KEEP <path>  missing`; that fifth reason is in AC-2 (PO decision 3), because
+`git worktree remove` cannot act on it and `git worktree prune` is a different
+command. RED pins it with one fixture.
+
+**C-4. Branches (AC-3).** Candidates are local branches whose name starts
+`story/` or `harness/`. DELETABLE needs all three: tip is an ancestor of
+`<base>`; no worktree's `--porcelain` record names `branch refs/heads/<name>`;
+no `refs/remotes/origin/<name>`. Nothing else is ever printed about branches:
+no KEEP line for a branch that fails.
+
+**C-5. `--apply` (AC-4).** For each REMOVABLE path:
+`git -c core.longpaths=true worktree remove <path>` (no `--force`). For each
+DELETABLE branch: `git branch -d <name>` (never `-D`). Branches are deleted
+AFTER worktrees are removed. A failed removal prints the LEFT pair and the
+script carries on with the rest, then exits 1. The finish-it command is, on
+Git Bash on Windows (`uname -s` matching `MINGW*|MSYS*|CYGWIN*`),
+`Remove-Item -LiteralPath '\\?\<path with backslashes>' -Recurse -Force`
+followed by `; git worktree prune`, and elsewhere
+`rm -rf -- '<path>' && git worktree prune`. These are printed for the user and
+never executed. Exit 0 when nothing was LEFT. ORPHAN lines never change the
+exit status and are never acted on.
+
+A lead for the LEFT fixture, not a requirement: `git worktree remove` refuses
+a worktree that contains a submodule ("working trees containing submodules
+cannot be moved or removed"), and a committed submodule leaves the status
+clean, so such a worktree reports REMOVABLE and then fails under `--apply`.
+RED checks that this holds on this host before relying on it, and says if it
+does not (a submodule from a local path may need `-c protocol.file.allow=always`).
+
+**C-6. Orphans (AC-5).** Every immediate subdirectory of
+`<main checkout>/.claude/worktrees/` that no `git worktree list` record names
+(compared as directories, `-ef`, not as strings). `empty` when `find <dir>
+-type f` finds nothing; otherwise `N file(s)` with that count. Nothing outside
+`.claude/worktrees/` is ever considered (Out of scope).
+
+**C-7. The DONE report (AC-6, as reworded at PLANNED).** In `cmd_set` of
+`scripts/phase.sh`, inside the existing `if [ "$phase" = DONE ]` block
+(`phase.sh:191-195` today), before the `printf '\n'` that opens the
+`plan.sh after` report: run `bash "$ROOT/scripts/tidy.sh"` (report mode, no
+options), print only its census line, and when R + M > 0 print
+`tidy: run bash scripts/tidy.sh --apply to remove them`. A tidy that fails or
+prints no census prints nothing here and must not fail the phase change (the
+same rule the block already applies to `plan.sh`). Order of the DONE output:
+`<id> -> DONE`, `writes allowed: ...`, the census, the apply line if any, a
+blank line, then `plan.sh after` exactly as today.
+
+**C-8. Callers of the changed output.** `phase.sh set <id> DONE`'s stdout gains
+one or two lines. Every reader, by `git grep` today:
+`.claude/tests/phase.test.sh:140` (discards output), `:168-182` (HARNESS-018
+AC-6: asserts the first line is `K-1 -> DONE` and that the output ENDS with a
+blank line and then `plan.sh after K-1` - both still hold under C-7, so these
+assertions are expected to stay green); prose in `plan.test.sh:2130` and
+`refresh.test.sh:135` (comments, not readers). RED's handoff states it checked
+this list against the tree.
+
+**C-9. Docs (GREEN).** `CLAUDE.md`, "Running things": one line,
+`bash scripts/tidy.sh [--apply]   # finished worktrees and merged branches`.
+`.claude/commands/advance-story.md`, the `**REVIEW → DONE.**` paragraph
+(`:234` today): one sentence saying the DONE report carries the tidy census
+and that `--apply` is recommended to the user, never run by the orchestrator
+unasked. `policy.test.sh` reads that paragraph for `/audit-mutations`; RED
+checks the sentence does not disturb it.
+
+**C-10. Tests and floors.** A new suite `.claude/tests/tidy.test.sh`, built on
+`_lib.sh`, with a real bare repository as `origin` and real `git worktree add`
+worktrees (never copied directories; `worktree.test.sh` explains why). File
+mtimes are set with `touch -t` (portable). The new suite gets a `floor` line in
+`.claude/tests/floors.conf` and a row in the COUNTS table in
+`.claude/tests/selftest.test.sh`; `phase`'s floor and row move by whatever
+`phase.test.sh` adds. Each set to the count RED measures, with a dated comment
+at the end of `floors.conf`.
+
+**C-11. Oracle partition.** Every criterion is mechanical: exact lines for
+exact fixtures, and exact before/after state of `git worktree list`,
+`git branch` and `git status`. The one judgement in the story, the 24-hour
+idle proxy, is a default with an override, pinned as a number.
+
+**C-12. Not decided here, so free.** Internal structure of `tidy.sh`; the
+order DELETABLE branches are deleted in; wording of error messages other than
+the ones above.
+
 ## Deferred verifications
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
@@ -193,6 +333,14 @@ which is why it belongs in a script rather than in a person's memory.
      perfectly. Exhaustive earning of assertions that passed on arrival is not
      an entry here; it goes to `/audit-mutations`. -->
 
+- **DV-1 — the defect put back.** The story's central claim is that nothing
+  with work in it is ever reported REMOVABLE. With the `unmerged` check
+  removed from `scripts/tidy.sh` (the ancestor test made always true), AC-2's
+  `unmerged` fixture MUST report `REMOVABLE`, and its assertion and AC-4's
+  "touches nothing reported KEEP" for that fixture MUST go red. RED cannot run
+  this: `tidy.sh` does not exist yet. Run through `scripts/mutate.sh` against
+  `bash scripts/selftest.sh tidy`. **Owner: GATES.**
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -208,38 +356,26 @@ which is why it belongs in a script rather than in a person's memory.
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-066` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -354,6 +490,25 @@ which is why it belongs in a script rather than in a person's memory.
      named here. -->
 
 ## Notes
+
+**PO decisions at PLANNED (2026-10-19), before RED.**
+
+1. **AC-6 reworded, approved by the user.** As filed, AC-6 put the census at
+   the END of the DONE report. HARNESS-018's test (`phase.test.sh:168-182`)
+   requires that report to end with `plan.sh after`'s output, so that `Next:`
+   is the last thing the user reads (`rules.md`, "Reporting to the user"). The
+   user chose to put the census before the `plan.sh after` report instead.
+   Changed while PLANNED, so no `## Amendments` entry is owed.
+2. **No tidy reminder beside `plan.sh after`'s `git worktree add` lines.**
+   The question the provenance note left open. Answered no: AC-6 already
+   reports at the moment a story closes, which is when a worktree becomes
+   finished, and changing `plan.sh`'s output would put `plan.sh` and its suite
+   in this story's scope for a second reminder of the same thing.
+3. **A fifth KEEP reason, `missing`** (C-3), for a registered worktree whose
+   folder is gone. The criteria list four; without this, such an entry has no
+   correct line. It narrows nothing the criteria allow.
+4. **The `touches:` line was malformed** (three copies on one line, as
+   committed in `a4af13e`); repaired to one list before RED.
 
 
 **Provenance (Lead PO, 2026-10-17).** This story was written in the session
