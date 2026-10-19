@@ -5,7 +5,7 @@ slug: plan-sh-s-edges-are-pinned-the-ac-count
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-065-plan-sh-s-edges-are-pinned-the-ac-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/plan.sh, .claude/tests/plan.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
