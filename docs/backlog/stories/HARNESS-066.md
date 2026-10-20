@@ -5,7 +5,7 @@ slug: finished-worktrees-and-merged-branches-a
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-066-finished-worktrees-and-merged-branches-a
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, scripts/phase.sh, .claude/tests/phase.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md, .claude/commands/advance-story.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -367,6 +367,29 @@ the ones above.
   "touches nothing reported KEEP" for that fixture MUST go red. RED cannot run
   this: `tidy.sh` does not exist yet. Run through `scripts/mutate.sh` against
   `bash scripts/selftest.sh tidy`. **Owner: GATES.**
+
+  **Result (GATES, orchestrator, 2026-10-20).** `scripts/tidy.sh:146`, the
+  unmerged branch of the reason chain, made always false (`elif false && G
+  merge-base --is-ancestor ...`), so the ancestor test never yields
+  `unmerged`. Both named assertions went red, plus eight that follow from
+  the same fixture; file restored and verified:
+
+      === mutate: scripts/tidy.sh (1 line(s) changed by 146s/elif ! G merge-base --is-ancestor/elif false \&\& G merge-base --is-ancestor/) ===
+      === mutate: running bash scripts/selftest.sh tidy ===
+          FAIL AC-2 unmerged: a worktree whose HEAD is not in origin/main is KEEP, reason unmerged
+          FAIL AC-2 order: unmerged + uncommitted + locked + recent reports unmerged
+          FAIL AC-1: the census counts 14 worktrees, 4 removable, 10 kept, 0 branches
+          FAIL AC-1/C-2: the whole report is the worktree lines in git worktree list order, then the census, and nothing else
+          FAIL C-1: run inside a linked worktree, the report is every other non-main worktree, then 13 / 4 / 9
+          FAIL --base REF: and a commit outside REF is still unmerged
+          FAIL AC-4/C-2: --apply prints the report (without its census), then removed <path> per REMOVABLE worktree, then deleted <branch>, then the census of the state it acted on
+          FAIL AC-4: the worktree list lacks exactly the two REMOVABLE entries
+          FAIL AC-4: the KEEP unmerged worktree is untouched: registered, same HEAD, same files
+          FAIL AC-4: a second --apply reports 0 removable
+      tidy: 118 passed, 10 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_tidy.sh.20261020T170606Z.1829.bak) ===
+
+  Matches RED's scratch calibration (118/10, the same two named assertions).
 
 ## Amendments
 
@@ -843,10 +866,21 @@ not DV-1's result.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-20T17:09:17Z
+    commit: b3d2258
+    tree:   36df4150b7d2b4e6a923a357339b035420a4395c
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
