@@ -5,7 +5,7 @@ slug: finished-worktrees-and-merged-branches-a
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-066-finished-worktrees-and-merged-branches-a
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, scripts/phase.sh, .claude/tests/phase.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md, .claude/commands/advance-story.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -403,6 +403,10 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+
+- RED, `test-developer`: `opus` (Opus 5.5), as planned; no override.
+- GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), as planned; no override.
+
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -926,3 +930,59 @@ folder, not by git's `prunable` line, measured) and C-6 (orphans get a
 amendment carries its reason in place. RED also prototyped `tidy.sh` and the
 C-7 change in its own scratch directory, never in the tree, to check that
 every expectation can be met (128/0 and 73/0 there); GREEN writes its own.
+
+**GREEN (feature-developer), 2026-10-20.** Ran on `opus` (Opus 5.5, `claude-opus-5-5`), as `feature-developer.md` declares; no override in the dispatch. Wrote `scripts/tidy.sh` (new), the C-7 block in `scripts/phase.sh` `cmd_set`, one line in `CLAUDE.md` "Running things", and one sentence at the end of `advance-story.md`'s `**REVIEW → DONE.**` paragraph. No test file touched. The suites, one at a time, against the shipped code:
+
+    tidy: 128 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (128 assertions executed, 128 declared).
+    phase: 73 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (73 assertions executed, 73 declared).
+    policy: 17 passed, 0 failed
+    selftest: 268 passed, 0 failed
+    check-sigpipe: scanned 2 shell file(s), 2 with pipefail, 0 finding(s)   (scripts/tidy.sh scripts/phase.sh)
+    check-grep-count: scanned 2 shell file(s), 0 finding(s)
+
+Wall time here: tidy 3m29s, phase 1m27s. Both match RED's recorded counts.
+
+How phase.sh avoids the handoff's trap: it prints a census only from a tidy that exited 0 AND only a line matching the full census shape; R + M are read from that line's fields 4 and 8. Either guard alone keeps the failure path silent, so the C-7 control below removes both.
+
+Negative controls measured against the shipped code, each through `scripts/mutate.sh`, restored and verified:
+
+    C-7 failure path: phase.sh's tidy capture made `2>&1 ... || true` and its census regex `/^tidy: /`
+    phase: 72 passed, 1 failed     (HARNESS-018 AC-6 block: expected: 0  actual: 1)
+    === mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+    AC-5 `-ef` control: tidy.sh's orphan check `[ "$o" -ef "${WT_PATH[i]}" ]` made a string compare `=`
+    tidy: 128 passed, 0 failed
+    === mutate: command exited 0; restored (verified byte-for-byte ...) ===
+
+Two divergences from the handoff. (1) C-7: RED's prototype measured `actual: 2`, and this one measures `actual: 1`. The shipped apply line is computed from the census fields, and tidy's error line `tidy: base 'origin/main' does not resolve` gives no R + M, so only the error line leaks. That is benign and the control still goes red. My output filter dropped the FAIL name line, so which assertion went red is inferred from the values: the block's other HARNESS-066 assertion is the exit status, which `|| true` keeps 0. (2) The AC-5 `-ef` control, which RED did not run, does NOT discriminate on this host. The ORPHAN path is built from the main checkout's porcelain path, and git records `reg` in that same spelling, so comparing strings gives the same answer as `-ef`. `reg is never ORPHAN` passes against a string-compare implementation. `-ef` stays in the code, as C-6 requires. Making the control bite needs a fixture whose spelling differs from git's, such as a symlinked or `/tmp`-vs-`C:/` registered path. That is a test-side question for RED or `/audit-mutations`, not a GREEN change.
+
+One behaviour the contract leaves open (C-12): `git branch -d` judges "merged" against the branch's upstream or the current HEAD, not against `--base`. So a branch that is DELETABLE against `origin/main` can still be refused when tidy runs from a checkout whose HEAD lacks it. tidy then prints `not deleted <branch>  <git's first line>` and exits 1. It never falls back to `-D`. No fixture reaches this (every fixture runs from `main`).
+
+**GREEN checked by the orchestrator (2026-10-20).** No file under
+`.claude/tests/` changed (`git status`: `scripts/tidy.sh` new, `scripts/phase.sh`,
+`CLAUDE.md`, `advance-story.md`, this story). The two suites, run one after the
+other:
+
+    tidy: 128 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (128 assertions executed, 128 declared).
+    phase: 73 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (73 assertions executed, 73 declared).
+
+`gates.sh --fast`: `All required gates passed (0 ran, 5 unconfigured, 0 known)`
+after `scripts/tidy.sh` was staged. One discrimination mutation of my own,
+different from the developer's (the apply-line condition, not the failure path),
+against the phase suite only:
+
+    === mutate: scripts/phase.sh (1 line(s) changed by s/if (r + m > 0) print/if (r + m > 999) print/) ===
+        FAIL HARNESS-066 AC-6: with one removable worktree and one deletable branch, the fourth line says how to remove them
+        FAIL HARNESS-066 AC-6: each appears exactly once
+        FAIL HARNESS-066 AC-6: then one blank line, and the output still ENDS with exactly what plan.sh after Q-1 prints (non-empty)
+    phase: 70 passed, 3 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_phase.sh.20261020T152031Z.42483.bak) ===
+
+Open for the PO, not GREEN's to fix: the AC-5 `-ef` control does not discriminate
+on this host (above), and `git branch -d` can refuse a branch DELETABLE against
+`--base` when run from a checkout whose HEAD lacks it (C-12 gap). Neither
+blocks GATES; both are candidates for `/audit-mutations` or a follow-up story.
