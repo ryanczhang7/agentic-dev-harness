@@ -537,7 +537,7 @@ grep-count 38
 lib 324
 mutate 308
 new-story 53
-phase 58
+phase 73
 phase-guard 388
 plan 284
 policy 17
@@ -552,6 +552,7 @@ settings 70
 shipped-docs 14
 sigpipe 91
 spawns 69
+tidy 128
 worktree 73
 COUNTS
 assert_eq "and each records the executed count measured on this tree" "" "$wrong"

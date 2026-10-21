@@ -170,6 +170,7 @@ bash scripts/plan.sh conflicts   which startable stories share a declared file
 bash scripts/plan.sh after ID    what to run next, and what can run alongside it
 bash scripts/classify.sh --list source src   # what the lock thinks a path is
 bash scripts/refresh-harness.sh ../agentic-dev-harness  # pull a newer harness in
+bash scripts/tidy.sh [--apply]   # finished worktrees and merged branches
 bash scripts/task.sh dev         # run the app
 bash scripts/mutate.sh F 'EXPR' -- CMD   # the only sanctioned diagnostic mutation
 bash scripts/mutate.sh --check   # is a killed mutation still in the tree? gates.sh asks first
