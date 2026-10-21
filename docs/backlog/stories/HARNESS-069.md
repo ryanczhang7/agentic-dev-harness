@@ -4,8 +4,8 @@ title: A failing log with an unexplained signature outlives later failures
 slug: a-failing-log-with-an-unexplained-signat
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-069-a-failing-log-with-an-unexplained-signat
 depends_on: []      # HARNESS-027 (the <id>.failed.log step this extends) is DONE
 touches: [scripts/gates.sh, .claude/harness/project.conf, .claude/state/README.md, .claude/skills/quality-gates/reference/configuring.md, .claude/tests/gates.test.sh, .claude/tests/settings.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf]
@@ -424,6 +424,10 @@ name, below the table.
   passed. No departure from the plan is proposed: RED is briefed with the
   Contract, PO-7 and the oracle partition, and AC-3's "HARNESS-027 unmodified"
   half and AC-4 pass on arrival and are earned by DV-1 and DV-2.
+- RED (2026-10-21, dispatched as a subagent into worktree
+  `D:/adh-HARNESS-069`): `test-developer` resolved to **Opus 5.5**
+  (`claude-opus-5-5`), which is what `test-developer.md` declares; no override
+  was passed. As planned.
 
 ## Out of scope
 
@@ -461,11 +465,390 @@ Not user-facing; no design notes.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED. -->
+Written 2026-10-21 by the Test Developer (RED). One level: the harness's
+integration level, `scripts/gates.sh` run as a process against a throwaway
+fixture whose gate commands are `cat`/`printf`/`awk`. The keep step is inline in
+the gate loop; its contract is a file on disk, bytes, a stdout line and an exit
+status, so there is no smaller unit to test.
+
+**`.claude/tests/gates.test.sh`** - one new block,
+`describe "HARNESS-069 AC-1..AC-11 ..."`, appended last, before `summary "gates"`.
+150 `assert_eq` lines, two of them in loops (3 x 5 and 5 x 2), so **168 new
+assertions executed: 682 -> 850**. Its own fixture `F69`
+(`make_project_fixture`), `project.conf` and `.claude/state/` in its
+`.git/info/exclude`, markers under `.claude/state/h69/`. The block's `trap`
+line replaces HARNESS-030's to add `"$F69"`; nothing else in the file changed.
+Scenarios, in file order:
+
+| Scenario | Gate ids | AC |
+|---|---|---|
+| failing run, signature on line 2 of 3; full run so the next gate's header bounds the output line | `sig`, `after` | AC-1 (name from the same run's `failed.log` `# run:`, body `tail -n +9 \| cmp`), AC-2 (all 8 header lines; 2-5 against the same run's `sig.failed.log`, 4 and 5 also independently via `rev-parse --short HEAD` and `gate_tree_hash`), AC-3 second half, AC-9 (once; after `failing log kept:`, before `=== gate: after`) |
+| both signatures, the C++ one FIRST in the log | `sig` | AC-2 (manifest order wins; `# line:` is the first line *that* regex matched; one file; `<seq>` 000002), AC-1 (first kept file byte-identical) |
+| only `Unknown C++ exception` | `sig` | AC-2 (`# matched: Unknown C\+\+ exception` verbatim), AC-9 |
+| failing, no signature, a lower-case decoy | `sig` | AC-1 (earlier file unchanged), AC-3 (kept/ byte-identical, no line, HARNESS-027's file and line exactly), AC-6 case |
+| noevidence, blocked (`blocked-when`), environment (`floor` + `skipped-when`), each with a signature | `nev`, `blk`, `env` | AC-1 "did not pass" covers every non-pass outcome; AC-2 outcome line equals that run's `failed.log`'s; AC-9 (not in the downstream block) |
+| a PASS whose log has the signature | `sig` | AC-4 |
+| `--gate after`, `--list`, `--audit`, `--fast` with `slow \| sig` | `sig` | AC-4; `--audit` also AC-7's "well-formed passes" control |
+| 20,001-line log, signature on line 1 (349 KB) | `big` | AC-1's SIGPIPE pin (Contract, "Matching") |
+| no `keep-when` + every signature used + a ZEBRA line; `ZEBRA-[0-9]+`; `(QUAGGA\|OKAPI) [0-9]+` on an optional gate; `zebra-42`/`Zebra-42` against `ZEBRA-[0-9]+` | `nokw`, `zebra`, `alt`, `lc` | AC-6 (every bullet; no-regex-of-its-own as a grep of `gates.sh` with a reader control per needle), AC-9 |
+| 5 x `coverage-core`, then 6 x `coverage`, distinct outputs | `coverage`, `coverage-core` | AC-5 and its written control; AC-9 (eviction prints nothing) |
+| keep vs no keep; 5th vs 6th (eviction) kept run, each `--story T-1` | `g10`, `ok10` | AC-10 (rc, summary, `RESULT=`/`FULL=`, `## Gate results` with `run:` masked) |
+| two `keep-when` lines and a `blocked-when` on `lst`, none on `none` | `lst`, `none` | AC-8 (whole line in the `%-12s %-9s %-6s keep-when: %s` layout, manifest order, under its gate, none for `none`) |
+| `keep-when \| nosuch \| ...`, `keep-when \| sig \|`; control `blocked-when \| nosuch` | `sig` | AC-7 `--audit` FAIL lines, `1 manifest problem(s).`, exit 1 |
+| the shipped `project.conf` (read; audited on a copy in F69), the three goldens | - | AC-7 (format line once, after `skipped-when`'s format line, before `BOOTSTRAPPED=`; a commented example between them; no live line; `--audit` passes, exit 0, no FAIL; fixture conf has no `keep-when`; three goldens pinned by blob id) |
+| `configuring.md` | - | AC-11 (the Contract's row exactly, on the line after `skipped-when`'s row; "Nine more kinds, ...") |
+
+**`.claude/tests/settings.test.sh`** - one `describe` and one assertion after
+HARNESS-027's AC-7 block: `failed_row "$README" 'gate-logs/kept/*.log'` = 1
+(70 -> 71 executed). AC-11's "cross-check still reports no disagreement" is
+the existing `no disagreements` assertion, unchanged. AC-3's "every HARNESS-027
+assertion passes unmodified" is the HARNESS-027 block, unchanged and green.
+
+Not touched: `floors.conf` and `sigpipe.test.sh` (GREEN/GATES, per the Files
+table), every golden, every source/doc file.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. -->
+Written 2026-10-21 by the Test Developer, dispatched as `test-developer`
+(declares `opus`); this session ran on **Claude Opus 5.5** (`claude-opus-5-5`).
+No override was given in the brief.
+
+### Commands
+
+```bash
+bash .claude/tests/gates.test.sh       # AC-1..AC-11's gates.sh half (the HARNESS-069 block is last)
+bash .claude/tests/settings.test.sh    # AC-11's README row
+bash scripts/selftest.sh gates         # the same, through the runner and its floor check
+bash scripts/selftest.sh sigpipe       # after GREEN's re-pin
+bash scripts/selftest.sh               # everything, before GATES
+```
+
+### Files touched in RED
+
+- `.claude/tests/gates.test.sh` - the HARNESS-069 block before `summary "gates"`;
+  its `trap` line replaces HARNESS-030's to add `"$F69"` to the cleanup.
+- `.claude/tests/settings.test.sh` - one `describe` + one assertion after
+  HARNESS-027's AC-7 block.
+- `docs/backlog/stories/HARNESS-069.md` - `## Test plan`, this section, one
+  `Resolved:` line under `## Model guidance`.
+
+Not touched: `scripts/gates.sh`, `.claude/state/README.md`,
+`.claude/harness/project.conf`, `configuring.md`, `sigpipe.test.sh`,
+`floors.conf`, any golden. **No Contract amendment.**
+
+### RED output (measured locally, 2026-10-21, on `f76f368` + these tests)
+
+`bash .claude/tests/gates.test.sh` - **26 min 18 s** wall locally, on a host
+with ~36 bash processes from other sessions (user 2m16s, sys 11m19s); the
+figure measures the host, not this block. CI's self-test runs on
+`ubuntu-latest` with no `timeout-minutes` (gates.yml); bash suites carry no
+per-test timeout. The block adds about 45 `gates.sh` invocations. Every one of
+the 93 failures is in the HARNESS-069 block (none before its `describe`, line
+108 of the output); every HARNESS-027 assertion and every other block is green.
+
+```
+gates: 757 passed, 93 failed
+settings: 70 passed, 1 failed
+```
+
+`settings.test.sh`'s one failure, verbatim:
+
+```
+    FAIL AC-11: README has one gate-logs/kept/*.log row, written by scripts/gates.sh, hand-editable yes
+         expected: 1
+         actual:   0
+```
+
+The 93 failing assertions in `gates.test.sh`, verbatim (names only; every
+`actual:` is `0`, empty, `no kept file []`, `missing: .../r1.copy`, or a
+`no (...)` naming the absent line - checked one by one, none is a fixture
+error):
+
+```
+FAIL AC-1: a failing run whose log matches a keep-when line leaves exactly one kept file for that gate
+FAIL AC-1: the kept file is kept/sig.000001.<the run's start, without - and :>.log
+FAIL AC-2 header 1 names the gate and why it was kept
+FAIL AC-2 header 2 is the outcome
+FAIL AC-2 header 2 is the outcome line of the same run's sig.failed.log
+FAIL AC-2 header 3 is a UTC time, YYYY-MM-DDTHH:MM:SSZ
+FAIL AC-2 header 3 is the run line of the same run's sig.failed.log
+FAIL AC-2 header 4 is the commit line of the same run's sig.failed.log
+FAIL AC-2 header 4 is the short HEAD, with the note only when the tree is dirty
+FAIL AC-2 header 5 is the tree line of the same run's sig.failed.log
+FAIL AC-2 header 5 is gate_tree_hash, computed independently
+FAIL AC-2 header 6 is the keep-when regex that matched, verbatim
+FAIL AC-2 header 7 is the whole first log line it matched
+FAIL AC-2 header 8 closes the header
+FAIL AC-1: after eight header lines, the run's sig.log byte for byte
+FAIL AC-1: and it is this run's log
+FAIL AC-9: the signature line is printed exactly once, naming the file and the regex
+FAIL AC-9: and no other signature line is printed
+FAIL AC-9: it comes after sig's header and after HARNESS-027's failing log kept line
+FAIL AC-9: and before the next gate's header
+FAIL AC-2: a run matching two keep-when lines still produces exactly one kept file
+FAIL AC-2: the next kept file takes <seq> 000002
+FAIL AC-2: the header names the first keep-when line in manifest order
+FAIL AC-2: and the first log line THAT regex matched
+FAIL AC-2: header 3 is the same run's failed.log run line
+FAIL AC-1: the second kept file is the second run's log, byte for byte
+FAIL AC-9: one signature line, naming the manifest-first regex
+FAIL AC-9: and only one
+FAIL AC-1: a later failing run WITH a signature leaves the first kept file byte-identical
+FAIL AC-2: a log matching only the second keep-when line is kept
+FAIL AC-2: its header names that regex verbatim, backslashes included
+FAIL AC-2: and the whole line it matched
+FAIL AC-9: the signature line carries the regex verbatim
+FAIL AC-3 control: the snapshot holds the three kept sig files
+FAIL AC-1: a later failing run WITHOUT a signature leaves the first kept file byte-identical
+FAIL AC-1: a run of nev whose outcome is noevidence and whose log matches is kept, once
+FAIL AC-2: its header says outcome noevidence
+FAIL AC-2: the same outcome line as nev.failed.log
+FAIL AC-1: nev's kept file is its log, byte for byte
+FAIL AC-9: one signature line for nev
+FAIL AC-1: a run of blk whose outcome is blocked and whose log matches is kept, once
+FAIL AC-2: its header says outcome blocked
+FAIL AC-2: the same outcome line as blk.failed.log
+FAIL AC-1: blk's kept file is its log, byte for byte
+FAIL AC-9: one signature line for blk
+FAIL AC-1: a run of env whose outcome is environment and whose log matches is kept, once
+FAIL AC-2: its header says outcome environment
+FAIL AC-2: the same outcome line as env.failed.log
+FAIL AC-1: env's kept file is its log, byte for byte
+FAIL AC-9: one signature line for env
+FAIL AC-1: a 20,001-line log whose first line is the signature is kept
+FAIL AC-1: after its header, the large log byte for byte
+FAIL AC-2: and its header names the line it matched
+FAIL AC-6: an arbitrary regex, ZEBRA-[0-9]+, keeps a failing log that matches it
+FAIL AC-6: naming it verbatim
+FAIL AC-6: and the line it matched
+FAIL AC-6: a regex containing | survives the manifest whole, and keeps an optional gate's failure
+FAIL AC-6: named verbatim, alternation and all
+FAIL AC-6: alt's kept file says outcome fail (printed WARN)
+FAIL AC-9: one signature line for zebra
+FAIL AC-9: one signature line for alt
+FAIL AC-9: and two in all
+FAIL AC-6: the earlier kept files are untouched by other gates' runs
+FAIL AC-5 control: five kept coverage-core runs
+FAIL AC-5 control: five kept coverage runs, and no coverage-core file taken for one
+FAIL AC-5 control: five coverage runs leave coverage-core's five alone
+FAIL AC-5: the sixth kept run leaves exactly 5 coverage files
+FAIL AC-5: the one removed is the lowest <seq>, and the new one is 000006
+FAIL AC-5 control: the second run's output is still in exactly one file
+FAIL AC-5: the other four are byte-identical to before
+FAIL AC-5: the new one is the sixth run's log
+FAIL AC-5: kept/ holds exactly 5 + 5 files whose names start with coverage
+FAIL AC-9: the eviction run prints one signature line, for the new file
+FAIL AC-9: eviction prints nothing else on stdout that names kept/
+FAIL AC-10 control: the matching run kept a file
+FAIL AC-10 control: and printed its signature line
+FAIL AC-10 control: the non-matching run kept nothing
+FAIL AC-10 control: the fifth kept run evicts nothing
+FAIL AC-10 control: the sixth kept run evicts the first
+FAIL AC-8: --list prints the first keep-when line once, in the blocked-when column layout
+FAIL AC-8: and the second, | and all
+FAIL AC-8: both under lst, in manifest order, before the next gate's line
+FAIL AC-8: a gate with no keep-when line gets none: two keep-when lines in all
+FAIL AC-7: --audit fails a keep-when line that names no configured gate, naming it
+FAIL AC-7: counted as a manifest problem
+FAIL AC-7: and exits 1
+FAIL AC-7: --audit fails a keep-when line with no pattern
+FAIL AC-7: counted as a manifest problem
+FAIL AC-7: and exits 1
+FAIL AC-7: the shipped project.conf holds the keep-when format line once, after skipped-when's and before BOOTSTRAPPED=
+FAIL AC-7: and an example keep-when line in a comment, between the format line and BOOTSTRAPPED=
+FAIL AC-11: configuring.md's kinds table has the keep-when row once, straight after skipped-when's
+FAIL AC-11: and the count above the table says nine
+```
+
+Representative `actual:` values, verbatim from the same run:
+
+```
+    FAIL AC-8: both under lst, in manifest order, before the next gate's line
+         expected: yes
+         actual:   no (lst 1, first absent, second absent, none 4)
+    FAIL AC-7: the shipped project.conf holds the keep-when format line once, after skipped-when's and before BOOTSTRAPPED=
+         expected: yes
+         actual:   no (keep-when format at none, skipped-when format at 277, BOOTSTRAPPED at 292)
+    FAIL AC-11: configuring.md's kinds table has the keep-when row once, straight after skipped-when's
+         expected: yes
+         actual:   no (keep-when row at none, skipped-when row at 30)
+    FAIL AC-7: --audit fails a keep-when line that names no configured gate, naming it
+         expected: 1
+         actual:   0
+```
+
+After that run, one helper (`hline69`) was rewritten from `printf | grep -m1 |
+cut` to a here-string, because `check-sigpipe.sh` flagged it
+(`gates.test.sh:3324: pipeline into an early-exit reader under pipefail`); it
+now reports 0 findings over 51 files. The helper's output was checked directly
+(`4` for a header on line 4, empty for an absent one). `check-grep-count.sh`:
+0 findings.
+
+`bash scripts/gates.sh --fast`: every gate in this repository is
+UNCONFIGURED (`BOOTSTRAPPED=no`), `All required gates passed (0 ran, 5
+unconfigured, 0 known).`, exit 0 - the shape expected here (PO-3): the
+self-test suites are the judge, not a gate.
+
+### One line per test (AC map)
+
+- **AC-1** - kept file exists, exactly one per matching run; name
+  `sig.000001.<failed.log's # run: without - and :>.log`; body `tail -n +9` is
+  `cmp`-identical to `<id>.log`; earlier kept file byte-identical after a later
+  run with and without a signature; noevidence, blocked, environment outcomes
+  each kept; 20,001-line log with the signature on line 1 is kept, body
+  identical.
+- **AC-2** - all eight header lines exactly (Contract shape); lines 2-5 equal
+  the same run's `failed.log` lines 2-5; line 4 equals an independent
+  `rev-parse --short HEAD` (+ note when dirty); line 5 equals an independent
+  `gate_tree_hash`; first-in-manifest-order regex named when two match, one
+  file; `# line:` is the first line *that* regex matched; escaped regex verbatim.
+- **AC-3** - no-signature failing run: `kept/` byte-identical, no signature
+  line, `failing log kept:` once, `failed.log` header and body as HARNESS-027;
+  a matching run still writes `failed.log` and prints `failing log kept:`.
+- **AC-4** - pass with the signature in its log, `--gate after`, `--list`,
+  `--audit`, `--fast` (slow gate): `kept/` unchanged (snapshot compare), no
+  signature line.
+- **AC-5** - 5 `coverage-core` then 6 `coverage`: exactly `000002..000006`
+  for coverage, oldest output in no file, other four byte-identical, all five
+  `coverage-core` unchanged (snapshot taken before any coverage run), 10 files
+  starting `coverage`.
+- **AC-6** - no `keep-when` keeps nothing (and no file of any name); another
+  gate's line never keeps it; `ZEBRA-[0-9]+` keeps and is named; `(QUAGGA|OKAPI)
+  [0-9]+` survives whole; `zebra-42`/`Zebra-42` against `ZEBRA-[0-9]+` keeps
+  nothing; `gates.sh` contains none of `Windows fatal exception`, `Unknown C++
+  exception`, `Unknown C\+\+ exception`, `ZEBRA-`, `QUAGGA|OKAPI`.
+- **AC-7** - `FAIL %-12s a \`keep-when\` line names no configured gate` /
+  `... has no pattern`, each with `1 manifest problem(s).` and exit 1; shipped
+  conf: format line once, after `skipped-when`'s format line and before
+  `BOOTSTRAPPED=`, a `#   keep-when | <id> | ...` example between them, no live
+  line, `--audit` passes with exit 0 and no `FAIL`; the fixture conf has none;
+  three goldens pinned by blob (`336b0ed`, `8569947`, `283d6b1`).
+- **AC-8** - `--list` prints `printf '%-12s %-9s %-6s keep-when: %s'` once per
+  regex, in manifest order, between the gate's line and the next gate's line;
+  exactly two such lines in all (none under `none`).
+- **AC-9** - exactly one `signature log kept: .claude/state/gate-logs/kept/<file>
+  (matched: <regex>)` per kept file, after `failing log kept:`, before the next
+  `=== gate:`; none when nothing is kept; the eviction run prints exactly one
+  line naming `kept/`.
+- **AC-10** - with/without a match, and with/without an eviction: exit status,
+  summary (durations normalised), `RESULT=`/`FULL=`, `## Gate results` with
+  `run:` masked, all identical.
+- **AC-11** - README row via `failed_row` (settings suite); configuring.md row
+  `    keep-when    | <gate id> | <regex of a failure nobody has explained yet>`
+  on the line after the `skipped-when` row, and the line
+  ``Nine more kinds, each explained in the skill and in `project.conf`'s own``.
+
+### What the tests pin (the "export shape" of a bash feature)
+
+Stated as fact - an assertion already compares against each of these:
+
+- stdout line: `signature log kept: .claude/state/gate-logs/kept/<id>.<seq6>.<YYYYMMDDTHHMMSSZ>.log (matched: <regex verbatim>)`.
+- file name: `^<id>\.[0-9]{6}\.[0-9]{8}T[0-9]{6}Z\.log$`, stamp = the run's
+  `# run:` with `-` and `:` removed, seq from `000001`, max+1, per gate.
+- header lines 1-8 exactly as the Contract's block; `# outcome:` is the word
+  `fail`, `noevidence`, `blocked` or `environment`.
+- `--list`: `printf '%-12s %-9s %-6s keep-when: %s\n' "" "" "" "$regex"`.
+- `--audit`: `FAIL %-12s a \`keep-when\` line names no configured gate` and
+  `FAIL %-12s a \`keep-when\` line has no pattern`, each incrementing `fails`.
+- README: a row matching
+  `^\| \`gate-logs/kept/\*\.log\` +\| \`scripts/gates\.sh\` +\|.*\| yes +\|$`.
+- shipped `project.conf`: the whole line
+  `# Format:  keep-when | <gate id> | <extended regex>` exactly once, after the
+  skipped-when format line and before `BOOTSTRAPPED=`; a comment line matching
+  `^#[[:space:]]+keep-when[[:space:]]*\|[[:space:]]*[a-z]` between it and
+  `BOOTSTRAPPED=`; no line matching `^[[:space:]]*keep-when[[:space:]]*\|`. The
+  Contract's block satisfies all three (checked by splicing it into a copy).
+- `configuring.md`: the row exactly, directly after the `skipped-when` row, and
+  the sentence's first line with `Nine`.
+
+**Not constrained**, so GREEN's choice: where the `keep-when:` lines sit
+among a gate's other `--list` lines (only that they are under it, in order);
+whatever eviction prints on stderr; the name of `KEEP_PER_GATE` and of the
+keep function (nothing greps for them); the README paragraph's wording; how
+`<seq>` is computed, provided the anchored glob is used.
+
+### Tests that pass on arrival, and what earns them
+
+75 of the 168 new assertions are green in RED. They are of three kinds:
+
+1. **Controls** that make a red one mean something (`AC-1 control: sig
+   failed`, `AC-6 control: the reader finds '<needle>' in this suite`, `AC-7
+   control: the blocked-when check this wording copies fires`, `AC-7 control:
+   the live-line reader counts two live lines and not the comment`, `AC-8
+   control: --list prints lst's blocked-when line`, `AC-10 control: the run was
+   recorded into T-1`, `AC-11 control: configuring.md has the skipped-when row`,
+   ...). Each was observed green against the condition it controls for.
+2. **Absence claims that hold vacuously with no code**: AC-3's
+   no-signature-run block, all of AC-4, AC-6's "keeps nothing" and "gates.sh
+   contains no ..." lines, AC-5's "oldest output in no file" and
+   "coverage-core unchanged" (each paired with a control that is red now and
+   must go green), AC-10's eight equality assertions, AC-7's "no live line",
+   shipped `--audit` passes, and the blob pins. **These are earned by DV-1 and
+   DV-2 (GATES), not in RED** - there is no keep step to mutate yet.
+3. **HARNESS-027's block**, unchanged and green, which is AC-3's "every
+   HARNESS-027 assertion passes unmodified".
+
+### Negative controls: expected values for GREEN to confirm
+
+The suite does not fail at import - bash - so every control below **ran** in
+RED; the "RED measured" column is that run. What GREEN must confirm is the
+right-hand column against the shipped `gates.sh`.
+
+| Control | What it guards | RED measured | GREEN must measure |
+|---|---|---|---|
+| AC-1 large log: `status-based` vs `capture-based` decision on the 20,001-line log, signature line 1 | the SIGPIPE pin | outside the suite, same `clean_log`, `set -o pipefail`: `clean_log \| grep -Em1` status **0/10** match; `clean_log \| grep -Eqm1` **0/10**; `k="$(clean_log \| grep -Em1)"; [ -n "$k" ]` **10/10**; at 6,000 lines also 0/10 vs 10/10. File 348,931 bytes from `awk` directly | `AC-1: a 20,001-line log ... is kept` = 1; an implementation deciding on the pipeline's status keeps nothing and this goes red |
+| `AC-1 control: big's log is the 20,001-line log, signature first` | the fixture really is the large log | `20001 Windows fatal exception: code 0x8007000e` (green) | same |
+| AC-3 decoy: `windows fatal exception, in lower case` vs `Windows fatal exception` | case-sensitive matching | kept/ `unchanged` (vacuous now) | `unchanged`, and `AC-3 control: the snapshot holds the three kept sig files` = 3 (red now: 0) |
+| AC-4 pass with signature | keep only on a non-pass | kept/ `unchanged`, 0 signature lines (vacuous) | `unchanged`, 0; under DV-2's mutation **6** go red |
+| AC-5: snapshot of 5 coverage-core taken before any coverage run; prefix control | `<id>*` glob eviction | `same69 core5 coverage-core` = `unchanged` (both empty); `prefix69 coverage` = 0 (red; wants 10) | `unchanged` with 5 names; 10; `seqs69 coverage` = `000002 000003 000004 000005 000006` |
+| AC-6 `nokw` (no keep-when, every signature in its log) | signatures from keep-when only | `kn69 nokw` = 0, `prefix69 nokw` = 0 | 0, 0 |
+| AC-6 `lc` (`zebra-42`, `Zebra-42` vs `ZEBRA-[0-9]+`) | case-sensitive | 0, 0 | 0, 0 - while `zebra` (same regex, `ZEBRA-42`) = 1 |
+| AC-6 reader controls | the gates.sh grep can find a needle | 5/5 `yes` against this suite | same |
+| AC-7 live-line reader on a 4-line conf (2 live, 1 indented, 1 comment) | the "no live line" reader | 2 | 2; shipped conf 0 |
+| AC-7 blocked-when audit control | the wording/padding reader | 1 | 1; keep-when lines 1 each |
+| AC-10 `a10` vs `b10` (match vs none), `c10` vs `d10` (no eviction vs eviction) | keeping changes no verdict | all four `identical` (no keep happens now, so this is vacuous) and rc equal | all four `identical` **with** `kn69 g10` = 1 after a10 and b10, and seqs `000001..000005` then `000002..000006` |
+
+### Deferred verifications: declined in RED
+
+- **DV-1 (keep step neutralised)** - **declined: cannot run in RED**; there is
+  no keep step to remove. Owner GATES. Prediction: the assertions that are red
+  now, minus the 14 that do not depend on a file being kept (AC-8 x4, AC-7
+  audit x6, AC-7 shipped format/example x2, AC-11 configuring.md x2) =
+  **79 red of 850** if the neutralisation also skips eviction (it has nothing
+  to evict); AC-1, AC-2 and AC-9 are among them.
+- **DV-2 (keep also on a pass)** - **declined: cannot run in RED**. Owner
+  GATES. Prediction: **6 red** - `AC-4: a pass whose log matches a signature
+  leaves kept/ unchanged`, `AC-4: and prints no signature line`, and the four
+  later `same69 r5` comparisons (`--gate after`, `--list`, `--audit`,
+  `--fast` leave kept/ unchanged), because the snapshot was taken before the
+  pass. Downstream measured 6 on the equivalent block.
+- **DV-3 (`keep-when | nosuch | x` appended to the shipped manifest)** -
+  **declined: cannot run in RED**; `--audit` has no keep-when check yet, so it
+  would print `Manifest audit passed.` (that is the defect, not the probe).
+  Owner GATES.
+
+### What GREEN must know
+
+- **Sigpipe re-pin.** `sigpipe.test.sh` C-5 pins `scripts/gates.sh:77:BOOTSTRAPPED="$(grep`
+  and `scripts/gates.sh:651:why="could not launch: $(`; both move. Re-pin to
+  `grep -n 'BOOTSTRAPPED="\$(grep\|could not launch: \$(' scripts/gates.sh`
+  as the Contract says. RED did not touch that file.
+- **Floors.** `gates` 682 -> **850** executed, `settings` 70 -> **71**.
+  `floors.conf` is a minimum, so nothing fails without the raise; the
+  Contract leaves it to GATES.
+- **AC-6's grep of `gates.sh`.** Any comment GREEN writes on the kind must not
+  quote `Windows fatal exception`, `Unknown C++ exception` (either spelling),
+  `ZEBRA-` or `QUAGGA|OKAPI` - use the Contract's `SEGFAULT in worker` example
+  if one is wanted.
+- **The `nev`/`blk`/`env` scenario** is new relative to downstream: AC-1 says
+  "did not pass" covers every non-pass outcome, so the keep step must sit
+  inside `if [ "$outcome" != pass ]` and read `$outcome`, not only `fail`.
+- **Matching** must be the captured-line form (Contract, "Matching"); the large
+  log assertion is the one that catches the status form, and on this host the
+  status form misses 10 of 10 times.
+- The suite is slow on a contended Windows host (26 min locally); run
+  `bash .claude/tests/gates.test.sh` once, not per edit, and use
+  `settings.test.sh` (seconds) for the README row.
 
 ## Gate results
 
