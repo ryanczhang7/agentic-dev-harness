@@ -5,7 +5,7 @@ slug: a-failing-log-with-an-unexplained-signat
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-069-a-failing-log-with-an-unexplained-signat
 depends_on: []      # HARNESS-027 (the <id>.failed.log step this extends) is DONE
 touches: [scripts/gates.sh, .claude/harness/project.conf, .claude/state/README.md, .claude/skills/quality-gates/reference/configuring.md, .claude/tests/gates.test.sh, .claude/tests/settings.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf]
@@ -428,6 +428,10 @@ name, below the table.
   `D:/adh-HARNESS-069`): `test-developer` resolved to **Opus 5.5**
   (`claude-opus-5-5`), which is what `test-developer.md` declares; no override
   was passed. As planned.
+- GREEN (2026-10-21, dispatched as a subagent into worktree
+  `D:/adh-HARNESS-069`): `feature-developer` resolved to **Opus 5.5**
+  (`claude-opus-5-5`), which is what `feature-developer.md` declares; no
+  override was passed. As planned.
 
 ## Out of scope
 
@@ -850,6 +854,141 @@ right-hand column against the shipped `gates.sh`.
   `bash .claude/tests/gates.test.sh` once, not per edit, and use
   `settings.test.sh` (seconds) for the README row.
 
+## Handoff: GREEN -> GATES
+
+Written 2026-10-21 by the Feature Developer (`feature-developer`, resolved to
+**Claude Opus 5.5**, `claude-opus-5-5`; no override).
+
+### What was built, and where
+
+- `scripts/gates.sh`
+  - `KEEP_PER_GATE=5` beside `LOGDIR`, with a comment pointing at this story.
+  - Parser: `keep-when` in the kind allow-list, a `keep-when)` arm into a new
+    `KEEPWHEN` table (declared with the others), `rest 3` so `|` survives.
+  - `kept_files <id>` and `keep_for_signature`, in a new
+    `# --- keep-when ...` section just above `# --- recording`. Matching is
+    `kline="$(clean_log "$log" | grep -Em1 -- "$kre" 2>/dev/null)"`, decided on
+    `[ -n "$kline" ]`, never on a pipeline status; an empty regex is skipped.
+    The glob is the anchored `<id>.[0-9]{6}.[0-9]{8}T[0-9]{6}Z.log` shape,
+    spelled as bracket classes. `<seq>` is max+1 of that gate's files (base-10
+    forced). Eviction prints `gates.sh: evicted ...` on **stderr** only.
+  - The `<id>.failed.log` step now computes `fl_commit`/`fl_tree` once inside
+    the same `{ ... } >` group (initialised to empty before it) and prints them,
+    so the kept file's lines 4-5 are the very same values; then calls
+    `keep_for_signature` inside `if [ "$outcome" != pass ]`, after
+    `failing log kept:`. So every non-pass outcome (fail, noevidence,
+    environment, blocked) is eligible.
+  - `--list`: a `KEEPWHEN` loop after the `skipped-when:` loop,
+    `printf '%-12s %-9s %-6s keep-when: %s\n'`.
+  - `--audit`: a loop after the `blocked-when` one, the two `FAIL` lines,
+    each `fails=$((fails+1))`.
+  - The comment's example is `SEGFAULT in worker [0-9]+`; `grep -cF` of each
+    AC-6 needle in `gates.sh` is 0.
+- `.claude/state/README.md` - the `gate-logs/kept/*.log` row (`yes`) and a
+  paragraph after the `<id>.failed.log` one (the downstream text, provenance
+  changed to HARNESS-069).
+- `.claude/harness/project.conf` - the Contract's comment block verbatim, after
+  the `skipped-when` block, before `BOOTSTRAPPED=no`; no live line.
+- `.claude/skills/quality-gates/reference/configuring.md` - "Nine more kinds",
+  the `keep-when` row after `skipped-when`'s, one paragraph after the
+  `skipped-when` paragraph.
+- `.claude/tests/sigpipe.test.sh` - C-5's two pins only:
+  `scripts/gates.sh:77:` -> `:82:` and `:651:` -> `:734:` (what
+  `grep -n 'BOOTSTRAPPED="\$(grep\|could not launch: \$(' scripts/gates.sh`
+  prints after the edit). Nothing else in that file changed.
+
+**Ownership note.** The Files table assigns `project.conf` and
+`configuring.md` to the Lead PO (PO-6). The orchestrator's GREEN brief told
+this dispatch to write both; it did, with the Contract's block verbatim for
+`project.conf`. The orchestrator should read both as the owner would.
+The two sigpipe pins were changed with one `sed -i` on
+`.claude/tests/sigpipe.test.sh` (classifies `harness`, allowed in every
+phase), and `configuring.md`'s count word and row with one `awk` rewrite
+(also `harness`); `scripts/gates.sh` was edited only with `Edit`.
+
+### Suites (2026-10-21, this worktree, after the edit)
+
+```
+gates: 850 passed, 0 failed          (bash .claude/tests/gates.test.sh, exit 0)
+settings: 71 passed, 0 failed        (bash .claude/tests/settings.test.sh)
+sigpipe: 91 passed, 0 failed         (bash scripts/selftest.sh sigpipe)
+assertion floors: all 1 suite(s) met their declared floor (91 assertions executed, 91 declared).
+check-sigpipe: scanned 51 shell file(s), 47 with pipefail, 0 finding(s)
+check-grep-count: scanned 51 shell file(s), 0 finding(s)
+Manifest audit passed.               (bash scripts/gates.sh --audit, shipped manifest)
+All required gates passed (0 ran, 5 unconfigured, 0 known).   (gates.sh --fast)
+```
+
+Not run: the full `bash scripts/selftest.sh`, the full `bash scripts/gates.sh`
+(GATES owns both), DV-1..DV-3 (GATES), `floors.conf` (left to GATES: `gates`
+682 -> 850, `settings` 70 -> 71).
+
+### Negative controls: measured against the shipped `gates.sh`
+
+Passing assertions print nothing, so each control below was re-measured
+outside the suite, in a throwaway `make_project_fixture` built by a scratch
+script (not committed) with the suite's own setup (story `T-1` committed, on
+`story/T-1-fixture`, `project.conf` and `.claude/state/` excluded):
+
+```
+== AC-1 large log (20,001 lines, signature first)
+log bytes: 700021 lines: 20001
+signature log kept: .claude/state/gate-logs/kept/big.000001.20261021T150859Z.log (matched: SEGFAULT in worker [0-9]+)
+# line:    SEGFAULT in worker 7
+body == big.log
+== AC-3: 3 matching runs, then a non-matching one with a lower-case decoy
+kept sig files before decoy: 3
+signature lines on decoy run: 0
+failing log kept lines: 1
+kept/ sig files unchanged
+== AC-5: 5 x coverage-core then 6 x coverage
+coverage-core snapshot (5 names):
+6th run stdout lines naming kept/: 1
+coverage seqs: 000002 000003 000004 000005 000006
+files starting coverage: 10
+'SIG cov 1' in files: 0
+coverage-core 5 unchanged
+== AC-10: match vs no match; no eviction vs eviction
+a10 kept g10: 1
+b10 kept g10: 1
+c10 seqs: 000001 000002 000003 000004 000005
+d10 seqs: 000002 000003 000004 000005 000006
+a10 vs b10: rc 1/1
+  summary: identical (7 lines, 196 bytes)
+  stamp: identical (2 lines, 21 bytes)
+  record: identical (11 lines, 321 bytes)
+c10 vs d10: rc 1/1
+  summary: identical (7 lines, 196 bytes)
+  stamp: identical (2 lines, 21 bytes)
+  record: identical (11 lines, 321 bytes)
+```
+
+Against RED's table: AC-1 large log kept (RED: status form 0/10, capture form
+10/10; shipped code uses the capture form and keeps it); AC-3 snapshot **3**
+(RED: 0, wanted 3); AC-5 snapshot **5 names**, prefix count **10**, seqs
+`000002..000006` (as wanted); AC-10 all four comparisons `identical` **with
+real files** - the record is the 11-line `## Gate results` body carrying
+`FAIL g10` / `PASS ok10`, the stamp `RESULT=fail`/`FULL=yes` - and `g10` kept
+1 after a10 and still 1 after b10, seqs as wanted. No divergence from RED's
+expected values.
+
+One divergence of fixture, benign: my large log is 700,021 bytes (longer
+padding) against RED's 348,931; larger only makes the SIGPIPE case likelier.
+A first attempt at the AC-10 measurement, without the committed story and
+branch, produced an empty record and `FULL=no` - identical on both sides,
+i.e. vacuous; that is why the setup above copies the suite's. The suite's
+own `AC-10 control: the run was recorded into T-1` guards against exactly
+that, and passed.
+
+### Doubts for GATES
+
+- None on behaviour. DV-1's prediction (79 red) and DV-2's (6) are RED's; the
+  neutralisation point for DV-1 is the single `keep_for_signature` call after
+  `failing log kept:`, and for DV-2 the obvious mutation is calling it for a
+  pass as well (e.g. moving the call out of the `if`).
+- `keep_for_signature` reads the gate loop's globals (`$id`, `$log`,
+  `$outcome`, `$started`, `$fl_commit`, `$fl_tree`), as downstream did.
+
 ## Gate results
 
 <!-- Written by scripts/gates.sh itself. -->
@@ -909,3 +1048,14 @@ pins move here, not only the second: `KEEP_PER_GATE` goes beside `LOGDIR`
 header shape, name shape, bound, eviction order, output line, audit wording,
 README row - is carried over unchanged so the consumer's refresh lands on an
 identical feature.
+
+**Sigpipe re-pin (GREEN, 2026-10-21).** C-5's two `scripts/gates.sh:` pins
+moved to `:82:` and `:734:`, as `grep -n` printed after GREEN's edit;
+`bash scripts/selftest.sh sigpipe`:
+
+```
+sigpipe: 91 passed, 0 failed
+
+assertion floors: all 1 suite(s) met their declared floor (91 assertions executed, 91 declared).
+1 harness suite(s) passed.
+```
