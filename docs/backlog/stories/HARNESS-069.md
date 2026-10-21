@@ -4,8 +4,8 @@ title: A failing log with an unexplained signature outlives later failures
 slug: a-failing-log-with-an-unexplained-signat
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-069-a-failing-log-with-an-unexplained-signat
 depends_on: []      # HARNESS-027 (the <id>.failed.log step this extends) is DONE
 touches: [scripts/gates.sh, .claude/harness/project.conf, .claude/state/README.md, .claude/skills/quality-gates/reference/configuring.md, .claude/tests/gates.test.sh, .claude/tests/settings.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf]
