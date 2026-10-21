@@ -4,8 +4,8 @@ title: Finished worktrees and merged branches are tidied when a story closes
 slug: finished-worktrees-and-merged-branches-a
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-066-finished-worktrees-and-merged-branches-a
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, scripts/phase.sh, .claude/tests/phase.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md, .claude/commands/advance-story.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -1020,3 +1020,14 @@ Open for the PO, not GREEN's to fix: the AC-5 `-ef` control does not discriminat
 on this host (above), and `git branch -d` can refuse a branch DELETABLE against
 `--base` when run from a checkout whose HEAD lacks it (C-12 gap). Neither
 blocks GATES; both are candidates for `/audit-mutations` or a follow-up story.
+
+**Full self-test at GATES (orchestrator, 2026-10-20),** run detached on the
+committed GATES tree (`446f825`), nothing else running in this worktree:
+
+    assertion floors: all 27 suite(s) met their declared floor (3800 assertions executed, 3794 declared).
+    27 harness suite(s) passed.
+    rc=0 duration=8001s
+
+Exit 0. Duration 2h13m is far past the ~25 min earlier stories recorded on
+this host; the run passed, and the cause of the slowness was not examined
+(no `ps` check was made before it started returned a match, but none after).
