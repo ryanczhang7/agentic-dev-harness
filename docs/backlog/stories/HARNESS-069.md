@@ -5,7 +5,7 @@ slug: a-failing-log-with-an-unexplained-signat
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-069-a-failing-log-with-an-unexplained-signat
 depends_on: []      # HARNESS-027 (the <id>.failed.log step this extends) is DONE
 touches: [scripts/gates.sh, .claude/harness/project.conf, .claude/state/README.md, .claude/skills/quality-gates/reference/configuring.md, .claude/tests/gates.test.sh, .claude/tests/settings.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf]
@@ -372,12 +372,157 @@ assertions **must** go red (downstream measured 61 of 592). RED cannot run
 this: there is no keep step to remove. Command: `bash scripts/selftest.sh
 gates`. **Owner: GATES.**
 
+*DV-1 result (GATES, 2026-10-21, on `5639245`): 79 red of 850, as RED
+predicted, and the exact set predicted.* Mutation:
+`bash scripts/mutate.sh scripts/gates.sh 's/^    keep_for_signature$/    : # DV-1 keep step neutralised/' -- bash scripts/selftest.sh gates`
+(one line changed, line 844, the only call). Anchors read from the output:
+`grep -E '^gates: [0-9]+ passed, [0-9]+ failed$'` and `grep -E '^    FAIL '`
+(79 lines). Set comparison: the 79 FAIL names are RED's 93 verbatim
+(`## Handoff: RED -> GREEN`) minus exactly the 14 RED excluded (AC-8 x4,
+AC-7 audit x6, AC-7 shipped x2, AC-11 configuring.md x2), with no name outside
+RED's list (`grep -vxFf` both directions). By AC: AC-1 15, AC-2 27, AC-3 1,
+AC-5 9, AC-6 7, AC-9 15, AC-10 5. Restored and verified by `mutate.sh`;
+`bash scripts/mutate.sh --check` clean afterwards.
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by s/^    keep_for_signature$/    : # DV-1 keep step neutralised/) ===
+  844 -     keep_for_signature
+  844 +     : # DV-1 keep step neutralised
+gates: 771 passed, 79 failed
+assertion floors: all 1 suite(s) met their declared floor (771 assertions executed, 682 declared).
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-069/.claude/state/mutations/scripts_gates.sh.20261021T151903Z.696219.bak) ===
+  844:     keep_for_signature
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+The 79 `^    FAIL ` lines, verbatim:
+
+```
+FAIL AC-1: a failing run whose log matches a keep-when line leaves exactly one kept file for that gate
+FAIL AC-1: the kept file is kept/sig.000001.<the run's start, without - and :>.log
+FAIL AC-2 header 1 names the gate and why it was kept
+FAIL AC-2 header 2 is the outcome
+FAIL AC-2 header 2 is the outcome line of the same run's sig.failed.log
+FAIL AC-2 header 3 is a UTC time, YYYY-MM-DDTHH:MM:SSZ
+FAIL AC-2 header 3 is the run line of the same run's sig.failed.log
+FAIL AC-2 header 4 is the commit line of the same run's sig.failed.log
+FAIL AC-2 header 4 is the short HEAD, with the note only when the tree is dirty
+FAIL AC-2 header 5 is the tree line of the same run's sig.failed.log
+FAIL AC-2 header 5 is gate_tree_hash, computed independently
+FAIL AC-2 header 6 is the keep-when regex that matched, verbatim
+FAIL AC-2 header 7 is the whole first log line it matched
+FAIL AC-2 header 8 closes the header
+FAIL AC-1: after eight header lines, the run's sig.log byte for byte
+FAIL AC-1: and it is this run's log
+FAIL AC-9: the signature line is printed exactly once, naming the file and the regex
+FAIL AC-9: and no other signature line is printed
+FAIL AC-9: it comes after sig's header and after HARNESS-027's failing log kept line
+FAIL AC-9: and before the next gate's header
+FAIL AC-2: a run matching two keep-when lines still produces exactly one kept file
+FAIL AC-2: the next kept file takes <seq> 000002
+FAIL AC-2: the header names the first keep-when line in manifest order
+FAIL AC-2: and the first log line THAT regex matched
+FAIL AC-2: header 3 is the same run's failed.log run line
+FAIL AC-1: the second kept file is the second run's log, byte for byte
+FAIL AC-9: one signature line, naming the manifest-first regex
+FAIL AC-9: and only one
+FAIL AC-1: a later failing run WITH a signature leaves the first kept file byte-identical
+FAIL AC-2: a log matching only the second keep-when line is kept
+FAIL AC-2: its header names that regex verbatim, backslashes included
+FAIL AC-2: and the whole line it matched
+FAIL AC-9: the signature line carries the regex verbatim
+FAIL AC-3 control: the snapshot holds the three kept sig files
+FAIL AC-1: a later failing run WITHOUT a signature leaves the first kept file byte-identical
+FAIL AC-1: a run of nev whose outcome is noevidence and whose log matches is kept, once
+FAIL AC-2: its header says outcome noevidence
+FAIL AC-2: the same outcome line as nev.failed.log
+FAIL AC-1: nev's kept file is its log, byte for byte
+FAIL AC-9: one signature line for nev
+FAIL AC-1: a run of blk whose outcome is blocked and whose log matches is kept, once
+FAIL AC-2: its header says outcome blocked
+FAIL AC-2: the same outcome line as blk.failed.log
+FAIL AC-1: blk's kept file is its log, byte for byte
+FAIL AC-9: one signature line for blk
+FAIL AC-1: a run of env whose outcome is environment and whose log matches is kept, once
+FAIL AC-2: its header says outcome environment
+FAIL AC-2: the same outcome line as env.failed.log
+FAIL AC-1: env's kept file is its log, byte for byte
+FAIL AC-9: one signature line for env
+FAIL AC-1: a 20,001-line log whose first line is the signature is kept
+FAIL AC-1: after its header, the large log byte for byte
+FAIL AC-2: and its header names the line it matched
+FAIL AC-6: an arbitrary regex, ZEBRA-[0-9]+, keeps a failing log that matches it
+FAIL AC-6: naming it verbatim
+FAIL AC-6: and the line it matched
+FAIL AC-6: a regex containing | survives the manifest whole, and keeps an optional gate's failure
+FAIL AC-6: named verbatim, alternation and all
+FAIL AC-6: alt's kept file says outcome fail (printed WARN)
+FAIL AC-9: one signature line for zebra
+FAIL AC-9: one signature line for alt
+FAIL AC-9: and two in all
+FAIL AC-6: the earlier kept files are untouched by other gates' runs
+FAIL AC-5 control: five kept coverage-core runs
+FAIL AC-5 control: five kept coverage runs, and no coverage-core file taken for one
+FAIL AC-5 control: five coverage runs leave coverage-core's five alone
+FAIL AC-5: the sixth kept run leaves exactly 5 coverage files
+FAIL AC-5: the one removed is the lowest <seq>, and the new one is 000006
+FAIL AC-5 control: the second run's output is still in exactly one file
+FAIL AC-5: the other four are byte-identical to before
+FAIL AC-5: the new one is the sixth run's log
+FAIL AC-5: kept/ holds exactly 5 + 5 files whose names start with coverage
+FAIL AC-9: the eviction run prints one signature line, for the new file
+FAIL AC-9: eviction prints nothing else on stdout that names kept/
+FAIL AC-10 control: the matching run kept a file
+FAIL AC-10 control: and printed its signature line
+FAIL AC-10 control: the non-matching run kept nothing
+FAIL AC-10 control: the fifth kept run evicts nothing
+FAIL AC-10 control: the sixth kept run evicts the first
+```
+
 **DV-2 (earning what passes on arrival): keep on a pass.** AC-4's "a pass
 whose log matches a signature leaves `kept/` unchanged" and "prints no
 signature line" pass in RED with no code at all. With the keep step also
 called for a passing gate, both **must** go red (downstream: 6, the two named
 among them). RED cannot run it for the same reason as DV-1. Command: `bash
 scripts/selftest.sh gates`. **Owner: GATES.**
+
+*DV-2 result (GATES, 2026-10-21, on `5639245`): 6 red of 850, as RED
+predicted, and the six RED named.* Mutation: one line inserted before
+`if [ "$outcome" != pass ]; then` that calls the keep step on a pass:
+
+    bash scripts/mutate.sh scripts/gates.sh 's/^  if \[ "\$outcome" != pass \]; then$/  [ "$outcome" = pass ] \&\& { : "${fl_commit:=}" "${fl_tree:=}"; keep_for_signature; } # DV-2\n&/' -- bash scripts/selftest.sh gates
+
+The `${fl_commit:=}`/`${fl_tree:=}` defaults are there because `gates.sh`
+runs under `set -u`: without them a pass before any failure would abort the
+script on an unbound variable, and the mutant would test a crash rather than
+"keep on a pass". The expression was dry-run on a scratch copy of
+`git show HEAD:scripts/gates.sh` first (one line added, `bash -n` clean).
+Same anchors as DV-1. Restored and verified by `mutate.sh`;
+`bash scripts/mutate.sh --check` clean afterwards.
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by s/^  if \[ "\$outcome" != pass \]; then$/  [ "$outcome" = pass ] \&\& { : "${fl_commit:=}" "${fl_tree:=}"; keep_for_signature; } # DV-2\n&/) ===
+  828 +   [ "$outcome" = pass ] && { : "${fl_commit:=}" "${fl_tree:=}"; keep_for_signature; } # DV-2
+gates: 844 passed, 6 failed
+    FAIL AC-4: a pass whose log matches a signature leaves kept/ unchanged
+    FAIL AC-4: and prints no signature line
+         expected: 0
+         actual:   1
+    FAIL AC-4: --gate after leaves kept/ unchanged
+    FAIL AC-4: --list leaves kept/ unchanged
+    FAIL AC-4: --audit leaves kept/ unchanged
+    FAIL AC-4: --fast leaves kept/ unchanged for the gate it left out
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-069/.claude/state/mutations/scripts_gates.sh.20261021T155539Z.757581.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+Each `kept/ unchanged` failure's `actual:` is the same diff: the snapshot
+before the pass holds six files, after it seven, the extra one
+`sig.000004.20261021T160622Z.log` - the passing run's log kept. The four later
+comparisons fail because they compare against the snapshot taken before that
+pass, exactly as RED explained; none of `--gate after`, `--list`, `--audit` or
+`--fast` added a file of its own.
 
 **DV-3 (the rule against the real tree): `--audit` sees a bad `keep-when` line
 in the shipped manifest.** With one line `keep-when | nosuch | x` appended to
@@ -387,6 +532,26 @@ in the shipped manifest.** With one line `keep-when | nosuch | x` appended to
 and must print `Manifest audit passed.` again once restored. Fixtures say the
 check is right about a manifest RED wrote; only this says it is right about
 the one that ships. **Owner: GATES.**
+
+*DV-3 result (GATES, 2026-10-21, on `5639245`): holds.* The mutated audit
+prints the exact line (7 spaces after `nosuch`, the `%-12s` padding), counts
+one manifest problem and exits 1; restored, the audit passes and exits 0.
+`project.conf` restored and verified by `mutate.sh`; `--check` clean.
+
+```
+$ bash scripts/mutate.sh .claude/harness/project.conf '$a keep-when | nosuch | x' -- bash -c 'bash scripts/gates.sh --audit; echo "AUDIT_EXIT=$?"'
+=== mutate: .claude/harness/project.conf (1 line(s) changed by $a keep-when | nosuch | x) ===
+  344 + keep-when | nosuch | x
+ok   mutation     (unconfigured)
+FAIL nosuch       a `keep-when` line names no configured gate
+1 manifest problem(s).
+AUDIT_EXIT=1
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/adh-HARNESS-069/.claude/state/mutations/.claude_harness_project.conf.20261021T160844Z.796789.bak) ===
+$ bash scripts/gates.sh --audit; echo "AUDIT_EXIT=$?"
+Manifest audit passed.
+AUDIT_EXIT=0
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 ## Amendments
 
@@ -429,6 +594,10 @@ name, below the table.
   (`claude-opus-5-5`), which is what `test-developer.md` declares; no override
   was passed. As planned.
 - GREEN (2026-10-21, dispatched as a subagent into worktree
+  `D:/adh-HARNESS-069`): `feature-developer` resolved to **Opus 5.5**
+  (`claude-opus-5-5`), which is what `feature-developer.md` declares; no
+  override was passed. As planned.
+- GATES (2026-10-21, dispatched as a subagent into worktree
   `D:/adh-HARNESS-069`): `feature-developer` resolved to **Opus 5.5**
   (`claude-opus-5-5`), which is what `feature-developer.md` declares; no
   override was passed. As planned.
@@ -988,6 +1157,103 @@ that, and passed.
   pass as well (e.g. moving the call out of the `if`).
 - `keep_for_signature` reads the gate loop's globals (`$id`, `$log`,
   `$outcome`, `$started`, `$fl_commit`, `$fl_tree`), as downstream did.
+
+## Handoff: GATES -> REVIEW
+
+Written 2026-10-21 by the Feature Developer (`feature-developer`, resolved to
+**Claude Opus 5.5**, `claude-opus-5-5`; no override). **Not ready for
+REVIEW: GATES stopped on a failing test after the floor raise.** No full
+`gates.sh` run was made and nothing is recorded under `## Gate results`.
+
+### Done
+
+- No background process from GREEN was running in this worktree (the
+  `selftest`/`gates` processes on the host had cwds in `/d/manga-translator`,
+  `/d/clean_calendar` and a `/tmp` fixture).
+- DV-1: 79 red of 850, exactly RED's predicted set. DV-2: 6 red, exactly the
+  six named. DV-3: holds. Each result is under its DV in
+  `## Deferred verifications`, and `mutate.sh --check` was clean after each.
+- `check-sigpipe.sh`: `scanned 51 shell file(s), 47 with pipefail, 0
+  finding(s)`, exit 0. `check-grep-count.sh`: `scanned 51 shell file(s), 0
+  finding(s)`, exit 0. `gates.sh --audit`: `Manifest audit passed.`, exit 0.
+
+### Why it stopped: `selftest.test.sh` pins every floor value
+
+`.claude/tests/floors.conf` was raised `gates` 682 -> 850 and `settings`
+70 -> 71, as the brief and the GREEN handoff said (the counts the suites
+report: `gates: 850 passed, 0 failed`, `settings: 71 passed, 0 failed` in the
+run below). The full `bash scripts/selftest.sh` (8,347 s here) then failed
+one assertion:
+
+```
+    FAIL and each records the executed count measured on this tree
+         expected: 
+         actual:    gates=850(want 682) settings=71(want 70)
+selftest: 267 passed, 1 failed
+assertion floors: 26 of 27 suite(s) met their declared floor.
+1 of 27 harness suite(s) FAILED.
+SELFTEST_EXIT=1 after 8347s
+```
+
+`.claude/tests/selftest.test.sh:521-558` compares every `floors.conf` value
+with a hard-coded `COUNTS` heredoc (`gates 682`, `settings 70`). The precedent
+is HARNESS-066's RED commit `66a3b30`, which changed `floors.conf` and that
+heredoc together. This story's Contract lists `floors.conf` as an *optional*
+GATES write and does not mention `selftest.test.sh`, which is outside
+`touches:` and `**Writes:**`. The file classifies `harness`, so the lock would
+allow the edit, but it is a test file and GATES freezes tests. So it was not
+edited. (`selftest: 267` is below its floor of 268 only because of this one
+failing assertion.)
+
+Every other suite passed with its floor met:
+
+```
+boundaries: 136 passed, 0 failed
+ci-local: 28 passed, 0 failed
+classify: 55 passed, 0 failed
+doctor: 64 passed, 0 failed
+gate-reminder: 32 passed, 0 failed
+gates: 850 passed, 0 failed
+grep-count: 38 passed, 0 failed
+lib: 324 passed, 0 failed
+mutate: 308 passed, 0 failed
+new-story: 53 passed, 0 failed
+phase-guard: 388 passed, 0 failed
+phase: 73 passed, 0 failed
+plan: 284 passed, 0 failed
+policy: 17 passed, 0 failed
+procedure: 37 passed, 0 failed
+profiles: 132 passed, 0 failed
+refresh: 215 passed, 0 failed
+reporting: 27 passed, 0 failed
+run-lock: 140 passed, 0 failed
+security-audit: 51 passed, 0 failed
+selftest: 267 passed, 1 failed
+settings: 71 passed, 0 failed
+shipped-docs: 14 passed, 0 failed
+sigpipe: 91 passed, 0 failed
+spawns: 72 passed, 0 failed
+tidy: 128 passed, 0 failed
+worktree: 73 passed, 0 failed
+```
+
+### The orchestrator's decision (two legal paths)
+
+1. **Return to RED** and change the `COUNTS` heredoc in `selftest.test.sh` to
+   `gates 850` and `settings 71`, as HARNESS-066 did. Record it in
+   `## Regressions`, and add `selftest.test.sh` to `touches:` and the
+   Contract's Writes, which needs the PO. The pin is a correspondence check, so
+   it can be earned by mutation: put either `floors.conf` value back and watch
+   it go red. Then rerun GATES from the floor step.
+2. **Drop the optional raise**: `git checkout -- .claude/tests/floors.conf`.
+   The Contract allows this ("Floors are minimums, so the run passes without
+   it"), and the tree already has floors below their counts (`doctor` 61 vs
+   64, `spawns` 69 vs 72). The selftest suite then needs a rerun to confirm
+   it is green, followed by steps 4-6.
+
+**State left in the worktree:** `.claude/tests/floors.conf` is modified and
+**not committed** (the raise). Only this story file is committed by GATES. No
+mutation is stranded.
 
 ## Gate results
 
