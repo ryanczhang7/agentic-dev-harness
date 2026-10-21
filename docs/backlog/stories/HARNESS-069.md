@@ -4,8 +4,8 @@ title: A failing log with an unexplained signature outlives later failures
 slug: a-failing-log-with-an-unexplained-signat
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-069-a-failing-log-with-an-unexplained-signat
 depends_on: []      # HARNESS-027 (the <id>.failed.log step this extends) is DONE
 touches: [scripts/gates.sh, .claude/harness/project.conf, .claude/state/README.md, .claude/skills/quality-gates/reference/configuring.md, .claude/tests/gates.test.sh, .claude/tests/settings.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf]
@@ -1272,7 +1272,21 @@ story.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-21T18:33:44Z
+    commit: 30847bc
+    tree:   4c9fe6f41f82fbbb7e94a0d488eef22a38d36703
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -1340,3 +1354,13 @@ sigpipe: 91 passed, 0 failed
 assertion floors: all 1 suite(s) met their declared floor (91 assertions executed, 91 declared).
 1 harness suite(s) passed.
 ```
+
+**Full self-test at GATES (orchestrator, 2026-10-21).** Run once by GATES on
+the GREEN code with `floors.conf` raised: 8,347 s, 26 of 27 suites green, the
+one failure `selftest.test.sh`'s floors correspondence pin, caused by the raise
+alone. The raise was then dropped (see `## Handoff: GATES -> REVIEW`), which
+returns `floors.conf` to its base-branch bytes; no other file changed. Every
+floor in the file is then at or below the count that run measured, so the other
+26 results stand, and the one suite the change affects was rerun whole:
+`selftest: 268 passed, 0 failed`, `1 harness suite(s) passed.` A second
+2.3-hour full run was judged not to add evidence; CI runs every suite on the PR.
