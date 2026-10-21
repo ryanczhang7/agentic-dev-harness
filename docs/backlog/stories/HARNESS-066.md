@@ -4,8 +4,8 @@ title: Finished worktrees and merged branches are tidied when a story closes
 slug: finished-worktrees-and-merged-branches-a
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-066-finished-worktrees-and-merged-branches-a
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, scripts/phase.sh, .claude/tests/phase.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md, .claude/commands/advance-story.md] # files this story expects to write; `plan.sh conflicts` reads it
