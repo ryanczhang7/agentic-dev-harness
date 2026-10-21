@@ -374,20 +374,20 @@ the ones above.
   `unmerged`. Both named assertions went red, plus eight that follow from
   the same fixture; file restored and verified:
 
-      === mutate: scripts/tidy.sh (1 line(s) changed by 146s/elif ! G merge-base --is-ancestor/elif false \&\& G merge-base --is-ancestor/) ===
-      === mutate: running bash scripts/selftest.sh tidy ===
-          FAIL AC-2 unmerged: a worktree whose HEAD is not in origin/main is KEEP, reason unmerged
-          FAIL AC-2 order: unmerged + uncommitted + locked + recent reports unmerged
-          FAIL AC-1: the census counts 14 worktrees, 4 removable, 10 kept, 0 branches
-          FAIL AC-1/C-2: the whole report is the worktree lines in git worktree list order, then the census, and nothing else
-          FAIL C-1: run inside a linked worktree, the report is every other non-main worktree, then 13 / 4 / 9
-          FAIL --base REF: and a commit outside REF is still unmerged
-          FAIL AC-4/C-2: --apply prints the report (without its census), then removed <path> per REMOVABLE worktree, then deleted <branch>, then the census of the state it acted on
-          FAIL AC-4: the worktree list lacks exactly the two REMOVABLE entries
-          FAIL AC-4: the KEEP unmerged worktree is untouched: registered, same HEAD, same files
-          FAIL AC-4: a second --apply reports 0 removable
-      tidy: 118 passed, 10 failed
-      === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_tidy.sh.20261020T170606Z.1829.bak) ===
+    === mutate: scripts/tidy.sh (1 line(s) changed by 146s/elif ! G merge-base --is-ancestor/elif false \&\& G merge-base --is-ancestor/) ===
+    === mutate: running bash scripts/selftest.sh tidy ===
+        FAIL AC-2 unmerged: a worktree whose HEAD is not in origin/main is KEEP, reason unmerged
+        FAIL AC-2 order: unmerged + uncommitted + locked + recent reports unmerged
+        FAIL AC-1: the census counts 14 worktrees, 4 removable, 10 kept, 0 branches
+        FAIL AC-1/C-2: the whole report is the worktree lines in git worktree list order, then the census, and nothing else
+        FAIL C-1: run inside a linked worktree, the report is every other non-main worktree, then 13 / 4 / 9
+        FAIL --base REF: and a commit outside REF is still unmerged
+        FAIL AC-4/C-2: --apply prints the report (without its census), then removed <path> per REMOVABLE worktree, then deleted <branch>, then the census of the state it acted on
+        FAIL AC-4: the worktree list lacks exactly the two REMOVABLE entries
+        FAIL AC-4: the KEEP unmerged worktree is untouched: registered, same HEAD, same files
+        FAIL AC-4: a second --apply reports 0 removable
+    tidy: 118 passed, 10 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../scripts_tidy.sh.20261020T170606Z.1829.bak) ===
 
   Matches RED's scratch calibration (118/10, the same two named assertions).
 
@@ -1030,4 +1030,4 @@ committed GATES tree (`446f825`), nothing else running in this worktree:
 
 Exit 0. Duration 2h13m is far past the ~25 min earlier stories recorded on
 this host; the run passed, and the cause of the slowness was not examined
-(no `ps` check was made before it started returned a match, but none after).
+(no `ps` check was made before or during the run).
