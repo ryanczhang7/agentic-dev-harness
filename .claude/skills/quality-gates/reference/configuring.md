@@ -17,7 +17,7 @@ fail gets a waiver naming why:
 A waiver turns that gate's failure from `WARN` into `KNOWN` so that `WARN`
 always means something changed. It is refused on required gates.
 
-Eight more kinds, each explained in the skill and in `project.conf`'s own
+Nine more kinds, each explained in the skill and in `project.conf`'s own
 comments:
 
     floor        | <gate id> | <minimum count read out of the evidence match>
@@ -28,6 +28,7 @@ comments:
     discovery    | <id> | <cwd> | <command proving a runner can see a directory>
     blocked-when | <gate id> | <regex meaning this runner could not START>
     skipped-when | <gate id> | <regex meaning the work was skipped, not lost>
+    keep-when    | <gate id> | <regex of a failure nobody has explained yet>
 
 `floor` catches a gate that quietly started doing much less; `no-count` says
 this gate has no count to floor, so it reports `observed -` and any floor on it
@@ -58,6 +59,18 @@ always was, and a non-zero exit or missing evidence is never reclassified.
 `--audit` refuses a line naming no gate, one with no pattern, and one on a gate
 with no `floor` line. Patterns are matched by awk, like `evidence` and
 `blocked-when`, so avoid interval expressions (`{n}`).
+
+`keep-when` changes what is kept, never what is judged. `<id>.failed.log` holds
+only the last run of a gate that did not pass, and the next failure replaces it,
+so the one log of a failure nobody has explained can be gone by the next story's
+RED. When a gate runs, does not pass, and a cleaned line of its log matches one
+of its `keep-when` regexes (`grep -E`, case-sensitive, first match in manifest
+order), `gates.sh` also copies the log to
+`.claude/state/gate-logs/kept/<id>.<seq>.<stamp>.log` with a header naming the
+regex and the line it matched, and prints `signature log kept:`. A kept file is
+never rewritten; at most 5 are held per gate, the oldest evicted. Add a line
+only for a failure nobody has explained, and remove it once the failure is.
+`--audit` refuses a line naming no gate, and one with no pattern.
 
 Once CI has run a gate for real, record how much slower one test is there:
 
