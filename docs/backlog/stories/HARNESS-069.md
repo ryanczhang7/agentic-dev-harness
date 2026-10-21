@@ -1255,6 +1255,21 @@ worktree: 73 passed, 0 failed
 **not committed** (the raise). Only this story file is committed by GATES. No
 mutation is stranded.
 
+**Decided by the orchestrator: path 2.** The raise was the orchestrator's own
+addition to the GATES brief, not a criterion; the Contract marks it optional,
+and path 1 would have cost a return to RED and a second full selftest (8,347 s
+here) to move a minimum. `floors.conf` restored with `git checkout`; then:
+
+    $ bash scripts/selftest.sh selftest
+    selftest: 268 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (268 assertions executed, 268 declared).
+    1 harness suite(s) passed.
+
+Every other suite was green in GATES' full selftest, and `floors.conf` is the
+only file that changed since. Raising the `gates`/`settings` floors (with
+`selftest.test.sh`'s `COUNTS` heredoc in the same commit) is left for a later
+story.
+
 ## Gate results
 
 <!-- Written by scripts/gates.sh itself. -->
