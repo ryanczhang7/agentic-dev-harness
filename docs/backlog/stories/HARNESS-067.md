@@ -5,7 +5,7 @@ slug: the-feature-developer-reuses-before-it-w
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-067-the-feature-developer-reuses-before-it-w
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/agents/feature-developer.md, .claude/tests/briefs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -253,6 +253,24 @@ The briefs run must fail, and mutate.sh must report the file restored. RED
 cannot run this, because the section does not exist until GREEN writes it.
 **Owner: GATES.**
 
+Result (GATES, 2026-10-22, run by the orchestrator; ok lines elided):
+
+```
+=== mutate: .claude/agents/feature-developer.md (1 line(s) changed by /^3\. \*\*The standard library or the platform?\*\*/d) ===
+=== mutate: running bash scripts/selftest.sh briefs ===
+    FAIL brief_problems over the real tree prints nothing: feature-developer.md carries the reuse ladder and its rules, step 2 points at it, and neither RED-side brief carries the ladder or ponytail's test rules
+         expected: 
+         actual:   .claude/agents/feature-developer.md: its reuse ladder has no rung 3: `**The standard library or the platform?**`
+briefs: 30 passed, 1 failed
+FAIL briefs  did 30 units of work, below the floor of 31 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_agents_feature-developer.md.20261022T185034Z.2425.bak) ===
+```
+
+Exactly the one C-4 line, the single real-tree assertion went red, file
+restored. This is also the orchestrator's one "does the suite discriminate"
+mutation: a lone assertion caught it, and `briefs` was 31/0 again afterwards.
+
 **DV-2, the absence rule against a real line.** This probes the rule against
 the tree it judges (rules.md, "A rule is probed against the tree it judges").
 Append the line `2. **Already in this codebase?** Use it.` after a REAL heading
@@ -261,6 +279,23 @@ of `.claude/agents/test-developer.md`:
 The guard **must** fail with exactly one `carries the GREEN reuse ladder's`
 line for that needle, and the file must be restored. RED could run this, but
 GATES owns it, so that it runs against the finished guard. **Owner: GATES.**
+
+Result (GATES, 2026-10-22, run by the orchestrator; ok lines elided):
+
+```
+=== mutate: .claude/agents/test-developer.md (1 line(s) changed by s/^## A test-only dependency is yours to declare$/&\n2. **Already in this codebase?** Use it./) ===
+=== mutate: running bash scripts/selftest.sh briefs ===
+    FAIL brief_problems over the real tree prints nothing: feature-developer.md carries the reuse ladder and its rules, step 2 points at it, and neither RED-side brief carries the ladder or ponytail's test rules
+         expected: 
+         actual:   .claude/agents/test-developer.md: carries the GREEN reuse ladder's `**Already in this codebase?**`
+briefs: 30 passed, 1 failed
+FAIL briefs  did 30 units of work, below the floor of 31 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_agents_test-developer.md.20261022T185128Z.3487.bak) ===
+```
+
+Exactly one `carries` line for that needle, nothing else printed for the
+real tree (F compliant), file restored.
 
 ## Model guidance
 
@@ -491,6 +526,22 @@ CI timing not measured.
 assertion will then print nothing and the run is `briefs: 31 passed, 0 failed`.
 
 ## Gate results
+
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-22T18:53:02Z
+    commit: fe8736e
+    tree:   fc21d09183f70d0045b5d74e894cfa1e503d1613
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
