@@ -281,6 +281,24 @@ name, below the table.
 
 ## Handoff: RED -> GREEN
 
+The whole change is one `if` in `.claude/tests/gates.test.sh`, HARNESS-069's
+`# --- AC-7: the shipped manifest ---` block (commit db2c9b0): the three
+template-text assertions (format line once, commented example, no live
+`keep-when` line) run only when the real `project.conf` does not match
+`^BOOTSTRAPPED=yes`; otherwise one `note:` line says they were not asserted and
+why. The live-line reader's control and the `--audit` trio stay outside the `if`.
+
+- AC-1: the consumer run under DV-1 - manga-translator's tree, 847 passed,
+  0 failed, the note once; the same tree unfixed was 848 passed, 2 failed.
+- AC-2: DV-2 - a live line appended to the template turns exactly
+  `AC-7: the shipped project.conf carries no live keep-when line` red.
+- AC-3: the control and the `--audit` assertions run in both DV-1 runs (they
+  appear in the harness-tree run's output, failing there only because that
+  mutation set the template to `BOOTSTRAPPED=yes` with unconfigured gates).
+
+Command: `bash scripts/selftest.sh gates`. No production code changed, so GREEN
+was a verified no-op. `check-sigpipe.sh` and `check-grep-count.sh`: 0 findings.
+
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
      to the Feature Developer, whose context is fresh. Must contain:
        * the exact command that runs the new tests
