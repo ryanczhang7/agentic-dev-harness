@@ -3731,19 +3731,29 @@ assert_eq "AC-7 control: the blocked-when check this wording copies fires in thi
 # Read from the real tree; --audit runs on a copy in F69, so nothing in this
 # checkout is written. This repository ships no live keep-when line (PO-5):
 # only the documented format and a commented example.
+#
+# HARNESS-070: the first three assertions below are about the TEMPLATE's text.
+# In a project built on the harness project.conf is the project's own -
+# refresh-harness.sh LEAVES it - and may carry live keep-when lines, which is
+# what the feature is for. "Is this the template" is check-boundaries.sh
+# 3a-bis's test: every real project sets BOOTSTRAPPED=yes; the template never does.
 SHIP69="$REPO_ROOT/.claude/harness/project.conf"
 live69() { tr -d '\r' < "$1" | grep -cE -- '^[[:space:]]*keep-when[[:space:]]*\|'; }
-_fmt="$(tr -d '\r' < "$SHIP69" | grep -nxF -- '# Format:  keep-when | <gate id> | <extended regex>' | cut -d: -f1 | tr '\n' ' ' | sed 's/ $//')"
-_sfmt="$(tr -d '\r' < "$SHIP69" | grep -nxF -- '# Format:  skipped-when | <gate id> | <extended regex>' | cut -d: -f1)"
-_boot="$(tr -d '\r' < "$SHIP69" | grep -nxE -- 'BOOTSTRAPPED=[a-z]+' | head -n 1 | cut -d: -f1)"
-assert_eq "AC-7: the shipped project.conf holds the keep-when format line once, after skipped-when's and before BOOTSTRAPPED=" yes \
-  "$([ -n "$_fmt" ] && [ "${_fmt#* }" = "$_fmt" ] && [ -n "$_sfmt" ] && [ -n "$_boot" ] && [ "$_sfmt" -lt "$_fmt" ] && [ "$_fmt" -lt "$_boot" ] && printf yes || printf "no (keep-when format at ${_fmt:-none}, skipped-when format at ${_sfmt:-none}, BOOTSTRAPPED at ${_boot:-none})")"
-_ex="$(tr -d '\r' < "$SHIP69" | grep -nE -- '^#[[:space:]]+keep-when[[:space:]]*\|[[:space:]]*[a-z]' | head -n 1 | cut -d: -f1)"
-assert_eq "AC-7: and an example keep-when line in a comment, between the format line and BOOTSTRAPPED=" yes \
-  "$([ -n "$_ex" ] && [ -n "$_fmt" ] && [ -n "$_boot" ] && [ "$_fmt" -lt "$_ex" ] && [ "$_ex" -lt "$_boot" ] && printf yes || printf "no (example at ${_ex:-none})")"
+if grep -qE '^BOOTSTRAPPED=yes' "$SHIP69"; then
+  printf '    note: %s\n' "project.conf is this project's own (BOOTSTRAPPED=yes), not the template; its keep-when text is not asserted (HARNESS-070)"
+else
+  _fmt="$(tr -d '\r' < "$SHIP69" | grep -nxF -- '# Format:  keep-when | <gate id> | <extended regex>' | cut -d: -f1 | tr '\n' ' ' | sed 's/ $//')"
+  _sfmt="$(tr -d '\r' < "$SHIP69" | grep -nxF -- '# Format:  skipped-when | <gate id> | <extended regex>' | cut -d: -f1)"
+  _boot="$(tr -d '\r' < "$SHIP69" | grep -nxE -- 'BOOTSTRAPPED=[a-z]+' | head -n 1 | cut -d: -f1)"
+  assert_eq "AC-7: the shipped project.conf holds the keep-when format line once, after skipped-when's and before BOOTSTRAPPED=" yes \
+    "$([ -n "$_fmt" ] && [ "${_fmt#* }" = "$_fmt" ] && [ -n "$_sfmt" ] && [ -n "$_boot" ] && [ "$_sfmt" -lt "$_fmt" ] && [ "$_fmt" -lt "$_boot" ] && printf yes || printf "no (keep-when format at ${_fmt:-none}, skipped-when format at ${_sfmt:-none}, BOOTSTRAPPED at ${_boot:-none})")"
+  _ex="$(tr -d '\r' < "$SHIP69" | grep -nE -- '^#[[:space:]]+keep-when[[:space:]]*\|[[:space:]]*[a-z]' | head -n 1 | cut -d: -f1)"
+  assert_eq "AC-7: and an example keep-when line in a comment, between the format line and BOOTSTRAPPED=" yes \
+    "$([ -n "$_ex" ] && [ -n "$_fmt" ] && [ -n "$_boot" ] && [ "$_fmt" -lt "$_ex" ] && [ "$_ex" -lt "$_boot" ] && printf yes || printf "no (example at ${_ex:-none})")"
+  assert_eq "AC-7: the shipped project.conf carries no live keep-when line" 0 "$(live69 "$SHIP69")"
+fi
 printf 'BOOTSTRAPPED=yes\nkeep-when | unit | x\n  keep-when|unit|y\n# keep-when | unit | z\n' > "$M69/live.conf"
 assert_eq "AC-7 control: the live-line reader counts two live lines and not the comment" 2 "$(live69 "$M69/live.conf")"
-assert_eq "AC-7: the shipped project.conf carries no live keep-when line" 0 "$(live69 "$SHIP69")"
 cp "$SHIP69" "$F69/.claude/harness/project.conf"
 out="$(g69 --audit)"; rc=$?
 assert_eq "AC-7: the shipped manifest's --audit still passes" 1 "$(count_line 'Manifest audit passed.' "$out")"
