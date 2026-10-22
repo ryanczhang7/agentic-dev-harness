@@ -4,8 +4,8 @@ title: The feature developer reuses before it writes
 slug: the-feature-developer-reuses-before-it-w
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-067-the-feature-developer-reuses-before-it-w
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/agents/feature-developer.md, .claude/tests/briefs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -582,3 +582,14 @@ assertion will then print nothing and the run is `briefs: 31 passed, 0 failed`.
 - **Floors and HARNESS-068.** This story owns `floors.conf` and
   `selftest.test.sh`. HARNESS-068 adds assertions to an existing suite and
   deliberately leaves both files alone, so the pair is `clear`.
+- **Full self-test before REVIEW (2026-10-22/23, GATES, orchestrator).**
+  `bash scripts/selftest.sh`, run detached, nothing else run in this checkout
+  while it ran. Exit status 0. Last lines:
+
+      assertion floors: all 28 suite(s) met their declared floor (4000 assertions executed, 3825 declared).
+      28 harness suite(s) passed.
+
+  Duration: 17015 s (about 4 h 44 min), far past the ~25 min recorded before
+  on this host. No failure accompanied it; the cause was not investigated
+  (another session was working in a sibling worktree of this repository at
+  the same time). Recorded as a measurement, not a diagnosis.
