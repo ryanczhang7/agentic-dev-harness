@@ -4,8 +4,8 @@ title: The gates suite passes in a project whose manifest keeps signatures
 slug: the-gates-suite-passes-in-a-project-whos
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: GREEN
 branch: story/HARNESS-070-the-gates-suite-passes-in-a-project-whos
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -141,11 +141,57 @@ unfixed suite is the reproduction (measured downstream, Context). RED owns it:
 the corrected test exists only from RED on, and there is no production code.
 **Owner: RED.**
 
+Result, RED, 2026-10-21 (orchestrator). Against the corrected test, in this
+tree:
+
+    === mutate: .claude/harness/project.conf (2 line(s) changed by s/^BOOTSTRAPPED=no$/BOOTSTRAPPED=yes
+keep-when | unit | x/) ===
+        FAIL AC-5: and its audit says it passed
+        FAIL AC-5: and exits 0
+        note: project.conf is this project's own (BOOTSTRAPPED=yes), not the template; its keep-when text is not asserted (HARNESS-070)
+        FAIL AC-7: the shipped manifest's --audit still passes
+        FAIL AC-7: and exits 0
+        FAIL AC-7: with no FAIL line
+    gates: 842 passed, 5 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-070/.claude/state/mutations/.claude_harness_project.conf.20261022T003306Z.1404500.bak) ===
+
+What this shows, and what it does not. The guard engaged: the note printed
+once, and none of the three template-text assertions ran (842 = 850 - 3 - 5).
+The "0 failed" this entry demanded was mis-specified at PLANNED: setting
+`BOOTSTRAPPED=yes` on the TEMPLATE, whose required gates have no commands,
+makes `--audit` fail, and five audit assertions (HARNESS-069's AC-7 pair plus
+an earlier AC-5 pair that audits the real manifest) report exactly that. A real
+bootstrapped project configures its gates, so that is an artefact of the
+mutation, not of the fix. The faithful version of the condition is the
+consumer's own tree, run below.
+
+The faithful run: the corrected `gates.test.sh` copied into the
+manga-translator refresh worktree (`D:/mt-harness-refresh-95`, release 96 plus
+this one file; its `project.conf` is `BOOTSTRAPPED=yes` with eight live
+`keep-when` lines and MT-053's comment block), `bash scripts/selftest.sh gates`:
+
+    note: project.conf is this project's own (BOOTSTRAPPED=yes), not the template; its keep-when text is not asserted (HARNESS-070)
+    gates: 847 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (847 assertions executed, 682 declared).
+    1 harness suite(s) passed.
+
+The same tree with release 96's unfixed suite (the Context) was
+`gates: 848 passed, 2 failed`. That is AC-1, measured where it happens.
+
 **DV-2 (the template still bites).** With only a live `keep-when | unit | x`
 line appended to the real `project.conf` (`$a`), `BOOTSTRAPPED` untouched,
 `bash scripts/selftest.sh gates` must fail exactly
 `AC-7: the shipped project.conf carries no live keep-when line` and nothing
 else, with the note not printed. **Owner: RED.**
+
+Result, RED, 2026-10-21 (orchestrator), in a detached worktree at db2c9b0:
+
+    === mutate: .claude/harness/project.conf (1 line(s) changed by $a keep-when | unit | x) ===
+        FAIL AC-7: the shipped project.conf carries no live keep-when line
+    gates: 849 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-070-dv2/.claude/state/mutations/.claude_harness_project.conf.20261022T003319Z.1404839.bak) ===
+
+Exactly the one assertion, and no note: in the template the rule still bites.
 
 <!-- REQUIRED when a verification this story depends on provably cannot run in
      the phase that wants it; omit the section otherwise. Written by the Lead PO
