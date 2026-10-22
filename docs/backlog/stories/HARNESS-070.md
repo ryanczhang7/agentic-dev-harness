@@ -5,7 +5,7 @@ slug: the-gates-suite-passes-in-a-project-whos
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-070-the-gates-suite-passes-in-a-project-whos
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -367,3 +367,9 @@ story were run directly by the orchestrating session, which resolved to
 found in the middle of a consumer refresh, whose diagnosis and reproduction
 were already in hand. Success condition: DV-1 and DV-2 come out as stated; if
 either does not, the story goes back to planning with `lead-po`.
+
+**Full self-test at GATES (2026-10-21, this worktree at 999c977), 11,559 s:**
+
+    exit=0
+    assertion floors: all 27 suite(s) met their declared floor (3969 assertions executed, 3794 declared).
+    27 harness suite(s) passed.
