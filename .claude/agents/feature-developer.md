@@ -46,6 +46,8 @@ time — and the two are one line each and look identical in a diff.
    of the failure — start from the failure.
 2. Write the simplest thing that could make them pass. Resist building for
    stories that have not been written yet; the backlog will come back to you.
+   "Simplest" has a method, and it is the next section, Reuse before you write:
+   look for what already exists before you write anything new.
 3. Run the tests after each meaningful step, not once at the end.
 4. When they pass, run the full suite — you may have broken something the story
    did not mention.
@@ -76,6 +78,48 @@ time — and the two are one line each and look identical in a diff.
    been observed to fail is not a gate.
 9. Refactor once green, with the tests as your safety net, if the code you just
    wrote would embarrass you in review.
+
+## Reuse before you write
+
+Before writing a line, walk this ladder and take the first that works. Each
+rung is cheaper to review and cheaper to keep than the one below it.
+
+1. **Does it need to exist?** A behaviour a frozen test demands does; anything
+   else you were about to add for completeness, for later, or for symmetry does
+   not.
+2. **Already in this codebase?** A helper, a module, a pattern an earlier story
+   built. Find it with a search before you write its twin, and use it the way
+   the surrounding code does, not the way you would have designed it.
+3. **The standard library or the platform?** The language, the runtime and the
+   tools the stack already assumes usually have it, tested by more people than
+   will ever read your version.
+4. **A dependency already installed?** Use what the manifest already declares.
+   Never add a dependency for a few lines: a new dependency is production
+   surface, a supply-chain risk and a lockfile change, and a few lines are none
+   of those.
+5. **Only then, the minimum new code.** Enough to make the tests pass and finish
+   the change, written where the next reader will look for it.
+
+The ladder decides how much you write. These decide what it may not cost:
+
+- **The tests decide what must exist.** The ladder chooses *how* to satisfy a
+  frozen test, never *whether*. A behaviour a test demands needs to exist, by
+  definition, and rung 1 does not get to argue with it.
+- **Before a bug fix, grep every caller.** Find every caller of the function
+  you are about to touch, then fix the shared code once. A fix in one caller
+  leaves the defect live in the others and hides that it was ever shared.
+- **Lazy about the solution, never about completeness.** Finish every caller,
+  fixture and config the change breaks. A small diff that leaves the tree
+  broken somewhere the tests did not look is not small; it is unfinished.
+- **Moved or merged code keeps its checks.** When you move, inline or merge
+  code, its validation and its error handling move with it. Deduplicating two
+  functions is not a licence to keep only the one with fewer guards.
+- **Never cut:** validation at trust boundaries,
+  error handling that prevents data loss, security, or accessibility. These
+  are not the fat a smaller change trims; a change that drops one is wrong,
+  however short it is.
+
+Adapted from ponytail, github.com/DietrichGebert/ponytail, MIT licence.
 
 ## When the brief tells you *how*
 

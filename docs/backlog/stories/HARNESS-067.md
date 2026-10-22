@@ -5,7 +5,7 @@ slug: the-feature-developer-reuses-before-it-w
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-067-the-feature-developer-reuses-before-it-w
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/agents/feature-developer.md, .claude/tests/briefs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -286,6 +286,8 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 
 - PLANNED, `lead-po`: resolved to **Opus 5.5 (`claude-opus-5-5`) by explicit override**, not the planned `fable`. The user's Fable usage limit was reached, and the user chose in chat to re-run the lead-po planning for HARNESS-067 and 068 on Opus and to record the override in both stories. What it changes: this PLANNED ran on `opus`, so if RED has to send this contract back, that counts against this planning run, not against `fable`. It is not evidence for or against the PLANNED row of `models.conf`.
+- RED, `test-developer`: resolved to **Opus 5.5 (`claude-opus-5-5`)**, its declared `opus`; no override.
+- GREEN, `feature-developer`: resolved to **Opus 5.5 (`claude-opus-5-5`)**, its declared `opus`; no override.
 
 ## Out of scope
 
@@ -517,6 +519,15 @@ assertion will then print nothing and the run is `briefs: 31 passed, 0 failed`.
   no floor, so RED writes the `briefs` rows with its own executed count
   (passed + failed, which GATES's `N passed, 0 failed` must equal) rather than
   leaving them absent; GATES confirms the value per C-6.
+- **GREEN (2026-10-22): a whitespace trap in the guard.** C-2 matches each
+  protected word as a fixed string over the bullet's lines joined as they are,
+  so a phrase broken across two physical lines is not found. GREEN's first
+  draft split `error handling that prevents / data loss` and the guard printed
+  its `does not name` line; the bullet was reflowed so each phrase sits on one
+  line. Not a test defect (C-2 says fixed strings), but a later prose reflow of
+  the `Never cut` bullet can turn `briefs` red. Orchestrator reran
+  `bash scripts/selftest.sh briefs` after GREEN: `briefs: 31 passed, 0 failed`,
+  floor met; `gates.sh --fast` exit 0.
 - **Floors and HARNESS-068.** This story owns `floors.conf` and
   `selftest.test.sh`. HARNESS-068 adds assertions to an existing suite and
   deliberately leaves both files alone, so the pair is `clear`.
