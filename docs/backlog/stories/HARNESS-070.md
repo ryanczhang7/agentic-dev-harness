@@ -4,8 +4,8 @@ title: The gates suite passes in a project whose manifest keeps signatures
 slug: the-gates-suite-passes-in-a-project-whos
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-070-the-gates-suite-passes-in-a-project-whos
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
