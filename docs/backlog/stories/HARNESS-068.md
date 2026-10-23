@@ -4,8 +4,8 @@ title: A diff review reads the change and its callers before the PR opens
 slug: a-diff-review-reads-the-change-and-its-c
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-068-a-diff-review-reads-the-change-and-its-c
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/diff-review/SKILL.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -289,6 +289,17 @@ evidence the procedure is followable, not a test of the review's quality.
 Status at GREEN → GATES (2026-10-23): pending. It is step 1 of GATES → REVIEW,
 so it runs in the next transition; its result lands in `## Diff review` and a
 pointer to it is added here.
+
+Result (GATES → REVIEW step 1, 2026-10-23): run. A fresh feature-developer on
+Opus 5.5 followed the skill over `git diff main...HEAD` and returned a report
+in the skill's shape, changing no file; the full report is in `## Diff review`.
+Its verdict line, last:
+
+```
+Verdict: Ship.
+```
+
+One Nice-to-have (expected-value helpers fork per assertion), listed only.
 
 ## Model guidance
 
@@ -592,6 +603,71 @@ The two optional rows are beyond the story's mutation budget (`rules.md`,
 self-test is the gate that judges this story. `check-sigpipe.sh` and
 `check-grep-count.sh` each report 0 findings over 52 shell files.
 
+## Diff review
+
+Run at GATES → REVIEW step 1, 2026-10-23, over `git diff main...HEAD` at
+`cefd1df`. Reviewer: a fresh `feature-developer` dispatch, resolved to
+**Opus 5.5 (`claude-opus-5-5`)**, its declared `opus`, no override. It changed no
+file. This is DV-3. Report as returned, lightly condensed in "What I checked":
+
+What this change does: It adds a `diff-review` skill and makes it step 1 of
+advance-story's GATES → REVIEW list, ahead of the full self-test. The old steps
+1-5 become 2-6, and the prose that pointed at them by number now says steps 5,
+4 and 2. complete-story's GATES → REVIEW bullet now names the review before the
+self-test. `procedure.test.sh` gains a guard for all three files, with 53 new
+assertions (90 run now), and `fresh_case` was changed from echoing `d` to
+setting it, to save forks.
+
+What I checked:
+- `fresh_case` refactor: no `$(fresh_case` left; 61 bare call sites, 4 in
+  loops; nothing else assigns or `local`s `d`; every fixture writer takes its
+  directory as `$1`; `procedure_problems` runs in a subshell and only reads `d`;
+  loop-built case names are distinct even case-insensitively.
+- `first_step` and the new step 1: the real step 1 (advance-story.md:197-209)
+  holds none of the backticked selftest / phase / boundaries needles, so it
+  cannot be picked as one of them; its continuation lines are indented with no
+  blank line, so the routing words are inside the step.
+- `${R%%needle*}` offsets: computed only after both needles are found; `%%`
+  leaves the text before the first occurrence; both directions pinned.
+- CRLF: the skill goes through the same `load`; `skill-crlf` pins it.
+- Needles vs their negation: `Verdict: Ship.` not matched by
+  `Verdict: fix 1 first.` or `Verdict: Ship`, both pinned; needles quoted in
+  `case` and `${//}`, so `**`, `<id>`, `$1` match literally.
+  `bash scripts/gates.sh` also accepts `... --fast`, but C-3 settles it.
+- Step references across the tree: only the three updated ones in
+  advance-story.md; `lead-po.md:117` and `advance-story.md:315` name GATES →
+  REVIEW without a number.
+- Readers: `gates.sh` hashes the tree with `:!docs` excluded, so pasting this
+  section does not stale the stamp; `check-boundaries.sh` reads
+  `## Gate results` by section, unaffected by a section above it;
+  `refresh-harness.sh` copies `skills/` whole, so the skill ships with no
+  manifest change; `procedure_problems` has no other caller. Ran `procedure`
+  90/0 (44 s), and `policy`, `shipped-docs`, `selftest`, `briefs` each passed.
+- Load assumed: one developer, one Windows host, CI on Ubuntu.
+
+**Nice to have:**
+
+1. **Expected-value helpers fork once per assertion** (`.claude/tests/procedure.test.sh:450-463`, used at e.g. :838-842, :934-938)
+   - **What this is:** The small functions (`no_say`, `no_rword`, `no_step`, `disorder`, ...) that build each assertion's expected line, each called as `"$(no_say "$w")"`.
+   - **Problem:** Each `$( )` forks, about 100 ms on this host; the 17-needle and 4-word loops add about 21 such forks, on top of 33 elsewhere.
+   - **Fix:** Have the helpers write into a variable with `printf -v`, as `fresh_case` now sets `d`. Test-only; would need a RED pass.
+   - **If we skip it:** The suite stays a few seconds slower on Windows. Nothing breaks.
+
+Outside the diff, not a finding against this story: the reviewer saw
+`bash scripts/selftest.sh procedure policy shipped-docs` run only `procedure`
+and print "1 harness suite(s) passed." without mentioning the other names; it
+did not read `selftest.sh`'s argument handling to confirm.
+
+Not checked: `check-boundaries.sh`, which judges the committed phase and so
+runs after the REVIEW commit (step 5).
+
+Verdict: Ship.
+
+**Orchestrator's disposition (lead-po):** finding 1 is Nice to have, listed
+only, per the skill; no fix this story. The `selftest.sh` multi-name
+observation is outside this story's diff and is offered to the user as a
+possible follow-up, not acted on here.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -657,3 +733,16 @@ self-test is the gate that judges this story. `check-sigpipe.sh` and
   (`claude-opus-5-5`), its declared `opus`, no override.
 - **For DV-1 at GATES:** the real step-1 line now begins
   ``1. Review the story's diff and its callers with the `diff-review` skill.``
+- **Full self-test before REVIEW (2026-10-23, GATES, orchestrator).** After the
+  diff review returned `Verdict: Ship.`, `bash scripts/selftest.sh` ran
+  detached. A stray `check-boundaries.sh` run the orchestrator had started by
+  mistake (it has no `--help`, so it ran the full check; read-only) was waited
+  out first; it had already exited. Exit status 0. Last lines:
+
+      assertion floors: all 28 suite(s) met their declared floor (4053 assertions executed, 3825 declared).
+      28 harness suite(s) passed.
+
+  Duration: 14243 s (about 3 h 57 min), against ~25 min recorded before on
+  this host. Self-test and test runs from other projects (fantasy-world-builder,
+  clean_calendar) were running on the same host at the time; that is an
+  observation, not a measured cause.
