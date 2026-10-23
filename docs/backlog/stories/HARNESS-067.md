@@ -4,8 +4,8 @@ title: The feature developer reuses before it writes
 slug: the-feature-developer-reuses-before-it-w
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-067-the-feature-developer-reuses-before-it-w
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/agents/feature-developer.md, .claude/tests/briefs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
