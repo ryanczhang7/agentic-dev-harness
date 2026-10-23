@@ -5,7 +5,7 @@ slug: a-diff-review-reads-the-change-and-its-c
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-068-a-diff-review-reads-the-change-and-its-c
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/diff-review/SKILL.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -592,3 +592,14 @@ self-test is the gate that judges this story. `check-sigpipe.sh` and
   test-only speed change (4m24s to 1m18s locally); fixture contents unchanged.
 - Resolved models: RED `test-developer` ran on Opus 5.5 (`claude-opus-5-5`),
   its declared `opus`, no override.
+- **GREEN verified by the orchestrator (2026-10-23).** Reran
+  `bash scripts/selftest.sh procedure`: 90 assertions executed, 0 failed (RED:
+  88 passed, 2 failed); `gates.sh --fast` exit 0. The feature-developer also
+  reported `shipped-docs` 14/0 and `policy` 17/0. GREEN wrote only the skill
+  and the two commands. It renumbered advance-story's steps 2-6 with one
+  `sed -i`; the file classifies as `harness`, writable in GREEN, so this is
+  not the lock bypass law 5 names, but the Edit tool would have been the
+  cleaner route. Resolved model: GREEN `feature-developer` on Opus 5.5
+  (`claude-opus-5-5`), its declared `opus`, no override.
+- **For DV-1 at GATES:** the real step-1 line now begins
+  ``1. Review the story's diff and its callers with the `diff-review` skill.``

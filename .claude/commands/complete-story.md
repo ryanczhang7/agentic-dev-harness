@@ -25,8 +25,11 @@ approval between phases is exactly when they get quietly reordered:
   tests instrumented, which is slower than the test command and slower again on
   CI. A suite can pass RED, pass GREEN, pass every local gate, and still fail a
   required gate in CI on a timeout nobody measured.
-- **GATES → REVIEW runs the full `bash scripts/selftest.sh` first**, detached
-  and alone, while the story is still at GATES. Then it sets the phase before
+- **GATES → REVIEW opens with a review of the diff and its callers**, by the
+  `diff-review` skill on a fresh feature-developer dispatch, and goes on only
+  on `Verdict: Ship.`; a fix it asks for changes the tree, so it comes before
+  the full `bash scripts/selftest.sh`, which runs detached and alone, while
+  the story is still at GATES. Then it sets the phase before
   committing, runs `bash scripts/check-boundaries.sh`, and pushes and opens
   the PR. A suite the story never touched can fail on its change, and CI runs
   them all. `check-boundaries.sh` reads the phase out of the *committed*
