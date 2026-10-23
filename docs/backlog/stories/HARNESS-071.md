@@ -4,8 +4,8 @@ title: A blocked required gate reaches REVIEW on pending CI
 slug: a-blocked-required-gate-reaches-review-on
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-071-a-blocked-required-gate-reaches-review-on
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -144,6 +144,34 @@ name, below the table.
 ## Test plan
 
 ## Handoff: RED -> GREEN
+
+Command: `bash scripts/selftest.sh boundaries`. Tests, all in the describe
+"a gate the story escalated for itself appears in the record" of
+`.claude/tests/boundaries.test.sh`: the old `[types]`-refused case is
+replaced by AC-4 (`lint` escalated after the run, refused), AC-1 (ok line,
+exit 0), AC-2 (no pending-CI line, refused by 3e), AC-3 (DONE without URL,
+refused), AC-5 (spike, refused with the "no PASS" message). The existing
+`[unit]` control after them is unchanged.
+
+Against the unfixed `check-boundaries.sh` (RED, 2026-10-23), exactly AC-1's
+two assertions fail, and with the refusal the story's Context describes:
+
+    a gate the story escalated for itself appears in the record
+      FAIL a required gate that was BLOCKED defers to the pending-CI check
+           expected to contain: ok    story-required gate 'types' was BLOCKED; judged as pending CI above
+           ...
+           FAIL  story T-1: frontmatter requires gate 'types', but the recorded run has no PASS for it. Run 'bash scripts/gates.sh' again.
+      FAIL and a blocked required gate recorded as pending CI is not refused
+           expected: 0
+           actual:   1
+    boundaries: 139 passed, 2 failed
+
+AC-2..AC-5 pass on arrival: they pin refusals that exist today and must
+survive the change. AC-4 and AC-5 are earned by DV-2 and DV-3 at GATES; AC-2
+and AC-3 as the Deferred verifications section says. GREEN writes only
+`scripts/check-boundaries.sh` as the Contract states, then moves the sigpipe
+suite's `DISCARDED` line numbers (a test file - so that edit is a RED change,
+made now if the shift is predictable, otherwise a return to RED).
 
 ## Gate results
 
