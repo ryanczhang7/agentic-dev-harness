@@ -5,7 +5,7 @@ slug: a-diff-review-reads-the-change-and-its-c
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-068-a-diff-review-reads-the-change-and-its-c
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/diff-review/SKILL.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -240,17 +240,55 @@ GATES writes the exact expression once the real text exists, and records it.
 and mutate.sh must report the file restored. RED cannot run this, because the
 real step does not exist until GREEN writes it. **Owner: GATES.**
 
+Result (GATES, 2026-10-23, run by the orchestrator; the real line is
+advance-story.md:197; ok lines elided):
+
+```
+=== mutate: .claude/commands/advance-story.md (1 line(s) changed by /^1\. Review the story.s diff and its callers with the `diff-review` skill\.$/d) ===
+=== mutate: running bash scripts/selftest.sh procedure ===
+    FAIL procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, the diff-review step comes before the full self-test, which comes before the phase change, complete-story names the review before the self-test, and the diff-review skill carries its rules
+         expected: 
+         actual:   .claude/commands/advance-story.md: its GATES → REVIEW steps do not name the `diff-review` skill
+procedure: 89 passed, 1 failed
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261023T052651Z.41225.bak) ===
+```
+
+Exactly the one C-4 line; the single real-tree assertion went red; file
+restored. This is also the orchestrator's one "does the suite discriminate"
+mutation (a lone assertion caught it), and `procedure` was 90/0 again after.
+
 **DV-2, the skill rule against a real line.** Delete the REAL skill's line
 holding `No case, no finding.` with `mutate.sh` (expression
 `'/No case, no finding\./d'`), then run `bash scripts/selftest.sh procedure`. It
 **must** fail with exactly that one "does not say" line, and the file must be
 restored. **Owner: GATES.**
 
+Result (GATES, 2026-10-23, run by the orchestrator; the real line is
+SKILL.md:76, which holds that sentence alone; ok lines elided):
+
+```
+=== mutate: .claude/skills/diff-review/SKILL.md (1 line(s) changed by /No case, no finding\./d) ===
+=== mutate: running bash scripts/selftest.sh procedure ===
+    FAIL procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, the diff-review step comes before the full self-test, which comes before the phase change, complete-story names the review before the self-test, and the diff-review skill carries its rules
+         expected: 
+         actual:   .claude/skills/diff-review/SKILL.md: does not say `No case, no finding.`
+procedure: 89 passed, 1 failed
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_diff-review_SKILL.md.20261023T052923Z.42165.bak) ===
+```
+
+Exactly the one "does not say" line, file restored.
+
 **DV-3, the review runs once on this story's own diff.** At this story's GATES
 → REVIEW, the orchestrator follows the new step 1 on HARNESS-068's own diff and
 pastes the report into `## Diff review`. This is the first real use, and it is
 evidence the procedure is followable, not a test of the review's quality.
 **Owner: GATES.**
+
+Status at GREEN → GATES (2026-10-23): pending. It is step 1 of GATES → REVIEW,
+so it runs in the next transition; its result lands in `## Diff review` and a
+pointer to it is added here.
 
 ## Model guidance
 
@@ -555,6 +593,22 @@ self-test is the gate that judges this story. `check-sigpipe.sh` and
 `check-grep-count.sh` each report 0 findings over 52 shell files.
 
 ## Gate results
+
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-23T05:32:05Z
+    commit: 5cbd189
+    tree:   32a0b5b4b56ae74646cd3440c9ba5f0dab967027
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
