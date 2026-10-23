@@ -4,8 +4,8 @@ title: A blocked required gate reaches REVIEW on pending CI
 slug: a-blocked-required-gate-reaches-review-on
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-071-a-blocked-required-gate-reaches-review-on
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -231,3 +231,10 @@ made now if the shift is predictable, otherwise a return to RED).
     ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
+
+**Full self-test at GATES (2026-10-23, this worktree at 090ab6f), run alone
+after HARNESS-068's self-test in the main checkout had exited, 4,309 s:**
+
+    assertion floors: all 28 suite(s) met their declared floor (4005 assertions executed, 3825 declared).
+    28 harness suite(s) passed.
+    exit=0 duration=4309s
