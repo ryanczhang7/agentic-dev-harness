@@ -384,6 +384,7 @@ else
 fi
 
 # 3e. The gate record was written by gates.sh and matches the code being merged
+bgates=""
 case "$ph:$story_type" in
   REVIEW:spike|DONE:spike) note "spike story; gate record not required" ;;
   REVIEW:*|DONE:*)
@@ -455,11 +456,17 @@ esac
 # required_gates has claimed something needs checking), and outside the marker
 # test's else, so a story with no ## Gate results is told WHICH gate it did not
 # run.
+#
+# A gate is only BLOCKED because it is required, so one 3e judged BLOCKED is
+# deferred to 3e's pending-CI and CI-run checks (HARNESS-071); bgates is set only
+# by 3e's blocked arm, so a spike's BLOCKED gate is still owed a PASS here.
 case "$ph" in
   REVIEW|DONE)
     gr="$(section "$sfile" "Gate results")"
     for g in $(frontmatter_list "$sfile" required_gates); do
-      if awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "^[[:space:]]*PASS[[:space:]]+$g( |\(|$)" <<< "$gr"; then
+      if grep -qx -- "$g" <<< "$bgates"; then
+        ok "story-required gate '$g' was BLOCKED; judged as pending CI above"
+      elif awk 'BEGIN{r=ARGV[1];ARGV[1]=""} $0~r{h=1} END{exit !h}' "^[[:space:]]*PASS[[:space:]]+$g( |\(|$)" <<< "$gr"; then
         ok "story-required gate '$g' passed in the recorded run"
       else
         problem "story $sid: frontmatter requires gate '$g', but the recorded run has no PASS for it. Run 'bash scripts/gates.sh' again."

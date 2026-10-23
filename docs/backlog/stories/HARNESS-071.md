@@ -5,7 +5,7 @@ slug: a-blocked-required-gate-reaches-review-on
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-071-a-blocked-required-gate-reaches-review-on
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
