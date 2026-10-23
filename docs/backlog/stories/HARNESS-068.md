@@ -4,8 +4,8 @@ title: A diff review reads the change and its callers before the PR opens
 slug: a-diff-review-reads-the-change-and-its-c
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-068-a-diff-review-reads-the-change-and-its-c
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/diff-review/SKILL.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -304,7 +304,255 @@ name, below the table.
 
 ## Test plan
 
+One suite, `.claude/tests/procedure.test.sh`, extended in place (C-1). Every
+criterion is mechanical: the needles (C-2, C-3) and the output lines (C-4) are
+read out byte for byte. The level is the only one available. The sites are
+prose, so the guard reads their shape (`tdd-cycle`, "code no machine you have
+can execute"). What it cannot pin is that an orchestrator *follows* the step.
+DV-3 is the only evidence of that.
+
+- **Real tree.** `procedure_problems "$REPO_ROOT"` must print nothing. This is
+  the RED assertion for AC-1..AC-4 together. A second real-tree assertion says
+  the skill file exists, so its absence reads as a bug report on its own.
+- **Compliant fixture.** Built by construction (`RV` + `REST` = `GOOD_STEPS`,
+  `GOOD_BULLET`, `GOOD_SKILL`), never copied from the tree. It must be silent.
+  That is the positive control for every negative below.
+- **AC-1 negatives.** Review after self-test (one disorder line, steps 2 and 1).
+  Review only in prose (one "do not name"). No review step at all. Review only
+  in the REVIEW → DONE paragraph. Review without the backticked needle. Review
+  and self-test in one step (disorder, 1 and 1). No self-test step, so the
+  review order check is suppressed. C-4 order: an existing line before the
+  review's "do not name", and the review's disorder line before its word lines.
+- **AC-2 negatives.** Each of the four routing words removed from the step but
+  present in prose (four cases, one line each). `Verdict: fix 1 first.` does not
+  satisfy `Verdict: Ship.`. `Verdict: Ship` without the stop does not satisfy it.
+  All four words in a different step do not count (four lines, C-3 order).
+- **AC-3 negatives.** No `` `diff-review` `` in the bullet. Named only after the
+  self-test, on the same line and on a continuation line. Present elsewhere in
+  the file, or in the next bullet. Unbackticked. The first occurrence of each
+  needle is the one judged, in both directions. A bullet with neither prints the
+  self-test line, then the review line (C-4 order).
+- **AC-4 negatives.** Missing skill gives only `file is missing`. Each of the 17
+  skill needles removed (17 cases, one line each, and the story's two named
+  controls are among them). Each ponytail needle added (two cases). Frontmatter:
+  `name:` line renamed, moved into the body, extended to `diff-review-v2`, or the
+  frontmatter removed. Each gives the one frontmatter line. CRLF skill is silent.
+  C-4 order within S, and across A, C, S.
+- **Pre-existing assertions** keep their meaning. Fixtures that write their own
+  step list now carry the review step first and are renumbered (see Handoff).
+
 ## Handoff: RED -> GREEN
+
+**Model.** Dispatched as `test-developer`, which declares `opus`. Resolved to
+**Opus 5.5 (`claude-opus-5-5`)**. No override was given in the dispatch.
+
+**Command.**
+
+    bash scripts/selftest.sh procedure
+
+**RED output (local, Windows host, 1m18s):**
+
+```
+=== procedure ===
+
+  the real tree (AC-1 to AC-4)
+    FAIL the diff-review skill exists in this repository (HARNESS-068 AC-4)
+         expected: 
+         actual:   .claude/skills/diff-review/SKILL.md
+    FAIL procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, the diff-review step comes before the full self-test, which comes before the phase change, complete-story names the review before the self-test, and the diff-review skill carries its rules
+         expected: 
+         actual:   .claude/commands/advance-story.md: its GATES → REVIEW steps do not name the `diff-review` skill
+         .claude/commands/complete-story.md: its GATES → REVIEW bullet does not name `diff-review`
+         .claude/skills/diff-review/SKILL.md: file is missing
+
+  [... every fixture section passes; passing assertions print nothing ...]
+
+procedure: 88 passed, 2 failed
+
+assertion floors: all 1 suite(s) met their declared floor (88 assertions executed, 37 declared).
+1 of 1 harness suite(s) FAILED.
+```
+
+This is the expected shape, in C-4 order: A's "do not name" line, C's "does
+not name" line, and `S: file is missing` with nothing else for S. There are no
+order or routing-word lines for A, because the review step does not exist.
+**90 assertions execute** (37 before this story; the floor of 37 is untouched).
+The suite *loads*, so unlike an import-failure RED every negative control below
+has already run and passed against the guard.
+
+**What each new test asserts** (all in `.claude/tests/procedure.test.sh`):
+
+| Test | AC |
+|---|---|
+| the diff-review skill exists in this repository | AC-4 |
+| procedure_problems over the real tree prints nothing (extended name) | AC-1..AC-4 |
+| the compliant fixture is silent (now with review step, bullet review, skill) | all |
+| review step after the self-test gives one out-of-order line naming both step numbers | AC-1 |
+| review named only in prose gives one "do not name" line | AC-1 |
+| no review step at all gives one "do not name" line; order and word checks suppressed | AC-1 |
+| review step only in the REVIEW → DONE paragraph gives one "do not name" line | AC-1 |
+| a step naming the skill without the backticked needle does not name it | AC-1 |
+| review and self-test in the same step count as out of order | AC-1 |
+| with no self-test step the review's order check is suppressed | AC-1 / C-4 |
+| existing checks print before the review "do not name" line | AC-1 / C-4 |
+| the review's out-of-order line prints before its routing-word lines | AC-1, AC-2 / C-4 |
+| each routing word missing from the step but present in prose gives one line (x4) | AC-2 |
+| `Verdict: fix 1 first.` does not satisfy `Verdict: Ship.` | AC-2 |
+| `Verdict: Ship` without the full stop does not satisfy the needle | AC-2 |
+| the four routing words in a different step do not satisfy the review step | AC-2 |
+| a bullet naming the self-test but not `diff-review` gives one "does not name" line | AC-3 |
+| a bullet naming `diff-review` only after the self-test gives one "names … after" line | AC-3 |
+| `diff-review` on a later line, after the self-test, is still after it | AC-3 |
+| `diff-review` elsewhere in the file, not in the bullet, gives "does not name" | AC-3 |
+| `diff-review` in the next bullet is not in the bullet | AC-3 |
+| diff-review without backticks is not the needle | AC-3 |
+| the FIRST `diff-review` is judged (before self-test, a later mention does not matter) | AC-3 |
+| the FIRST self-test is judged (review before only its second mention is after) | AC-3 |
+| a bullet naming neither gives the self-test line, then the review line | AC-3 / C-4 |
+| a missing skill file gives only `file is missing` | AC-4 |
+| the skill without each C-3 needle gives one "does not say" line (x17) | AC-4 |
+| the skill carrying each ponytail needle gives one "carries ponytail's" line (x2) | AC-4 |
+| no `name: diff-review` frontmatter line gives that line only | AC-4 |
+| `name: diff-review` in the body does not count | AC-4 |
+| a frontmatter line only containing `name: diff-review` is not equal to it | AC-4 |
+| a `name:` line with no frontmatter around it does not count | AC-4 |
+| a CRLF skill file reads the same as an LF one | AC-4 |
+| the skill's lines print in C-4 order | AC-4 / C-4 |
+| the three files are judged in order: advance-story, complete-story, skill | C-1 / C-4 |
+
+**Pre-existing fixtures renumbered or changed in place** (meaning unchanged:
+each still expects exactly the line it expected before):
+
+- `GOOD_STEPS` is now `RV` (new step 1, the review) followed by `REST`, the old
+  steps 1..5 renumbered to 2..6.
+- Every fixture that writes its own step list is now `with_review "<steps>"`,
+  with its steps renumbered +1: `selftest-after-phase` (expected disorder
+  `selftest 2, phase 1` → `selftest 3, phase 2`), `selftest-in-prose`,
+  `selftest-targeted`, `selftest-other-paragraph` (its REVIEW → DONE step stays
+  `1.`, being another paragraph), `boundaries-before-phase` (`phase 3,
+  boundaries 2` → `phase 4, boundaries 3`), `same-step` (`1, 1` → `2, 2`),
+  `first-step-wins` (`selftest 2, phase 1` → `selftest 3, phase 2`),
+  `phase-missing`, `boundaries-missing`, `continuation-counts`,
+  `indented-after-blank`, `words-in-next-step`.
+- `star-line-ends-region`: the steps after the `**` line are not read, so the
+  expected output gains a fourth line, `no_step "$STEP_REVIEW"`, after the
+  existing three. It is the same assertion ("no step is read") over one more
+  step.
+- `GOOD_BULLET` now names `` `diff-review` `` before the self-test and no longer
+  says "first". The four complete-story fixtures that write their own bullet
+  (`bullet-without`, `bullet-targeted`, `bullet-after-blank`,
+  `bullet-next-bullet`) each gain a `` `diff-review` `` on the bullet's first
+  line, so they still print only the self-test line.
+- `fresh_case` now **sets `d`** instead of echoing it, and makes both fixture
+  directories with one `mkdir`. All 65 call sites changed from
+  `d="$(fresh_case X)"` to `fresh_case X`. The reason is cost, not behaviour.
+  This Windows host measured `fresh_case` at about 800 ms, most of it in four
+  forks (one `mkdir -p` alone took about 280 ms). The extended suite took
+  **4m24s** before this change and **1m18s** after it. The pre-story suite took
+  58s on the same host. All three timings are local; none is from CI.
+
+**Export shape pinned.** There is no module. What GREEN must write is fixed by
+the needles, and GREEN does not touch the suite:
+
+- `.claude/commands/advance-story.md`: inside the `**GATES → REVIEW.**`
+  paragraph, a numbered step whose text (its `N. ` line plus indented
+  continuation lines, up to a blank line) contains `` the `diff-review` skill ``
+  and all four of `## Diff review`, `Must fix`, `bash scripts/gates.sh`,
+  `Verdict: Ship.`, with a number lower than the `` `bash scripts/selftest.sh` ``
+  step.
+- `.claude/commands/complete-story.md`: the `- **GATES → REVIEW` bullet (up to a
+  blank line or the next `- ` line) contains `` `diff-review` `` before its first
+  `` `bash scripts/selftest.sh` ``.
+- `.claude/skills/diff-review/SKILL.md`: line 1 `---`, a frontmatter line exactly
+  `name: diff-review`, every C-3 skill needle anywhere in the file
+  (case-sensitive, fixed strings), and neither `One good test, not coverage`
+  nor `one small test` anywhere.
+- **Not constrained:** the wording around the needles, the skill's headings and
+  order, its `description:`, and anything C-5 says beyond the anchors.
+
+**Traps for GREEN, found while writing the guard:**
+
+1. **The review step must not contain `` `bash scripts/selftest.sh` `` in
+   backticks.** `first_step` picks the *first* step holding a needle. If step 1
+   says "before `` `bash scripts/selftest.sh` ``", step 1 becomes the self-test
+   step. Then the guard reports a review/self-test disorder (`1, 1`), and the
+   detached/Windows/`## Notes` words are judged against the review step. Unquoted
+   "the self-test" is safe. The same goes for `` `bash scripts/check-boundaries.sh` ``
+   and `` `bash scripts/phase.sh set $1 REVIEW` ``. Either in step 1 breaks the
+   existing order checks. A routing mention of
+   `` `bash scripts/phase.sh set <id> RED` `` is fine, being a different string.
+2. **Put the needle on the `1. ` line itself**, not on a continuation line. DV-1
+   deletes the step's first line. If the needle sat on a continuation line, that
+   deletion would not remove it, and DV-1 would not show what it claims.
+3. **In the skill, the line holding `No case, no finding.` must hold no other
+   C-3 needle.** DV-2 deletes that whole line and expects exactly one "does not
+   say" line.
+4. **Ponytail's needles are case-sensitive substrings.** The credit line, or any
+   prose about what was left out, must not quote `one small test` or
+   `One good test, not coverage`. Write "ponytail's test-sufficiency rule" or
+   similar.
+5. complete-story's bullet: the needle is `` `diff-review` `` *with backticks*.
+   "the diff-review skill" unquoted does not count.
+
+**Negative controls: expected and measured.** All the controls are fixture
+assertions that ran in this RED and passed. The guard is test code and exists,
+so "measured" here is the guard's actual output in the run above, not a value
+taken outside the framework. They are not claims awaiting GREEN, as an
+import-failure RED would leave them.
+
+| Control | Expected output | Measured (RED run) |
+|---|---|---|
+| compliant fixture (positive control) | empty | empty (pass) |
+| review after self-test | 1 line: disorder, review step 2, selftest step 1 | that line (pass) |
+| review only in prose | 1 line: A "do not name the `diff-review` skill" | that line (pass) |
+| review step without `bash scripts/gates.sh` | 1 line: A "`diff-review` step does not say `bash scripts/gates.sh`" | that line (pass) |
+| bullet without `diff-review` | 1 line: C "does not name `diff-review`" | that line (pass) |
+| bullet names it only after the self-test | 1 line: C "names `diff-review` after …" | that line (pass) |
+| skill without `No case, no finding.` | 1 line: S "does not say `No case, no finding.`" | that line (pass) |
+| skill without `**If we skip it:**` | 1 line: S "does not say `**If we skip it:**`" | that line (pass) |
+| skill carrying `One good test, not coverage` | 1 line: S "carries ponytail's …" | that line (pass) |
+| skill missing | 1 line: `S: file is missing` | that line (pass) |
+| real tree (RED) | 3 lines: A no-name, C no-name, S missing | exactly those 3 (fail, as intended) |
+
+**Mutation table for GREEN and GATES.** Run against the real files once they
+exist, each through `bash scripts/mutate.sh FILE 'EXPR' -- bash scripts/selftest.sh procedure`:
+
+| # | File | Mutation | Expected red line | Owner |
+|---|---|---|---|---|
+| DV-1 | `advance-story.md` | delete the `1. ` line holding `` the `diff-review` skill `` (expression written by GATES once the text exists) | `A: its GATES → REVIEW steps do not name the \`diff-review\` skill` | GATES |
+| DV-2 | `diff-review/SKILL.md` | `'/No case, no finding\./d'` | `S: does not say \`No case, no finding.\`` (exactly one line) | GATES |
+| opt | `complete-story.md` | `'s/`diff-review`/diff-review/'` (unquote the first occurrence) | `C: its GATES → REVIEW bullet does not name \`diff-review\`` if it was the only quoted one | optional |
+| opt | `diff-review/SKILL.md` | `'s/^name: diff-review$/name: diff-reviewer/'` | `S: has no \`name: diff-review\` line in its frontmatter` | optional |
+
+The two optional rows are beyond the story's mutation budget (`rules.md`,
+"Mutation work per story") and are listed only as candidates for
+`/audit-mutations`.
+
+**Deferred verifications: declined in RED, in writing.**
+
+- **DV-1:** I cannot run it. The real review step does not exist until GREEN
+  writes it, so there is no line to delete. Owner: GATES.
+- **DV-2:** I cannot run it. The real skill does not exist. I checked only that
+  the expression reads correctly: `/No case, no finding\./d` escapes the full
+  stop, so it deletes only a line holding the needle with its stop. GNU sed on
+  this host deleted `Every finding needs a concrete case. No case, no finding.`
+  and kept `No case, no findingX` (trap 3 above is the precondition for "exactly
+  one line"). Owner: GATES.
+- **DV-3:** I cannot run it. It is the orchestrator's review of this story's
+  own diff at GATES → REVIEW. Owner: GATES.
+
+**Contract blocks amended:** none. C-1..C-4 were buildable as written.
+
+**Files touched:** `.claude/tests/procedure.test.sh`, and this story's
+`## Test plan` and `## Handoff: RED -> GREEN`. **Not touched:**
+`.claude/commands/advance-story.md`, `.claude/commands/complete-story.md`,
+`.claude/skills/diff-review/SKILL.md` (does not exist), `floors.conf`,
+`selftest.test.sh`.
+
+**Gates.** `bash scripts/gates.sh --fast` exits 0 with every gate
+`UNCONFIGURED` (this repository's `project.conf` is not bootstrapped). The
+self-test is the gate that judges this story. `check-sigpipe.sh` and
+`check-grep-count.sh` each report 0 findings over 52 shell files.
 
 ## Gate results
 
@@ -327,3 +575,20 @@ name, below the table.
   phase < boundaries in advance-story, and selftest in complete-story's bullet.
   This story extends it rather than adding a suite, which would need a floor
   and would collide with HARNESS-067.
+- **PO checks before RED (2026-10-23).** The gate holding the artefact is the
+  harness self-test (`procedure`), which CI runs in full; every `gates.sh` gate
+  is `<unconfigured>` here, so `required_gates` stays empty. `git grep -l
+  procedure_problems` names only `.claude/tests/procedure.test.sh` and two
+  story files (HARNESS-032, this one): no other caller. `epic:` is empty.
+  `bash scripts/plan.sh conflicts`: "fewer than two startable stories; nothing
+  to compare" (HARNESS-067, 069, 070 merged). Baseline before RED:
+  `procedure` 37 executed, 37 declared.
+- **RED verified by the orchestrator (2026-10-23).** Reran
+  `bash scripts/selftest.sh procedure`: `procedure: 88 passed, 2 failed`, the
+  real-tree assertion printing exactly the three C-4 lines (A does not name the
+  skill, C does not name `diff-review`, S file is missing) and the skill-exists
+  precondition failing; the three files GREEN writes are untouched. RED also
+  changed `fresh_case` to set `d` rather than echo it (65 call sites), a
+  test-only speed change (4m24s to 1m18s locally); fixture contents unchanged.
+- Resolved models: RED `test-developer` ran on Opus 5.5 (`claude-opus-5-5`),
+  its declared `opus`, no override.
