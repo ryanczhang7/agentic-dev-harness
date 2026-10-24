@@ -4,8 +4,8 @@ title: A diff review reads the change and its callers before the PR opens
 slug: a-diff-review-reads-the-change-and-its-c
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-068-a-diff-review-reads-the-change-and-its-c
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/skills/diff-review/SKILL.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
