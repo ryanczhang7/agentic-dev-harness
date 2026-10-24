@@ -194,7 +194,20 @@ without it is the point.
 
 Then, **in this order**:
 
-1. `bash scripts/selftest.sh` — the whole harness self-test, every suite,
+1. Review the story's diff and its callers with the `diff-review` skill.
+   Dispatch a **fresh** `feature-developer`, not the one that wrote the code,
+   on the GATES row of `models.conf`; it changes no file and returns its
+   report. Paste that report into a `## Diff review` section of the story,
+   directly above `## Gate results`, and record the model the dispatch
+   resolved to. A Must fix in the code is made in GATES by a feature-developer
+   dispatch; the tree has changed, so `bash scripts/gates.sh` runs again and
+   these steps start over, with a review of the fix. A finding that needs a
+   test added or changed is a return to RED, with a `## Regressions` entry. A
+   finding that an acceptance criterion is wrong is an `## Amendments` question
+   for the user. Go on only once the report's last line is `Verdict: Ship.`.
+   It comes before the self-test because a fix changes the tree, and a fix
+   found after the self-test wastes that run.
+2. `bash scripts/selftest.sh` — the whole harness self-test, every suite,
    once, while the story is still at GATES. CI runs every suite, and one the
    story never touched can still fail on its change: a line number another
    suite pins, a floor, a value an upstream suite asserts. Run it detached
@@ -211,11 +224,11 @@ Then, **in this order**:
    takes GATES' own routes: the feature-developer, or RED if a test is
    wrong. A fix changes the tree, so `bash scripts/gates.sh` runs again and
    these steps start over.
-2. `bash scripts/phase.sh set $1 REVIEW`
-3. Commit, with a message that names the story and what it does.
-4. `bash scripts/check-boundaries.sh` — the second script CI runs, and the one
+3. `bash scripts/phase.sh set $1 REVIEW`
+4. Commit, with a message that names the story and what it does.
+5. `bash scripts/check-boundaries.sh` — the second script CI runs, and the one
    `gates.sh` cannot stand in for. Fix anything it reports before pushing.
-5. Push the branch and open a PR whose body links the story file and lists the
+6. Push the branch and open a PR whose body links the story file and lists the
    acceptance criteria with the test that covers each.
 
 The phase is set **before** the commit, and the order is not cosmetic:
@@ -226,10 +239,10 @@ job runs, which makes it fail intermittently rather than every time — the wors
 of the two. Do not reorder these to be helpful.
 
 `bash scripts/ci-local.sh` runs that self-test and every other step CI runs,
-read from the workflow files, and ends with step 4's check. It judges the
-commit, so it can only run after step 3. It runs the self-test twice and the
+read from the workflow files, and ends with step 5's check. It judges the
+commit, so it can only run after step 4. It runs the self-test twice and the
 gates again, so it is the better check where it is fast and never a
-substitute for step 1 where it is not.
+substitute for step 2 where it is not.
 
 **REVIEW → DONE.** Only once the PR is merged. Set the phase to DONE, clear the
 lock with `bash scripts/phase.sh clear`, and relay the report that

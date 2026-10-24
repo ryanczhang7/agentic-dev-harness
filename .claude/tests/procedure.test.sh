@@ -20,6 +20,12 @@
 # that never fires is satisfied by the real tree whatever the tree says. DV-1
 # and DV-2 in the story are the same probe against REAL lines, owned by GATES.
 #
+# HARNESS-068 extends it: a diff review, run through the `diff-review` skill, is
+# the FIRST GATES -> REVIEW step (before the self-test), the step says how a
+# finding routes, complete-story's bullet names the review before the
+# self-test, and the skill file carries the review's rules. Same pattern: the
+# real tree must be silent, fixtures regress one thing each (story C-1..C-4).
+#
 # Matching is pure bash (mapfile, case, [ = ]): no grep or awk fork per needle.
 # HARNESS-023 measured 109 s against 10.6 s for the same output on Windows.
 
@@ -41,6 +47,33 @@ STEP_WORDS=('detached' 'Windows' '## Notes')
 
 PARA_START='**GATES → REVIEW.**'
 BULLET_START='- **GATES → REVIEW'
+
+# HARNESS-068 (Contract C-2, C-3: settled, read out byte for byte).
+SKILL=".claude/skills/diff-review/SKILL.md"
+STEP_REVIEW='the `diff-review` skill'
+BULLET_REVIEW='`diff-review`'
+REVIEW_WORDS=('## Diff review' 'Must fix' 'bash scripts/gates.sh' 'Verdict: Ship.')
+SKILL_NAME='name: diff-review'
+SKILL_NEEDLES=(
+  'callers of every changed function'
+  'No case, no finding.'
+  '**Must fix:**'
+  '**Should fix:**'
+  '**Nice to have:**'
+  'Number findings across all groups'
+  '**What this is:**'
+  '**Problem:**'
+  '**Fix:**'
+  '**If we skip it:**'
+  'Verdict: Ship.'
+  'Verdict: fix '
+  'bash scripts/gates.sh'
+  '`bash scripts/phase.sh set <id> RED`'
+  '## Regressions'
+  '## Amendments'
+  'changes no file'
+)
+PONYTAIL_NEEDLES=('One good test, not coverage' 'one small test')
 
 # --- pure-bash region helpers -------------------------------------------------
 
@@ -150,6 +183,25 @@ gates_bullet() {
   return 0
 }
 
+# frontmatter_line <exact>   Succeeds when the loaded file's frontmatter (line
+# 1 exactly `---` up to the next line exactly `---`) has a line EQUAL to
+# <exact>. No frontmatter, or one never closed, has no such line.
+frontmatter_line() {
+  local i n="${#LN[@]}" end=-1
+  [ "$n" -gt 0 ] && [ "${LN[0]}" = "---" ] || return 1
+  for ((i = 1; i < n; i++)); do
+    [ "${LN[$i]}" = "---" ] && { end=$i; break; }
+  done
+  [ "$end" -gt 0 ] || return 1
+  for ((i = 1; i < end; i++)); do
+    [ "${LN[$i]}" = "$1" ] && return 0
+  done
+  return 1
+}
+
+# joined   TXT := the loaded file's lines, newline-joined (no fork).
+joined() { local IFS=$'\n'; TXT="${LN[*]}"; }
+
 # --- the guard ----------------------------------------------------------------
 
 # check_tools <rel>   The two allowed-tools lines for the loaded file.
@@ -170,8 +222,8 @@ check_tools() {
 # violation (Contract C-4, byte for byte); silent when compliant. Always
 # returns 0: the output is the verdict.
 procedure_problems() {
-  local root="$1" n ks kp kb w missing
-  # advance-story: tools, step needles, order, words.
+  local root="$1" n ks kp kb kr w missing pr pt
+  # advance-story: tools, step needles, order, words; then the review step.
   if [ ! -f "$root/$ADVANCE" ]; then
     printf '%s: file is missing\n' "$ADVANCE"
   else
@@ -205,6 +257,22 @@ procedure_problems() {
           esac
         done
       fi
+      # HARNESS-068: the review step, after every existing check (C-4 order).
+      first_step "$STEP_REVIEW"; kr=$K
+      if [ "$kr" = "-1" ]; then
+        printf '%s: its GATES → REVIEW steps do not name %s\n' "$ADVANCE" "$STEP_REVIEW"
+      else
+        if [ "$ks" != "-1" ]; then
+          [ "${SN[$kr]}" -lt "${SN[$ks]}" ] || printf '%s: its GATES → REVIEW steps are out of order: %s is step %s, %s is step %s\n' \
+            "$ADVANCE" "$STEP_REVIEW" "${SN[$kr]}" "$STEP_SELFTEST" "${SN[$ks]}"
+        fi
+        for w in "${REVIEW_WORDS[@]}"; do
+          case "${ST[$kr]}" in
+            *"$w"*) ;;
+            *) printf '%s: its `diff-review` step does not say `%s`\n' "$ADVANCE" "$w" ;;
+          esac
+        done
+      fi
     fi
   fi
   # complete-story: tools, bullet.
@@ -221,7 +289,38 @@ procedure_problems() {
         *"$STEP_SELFTEST"*) ;;
         *) printf '%s: its GATES → REVIEW bullet does not name `bash scripts/selftest.sh`\n' "$COMPLETE" ;;
       esac
+      # HARNESS-068: the review, named before the first self-test (C-2).
+      case "$R" in
+        *"$BULLET_REVIEW"*)
+          case "$R" in
+            *"$STEP_SELFTEST"*)
+              pr="${R%%"$BULLET_REVIEW"*}"; pt="${R%%"$STEP_SELFTEST"*}"
+              [ "${#pr}" -lt "${#pt}" ] || printf '%s: its GATES → REVIEW bullet names `diff-review` after `bash scripts/selftest.sh`\n' "$COMPLETE"
+              ;;
+          esac
+          ;;
+        *) printf '%s: its GATES → REVIEW bullet does not name `diff-review`\n' "$COMPLETE" ;;
+      esac
     fi
+  fi
+  # the diff-review skill: missing, frontmatter, needles, ponytail needles.
+  if [ ! -f "$root/$SKILL" ]; then
+    printf '%s: file is missing\n' "$SKILL"
+  else
+    load "$root/$SKILL"
+    frontmatter_line "$SKILL_NAME" || printf '%s: has no `%s` line in its frontmatter\n' "$SKILL" "$SKILL_NAME"
+    joined
+    for w in "${SKILL_NEEDLES[@]}"; do
+      case "$TXT" in
+        *"$w"*) ;;
+        *) printf '%s: does not say `%s`\n' "$SKILL" "$w" ;;
+      esac
+    done
+    for w in "${PONYTAIL_NEEDLES[@]}"; do
+      case "$TXT" in
+        *"$w"*) printf "%s: carries ponytail's \`%s\`\n" "$SKILL" "$w" ;;
+      esac
+    done
   fi
   return 0
 }
@@ -232,29 +331,81 @@ procedure_problems() {
 
 GOOD_TOOLS='allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(git:*), Read, Task'
 
-# The GATES -> REVIEW step list. Step 1's words sit on its continuation lines,
-# so the compliant fixture already proves continuation lines count.
-GOOD_STEPS="$(cat <<'EOF'
-1. `bash scripts/selftest.sh` — the whole self-test, every suite, while the
-   story is still at GATES. Run it detached; on a Windows host it is slow.
-   Paste its last line into `## Notes`.
-2. `bash scripts/phase.sh set $1 REVIEW`
-3. Commit.
-4. `bash scripts/check-boundaries.sh` — the second script CI runs.
-   Fix anything it reports.
-5. Push and open the PR.
+# The review step (HARNESS-068), step 1. Its routing words sit on its
+# continuation lines, so the compliant fixture proves continuation lines count
+# for the review step too. It names neither the backticked self-test needle
+# nor any of the self-test step's three words, so it cannot satisfy them.
+RV="$(cat <<'EOF'
+1. Review the change with the `diff-review` skill: a fresh dispatch reads the
+   diff and its callers, and its report goes into `## Diff review`. A Must fix
+   finding is fixed, `bash scripts/gates.sh` runs again and these steps start
+   over. Go on only once the report's last line is `Verdict: Ship.`.
 EOF
 )"
 
-GOOD_BULLET="$(cat <<'EOF'
-- **GATES → REVIEW runs the full `bash scripts/selftest.sh` first**, detached
-  and alone, then sets the phase before committing.
+# with_review <steps>   RV, then <steps> (which number from 2).
+with_review() { printf '%s\n%s' "$RV" "$1"; }
+
+# The GATES -> REVIEW step list after the review. Step 2's words sit on its
+# continuation lines, so the compliant fixture already proves continuation
+# lines count. HARNESS-068 renumbered these from 1..5 to 2..6.
+REST="$(cat <<'EOF'
+2. `bash scripts/selftest.sh` — the whole self-test, every suite, while the
+   story is still at GATES. Run it detached; on a Windows host it is slow.
+   Paste its last line into `## Notes`.
+3. `bash scripts/phase.sh set $1 REVIEW`
+4. Commit.
+5. `bash scripts/check-boundaries.sh` — the second script CI runs.
+   Fix anything it reports.
+6. Push and open the PR.
 EOF
 )"
+GOOD_STEPS="$(with_review "$REST")"
+
+GOOD_BULLET="$(cat <<'EOF'
+- **GATES → REVIEW runs a `diff-review` of the change, then the full
+  `bash scripts/selftest.sh`**, detached and alone, then sets the phase
+  before committing.
+EOF
+)"
+
+# The skill (HARNESS-068). Every C-3 needle appears exactly once, and no needle
+# is a substring of another's occurrence, so removing one removes only it.
+GOOD_SKILL="$(cat <<'EOF'
+---
+name: diff-review
+description: Review a story's diff, and the code connected to it, before the PR opens.
+---
+
+# Diff review
+
+Read the diff, then the callers of every changed function and what it calls.
+
+Every finding needs a concrete case. No case, no finding.
+
+Group findings as **Must fix:**, **Should fix:** and **Nice to have:**.
+Number findings across all groups. Each finding has four parts:
+**What this is:**, **Problem:**, **Fix:** and **If we skip it:**.
+
+End with `Verdict: Ship.` or `Verdict: fix 1 and 2 first.`
+
+A code finding is fixed in GATES, then `bash scripts/gates.sh` runs again. A
+finding that needs a test is `bash scripts/phase.sh set <id> RED` with a
+`## Regressions` entry. A wrong criterion is an `## Amendments` question.
+
+The reviewer changes no file.
+EOF
+)"
+
+# write_skill <dir> <content>
+write_skill() {
+  [ -d "$1/.claude/skills/diff-review" ] || mkdir -p "$1/.claude/skills/diff-review"
+  printf '%s\n' "$2" > "$1/$SKILL"
+}
 
 # write_advance <dir> <tools-line> <steps> [<prose-after-steps>]
 write_advance() {
-  mkdir -p "$1/.claude/commands"
+  [ -d "$1/.claude/commands" ] || mkdir -p "$1/.claude/commands"
   {
     printf -- '---\ndescription: Move one story forward\n%s\n---\n\nStory: $1\n\n' "$2"
     printf '%s Only when every required gate passes.\n\nThen, **in this order**:\n\n' "$PARA_START"
@@ -266,7 +417,7 @@ write_advance() {
 
 # write_complete <dir> <tools-line> <bullet> [<tail>]
 write_complete() {
-  mkdir -p "$1/.claude/commands"
+  [ -d "$1/.claude/commands" ] || mkdir -p "$1/.claude/commands"
   {
     printf -- '---\ndescription: Drive one story\n%s\n---\n\nStory: $1\n\n' "$2"
     printf -- '- **RED and GREEN each end with `bash scripts/gates.sh --fast`.**\n'
@@ -280,10 +431,18 @@ write_complete() {
 compliant_fixture() { # <dir>
   write_advance "$1" "$GOOD_TOOLS" "$GOOD_STEPS"
   write_complete "$1" "$GOOD_TOOLS" "$GOOD_BULLET"
+  write_skill "$1" "$GOOD_SKILL"
 }
 
-# fresh_case <name>   A new compliant fixture; echoes its path.
-fresh_case() { local d="$WORK/$1"; rm -rf "$d"; compliant_fixture "$d"; printf '%s' "$d"; }
+# fresh_case <name>   d := a new compliant fixture's path. Sets d rather than
+# echoing it, and makes both directories with one mkdir, because on Windows
+# each fork costs about a quarter of a second (HARNESS-068 measured it).
+fresh_case() {
+  d="$WORK/$1"
+  [ -e "$d" ] && rm -rf "$d"
+  mkdir -p "$d/.claude/commands" "$d/.claude/skills/diff-review"
+  compliant_fixture "$d"
+}
 
 # Fault lines, as C-4 pins them.
 A="$ADVANCE"; C="$COMPLETE"
@@ -292,6 +451,14 @@ no_step()   { printf '%s: its GATES → REVIEW steps do not name %s' "$ADVANCE" 
 disorder()  { printf '%s: its GATES → REVIEW steps are out of order: %s is step %s, %s is step %s' "$ADVANCE" "$1" "$2" "$3" "$4"; }
 no_word()   { printf '%s: its `bash scripts/selftest.sh` step does not say `%s`' "$ADVANCE" "$1"; }
 NO_BULLET_NEEDLE="$C: its GATES → REVIEW bullet does not name \`bash scripts/selftest.sh\`"
+# HARNESS-068 (C-4).
+S="$SKILL"
+no_rword()  { printf '%s: its `diff-review` step does not say `%s`' "$ADVANCE" "$1"; }
+NO_BULLET_REVIEW="$C: its GATES → REVIEW bullet does not name \`diff-review\`"
+BULLET_REVIEW_AFTER="$C: its GATES → REVIEW bullet names \`diff-review\` after \`bash scripts/selftest.sh\`"
+no_say()    { printf '%s: does not say `%s`' "$SKILL" "$1"; }
+ponytail()  { printf "%s: carries ponytail's \`%s\`" "$SKILL" "$1"; }
+NO_NAME="$S: has no \`name: diff-review\` line in its frontmatter"
 
 # ---------------------------------------------------------------------------
 describe "the real tree (AC-1 to AC-4)"
@@ -300,16 +467,19 @@ missing=""
 for f in "$ADVANCE" "$COMPLETE"; do [ -f "$REPO_ROOT/$f" ] || missing="$missing $f"; done
 assert_eq "both commands that reach REVIEW exist in this repository" "" "$missing"
 
-assert_eq "procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, and the full self-test is a GATES → REVIEW step before the phase change" \
+assert_eq "the diff-review skill exists in this repository (HARNESS-068 AC-4)" \
+  "" "$([ -f "$REPO_ROOT/$SKILL" ] || printf '%s' "$SKILL")"
+
+assert_eq "procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, the diff-review step comes before the full self-test, which comes before the phase change, complete-story names the review before the self-test, and the diff-review skill carries its rules" \
   "" "$(procedure_problems "$REPO_ROOT")"
 
 # ---------------------------------------------------------------------------
 describe "the fixture: compliant by construction"
 
-d="$(fresh_case compliant)"
+fresh_case compliant
 assert_eq "the compliant fixture is silent" "" "$(procedure_problems "$d")"
 
-d="$(fresh_case spaced-entries)"
+fresh_case spaced-entries
 write_advance "$d" 'allowed-tools:Bash(bash scripts/selftest.sh:*) ,   Bash(bash scripts/ci-local.sh:*)  ,Read' "$GOOD_STEPS"
 assert_eq "entries are trimmed: extra spaces around a comma, and none after the colon, still permit" \
   "" "$(procedure_problems "$d")"
@@ -317,35 +487,35 @@ assert_eq "entries are trimmed: extra spaces around a comma, and none after the 
 # ---------------------------------------------------------------------------
 describe "AC-1: both commands permit both scripts in allowed-tools"
 
-d="$(fresh_case tool-missing)"
+fresh_case tool-missing
 write_advance "$d" 'allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/ci-local.sh:*), Read' "$GOOD_STEPS"
 assert_eq "advance-story without the selftest.sh entry gives one line naming the file and the entry" \
   "$(no_tool "$A" "$TOOL_SELFTEST")" "$(procedure_problems "$d")"
 
-d="$(fresh_case tool-no-star)"
+fresh_case tool-no-star
 write_complete "$d" 'allowed-tools: Bash(bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh), Read' "$GOOD_BULLET"
 assert_eq "complete-story spelling the ci-local.sh entry without \`:*\` gives the same line" \
   "$(no_tool "$C" "$TOOL_CILOCAL")" "$(procedure_problems "$d")"
 
-d="$(fresh_case tool-in-body)"
+fresh_case tool-in-body
 write_advance "$d" 'allowed-tools: Bash(bash scripts/selftest.sh:*), Read' "$GOOD_STEPS" \
   'It may also run Bash(bash scripts/ci-local.sh:*) once the commit exists.'
 assert_eq "an entry that appears only in the body, not the allowed-tools line, gives the same line" \
   "$(no_tool "$A" "$TOOL_CILOCAL")" "$(procedure_problems "$d")"
 
-d="$(fresh_case tool-in-other-frontmatter-key)"
+fresh_case tool-in-other-frontmatter-key
 write_complete "$d" 'allowed-tools: Bash(bash scripts/selftest.sh:*), Read
 notes: Bash(bash scripts/ci-local.sh:*)' "$GOOD_BULLET"
 assert_eq "an entry on another frontmatter key does not count" \
   "$(no_tool "$C" "$TOOL_CILOCAL")" "$(procedure_problems "$d")"
 
-d="$(fresh_case tool-merged)"
+fresh_case tool-merged
 write_advance "$d" 'allowed-tools: Bash(bash scripts/selftest.sh:*) Bash(bash scripts/ci-local.sh:*), Read' "$GOOD_STEPS"
 assert_eq "an entry that only CONTAINS a needle is not equal to it: a missing comma loses both" \
   "$(no_tool "$A" "$TOOL_SELFTEST")
 $(no_tool "$A" "$TOOL_CILOCAL")" "$(procedure_problems "$d")"
 
-d="$(fresh_case tool-both-missing-both-files)"
+fresh_case tool-both-missing-both-files
 write_advance "$d" 'allowed-tools: Read' "$GOOD_STEPS"
 write_complete "$d" 'allowed-tools: Read' "$GOOD_BULLET"
 assert_eq "both entries missing from both files gives four lines, advance-story first" \
@@ -354,27 +524,27 @@ $(no_tool "$A" "$TOOL_CILOCAL")
 $(no_tool "$C" "$TOOL_SELFTEST")
 $(no_tool "$C" "$TOOL_CILOCAL")" "$(procedure_problems "$d")"
 
-d="$(fresh_case no-allowed-tools)"
+fresh_case no-allowed-tools
 write_complete "$d" 'description2: nothing here' "$GOOD_BULLET"
 assert_eq "a frontmatter with no allowed-tools line gives that line only, never the two \"do not permit\" lines" \
   "$C: has no \`allowed-tools:\` line in its frontmatter" "$(procedure_problems "$d")"
 
-d="$(fresh_case no-frontmatter)"
+fresh_case no-frontmatter
 { printf '%s\n\n' "$GOOD_TOOLS"; printf '%s\n' "$GOOD_BULLET"; } > "$d/$COMPLETE"
 assert_eq "an allowed-tools line with no frontmatter around it is not in a frontmatter" \
   "$C: has no \`allowed-tools:\` line in its frontmatter" "$(procedure_problems "$d")"
 
-d="$(fresh_case allowed-tools-after-frontmatter)"
+fresh_case allowed-tools-after-frontmatter
 { printf -- '---\ndescription: x\n---\n\n%s\n\n' "$GOOD_TOOLS"; printf '%s\n' "$GOOD_BULLET"; } > "$d/$COMPLETE"
 assert_eq "an allowed-tools line after the frontmatter closes does not count" \
   "$C: has no \`allowed-tools:\` line in its frontmatter" "$(procedure_problems "$d")"
 
-d="$(fresh_case advance-missing)"
+fresh_case advance-missing
 rm -f "$d/$ADVANCE"
 assert_eq "a missing command file gives only \`file is missing\`" \
   "$A: file is missing" "$(procedure_problems "$d")"
 
-d="$(fresh_case complete-missing)"
+fresh_case complete-missing
 rm -f "$d/$COMPLETE"
 assert_eq "a missing complete-story gives only \`file is missing\`" \
   "$C: file is missing" "$(procedure_problems "$d")"
@@ -382,141 +552,142 @@ assert_eq "a missing complete-story gives only \`file is missing\`" \
 # ---------------------------------------------------------------------------
 describe "AC-2: the full self-test is a numbered step before the phase change, and check-boundaries after it"
 
-d="$(fresh_case selftest-after-phase)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. `bash scripts/phase.sh set $1 REVIEW`
-2. `bash scripts/selftest.sh`, detached, slow on Windows; paste into `## Notes`.
-3. Commit.
-4. `bash scripts/check-boundaries.sh`
+fresh_case selftest-after-phase
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `bash scripts/phase.sh set $1 REVIEW`
+3. `bash scripts/selftest.sh`, detached, slow on Windows; paste into `## Notes`.
+4. Commit.
+5. `bash scripts/check-boundaries.sh`
 EOF
-)"
+)")"
 assert_eq "the self-test step after the phase step gives one out-of-order line" \
-  "$(disorder "$STEP_SELFTEST" 2 "$STEP_PHASE" 1)" "$(procedure_problems "$d")"
+  "$(disorder "$STEP_SELFTEST" 3 "$STEP_PHASE" 2)" "$(procedure_problems "$d")"
 
-d="$(fresh_case selftest-in-prose)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
+fresh_case selftest-in-prose
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
 Run `bash scripts/selftest.sh` first, detached, slow on Windows; see `## Notes`.
 
-1. `bash scripts/phase.sh set $1 REVIEW`
-2. Commit.
-3. `bash scripts/check-boundaries.sh`
-EOF
-)"
-assert_eq "the self-test named only in the paragraph's prose, in no numbered step, gives one \"do not name\" line" \
-  "$(no_step "$STEP_SELFTEST")" "$(procedure_problems "$d")"
-
-d="$(fresh_case selftest-targeted)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. `bash scripts/selftest.sh reporting` — detached, slow on Windows; `## Notes`.
 2. `bash scripts/phase.sh set $1 REVIEW`
 3. Commit.
 4. `bash scripts/check-boundaries.sh`
 EOF
-)"
+)")"
+assert_eq "the self-test named only in the paragraph's prose, in no numbered step, gives one \"do not name\" line" \
+  "$(no_step "$STEP_SELFTEST")" "$(procedure_problems "$d")"
+
+fresh_case selftest-targeted
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `bash scripts/selftest.sh reporting` — detached, slow on Windows; `## Notes`.
+3. `bash scripts/phase.sh set $1 REVIEW`
+4. Commit.
+5. `bash scripts/check-boundaries.sh`
+EOF
+)")"
 assert_eq "a targeted \`bash scripts/selftest.sh reporting\` is not the full run: one \"do not name\" line" \
   "$(no_step "$STEP_SELFTEST")" "$(procedure_problems "$d")"
 
-d="$(fresh_case selftest-other-paragraph)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. `bash scripts/phase.sh set $1 REVIEW`
-2. Commit.
-3. `bash scripts/check-boundaries.sh`
+fresh_case selftest-other-paragraph
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `bash scripts/phase.sh set $1 REVIEW`
+3. Commit.
+4. `bash scripts/check-boundaries.sh`
 
 **REVIEW → DONE.** Before closing:
 
 1. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
 EOF
-)"
+)")"
 assert_eq "the self-test step present only in the REVIEW → DONE paragraph gives one \"do not name\" line" \
   "$(no_step "$STEP_SELFTEST")" "$(procedure_problems "$d")"
 
-d="$(fresh_case boundaries-before-phase)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
-2. `bash scripts/check-boundaries.sh`
-3. `bash scripts/phase.sh set $1 REVIEW`
-4. Commit.
-EOF
-)"
-assert_eq "the check-boundaries step moved before the phase step gives one out-of-order line" \
-  "$(disorder "$STEP_PHASE" 3 "$STEP_BOUNDARIES" 2)" "$(procedure_problems "$d")"
-
-d="$(fresh_case same-step)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. `bash scripts/selftest.sh`, then `bash scripts/phase.sh set $1 REVIEW` —
-   detached, slow on Windows; paste into `## Notes`.
-2. Commit.
-3. `bash scripts/check-boundaries.sh`
-EOF
-)"
-assert_eq "two needles in the same step count as out of order" \
-  "$(disorder "$STEP_SELFTEST" 1 "$STEP_PHASE" 1)" "$(procedure_problems "$d")"
-
-d="$(fresh_case first-step-wins)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. `bash scripts/phase.sh set $1 REVIEW`
+fresh_case boundaries-before-phase
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
 2. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
 3. `bash scripts/check-boundaries.sh`
-4. If that failed, `bash scripts/phase.sh set $1 REVIEW` again.
+4. `bash scripts/phase.sh set $1 REVIEW`
+5. Commit.
 EOF
-)"
-assert_eq "a needle in more than one step is judged by its FIRST step" \
-  "$(disorder "$STEP_SELFTEST" 2 "$STEP_PHASE" 1)" "$(procedure_problems "$d")"
+)")"
+assert_eq "the check-boundaries step moved before the phase step gives one out-of-order line" \
+  "$(disorder "$STEP_PHASE" 4 "$STEP_BOUNDARIES" 3)" "$(procedure_problems "$d")"
 
-d="$(fresh_case phase-missing)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
-2. Commit.
-3. `bash scripts/check-boundaries.sh`
+fresh_case same-step
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `bash scripts/selftest.sh`, then `bash scripts/phase.sh set $1 REVIEW` —
+   detached, slow on Windows; paste into `## Notes`.
+3. Commit.
+4. `bash scripts/check-boundaries.sh`
 EOF
-)"
+)")"
+assert_eq "two needles in the same step count as out of order" \
+  "$(disorder "$STEP_SELFTEST" 2 "$STEP_PHASE" 2)" "$(procedure_problems "$d")"
+
+fresh_case first-step-wins
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `bash scripts/phase.sh set $1 REVIEW`
+3. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+4. `bash scripts/check-boundaries.sh`
+5. If that failed, `bash scripts/phase.sh set $1 REVIEW` again.
+EOF
+)")"
+assert_eq "a needle in more than one step is judged by its FIRST step" \
+  "$(disorder "$STEP_SELFTEST" 3 "$STEP_PHASE" 2)" "$(procedure_problems "$d")"
+
+fresh_case phase-missing
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+3. Commit.
+4. `bash scripts/check-boundaries.sh`
+EOF
+)")"
 assert_eq "the phase step missing gives its own \"do not name\" line, and the order check is suppressed" \
   "$(no_step "$STEP_PHASE")" "$(procedure_problems "$d")"
 
-d="$(fresh_case boundaries-missing)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
-2. `bash scripts/phase.sh set $1 REVIEW`
-3. Commit.
+fresh_case boundaries-missing
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+3. `bash scripts/phase.sh set $1 REVIEW`
+4. Commit.
 EOF
-)"
+)")"
 assert_eq "the check-boundaries step missing gives its own \"do not name\" line" \
   "$(no_step "$STEP_BOUNDARIES")" "$(procedure_problems "$d")"
 
-d="$(fresh_case continuation-counts)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. The whole harness self-test, every suite:
+fresh_case continuation-counts
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. The whole harness self-test, every suite:
    `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
-2. `bash scripts/phase.sh set $1 REVIEW`
-3. Commit, then run
+3. `bash scripts/phase.sh set $1 REVIEW`
+4. Commit, then run
    `bash scripts/check-boundaries.sh`.
 EOF
-)"
+)")"
 assert_eq "a needle on an indented continuation line is in that step" \
   "" "$(procedure_problems "$d")"
 
-d="$(fresh_case indented-after-blank)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. The whole harness self-test, every suite.
+fresh_case indented-after-blank
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. The whole harness self-test, every suite.
 
    `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
-2. `bash scripts/phase.sh set $1 REVIEW`
-3. `bash scripts/check-boundaries.sh`
+3. `bash scripts/phase.sh set $1 REVIEW`
+4. `bash scripts/check-boundaries.sh`
 EOF
-)"
+)")"
 assert_eq "an indented line after a blank line has left the step: the needle is in no step" \
   "$(no_step "$STEP_SELFTEST")" "$(procedure_problems "$d")"
 
-d="$(fresh_case star-line-ends-region)"
+fresh_case star-line-ends-region
 write_advance "$d" "$GOOD_TOOLS" "**Note.** The steps follow.
 
 $GOOD_STEPS"
 assert_eq "a line beginning \`**\` inside the paragraph ends it early, so the steps after it are not read" \
   "$(no_step "$STEP_SELFTEST")
 $(no_step "$STEP_PHASE")
-$(no_step "$STEP_BOUNDARIES")" "$(procedure_problems "$d")"
+$(no_step "$STEP_BOUNDARIES")
+$(no_step "$STEP_REVIEW")" "$(procedure_problems "$d")"
 
-d="$(fresh_case no-paragraph)"
+fresh_case no-paragraph
 { printf -- '---\n%s\n---\n\n' "$GOOD_TOOLS"; printf '**GATES -> REVIEW.** ascii arrow.\n\n%s\n' "$GOOD_STEPS"; } > "$d/$ADVANCE"
 assert_eq "advance-story with no \`**GATES → REVIEW.**\` paragraph gives that line only" \
   "$A: has no \`**GATES → REVIEW.**\` paragraph" "$(procedure_problems "$d")"
@@ -525,20 +696,20 @@ assert_eq "advance-story with no \`**GATES → REVIEW.**\` paragraph gives that 
 describe "AC-3: the self-test step says detached, Windows and ## Notes"
 
 for w in 'detached' 'Windows' '## Notes'; do
-  d="$(fresh_case "word-$w")"
+  fresh_case "word-$w"
   steps="${GOOD_STEPS//"$w"/elsewhere}"
   write_advance "$d" "$GOOD_TOOLS" "$steps" "Prose outside the steps says $w."
   assert_eq "\`$w\` missing from the self-test step but present elsewhere in the file gives one line naming it" \
     "$(no_word "$w")" "$(procedure_problems "$d")"
 done
 
-d="$(fresh_case words-in-next-step)"
-write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. `bash scripts/selftest.sh`
-2. `bash scripts/phase.sh set $1 REVIEW` — detached, slow on Windows; `## Notes`.
-3. `bash scripts/check-boundaries.sh`
+fresh_case words-in-next-step
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `bash scripts/selftest.sh`
+3. `bash scripts/phase.sh set $1 REVIEW` — detached, slow on Windows; `## Notes`.
+4. `bash scripts/check-boundaries.sh`
 EOF
-)"
+)")"
 assert_eq "the three words in a DIFFERENT step do not satisfy the self-test step" \
   "$(no_word detached)
 $(no_word Windows)
@@ -547,33 +718,280 @@ $(no_word '## Notes')" "$(procedure_problems "$d")"
 # ---------------------------------------------------------------------------
 describe "AC-4: complete-story's GATES → REVIEW bullet names the full self-test"
 
-d="$(fresh_case bullet-without)"
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW sets the phase before committing**, then pushes.' \
+fresh_case bullet-without
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, sets the phase before committing**, then pushes.' \
   'Elsewhere: run `bash scripts/selftest.sh` at some point.'
 assert_eq "the needle present elsewhere in the file but not in that bullet gives one line" \
   "$NO_BULLET_NEEDLE" "$(procedure_problems "$d")"
 
-d="$(fresh_case bullet-targeted)"
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs `bash scripts/selftest.sh procedure` first.**'
+fresh_case bullet-targeted
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, then `bash scripts/selftest.sh procedure`.**'
 assert_eq "a targeted run in the bullet is not the full self-test" \
   "$NO_BULLET_NEEDLE" "$(procedure_problems "$d")"
 
-d="$(fresh_case bullet-after-blank)"
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW sets the phase before committing.**
+fresh_case bullet-after-blank
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, sets the phase before committing.**
 
   Then `bash scripts/selftest.sh`.'
 assert_eq "the bullet ends at a blank line: the needle after it is not in the bullet" \
   "$NO_BULLET_NEEDLE" "$(procedure_problems "$d")"
 
-d="$(fresh_case bullet-next-bullet)"
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW sets the phase before committing.**
+fresh_case bullet-next-bullet
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, sets the phase before committing.**
 - Then `bash scripts/selftest.sh`.'
 assert_eq "the bullet ends at the next \`- \` line: the needle in the next bullet is not in it" \
   "$NO_BULLET_NEEDLE" "$(procedure_problems "$d")"
 
-d="$(fresh_case no-bullet)"
+fresh_case no-bullet
 write_complete "$d" "$GOOD_TOOLS" '- **REVIEW → DONE** merges.'
 assert_eq "complete-story with no \`- **GATES → REVIEW\` bullet gives that line only" \
   "$C: has no \`- **GATES → REVIEW\` bullet" "$(procedure_problems "$d")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-068 AC-1: the diff review is a numbered GATES → REVIEW step, before the self-test"
+
+fresh_case review-after-selftest
+write_advance "$d" "$GOOD_TOOLS" "$(cat <<EOF
+1. \`bash scripts/selftest.sh\` — detached, slow on Windows; paste into \`## Notes\`.
+2. ${RV#1. }
+3. \`bash scripts/phase.sh set \$1 REVIEW\`
+4. Commit.
+5. \`bash scripts/check-boundaries.sh\`
+EOF
+)"
+assert_eq "the review step after the self-test step gives one out-of-order line naming both step numbers" \
+  "$(disorder "$STEP_REVIEW" 2 "$STEP_SELFTEST" 1)" "$(procedure_problems "$d")"
+
+fresh_case review-in-prose
+write_advance "$d" "$GOOD_TOOLS" "Run the \`diff-review\` skill first: its report goes into \`## Diff review\`; a Must fix finding means \`bash scripts/gates.sh\` again; go on at \`Verdict: Ship.\`.
+
+$REST"
+assert_eq "the review named only in the paragraph's prose, in no numbered step, gives one \"do not name\" line" \
+  "$(no_step "$STEP_REVIEW")" "$(procedure_problems "$d")"
+
+fresh_case review-missing
+write_advance "$d" "$GOOD_TOOLS" "$REST"
+assert_eq "no review step at all gives one \"do not name\" line, and the review's order and word checks are suppressed" \
+  "$(no_step "$STEP_REVIEW")" "$(procedure_problems "$d")"
+
+fresh_case review-other-paragraph
+write_advance "$d" "$GOOD_TOOLS" "$REST
+
+**REVIEW → DONE.** Before closing:
+
+$RV"
+assert_eq "the review step present only in the REVIEW → DONE paragraph gives one \"do not name\" line" \
+  "$(no_step "$STEP_REVIEW")" "$(procedure_problems "$d")"
+
+fresh_case review-unquoted
+steps="${GOOD_STEPS//"$STEP_REVIEW"/the diff-review skill}"
+write_advance "$d" "$GOOD_TOOLS" "$steps"
+assert_eq "a step naming the diff-review skill without the backticked needle does not name it" \
+  "$(no_step "$STEP_REVIEW")" "$(procedure_problems "$d")"
+
+fresh_case review-same-step-as-selftest
+write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
+1. Run the `diff-review` skill, then `bash scripts/selftest.sh` — detached,
+   slow on Windows; `## Notes`. Report into `## Diff review`; a Must fix
+   means `bash scripts/gates.sh` again; go on at `Verdict: Ship.`.
+2. `bash scripts/phase.sh set $1 REVIEW`
+3. Commit.
+4. `bash scripts/check-boundaries.sh`
+EOF
+)"
+assert_eq "the review and the self-test in the same step count as out of order" \
+  "$(disorder "$STEP_REVIEW" 1 "$STEP_SELFTEST" 1)" "$(procedure_problems "$d")"
+
+fresh_case review-without-selftest
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `bash scripts/phase.sh set $1 REVIEW`
+3. Commit.
+4. `bash scripts/check-boundaries.sh`
+EOF
+)")"
+assert_eq "with no self-test step the review's order check is suppressed: only the self-test's \"do not name\" line" \
+  "$(no_step "$STEP_SELFTEST")" "$(procedure_problems "$d")"
+
+fresh_case review-lines-after-existing
+write_advance "$d" "$GOOD_TOOLS" "${REST//detached/elsewhere}"
+assert_eq "the existing checks print before the review line: the self-test word line, then the review's \"do not name\" line" \
+  "$(no_word detached)
+$(no_step "$STEP_REVIEW")" "$(procedure_problems "$d")"
+
+fresh_case review-order-before-words
+write_advance "$d" "$GOOD_TOOLS" "$(cat <<EOF
+1. \`bash scripts/selftest.sh\` — detached, slow on Windows; paste into \`## Notes\`.
+2. ${RV#1. }
+3. \`bash scripts/phase.sh set \$1 REVIEW\`
+4. Commit.
+5. \`bash scripts/check-boundaries.sh\`
+EOF
+)"
+steps="$(cat "$d/$ADVANCE")"
+printf '%s\n' "${steps//Must fix/elsewhere}" > "$d/$ADVANCE"
+assert_eq "the review's out-of-order line prints before its routing-word lines" \
+  "$(disorder "$STEP_REVIEW" 2 "$STEP_SELFTEST" 1)
+$(no_rword 'Must fix')" "$(procedure_problems "$d")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-068 AC-2: the review step says how a finding routes"
+
+for w in "${REVIEW_WORDS[@]}"; do
+  fresh_case "rword-${w//[^a-zA-Z]/_}"
+  steps="${GOOD_STEPS//"$w"/elsewhere}"
+  write_advance "$d" "$GOOD_TOOLS" "$steps" "Prose outside the steps says $w."
+  assert_eq "\`$w\` missing from the review step but present elsewhere in the file gives one line naming it" \
+    "$(no_rword "$w")" "$(procedure_problems "$d")"
+done
+
+fresh_case rword-verdict-negated
+write_advance "$d" "$GOOD_TOOLS" "${GOOD_STEPS//Verdict: Ship./Verdict: fix 1 first.}"
+assert_eq "the negated verdict \`Verdict: fix 1 first.\` does not satisfy \`Verdict: Ship.\`" \
+  "$(no_rword 'Verdict: Ship.')" "$(procedure_problems "$d")"
+
+fresh_case rword-verdict-no-stop
+write_advance "$d" "$GOOD_TOOLS" "${GOOD_STEPS//Verdict: Ship./Verdict: Ship}"
+assert_eq "\`Verdict: Ship\` without its full stop does not satisfy the needle" \
+  "$(no_rword 'Verdict: Ship.')" "$(procedure_problems "$d")"
+
+fresh_case rwords-in-next-step
+write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
+1. Review the change with the `diff-review` skill.
+2. `bash scripts/selftest.sh` — detached, slow on Windows; `## Notes`. Paste
+   the review into `## Diff review`; a Must fix means `bash scripts/gates.sh`
+   again; go on at `Verdict: Ship.`.
+3. `bash scripts/phase.sh set $1 REVIEW`
+4. Commit.
+5. `bash scripts/check-boundaries.sh`
+EOF
+)"
+assert_eq "the four routing words in a DIFFERENT step do not satisfy the review step" \
+  "$(no_rword '## Diff review')
+$(no_rword 'Must fix')
+$(no_rword 'bash scripts/gates.sh')
+$(no_rword 'Verdict: Ship.')" "$(procedure_problems "$d")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-068 AC-3: complete-story's bullet names the review before the self-test"
+
+fresh_case bullet-no-review
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then sets the phase.'
+assert_eq "a bullet naming the self-test but not \`diff-review\` gives one \"does not name\" line" \
+  "$NO_BULLET_REVIEW" "$(procedure_problems "$d")"
+
+fresh_case bullet-review-after
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then a `diff-review`.'
+assert_eq "a bullet naming \`diff-review\` only after the self-test gives one \"names … after\" line" \
+  "$BULLET_REVIEW_AFTER" "$(procedure_problems "$d")"
+
+fresh_case bullet-review-after-next-line
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then
+  a `diff-review` on a continuation line.'
+assert_eq "\`diff-review\` on a later line of the bullet, after the self-test, is still after it" \
+  "$BULLET_REVIEW_AFTER" "$(procedure_problems "$d")"
+
+fresh_case bullet-review-elsewhere
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then sets the phase.' \
+  'Elsewhere: run a `diff-review` at some point.'
+assert_eq "\`diff-review\` present elsewhere in the file but not in that bullet gives one \"does not name\" line" \
+  "$NO_BULLET_REVIEW" "$(procedure_problems "$d")"
+
+fresh_case bullet-review-next-bullet
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then sets the phase.
+- Then a `diff-review`.'
+assert_eq "\`diff-review\` in the next bullet is not in the GATES → REVIEW bullet" \
+  "$NO_BULLET_REVIEW" "$(procedure_problems "$d")"
+
+fresh_case bullet-review-unquoted
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a diff-review, then the full `bash scripts/selftest.sh`**.'
+assert_eq "diff-review without its backticks is not the needle" \
+  "$NO_BULLET_REVIEW" "$(procedure_problems "$d")"
+
+fresh_case bullet-first-review-wins
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, then the full `bash scripts/selftest.sh`**, and a second `diff-review` of any fix.'
+assert_eq "the FIRST \`diff-review\` is judged: before the self-test, a later mention does not matter" \
+  "" "$(procedure_problems "$d")"
+
+fresh_case bullet-first-selftest-wins
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, a `diff-review`, then `bash scripts/selftest.sh` again.'
+assert_eq "the FIRST self-test is judged: a \`diff-review\` before only its second mention is still after" \
+  "$BULLET_REVIEW_AFTER" "$(procedure_problems "$d")"
+
+fresh_case bullet-neither
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW sets the phase before committing.**'
+assert_eq "a bullet naming neither gives the self-test line, then the review line" \
+  "$NO_BULLET_NEEDLE
+$NO_BULLET_REVIEW" "$(procedure_problems "$d")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-068 AC-4: the diff-review skill carries the review's rules"
+
+fresh_case skill-missing
+rm -f "$d/$SKILL"
+assert_eq "a missing skill file gives only \`file is missing\`" \
+  "$S: file is missing" "$(procedure_problems "$d")"
+
+for w in "${SKILL_NEEDLES[@]}"; do
+  fresh_case "skill-needle-${w//[^a-zA-Z]/_}"
+  write_skill "$d" "${GOOD_SKILL//"$w"/elsewhere}"
+  assert_eq "the skill without \`$w\` gives one \"does not say\" line naming it" \
+    "$(no_say "$w")" "$(procedure_problems "$d")"
+done
+
+for w in "${PONYTAIL_NEEDLES[@]}"; do
+  fresh_case "skill-ponytail-${w//[^a-zA-Z]/_}"
+  write_skill "$d" "$GOOD_SKILL
+
+$w is enough."
+  assert_eq "the skill carrying \`$w\` gives one \"carries ponytail's\" line" \
+    "$(ponytail "$w")" "$(procedure_problems "$d")"
+done
+
+fresh_case skill-no-name
+write_skill "$d" "${GOOD_SKILL//"$SKILL_NAME"/title: diff-review}"
+assert_eq "a frontmatter with no \`name: diff-review\` line gives that line only" \
+  "$NO_NAME" "$(procedure_problems "$d")"
+
+fresh_case skill-name-in-body
+write_skill "$d" "${GOOD_SKILL//"$SKILL_NAME"/title: diff-review}
+
+$SKILL_NAME"
+assert_eq "\`name: diff-review\` in the body, not the frontmatter, does not count" \
+  "$NO_NAME" "$(procedure_problems "$d")"
+
+fresh_case skill-name-longer
+write_skill "$d" "${GOOD_SKILL//"$SKILL_NAME"/name: diff-review-v2}"
+assert_eq "a frontmatter line that only CONTAINS \`name: diff-review\` is not equal to it" \
+  "$NO_NAME" "$(procedure_problems "$d")"
+
+fresh_case skill-no-frontmatter
+write_skill "$d" "${GOOD_SKILL//---/}"
+assert_eq "a \`name: diff-review\` line with no frontmatter around it is not in a frontmatter" \
+  "$NO_NAME" "$(procedure_problems "$d")"
+
+fresh_case skill-crlf
+write_skill "$d" "${GOOD_SKILL//$'\n'/$'\r\n'}"
+assert_eq "a CRLF skill file reads the same as an LF one" \
+  "" "$(procedure_problems "$d")"
+
+fresh_case skill-order
+s="${GOOD_SKILL//"$SKILL_NAME"/title: diff-review}"
+s="${s//No case, no finding./elsewhere}"
+write_skill "$d" "$s
+
+one small test will do."
+assert_eq "the skill's lines print in C-4 order: frontmatter, then needles, then ponytail needles" \
+  "$NO_NAME
+$(no_say 'No case, no finding.')
+$(ponytail 'one small test')" "$(procedure_problems "$d")"
+
+fresh_case all-three-files
+rm -f "$d/$SKILL"
+write_advance "$d" "$GOOD_TOOLS" "$REST"
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then sets the phase.'
+assert_eq "the three files are judged in order: advance-story, complete-story, then the skill" \
+  "$(no_step "$STEP_REVIEW")
+$NO_BULLET_REVIEW
+$S: file is missing" "$(procedure_problems "$d")"
 
 summary "procedure"
