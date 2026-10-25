@@ -5,7 +5,7 @@ slug: the-full-self-test-step-runs-with-selfte
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-072-the-full-self-test-step-runs-with-selfte
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -520,3 +520,12 @@ new AC-3 line appear, not a pass.
   advance-story.md:210, complete-story.md:31, and CLAUDE.md:159 (the plain
   command, unchanged by design). Resolved models: RED `test-developer` on
   Opus 5.5 (`claude-opus-5-5`), its declared `opus`, no override.
+- **GREEN verified by the orchestrator (2026-10-25).** Reran
+  `bash scripts/selftest.sh procedure`: 98 assertions executed, 98 declared,
+  suite passed (RED: 97 passed, 1 failed); `gates.sh --fast` exit 0. GREEN
+  wrote only the two command files; the feature-developer also reported
+  `policy` 17/0 and `shipped-docs` 14/0. Step 2 of advance-story was reflowed
+  to 80 columns, so its diff rewraps the paragraph; the words change only in
+  the duration sentence and the new "other test runs" sentence. Resolved
+  model: GREEN `feature-developer` on Opus 5.5 (`claude-opus-5-5`), its
+  declared `opus`, no override.
