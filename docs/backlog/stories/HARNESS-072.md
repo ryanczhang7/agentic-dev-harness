@@ -4,8 +4,8 @@ title: The full self-test step runs with SELFTEST_JOBS=4
 slug: the-full-self-test-step-runs-with-selfte
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-072-the-full-self-test-step-runs-with-selfte
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -207,10 +207,217 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One suite, `.claude/tests/procedure.test.sh`, pure bash as before. The checker
+`procedure_problems` lives in the suite itself, so the level is the same for
+every case: the checker run over the real tree (where it must print nothing)
+and over fixtures built compliant by construction with one thing regressed
+(where it must print exactly the AC's line). All five ACs are mechanical; the
+fault lines in the new HARNESS-072 block are the ACs' text written out
+literally, not built from the suite's helpers, so a helper drifting from the AC
+is caught.
+
+| Test | AC |
+|---|---|
+| `procedure_problems over the real tree prints nothing ...` (existing, now judged against the new needle and fourth word) | AC-1, AC-2, AC-3 (real tree), AC-5 |
+| `old-spelling-step`: GOOD_STEPS with the token replaced by `` `bash scripts/selftest.sh` `` gives exactly the AC-1 line | AC-1 control |
+| `other-value-step`: `SELFTEST_JOBS=1` instead of `=4` gives the AC-1 line (the value is part of the token) | AC-1 |
+| `tool-pattern-unchanged`: an allowed-tools entry `Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*)` does not permit `Bash(bash scripts/selftest.sh:*)` | Contract: TOOL_SELFTEST unchanged |
+| `old-spelling-bullet`: GOOD_BULLET with ``the full `bash scripts/selftest.sh` `` gives exactly the AC-2 line | AC-2 control |
+| `other-value-bullet`: the bullet at `SELFTEST_JOBS=1` gives the AC-2 line | AC-2 |
+| `word-other-test-runs`: `other test runs` removed from the step, present in prose, gives exactly the AC-3 line | AC-3 control |
+| `other-test-runs-in-next-step`: the phrase in the phase step only gives the AC-3 line | AC-3 |
+| `targeted-new-spelling`: `` `SELFTEST_JOBS=4 bash scripts/selftest.sh reporting` ``, else compliant, gives exactly one "do not name" line | AC-4 |
+| `selftest-targeted` (existing, moved to the new spelling), `bullet-targeted` (moved) | AC-4 |
+| `the compliant fixture is silent` (existing; now carries the new token and `other test runs`) | AC-4 control |
+| every pre-existing HARNESS-032 / HARNESS-068 case, moved to the new token, verdict unchanged | regression |
+| `bash scripts/selftest.sh selftest`, COUNTS table vs `floors.conf` | AC-5 |
 
 ## Handoff: RED -> GREEN
+
+**Command.** `bash scripts/selftest.sh procedure` (last line
+`procedure: N passed, M failed`). The suite alone: `bash .claude/tests/procedure.test.sh`.
+
+**RED output** (`bash scripts/selftest.sh procedure`, this tree, local run;
+the suite takes about 45-170 s on this host depending on load):
+
+```
+  the real tree (AC-1 to AC-4)
+    FAIL procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, the diff-review step comes before the full self-test, which comes before the phase change, complete-story names the review before the self-test, and the diff-review skill carries its rules
+         expected: 
+         actual:   .claude/commands/advance-story.md: its GATES → REVIEW steps do not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`
+         .claude/commands/complete-story.md: its GATES → REVIEW bullet does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`
+...
+procedure: 97 passed, 1 failed
+```
+
+**Why this is the right failure, line by line.**
+
+- Line 1 is AC-1's fault line, byte for byte, for advance-story: step 2 still
+  reads `` `bash scripts/selftest.sh` ``, which is not the token. Because the
+  token is missing (`ks=-1`), the C-4 suppression rules keep everything else
+  about that step quiet: the step-order checks are skipped (`missing=1`), the
+  four-word check is skipped (it runs only when `ks != -1`, so the absent
+  `other test runs` is NOT reported today - it will be judged the moment the
+  token lands), and the review step's order check against the self-test is
+  skipped. The review step itself is found and its words are present, so it
+  prints nothing.
+- Line 2 is AC-2's fault line for complete-story: the bullet reads
+  ``the full `bash scripts/selftest.sh` ``. The `diff-review`-before-self-test
+  check runs only when the bullet contains the token, so it is suppressed.
+- Nothing else fails: 97 fixture assertions pass, every pre-existing one with
+  its expected value unchanged.
+
+**What GREEN writes** (the Contract's step text and bullet, nothing here adds
+to it). What the suite pins about the two command files:
+
+- advance-story: the `**GATES → REVIEW.**` paragraph's step containing the
+  whole token `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` `` - ON ONE LINE:
+  the checker matches a fixed string inside the step's newline-joined lines,
+  so a wrap between `SELFTEST_JOBS=4` and `bash` is "does not name". It must
+  be numbered after the `diff-review` step and before the phase step, and that
+  same step (first line plus its indented continuation lines, no blank line
+  in between) must contain `detached`, `Windows`, `## Notes` and
+  `other test runs`. The token must not appear in an EARLIER step (first step
+  wins).
+- complete-story: the `- **GATES → REVIEW` bullet (up to the next `- ` line or
+  blank line) contains the token, on one line, with `` `diff-review` `` before
+  its first occurrence.
+- allowed-tools in both files: unchanged, `Bash(bash scripts/selftest.sh:*)`.
+  Do not "update" it to carry the variable; `tool-pattern-unchanged` pins that.
+
+Not constrained: the rest of the step's prose (the Contract's sentences are
+the spec for it, the suite checks only the four words), where in the step the
+words sit, and the bullet's other wording.
+
+**Tests, one line each** (all in `.claude/tests/procedure.test.sh`, new block
+"HARNESS-072" at the end):
+
+- `old-spelling-step` - old spelling in step 2, else compliant: exactly the AC-1 line (AC-1 control)
+- `other-value-step` - `SELFTEST_JOBS=1`: the AC-1 line (AC-1, the value is part of the token)
+- `tool-pattern-unchanged` - allowed-tools carrying the variable does not permit the tool entry (Contract, TOOL_SELFTEST)
+- `old-spelling-bullet` - old spelling in the bullet: exactly the AC-2 line (AC-2 control)
+- `other-value-bullet` - `SELFTEST_JOBS=1` in the bullet: the AC-2 line (AC-2)
+- `word-other-test-runs` - phrase removed from the step, present in prose: exactly the AC-3 line (AC-3 control)
+- `other-test-runs-in-next-step` - phrase in the phase step only: the AC-3 line (AC-3)
+- `targeted-new-spelling` - `` `SELFTEST_JOBS=4 bash scripts/selftest.sh reporting` ``: one "do not name" line (AC-4)
+- the real-tree assertion (AC-1..AC-3 against the real files; AC-5 through the suite passing)
+
+**Cases moved.** Every fixture that named `` `bash scripts/selftest.sh` `` now
+names the new token (one `sed` over the test file for `` `bash scripts/selftest.sh ``
+only, so `TOOL_SELFTEST`, `GOOD_TOOLS` and the allowed-tools fixtures, which
+spell `Bash(bash ...`, did not move). Every fixture self-test step whose case
+expects no word line gained `other test runs` (`slow on Windows or beside
+other test runs`; REST's step 2 gained `When other test runs share the host it
+is slower, not wrong.`). The checker's three hard-coded fault lines (word,
+bullet "does not name", bullet "names diff-review after") now quote the new
+token, as do `no_word`, `NO_BULLET_NEEDLE`, `BULLET_REVIEW_AFTER`. HARNESS-068's
+`review-after-selftest`, `review-same-step-as-selftest`,
+`review-order-before-words`, `rwords-in-next-step` and every `bullet-*` case
+moved with their verdicts unchanged. `words-in-next-step` kept its three-line
+verdict by putting `other test runs` in the self-test step (the other three
+words stay in the next step); the new `other-test-runs-in-next-step` covers
+the fourth word in a different step. The HARNESS-032 AC-3 word loop still
+iterates the original three words; the fourth has its own case.
+
+**Passed on arrival, and what earns it.** Every fixture case passes on
+arrival, because the checker is in the suite and moved in the same edit. Each
+new control was earned by a lenient-checker mutation through `mutate.sh` on
+the suite (restore verified by `cmp` each time), on a local run:
+
+```
+== p1: first_step "$STEP_SELFTEST" -> first_step "bash scripts/selftest.sh" (advance-story accepts any spelling)
+    FAIL procedure_problems over the real tree prints nothing: ...
+    FAIL a targeted `SELFTEST_JOBS=4 bash scripts/selftest.sh reporting` is not the full run: one "do not name" line
+    FAIL a step reading the old spelling `bash scripts/selftest.sh`, everything else compliant, gives exactly the AC-1 line
+    FAIL a step running `SELFTEST_JOBS=1 bash scripts/selftest.sh` does not name the token: the value is part of it
+    FAIL a step naming `SELFTEST_JOBS=4 bash scripts/selftest.sh reporting`, everything else compliant, gives exactly one "do not name" line
+procedure: 93 passed, 5 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_procedure.test.sh.20261025T202249Z.1751.bak) ===
+== p2: STEP_WORDS without 'other test runs'
+    FAIL procedure_problems over the real tree prints nothing: ...
+    FAIL `other test runs` missing from the self-test step but present elsewhere in the file gives exactly the AC-3 line
+    FAIL `other test runs` in a DIFFERENT step does not satisfy the self-test step
+procedure: 95 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_procedure.test.sh.20261025T202329Z.2245.bak) ===
+== p3: the bullet's *"$STEP_SELFTEST"* -> *"bash scripts/selftest.sh"* (complete-story accepts any spelling)
+    FAIL procedure_problems over the real tree prints nothing: ...
+    FAIL a targeted run in the bullet is not the full self-test
+    FAIL a bullet reading `the full `bash scripts/selftest.sh`` (old spelling) gives exactly the AC-2 line
+    FAIL a bullet running `SELFTEST_JOBS=1 bash scripts/selftest.sh` does not name the token
+procedure: 94 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_procedure.test.sh.20261025T202424Z.2689.bak) ===
+```
+
+(The real-tree assertion's FAIL lines are elided above to `...`; under p1-p3
+it fails as it does in plain RED, because the real tree is not yet
+compliant.) `tool-pattern-unchanged` was not given its own mutation: the only
+mutation of `TOOL_SELFTEST` breaks every fixture at once, so it would not
+isolate the case. It is earned by construction only, and that is a gap.
+
+**Negative controls, expected values.** Nothing here is measured; the controls
+are exact-string compares, and unlike an import-failing RED every one of them
+has executed in this RED (97 passed).
+
+| Control | Threshold | Expected | Observed in RED |
+|---|---|---|---|
+| `old-spelling-step` | exact line | AC-1 line, 1 line | 1 line, equal (pass) |
+| `old-spelling-bullet` | exact line | AC-2 line, 1 line | 1 line, equal (pass) |
+| `word-other-test-runs` | exact line | AC-3 line, 1 line | 1 line, equal (pass) |
+| `targeted-new-spelling` | exact line | one "do not name" line | 1 line, equal (pass) |
+| `the compliant fixture is silent` | empty | empty | empty (pass) |
+| real tree | empty | empty after GREEN | 2 lines (AC-1, AC-2), red |
+
+**Floors.** `procedure` raised 37 -> 98 (97 passed + 1 failed, the executed
+count of the RED run) in `.claude/tests/floors.conf` and in `selftest.test.sh`'s
+COUNTS table. `bash scripts/selftest.sh selftest` after the edit (local):
+
+```
+selftest: 268 passed, 0 failed
+
+assertion floors: all 1 suite(s) met their declared floor (268 assertions executed, 268 declared).
+1 harness suite(s) passed.
+```
+
+`selftest.sh` reads the floor against the PASSED count (`executed_count`
+sets `COUNT="$passed"`), so in RED `bash scripts/selftest.sh procedure` also
+prints a second red line that clears in GREEN with the real-tree assertion:
+
+```
+procedure: 97 passed, 1 failed
+FAIL procedure  did 97 units of work, below the floor of 98 in .claude/tests/floors.conf
+
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+```
+
+GREEN should see `procedure: 98 passed, 0 failed` and the floor met at 98.
+
+`bash scripts/gates.sh --fast`: this repository has no configured gates
+(`All required gates passed (0 ran, 5 unconfigured, 0 known).`); the
+self-test is the judge, as `## Context` says.
+
+**Deferred verifications.** DV-1 and DV-2 are owned by GATES and I did not run
+them; they cannot run in RED, because the new token is not in either command
+file yet and `mutate.sh` refuses an expression that changes nothing. Read-only
+check against today's text: `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` ``
+occurs on 0 lines of either file today (old spelling: advance-story line 210,
+complete-story line 31). The sed expression
+`` s/`SELFTEST_JOBS=4 bash scripts\/selftest.sh`/`bash scripts\/selftest.sh`/ ``
+is well formed and will match once GREEN writes the token on one line, which
+the suite requires anyway. The expected outcome under each is exactly AC-1's
+line (DV-1) and AC-2's line (DV-2) from the real-tree assertion - the same
+lines this RED prints today.
+
+**Files touched.** `.claude/tests/procedure.test.sh`, `.claude/tests/floors.conf`,
+`.claude/tests/selftest.test.sh`, this story (`## Test plan`, this section).
+`.claude/commands/advance-story.md` and `complete-story.md` are untouched
+(`git diff --quiet -- .claude/commands` exits 0).
+
+**For GREEN.** No export shape: the suite sources only `_lib.sh` and reads the
+two command files as text. Keep the token on one line in both files. The C-4
+suppression means `other test runs` is not judged until the token is in the
+step - so a GREEN that writes the token but forgets the sentence will see a
+new AC-3 line appear, not a pass.
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
      to the Feature Developer, whose context is fresh. Must contain:
@@ -301,3 +508,15 @@ name, below the table.
   `plan.sh waves` places them in three waves: 072, then 073, then 074. Run
   them one after another; 072 first, because it makes every later full
   self-test on this host cheaper.
+- **RED verified by the orchestrator (2026-10-25).** Reran
+  `bash scripts/selftest.sh procedure`: `procedure: 97 passed, 1 failed`, the
+  real-tree assertion printing exactly the AC-1 line (advance-story) and the
+  AC-2 line (complete-story), plus the below-floor line (97 passes against the
+  new floor of 98, which selftest.sh judges on passes). `procedure` floor is
+  98 in both `floors.conf:54` and `selftest.test.sh:545`. Both command files
+  untouched (`git diff --quiet -- .claude/commands`); `mutate.sh --check`
+  clean. Callers of the step token, checked at PLANNED → RED with
+  `grep -rn 'bash scripts/selftest.sh' .claude/commands .claude/skills CLAUDE.md`:
+  advance-story.md:210, complete-story.md:31, and CLAUDE.md:159 (the plain
+  command, unchanged by design). Resolved models: RED `test-developer` on
+  Opus 5.5 (`claude-opus-5-5`), its declared `opus`, no override.
