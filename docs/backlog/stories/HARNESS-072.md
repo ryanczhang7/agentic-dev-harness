@@ -496,12 +496,68 @@ new AC-3 line appear, not a pass.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Round 1 (2026-10-25, over `git diff main...HEAD` at `1214957`)
+
+Reviewer: a fresh `feature-developer` dispatch, resolved to **Opus 5.5
+(`claude-opus-5-5`)**, its declared `opus`, no override. It changed no file.
+The branch also carries `4a7b47b`, HARNESS-075's PLANNED story file, committed
+onto this branch by another session; it was left out of the review.
+
+What this change does: It changes the full self-test in GATES → REVIEW from
+`bash scripts/selftest.sh` to `SELFTEST_JOBS=4 bash scripts/selftest.sh`, in
+step 2 of `/advance-story` and in `/complete-story`'s bullet. Step 2 now gives
+the measured durations and says that a run sharing the host with other test
+runs is slower, not wrong. `procedure.test.sh` moves its needle to the new
+token, adds the word `other test runs` and 8 cases, and the `procedure` floor
+goes from 37 to 98 in both places it is recorded.
+
+Checked and sound: `selftest.sh` accepts the value (lines 83-89), run lock and
+buffers unchanged, JOBS=1 vs 3 equality already pinned; the phase guard lets
+the command through; the needle is not satisfied by `=40`, `=1` or a named
+suite; floor 98 is the executed count; no other file quotes the old step
+text; the numbers match Context; no sentence lost in the reflow.
+
+**Must fix:**
+
+1. **The step's command probably does not match the tool permission the commands grant** (`.claude/commands/advance-story.md:5,210`, `.claude/commands/complete-story.md:5,31`)
+   - **What this is:** Both commands allow the self-test through `allowed-tools: … Bash(bash scripts/selftest.sh:*)`, a prefix rule. Step 2 now runs a command that starts with `SELFTEST_JOBS=4 `.
+   - **Problem:** Claude Code does not strip an arbitrary variable assignment before matching an allow rule, so the command does not match; the orchestrator gets a permission prompt, or a refusal in an unattended run, and the easy way out is the serial run this story exists to stop.
+   - **Fix:** Add `Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*)` next to the existing entry in both files, keeping the existing one.
+   - **If we skip it:** The first story to use the new step stalls on a prompt, or quietly falls back to the serial run.
+
+**Nice to have:**
+
+2. **"Slower, not wrong" now covers only a shared host** (`advance-story.md`, step 2)
+   - **What this is:** The old step said "That is slow, not wrong" for any slow host.
+   - **Problem:** The new sentence begins "When other test runs share the host", so an idle slow host loses the "keep going" instruction.
+   - **Fix:** Drop the condition, e.g. "A slow run is slower, not wrong, most often because other test runs share the host: keep the value, do not swap in named suites."
+   - **If we skip it:** Slightly less guidance on a slow idle host.
+
+Not checked: whether the permission matcher strips `SELFTEST_JOBS=4 `.
+
+Verdict: fix 1 first.
+
+**Orchestrator's disposition (lead-po).** Finding 1's premise was checked
+independently against the Claude Code permissions documentation
+(code.claude.com/docs/en/permissions, Bash rule matching): "Claude Code also
+strips a leading assignment of certain known-safe environment variables, so
+`Bash(npm test *)` matches `NODE_ENV=test npm test`. An allow rule won't match
+past an assignment of any other variable." `SELFTEST_JOBS` is a project
+variable, so the finding stands: fixed in GATES by a feature-developer
+dispatch, gates re-run, and these steps start over with a review of the fix.
+Finding 2 is Nice to have; it is a one-sentence edit in the same paragraph as
+the fix, so it is taken in the same dispatch rather than deferred. The
+`procedure` suite checks that each required entry is present (`has_entry`),
+not the exact list, so an added entry does not touch a frozen test.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-25T21:41:41Z
-    commit: 78f0f0a
+    run:    2026-10-25T23:18:40Z
+    commit: 4a7b47b (working tree had uncommitted changes)
     tree:   16356880ca4136c7bf11443a5a0263983856d430
     result: pass (0 ran, 7 unconfigured, 0 known)
 

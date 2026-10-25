@@ -2,7 +2,7 @@
 description: Move one story forward by exactly one phase
 model: fable
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -218,8 +218,9 @@ Then, **in this order**:
    minutes. On the Windows host this harness is developed on, the self-test
    took 336 s at `SELFTEST_JOBS=4` against 1,135 s serial (HARNESS-036), and
    2,894-17,015 s serial while other test runs shared the host
-   (HARNESS-050..068). When other test runs share the host the run is
-   slower, not wrong: keep the value, do not swap in named suites. If a run
+   (HARNESS-050..068). A slow run is slower, not wrong, most often because
+   other test runs share the host: keep the value, do not swap in named
+   suites. If a run
    goes far past the last duration a story recorded, look for an orphaned
    self-test or gate run before blaming the host; one run stalled past an
    hour beside an orphan and passed alone. Judge it by its exit status and
