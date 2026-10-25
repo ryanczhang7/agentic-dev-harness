@@ -5,7 +5,7 @@ slug: the-full-self-test-step-runs-with-selfte
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-072-the-full-self-test-step-runs-with-selfte
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -166,9 +166,43 @@ RED cannot run it: the needle does not match the tree until GREEN edits the
 command, so the suite is red for the right reason throughout RED. Paste the
 failing line and `mutate.sh`'s restore line.
 
+Result (GATES, 2026-10-25, run by the orchestrator; ok lines elided):
+
+```
+=== mutate: .claude/commands/advance-story.md (1 line(s) changed by s/`SELFTEST_JOBS=4 bash scripts\/selftest.sh`/`bash scripts\/selftest.sh`/) ===
+=== mutate: running bash scripts/selftest.sh procedure ===
+    FAIL procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, the diff-review step comes before the full self-test, which comes before the phase change, complete-story names the review before the self-test, and the diff-review skill carries its rules
+         expected: 
+         actual:   .claude/commands/advance-story.md: its GATES → REVIEW steps do not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`
+procedure: 97 passed, 1 failed
+FAIL procedure  did 97 units of work, below the floor of 98 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261025T213741Z.18834.bak) ===
+```
+
+Exactly the AC-1 line; the single real-tree assertion went red; file restored.
+This is also the orchestrator's one "does the suite discriminate" mutation (a
+lone assertion caught it), and `procedure` was 98/0 again afterwards.
+
 **DV-2 (the other command). Owner: GATES.** The same mutation on
 `.claude/commands/complete-story.md`'s bullet **must** go red with the AC-2
 fault line. One line of `sed`, one suite run, paste both.
+
+Result (GATES, 2026-10-25, run by the orchestrator; ok lines elided):
+
+```
+=== mutate: .claude/commands/complete-story.md (1 line(s) changed by s/`SELFTEST_JOBS=4 bash scripts\/selftest.sh`/`bash scripts\/selftest.sh`/) ===
+=== mutate: running bash scripts/selftest.sh procedure ===
+    FAIL procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, the diff-review step comes before the full self-test, which comes before the phase change, complete-story names the review before the self-test, and the diff-review skill carries its rules
+         expected: 
+         actual:   .claude/commands/complete-story.md: its GATES → REVIEW bullet does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`
+procedure: 97 passed, 1 failed
+FAIL procedure  did 97 units of work, below the floor of 98 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_complete-story.md.20261025T213824Z.19579.bak) ===
+```
+
+Exactly the AC-2 line, file restored.
 
 ## Model guidance
 
@@ -464,10 +498,21 @@ new AC-3 line appear, not a pass.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-25T21:41:41Z
+    commit: 78f0f0a
+    tree:   16356880ca4136c7bf11443a5a0263983856d430
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
