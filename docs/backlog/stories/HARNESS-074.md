@@ -129,6 +129,21 @@ The required gate that fails if this story's artifact breaks: the self-test
   and the run proceeds with its exit status and stdout unchanged. The warning
   path contains no `sleep`, `read` or `wait`: the fixture run with a foreign
   listing (AC-4) finishes within the same bound the empty-listing run does.
+- **AC-8** — Given an MSYS-shaped listing holding X (a foreign
+  `bash scripts/selftest.sh`) and, after it, the continuation rows Git Bash
+  prints for a multi-line command - rows whose PID or PPID field is not all
+  digits, e.g. `# a b c d bash scripts/selftest.sh` and
+  `cd /d/a && git -C /d/b/c status && bash scripts/selftest.sh` - when
+  `host_load_others S S <listing>` runs, then it prints exactly the one line
+  for X, and no line for any continuation row. *Control:* the same rows with
+  numeric PID and PPID fields ARE printed - the guard is on the PID/PPID
+  shape, not on the command text.
+- **AC-9** — Given `HARNESS_PS_LISTING` empty and a stub `ps` first on `PATH`
+  that prints a listing holding one foreign run, when
+  `host_load_warn S S` runs, then it prints the AC-4 header line and that
+  run's pid line. Given `HARNESS_PS_LISTING` empty and no `ps` on `PATH`,
+  then it prints exactly the AC-5 "cannot list" line. (The branch that reads
+  the real host is the one CI's top-level run uses.)
 
 ## Contract
 
@@ -319,6 +334,27 @@ correcting AC-2's clause that P and G match the patterns").
   own negative list names `bash C:\x\run-selftest091.sh`. Recorded in
   `## Notes` before this amendment.
 
+**AC-8 and AC-9 added, 2026-10-26, approved by the user in chat** ("Take
+findings 1 and 3 in this story: return to RED for the junk-row and
+real-ps-branch tests, fix the junk-row guard in GREEN, and file finding 2
+(two-field STIME) as a follow-up story").
+
+- **What it said:** AC-1 to AC-7; nothing on continuation rows or on the
+  `ps -ef` branch.
+- **What it says now:** AC-8 (rows whose PID or PPID is not all digits are
+  never reported) and AC-9 (the un-injected branch of `host_load_listing`
+  runs `ps`, and says "cannot list" when there is none).
+- **Why:** the GATES diff review's Should-fix 1 and 3. Finding 1 was
+  reproduced on this host by the reviewer: a Bash-tool command whose second
+  line was `# a b c d bash scripts/selftest.sh` made `host_load_warn $$ $$`
+  report `4 other test run(s)`, all with pid `a`, from the shell running the
+  check. Finding 3: every case injected a listing, so the real-host branch -
+  the one CI's top-level run uses - had no test; `ps -eo args`, a dropped
+  `command -v ps` or an inverted `|| return 1` left 48/48 green. Finding 2
+  (two-field STIME for a day-old process) is unverified and goes to a
+  follow-up story, not here.
+- **Reproduction (orchestrator, independent of the reviewer's command):**
+  see `## Notes`, "Finding 1 reproduced by the orchestrator".
 
 ## Model guidance
 
@@ -754,6 +790,57 @@ so a slower host moves both sides.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Run at GATES → REVIEW step 1, 2026-10-26, over `git diff main...HEAD` at
+`1bf2c5b`. Reviewer: a fresh `feature-developer` dispatch, resolved to **Opus
+5.5 (`claude-opus-5-5`)**, its declared `opus`, no override. It changed no
+file. Report as returned, lightly condensed in the checked list:
+
+What this change does: Before its first suite, `scripts/selftest.sh` now
+sources a new `scripts/host-load.sh` and reads `ps -ef`. If it finds other
+harness test runs outside this run's own process tree, it reports them on
+stderr. `.claude/tests/_lib.sh` exports `HARNESS_PS_LISTING=/dev/null`, so
+every fixture run a suite starts sees an empty listing and prints nothing. A
+new 48-assertion suite pins the behaviour against injected listings.
+
+Checked and sound: descendant and ancestor sets separate, loop-bounded; the
+amended `C:\Program Files\...\bash.exe` rule; `-` as stdin in gawk, mawk,
+BusyBox and BWK awk; a bad header under pipefail gives "cannot list" even with
+SIGPIPE; `local found` then `found=$(...) || {` keeps the status; every
+golden-running suite sources `_lib.sh` and no `env -u`/`env -i` strips the
+export; `refresh-harness.sh` ships `.claude/tests` with `scripts/*.sh`; CI's
+step shell is an ancestor and matches nothing; Linux/macOS `ps -ef` print full
+commands when piped; `lib` 324/0; `host-load` 48/48 = floor, whole-output
+needles; cost ~60 ms per fixture run, a few seconds per full run, immaterial.
+
+**Should fix:**
+
+1. **Junk rows from a multi-line command produce a false warning, including one about this run's own command** (`scripts/host-load.sh:73-82`)
+   - **What this is:** The per-row parse that takes PID, PPID and the command by field number.
+   - **Problem:** On Git Bash, `ps -ef` prints each line of a multi-line command as a row of its own. Reproduced on this host: a Bash-tool command whose second line was `# a b c d bash scripts/selftest.sh` made `host_load_warn $$ $$` print `selftest: 4 other test run(s) are on this host` and four `pid a: bash scripts/selftest.sh` lines, from the shell running the check. `cd /d/a && git -C /d/b/c status && bash scripts/selftest.sh` also matches, since the sixth word holds a `/` and the rule scans on.
+   - **Fix:** Skip any data row whose PID or PPID is not all digits. Needs a RED test first.
+   - **If we skip it:** Now and then a run reports foreign runs that do not exist; the warning's job is to explain slowness accurately.
+
+2. **A Git Bash run more than a day old is probably never reported** (`scripts/host-load.sh:73-82`)
+   - **What this is:** The same field-number parse, when STIME is two words.
+   - **Problem:** If Cygwin `ps` prints `Oct 25` for a day-old process, the command starts a field later and `ryanc 123 1 ? Oct 25 bash scripts/selftest.sh` is missed - the orphaned-run case the Context names.
+   - **Fix:** Confirm the format on a host with an old process; if two words, shift the command start by one when `$cc` is all digits after a month. Plus a RED fixture row.
+   - **If we skip it:** The warning is silent in the case it most needs to speak.
+
+3. **The real `ps -ef` branch has no test** (`scripts/host-load.sh:33-40`)
+   - **What this is:** `host_load_listing`'s branch when `HARNESS_PS_LISTING` is empty.
+   - **Problem:** Every case injects a listing, so the branch never runs under test; `ps -eo args`, a dropped `command -v ps`, or an inverted `|| return 1` all leave 48/48 green.
+   - **Fix:** Two cases with `HARNESS_PS_LISTING=` and a stub `ps` first on `PATH`: one printing a fixture listing, one absent. A return to RED.
+   - **If we skip it:** A regression in the one path that reads the real host goes unnoticed; DV-2 was waived.
+
+Not checked: whether MSYS/Cygwin `ps -ef` really prints a two-word STIME for a day-old process; nothing on this host was that old.
+
+Verdict: Ship.
+
+**Orchestrator's disposition (lead-po):** the user chose (2026-10-26) to take findings 1 and 3 in this story - AC-8 and AC-9 added under `## Amendments`, a return to RED for their tests, the junk-row guard in GREEN - and to file finding 2 as a follow-up story. See
+`## Notes`.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -868,3 +955,21 @@ so a slower host moves both sides.
      so the run is still reported.
   5. `host_load_others` on an empty file returns 0, not 1: an empty file has
      no header to refuse, and AC-6 needs an empty listing to print nothing.
+- **Finding 1 reproduced by the orchestrator (2026-10-26), with a different
+  command from the reviewer's.** A Bash-tool call of three lines -
+  `unset HARNESS_PS_LISTING; . scripts/host-load.sh`, then the comment
+  `# a b c d bash scripts/selftest.sh`, then `host_load_warn $$ $$` - printed:
+
+      selftest: 6 other test run(s) are on this host; expect this run to be slower, not wrong:
+      selftest:   pid 951: bash scripts/gates.sh
+      selftest:   pid 824: bash scripts/gates.sh
+      selftest:   pid a: bash scripts/selftest.sh
+      selftest:   pid a: bash scripts/selftest.sh
+      selftest:   pid a: bash scripts/selftest.sh
+      selftest:   and 1 more
+
+  The `pid a` rows are the call's own continuation lines; the two `gates.sh`
+  rows were real runs elsewhere on the host. Finding 1 stands.
+- **Return to RED (2026-10-26), the user's decision.** From GATES, for AC-8
+  and AC-9's tests (see `## Amendments`). Finding 2 (two-field STIME) is filed
+  as a separate follow-up story on main.
