@@ -5,7 +5,7 @@ slug: the-self-test-warns-when-other-test-runs
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-074-the-self-test-warns-when-other-test-runs
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, scripts/selftest.sh, .claude/tests/_lib.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -1012,9 +1012,9 @@ Verdict: Ship.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-26T18:40:31Z
-    commit: 5a1cbea
-    tree:   3520341300ded05733966c3e7bfa06f7c8cf212a
+    run:    2026-10-26T20:04:19Z
+    commit: f1e84ff
+    tree:   2f0b0e6a868bb46c74486dd835c4be09592cc1a5
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
