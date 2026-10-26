@@ -4,8 +4,8 @@ title: The full self-test step runs with SELFTEST_JOBS=4
 slug: the-full-self-test-step-runs-with-selfte
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-072-the-full-self-test-step-runs-with-selfte
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
