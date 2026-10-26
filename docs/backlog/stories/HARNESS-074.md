@@ -87,10 +87,12 @@ The required gate that fails if this story's artifact breaks: the self-test
   identical two lines.
 - **AC-2** — Given the same listing with, added, a suite
   `bash .claude/tests/x.test.sh` as pid D1 (parent S), a fixture's
-  `bash scripts/selftest.sh` as pid D2 (parent D1), and the ancestors P
-  (`bash scripts/ci-local.sh`) and G (`bash /tmp/run-selftest091.sh`) all of
-  whose commands match the patterns, when `host_load_others S S <listing>`
-  runs, then none of D1, D2, P, G is printed and X, Y still are. Given
+  `bash scripts/selftest.sh` as pid D2 (parent D1), the ancestors P
+  (`bash scripts/ci-local.sh`) and G (`bash /tmp/run-selftest091.sh`),
+  neither of whose commands matches the patterns, and G's parent GG
+  (`bash /d/me/scripts/gates.sh`), whose command does, when
+  `host_load_others S S <listing>` runs, then none of D1, D2, P, G, GG is
+  printed and X, Y still are. Given
   `host_load_others S R <listing>` where R is an ancestor of S that holds the
   run lock, then R's other descendants are not printed either.
   *Control:* D2 with its PPID rewired to an unrelated pid IS printed - the
@@ -228,6 +230,34 @@ it prints; if no other run is live at the time, paste the silent result and
 the `ps -ef | grep -c '[.]test[.]sh'` count beside it, and write `WAIVED` with
 that reason. This is the one check of the real `ps -ef` shape on the host the
 story is for.
+
+## Amendments
+
+**AC-2, 2026-10-26, approved by the user in chat** ("Record an Amendment
+correcting AC-2's clause that P and G match the patterns").
+
+- **What it said:** "...and the ancestors P (`bash scripts/ci-local.sh`) and G
+  (`bash /tmp/run-selftest091.sh`) all of whose commands match the patterns,
+  when `host_load_others S S <listing>` runs, then none of D1, D2, P, G is
+  printed and X, Y still are."
+- **What it says now:** "...the ancestors P (`bash scripts/ci-local.sh`) and G
+  (`bash /tmp/run-selftest091.sh`), neither of whose commands matches the
+  patterns, and G's parent GG (`bash /d/me/scripts/gates.sh`), whose command
+  does, when `host_load_others S S <listing>` runs, then none of D1, D2, P, G,
+  GG is printed and X, Y still are."
+- **Why:** the old clause was false under the Contract's own test-run rule and
+  contradicted AC-3: `ci-local.sh` and `run-selftest091.sh` end in none of
+  `selftest.sh`, `.test.sh`, `gates.sh`, and AC-3 requires
+  `bash C:\x\run-selftest091.sh` not to match. With no matching ancestor, the
+  criterion would not exercise the ancestor exclusion at all. GG is the
+  matching ancestor RED added to the suite for exactly that reason; the
+  amendment makes the criterion say what the suite already asserts. Nothing
+  about the behaviour GREEN must build changes.
+- **Reproduction (orchestrator, independent of RED's code):** read the
+  Contract's rule against the two commands by hand - `ci-local.sh` and
+  `run-selftest091.sh` (`091.sh` suffix) match no listed suffix, and AC-3's
+  own negative list names `bash C:\x\run-selftest091.sh`. Recorded in
+  `## Notes` before this amendment.
 
 ## Model guidance
 
