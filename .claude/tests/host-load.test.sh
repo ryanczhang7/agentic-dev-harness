@@ -357,4 +357,83 @@ x" "$SERR"
 assert_eq "host-load.sh deleted: the run proceeds, exit status unchanged" "$E_RC" "$SRC"
 assert_eq "host-load.sh deleted: stdout byte-identical to the empty-listing run" "$E_OUT" "$SOUT"
 
+# ---------------------------------------------------------------------------
+describe "HARNESS-074 AC-8  continuation rows of a multi-line command (PID or PPID not all digits) are never reported"
+
+# Git Bash's `ps -ef` prints each later line of a multi-line command as a raw
+# row of its own, so field 2 and field 3 - PID and PPID by the header - are
+# whatever words that line happens to hold. The two shapes AC-8 names, plus
+# one row with only PPID junk and one with only PID junk: the guard is on
+# EITHER field. Appended raw, after X, exactly as `ps -ef` prints them.
+printf '%s|3999|bash scripts/selftest.sh\n%s|%s|bash scripts/selftest.sh\n' "$X" "$S" "$P" \
+  | listing msys "$W/ac8"
+cat >> "$W/ac8" <<'EOF'
+# a b c d bash scripts/selftest.sh
+cd /d/a && git -C /d/b/c status && bash scripts/selftest.sh
+# 7005 b c d bash scripts/selftest.sh
+# a 7006 c d bash scripts/selftest.sh
+EOF
+others "$S" "$S" "$W/ac8"
+assert_eq "MSYS listing with X and four continuation rows: exactly X's one line is printed" "$LX" "$OUT"
+assert_eq "continuation rows: host_load_others still returns 0" "0" "$RC"
+
+# Control: the SAME raw rows with only fields 2 and 3 made numeric. Every other
+# word is where it was, so what prints is decided by the PID/PPID shape alone.
+printf '%s|3999|bash scripts/selftest.sh\n%s|%s|bash scripts/selftest.sh\n' "$X" "$S" "$P" \
+  | listing msys "$W/ac8-numeric"
+cat >> "$W/ac8-numeric" <<'EOF'
+# 7001 7002 c d bash scripts/selftest.sh
+cd 7003 7004 git -C /d/b/c status && bash scripts/selftest.sh
+EOF
+others "$S" "$S" "$W/ac8-numeric"
+assert_eq "control - the same command texts on rows with numeric PID and PPID ARE printed" \
+  "$LX
+7001${TAB}bash scripts/selftest.sh
+7003${TAB}/d/b/c status && bash scripts/selftest.sh" "$OUT"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-074 AC-9  with HARNESS_PS_LISTING empty, the listing comes from 'ps -ef' on PATH, and no ps says 'cannot list'"
+
+# A stub `ps` that answers `-ef` with a one-foreign-run listing and refuses
+# any other arguments, so a branch that stops calling `ps -ef` is noticed.
+foreign 1 | listing msys "$W/foreign1"
+mkdir -p "$W/stub-ps"
+cat > "$W/stub-ps/ps" <<STUB
+#!/bin/sh
+[ "\$*" = "-ef" ] || { echo "stub ps: expected -ef, got: \$*" >&2; exit 2; }
+cat "$W/foreign1"
+STUB
+chmod +x "$W/stub-ps/ps"
+
+WARN_OUT="$(HARNESS_PS_LISTING= PATH="$W/stub-ps:$PATH" \
+  bash -c '. "$1"; host_load_warn "$2" "$2"; printf "rc=%s" $?' _ "$HL" "$S" 2>/dev/null)"
+assert_eq "stub ps first on PATH, one foreign run: the AC-4 header line and that run's pid line, rc 0" \
+  "selftest: 1 other test run(s) are on this host; expect this run to be slower, not wrong:
+selftest:   pid 9100001: bash /d/other1/scripts/selftest.sh
+rc=0" "$WARN_OUT"
+
+# No ps reachable. On Git Bash awk and ps share /usr/bin, so PATH cannot just
+# drop a directory: it is set to ONE directory holding an `awk` wrapper that
+# execs the real awk by absolute path, and nothing else. awk is the only
+# external tool host_load_warn needs when HARNESS_PS_LISTING is empty
+# (`command`, `printf`, `local`, `set` are builtins) - and it must be there,
+# or host_load_others would fail on its own and say "cannot list" for the
+# wrong reason. The wrapper is #!/bin/sh with an absolute exec, so it runs
+# with PATH holding no system directory at all.
+AWK_BIN="$(command -v awk)"
+mkdir -p "$W/no-ps"
+printf '#!/bin/sh\nexec "%s" "$@"\n' "$AWK_BIN" > "$W/no-ps/awk"
+chmod +x "$W/no-ps/awk"
+
+NOPS="$(HARNESS_PS_LISTING= bash -c '. "$1"; PATH="$2"
+  if command -v ps >/dev/null 2>&1; then printf "ps=%s " "$(command -v ps)"; else printf "ps=none "; fi
+  if printf "a\n" | awk "{print \"awk=ok\"}" 2>/dev/null; then :; else printf "awk=broken"; fi' _ "$HL" "$W/no-ps")"
+assert_eq "precondition - under the no-ps PATH, ps is not found and awk still runs" "ps=none awk=ok" "$NOPS"
+
+WARN_OUT="$(HARNESS_PS_LISTING= bash -c '. "$1"; PATH="$3"; host_load_warn "$2" "$2"; printf "rc=%s" $?' \
+  _ "$HL" "$S" "$W/no-ps" 2>/dev/null)"
+assert_eq "no ps on PATH: exactly the AC-5 'cannot list' line, rc 0" \
+  "selftest: cannot list this host's processes; other test runs, if any, were not noticed.
+rc=0" "$WARN_OUT"
+
 summary "host-load"

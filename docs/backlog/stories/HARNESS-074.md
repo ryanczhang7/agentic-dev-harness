@@ -5,7 +5,7 @@ slug: the-self-test-warns-when-other-test-runs
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-074-the-self-test-warns-when-other-test-runs
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, scripts/selftest.sh, .claude/tests/_lib.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -438,6 +438,10 @@ space the real `ps -ef` prints on this host) and Linux
 | AC-6 | `_lib.sh` sets `/dev/null`, exported, and overrides an inherited value; empty listing -> stderr empty; that baseline run exits 0; inherited `/dev/null` -> stderr empty |
 | AC-4 | 2 foreign: stderr exactly 3 lines, rc and stdout identical; 7 foreign: header + 5 pid lines + `and 2 more`, rc and stdout identical; the warning precedes `=== tiny ===` in a merged stream |
 | AC-7 | foreign run within empty run + 5 s; no sleep/read/wait in host-load.sh; host-load.sh deleted -> exactly the "is missing" line, rc and stdout unchanged |
+| AC-8 | (return to RED) MSYS listing: X, S, then four raw continuation rows (`# a b c d ...`, `cd /d/a && git -C /d/b/c ...`, PID-only-numeric `# 7005 b ...`, PPID-only-numeric `# a 7006 ...`) -> exactly X's line; rc 0. Control: the same raw rows with only fields 2-3 numeric ARE printed |
+| AC-9 | (return to RED) `HARNESS_PS_LISTING=` + stub `ps` (answers only `-ef`) first on PATH -> exactly the AC-4 header + one pid line, rc 0; precondition: under the no-ps PATH `ps` is not found and `awk` runs; no `ps` on PATH -> exactly the AC-5 "cannot list" line, rc 0 |
+
+The return to RED raises the suite to **54** executed assertions.
 
 Note on AC-2's wording: it calls P (`bash scripts/ci-local.sh`) and G
 (`bash /tmp/run-selftest091.sh`) commands that "match the patterns". Under the
@@ -765,6 +769,73 @@ so a slower host moves both sides.
    same way. Same remedy, same status.
 3. The descendant/ancestor conflation trap (above) is easy to write: pid 1 is
    every top-level process's parent.
+
+### Addendum: the return to RED for AC-8 and AC-9 (2026-10-26)
+
+RED dispatch: `test-developer`, resolved model **Opus 5.5** (`claude-opus-5-5`),
+its declared `opus`, no override seen by this dispatch.
+
+**Command.** `bash scripts/selftest.sh host-load`. Now **54** executed
+(floor and COUNTS raised 48 -> 54).
+
+**Files touched.** `.claude/tests/host-load.test.sh` (two new `describe`
+groups at the end, before `summary`), `.claude/tests/floors.conf` (54, plus a
+dated note), `.claude/tests/selftest.test.sh` (COUNTS `host-load 54`), this
+story (`## Test plan`, this addendum, `## Regressions`). **Not touched:**
+`scripts/host-load.sh`, `scripts/selftest.sh`.
+
+**Current result, verbatim** (exit 1; the PASS lines elided):
+
+```
+  HARNESS-074 AC-8  continuation rows of a multi-line command (PID or PPID not all digits) are never reported
+    FAIL MSYS listing with X and four continuation rows: exactly X's one line is printed
+         expected: 5001	bash scripts/selftest.sh
+         actual:   5001	bash scripts/selftest.sh
+         a	bash scripts/selftest.sh
+         /d/a	/d/b/c status && bash scripts/selftest.sh
+         7005	bash scripts/selftest.sh
+         a	bash scripts/selftest.sh
+
+  HARNESS-074 AC-9  with HARNESS_PS_LISTING empty, the listing comes from 'ps -ef' on PATH, and no ps says 'cannot list'
+
+host-load: 53 passed, 1 failed
+FAIL host-load  did 53 units of work, below the floor of 54 in .claude/tests/floors.conf
+```
+
+**What GREEN writes: one line.** In `host_load_others`'s awk, at the top of the
+per-row block, before `n++` (line 72 today), skip any data row whose PID or
+PPID field is not all digits:
+
+    if ($pc !~ /^[0-9]+$/ || $ppc !~ /^[0-9]+$/) next
+
+It must test **both** fields: the suite has a row with numeric PID and junk
+PPID (`# 7005 b ...`) and one the other way round. Before `n++`, so a junk row
+enters neither `pid[]`/`ppid[]` nor `par[]`. Then update the "Known limits"
+paragraph of `host-load.sh`'s header, which currently names the
+continuation-line case as unhandled.
+
+**Expected GREEN result, measured** by applying exactly that line through
+`mutate.sh` (restored, verified): `host-load: 54 passed, 0 failed`, floor met
+(54 / 54). And a PID-only guard (`if ($pc !~ /^[0-9]+$/) next`) measured
+`53 passed, 1 failed` - the AC-8 assertion red on `7005	bash scripts/selftest.sh` -
+so a half-guard does not pass.
+
+**Pinned shape (unchanged):** `host_load_others <self> <root> <file>` prints
+`<pid>TAB<command>` lines; `host_load_warn <self> <root>` prints on stdout and
+returns 0; `HOST_LOAD_CANNOT`'s text; `host_load_listing` runs `ps -ef`
+(exactly those arguments - AC-9's stub refuses any other) after
+`command -v ps`. **Not constrained:** where the guard sits textually beyond
+"before the row is recorded", or whether it is also applied to the header row
+(it is never reached for NR == 1).
+
+**Passed on arrival** (code already exists): the AC-8 control (numeric PID/PPID
+rows printed) - it is a control, green today and green after the guard; what
+earns it is that it shares every word but fields 2-3 with the red row, so the
+guard cannot be on command text. And all three AC-9 assertions, earned by
+mutation - output in `## Regressions`.
+
+**Timings.** No new timeout; AC-8/AC-9 are pure function calls, no fixture
+runs. Local only.
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -789,6 +860,102 @@ so a slower host moves both sides.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### Return 1: GATES -> RED, 2026-10-26 (AC-8, AC-9 - the user's decision)
+
+**What was missing.** Not a wrong test: two behaviours no test covered, found
+by the GATES diff review (`## Diff review`, Should-fix 1 and 3) and added as
+AC-8 and AC-9 under `## Amendments`.
+
+- **Finding 1 (AC-8).** Git Bash's `ps -ef` prints each later line of a
+  multi-line command as a raw row, whose PID/PPID fields are arbitrary words.
+  `host_load_others` parsed them as rows, so a comment line
+  `# a b c d bash scripts/selftest.sh` in the shell running the check was
+  reported as `pid a`. Reproduced by the reviewer and independently by the
+  orchestrator (`## Notes`). Every listing in the suite was well-formed, so
+  48/48 stayed green.
+- **Finding 3 (AC-9).** Every case injected `HARNESS_PS_LISTING`, so the
+  un-injected branch of `host_load_listing` - `command -v ps`, then `ps -ef` -
+  never ran under test; the reviewer showed `ps -eo args` or a dropped
+  `|| return 1` left it green.
+
+**What the new tests assert.** AC-8: an MSYS listing of X, S and four raw
+continuation rows (the two shapes AC-8 names, plus PID-only and PPID-only
+numeric variants) gives exactly X's line, rc 0; control: the same raw rows
+with only fields 2-3 made numeric ARE printed. AC-9: with
+`HARNESS_PS_LISTING=` and a stub `ps` first on PATH that answers `-ef` (and
+refuses any other arguments) with one foreign run, `host_load_warn` prints
+exactly the AC-4 header and that pid line, rc 0; with a PATH of one directory
+holding only an `awk` wrapper (`#!/bin/sh` + `exec /usr/bin/awk "$@"` by
+absolute path - on Git Bash `awk` and `ps` share `/usr/bin`, so no system
+directory can stay on PATH), a precondition asserts `ps` is not found and
+`awk` runs, and `host_load_warn` prints exactly the AC-5 "cannot list" line,
+rc 0. The awk wrapper matters: without awk, `host_load_others` would fail on
+its own and print "cannot list" for the wrong reason - the second mutation
+below would then survive.
+
+**AC-8's evidence: its natural red**, against the shipped, unchanged
+`host-load.sh` - `bash scripts/selftest.sh host-load`, exit 1:
+
+```
+  HARNESS-074 AC-8  continuation rows of a multi-line command (PID or PPID not all digits) are never reported
+    FAIL MSYS listing with X and four continuation rows: exactly X's one line is printed
+         expected: 5001	bash scripts/selftest.sh
+         actual:   5001	bash scripts/selftest.sh
+         a	bash scripts/selftest.sh
+         /d/a	/d/b/c status && bash scripts/selftest.sh
+         7005	bash scripts/selftest.sh
+         a	bash scripts/selftest.sh
+
+host-load: 53 passed, 1 failed
+FAIL host-load  did 53 units of work, below the floor of 54 in .claude/tests/floors.conf
+```
+
+**AC-9 (a) earned: `ps -ef` -> `ps -eo args`.**
+`bash scripts/mutate.sh scripts/host-load.sh 's/ps -ef 2>/ps -eo args 2>/' -- bash scripts/selftest.sh host-load`
+(PASS lines elided; the AC-8 red is the natural one above):
+
+```
+  HARNESS-074 AC-9  with HARNESS_PS_LISTING empty, the listing comes from 'ps -ef' on PATH, and no ps says 'cannot list'
+    FAIL stub ps first on PATH, one foreign run: the AC-4 header line and that run's pid line, rc 0
+         expected: selftest: 1 other test run(s) are on this host; expect this run to be slower, not wrong:
+         selftest:   pid 9100001: bash /d/other1/scripts/selftest.sh
+         rc=0
+         actual:   selftest: cannot list this host's processes; other test runs, if any, were not noticed.
+         rc=0
+
+host-load: 52 passed, 2 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_host-load.sh.20261026T195317Z.4949.bak) ===
+  38:     ps -ef 2>/dev/null || return 1
+```
+
+**AC-9 (b) earned: no `ps` -> `return 0` instead of `return 1`.**
+`bash scripts/mutate.sh scripts/host-load.sh '/command -v ps/s/return 1/return 0/' -- bash scripts/selftest.sh host-load`.
+(Dropping the `command -v ps` line alone would NOT be caught, and is not a
+defect: `ps -ef 2>/dev/null || return 1` then fails with 127 and still says
+"cannot list". The behaviour pinned is "no ps -> cannot list", and the
+mutation that breaks it is a silent success.)
+
+```
+  HARNESS-074 AC-9  with HARNESS_PS_LISTING empty, the listing comes from 'ps -ef' on PATH, and no ps says 'cannot list'
+    FAIL no ps on PATH: exactly the AC-5 'cannot list' line, rc 0
+         expected: selftest: cannot list this host's processes; other test runs, if any, were not noticed.
+         rc=0
+         actual:   rc=0
+
+host-load: 52 passed, 2 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_host-load.sh.20261026T195338Z.5869.bak) ===
+  37:     command -v ps >/dev/null 2>&1 || return 1
+```
+
+**Not earned by mutation:** the AC-9 no-ps *precondition* assertion. It checks
+the test's own PATH, not production behaviour, so there is no production
+mutation that pins it; it is green because the environment is as built.
+
+**GREEN is not a no-op:** AC-8 needs the one-line guard in the handoff
+addendum. `bash scripts/mutate.sh --check` was clean after every mutation.
 
 ## Diff review
 
@@ -973,3 +1140,12 @@ Verdict: Ship.
 - **Return to RED (2026-10-26), the user's decision.** From GATES, for AC-8
   and AC-9's tests (see `## Amendments`). Finding 2 (two-field STIME) is filed
   as a separate follow-up story on main.
+- **RED return verified by the orchestrator (2026-10-26).** Reran
+  `bash scripts/selftest.sh host-load`: 53 passed, 1 failed - the one red is
+  AC-8's main assertion, printing the four continuation rows beside X - plus
+  the below-floor line (53 against the new floor 54). `host-load` 54 in both
+  `floors.conf:47` and `selftest.test.sh:538`. `scripts/` untouched;
+  `mutate.sh --check` clean. AC-9's two cases were earned by mutation
+  (`ps -ef` -> `ps -eo args`; `command -v ps ... || return 1` -> `return 0`),
+  output in `## Regressions`. Resolved model: RED `test-developer` on Opus 5.5
+  (`claude-opus-5-5`), its declared `opus`, no override.
