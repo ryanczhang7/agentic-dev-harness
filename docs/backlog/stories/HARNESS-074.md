@@ -4,8 +4,8 @@ title: The self-test warns when other test runs share the host
 slug: the-self-test-warns-when-other-test-runs
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-074-the-self-test-warns-when-other-test-runs
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, scripts/selftest.sh, .claude/tests/_lib.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
