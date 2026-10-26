@@ -2,7 +2,7 @@
 description: Move one story forward by exactly one phase
 model: fable
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -207,23 +207,27 @@ Then, **in this order**:
    for the user. Go on only once the report's last line is `Verdict: Ship.`.
    It comes before the self-test because a fix changes the tree, and a fix
    found after the self-test wastes that run.
-2. `bash scripts/selftest.sh` — the whole harness self-test, every suite,
-   once, while the story is still at GATES. CI runs every suite, and one the
-   story never touched can still fail on its change: a line number another
-   suite pins, a floor, a value an upstream suite asserts. Run it detached
-   (the Bash tool's `run_in_background` with its longest timeout, or `nohup`
-   from a shell), so that a tool timeout cannot kill it, and run nothing else
-   in this worktree until it exits: not `gates.sh`, not a second self-test.
-   CI's whole job takes about 2 minutes; on a Windows host the self-test
-   alone has taken about 25. That is slow, not wrong. Do not swap in named
-   suites because the host is slow. If a run goes far past the last duration
-   a story recorded, look for an orphaned self-test or gate run before
-   blaming the host; one run stalled past an hour beside an orphan and passed
-   alone. Judge it by its exit status and its last line, `N harness suite(s)
-   passed.`, and paste both, with the duration, into `## Notes`. A failure
-   takes GATES' own routes: the feature-developer, or RED if a test is
-   wrong. A fix changes the tree, so `bash scripts/gates.sh` runs again and
-   these steps start over.
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — the whole harness self-test,
+   every suite, once, while the story is still at GATES. CI runs every
+   suite, and one the story never touched can still fail on its change: a
+   line number another suite pins, a floor, a value an upstream suite
+   asserts. Run it detached (the Bash tool's `run_in_background` with its
+   longest timeout, or `nohup` from a shell), so that a tool timeout cannot
+   kill it, and run nothing else in this worktree until it exits: not
+   `gates.sh`, not a second self-test. CI's whole job takes about 2-4
+   minutes. On the Windows host this harness is developed on, the self-test
+   took 336 s at `SELFTEST_JOBS=4` against 1,135 s serial (HARNESS-036), and
+   2,894-17,015 s serial while other test runs shared the host
+   (HARNESS-050..068). A slow run is slower, not wrong, most often because
+   other test runs share the host: keep the value, do not swap in named
+   suites. If a run
+   goes far past the last duration a story recorded, look for an orphaned
+   self-test or gate run before blaming the host; one run stalled past an
+   hour beside an orphan and passed alone. Judge it by its exit status and
+   its last line, `N harness suite(s) passed.`, and paste both, with the
+   duration, into `## Notes`. A failure takes GATES' own routes: the
+   feature-developer, or RED if a test is wrong. A fix changes the tree, so
+   `bash scripts/gates.sh` runs again and these steps start over.
 3. `bash scripts/phase.sh set $1 REVIEW`
 4. Commit, with a message that names the story and what it does.
 5. `bash scripts/check-boundaries.sh` — the second script CI runs, and the one

@@ -26,6 +26,10 @@
 # self-test, and the skill file carries the review's rules. Same pattern: the
 # real tree must be silent, fixtures regress one thing each (story C-1..C-4).
 #
+# HARNESS-072 moves the step's needle to `SELFTEST_JOBS=4 bash scripts/selftest.sh`
+# and adds `other test runs` to its words. Every earlier case moved to the new
+# token with its verdict unchanged; the old spelling is now a control.
+#
 # Matching is pure bash (mapfile, case, [ = ]): no grep or awk fork per needle.
 # HARNESS-023 measured 109 s against 10.6 s for the same output on Windows.
 
@@ -40,10 +44,14 @@ COMPLETE=".claude/commands/complete-story.md"
 
 TOOL_SELFTEST='Bash(bash scripts/selftest.sh:*)'
 TOOL_CILOCAL='Bash(bash scripts/ci-local.sh:*)'
-STEP_SELFTEST='`bash scripts/selftest.sh`'
+# HARNESS-072 (Contract "The needle": settled, read out). The step runs the
+# self-test at SELFTEST_JOBS=4; the old spelling `bash scripts/selftest.sh` is
+# not this token (it lacks `SELFTEST_JOBS=4 `), and is AC-1's and AC-2's
+# control. TOOL_SELFTEST is a tool pattern, not the step's text: unchanged.
+STEP_SELFTEST='`SELFTEST_JOBS=4 bash scripts/selftest.sh`'
 STEP_PHASE='`bash scripts/phase.sh set $1 REVIEW`'
 STEP_BOUNDARIES='`bash scripts/check-boundaries.sh`'
-STEP_WORDS=('detached' 'Windows' '## Notes')
+STEP_WORDS=('detached' 'Windows' '## Notes' 'other test runs')
 
 PARA_START='**GATES → REVIEW.**'
 BULLET_START='- **GATES → REVIEW'
@@ -253,7 +261,7 @@ procedure_problems() {
         for w in "${STEP_WORDS[@]}"; do
           case "${ST[$ks]}" in
             *"$w"*) ;;
-            *) printf '%s: its `bash scripts/selftest.sh` step does not say `%s`\n' "$ADVANCE" "$w" ;;
+            *) printf '%s: its `SELFTEST_JOBS=4 bash scripts/selftest.sh` step does not say `%s`\n' "$ADVANCE" "$w" ;;
           esac
         done
       fi
@@ -287,7 +295,7 @@ procedure_problems() {
     else
       case "$R" in
         *"$STEP_SELFTEST"*) ;;
-        *) printf '%s: its GATES → REVIEW bullet does not name `bash scripts/selftest.sh`\n' "$COMPLETE" ;;
+        *) printf '%s: its GATES → REVIEW bullet does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`\n' "$COMPLETE" ;;
       esac
       # HARNESS-068: the review, named before the first self-test (C-2).
       case "$R" in
@@ -295,7 +303,7 @@ procedure_problems() {
           case "$R" in
             *"$STEP_SELFTEST"*)
               pr="${R%%"$BULLET_REVIEW"*}"; pt="${R%%"$STEP_SELFTEST"*}"
-              [ "${#pr}" -lt "${#pt}" ] || printf '%s: its GATES → REVIEW bullet names `diff-review` after `bash scripts/selftest.sh`\n' "$COMPLETE"
+              [ "${#pr}" -lt "${#pt}" ] || printf '%s: its GATES → REVIEW bullet names `diff-review` after `SELFTEST_JOBS=4 bash scripts/selftest.sh`\n' "$COMPLETE"
               ;;
           esac
           ;;
@@ -334,7 +342,7 @@ GOOD_TOOLS='allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gate
 # The review step (HARNESS-068), step 1. Its routing words sit on its
 # continuation lines, so the compliant fixture proves continuation lines count
 # for the review step too. It names neither the backticked self-test needle
-# nor any of the self-test step's three words, so it cannot satisfy them.
+# nor any of the self-test step's four words, so it cannot satisfy them.
 RV="$(cat <<'EOF'
 1. Review the change with the `diff-review` skill: a fresh dispatch reads the
    diff and its callers, and its report goes into `## Diff review`. A Must fix
@@ -348,11 +356,14 @@ with_review() { printf '%s\n%s' "$RV" "$1"; }
 
 # The GATES -> REVIEW step list after the review. Step 2's words sit on its
 # continuation lines, so the compliant fixture already proves continuation
-# lines count. HARNESS-068 renumbered these from 1..5 to 2..6.
+# lines count. HARNESS-068 renumbered these from 1..5 to 2..6. HARNESS-072
+# moved the needle to `SELFTEST_JOBS=4 bash scripts/selftest.sh` and added the
+# fourth word, `other test runs`, on the last continuation line.
 REST="$(cat <<'EOF'
-2. `bash scripts/selftest.sh` — the whole self-test, every suite, while the
-   story is still at GATES. Run it detached; on a Windows host it is slow.
-   Paste its last line into `## Notes`.
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — the whole self-test, every
+   suite, while the story is still at GATES. Run it detached; on a Windows
+   host it is slow. Paste its last line into `## Notes`. When other test runs
+   share the host it is slower, not wrong.
 3. `bash scripts/phase.sh set $1 REVIEW`
 4. Commit.
 5. `bash scripts/check-boundaries.sh` — the second script CI runs.
@@ -364,8 +375,8 @@ GOOD_STEPS="$(with_review "$REST")"
 
 GOOD_BULLET="$(cat <<'EOF'
 - **GATES → REVIEW runs a `diff-review` of the change, then the full
-  `bash scripts/selftest.sh`**, detached and alone, then sets the phase
-  before committing.
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh`**, detached and alone, then sets
+  the phase before committing.
 EOF
 )"
 
@@ -449,13 +460,13 @@ A="$ADVANCE"; C="$COMPLETE"
 no_tool()   { printf '%s: its allowed-tools do not permit `%s`' "$1" "$2"; }
 no_step()   { printf '%s: its GATES → REVIEW steps do not name %s' "$ADVANCE" "$1"; }
 disorder()  { printf '%s: its GATES → REVIEW steps are out of order: %s is step %s, %s is step %s' "$ADVANCE" "$1" "$2" "$3" "$4"; }
-no_word()   { printf '%s: its `bash scripts/selftest.sh` step does not say `%s`' "$ADVANCE" "$1"; }
-NO_BULLET_NEEDLE="$C: its GATES → REVIEW bullet does not name \`bash scripts/selftest.sh\`"
+no_word()   { printf '%s: its `SELFTEST_JOBS=4 bash scripts/selftest.sh` step does not say `%s`' "$ADVANCE" "$1"; }
+NO_BULLET_NEEDLE="$C: its GATES → REVIEW bullet does not name \`SELFTEST_JOBS=4 bash scripts/selftest.sh\`"
 # HARNESS-068 (C-4).
 S="$SKILL"
 no_rword()  { printf '%s: its `diff-review` step does not say `%s`' "$ADVANCE" "$1"; }
 NO_BULLET_REVIEW="$C: its GATES → REVIEW bullet does not name \`diff-review\`"
-BULLET_REVIEW_AFTER="$C: its GATES → REVIEW bullet names \`diff-review\` after \`bash scripts/selftest.sh\`"
+BULLET_REVIEW_AFTER="$C: its GATES → REVIEW bullet names \`diff-review\` after \`SELFTEST_JOBS=4 bash scripts/selftest.sh\`"
 no_say()    { printf '%s: does not say `%s`' "$SKILL" "$1"; }
 ponytail()  { printf "%s: carries ponytail's \`%s\`" "$SKILL" "$1"; }
 NO_NAME="$S: has no \`name: diff-review\` line in its frontmatter"
@@ -555,7 +566,7 @@ describe "AC-2: the full self-test is a numbered step before the phase change, a
 fresh_case selftest-after-phase
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
 2. `bash scripts/phase.sh set $1 REVIEW`
-3. `bash scripts/selftest.sh`, detached, slow on Windows; paste into `## Notes`.
+3. `SELFTEST_JOBS=4 bash scripts/selftest.sh`, detached, slow on Windows or beside other test runs; paste into `## Notes`.
 4. Commit.
 5. `bash scripts/check-boundaries.sh`
 EOF
@@ -565,7 +576,7 @@ assert_eq "the self-test step after the phase step gives one out-of-order line" 
 
 fresh_case selftest-in-prose
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
-Run `bash scripts/selftest.sh` first, detached, slow on Windows; see `## Notes`.
+Run `SELFTEST_JOBS=4 bash scripts/selftest.sh` first, detached, slow on Windows or beside other test runs; see `## Notes`.
 
 2. `bash scripts/phase.sh set $1 REVIEW`
 3. Commit.
@@ -577,13 +588,13 @@ assert_eq "the self-test named only in the paragraph's prose, in no numbered ste
 
 fresh_case selftest-targeted
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
-2. `bash scripts/selftest.sh reporting` — detached, slow on Windows; `## Notes`.
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh reporting` — detached, slow on Windows or beside other test runs; `## Notes`.
 3. `bash scripts/phase.sh set $1 REVIEW`
 4. Commit.
 5. `bash scripts/check-boundaries.sh`
 EOF
 )")"
-assert_eq "a targeted \`bash scripts/selftest.sh reporting\` is not the full run: one \"do not name\" line" \
+assert_eq "a targeted \`SELFTEST_JOBS=4 bash scripts/selftest.sh reporting\` is not the full run: one \"do not name\" line" \
   "$(no_step "$STEP_SELFTEST")" "$(procedure_problems "$d")"
 
 fresh_case selftest-other-paragraph
@@ -594,7 +605,7 @@ write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
 
 **REVIEW → DONE.** Before closing:
 
-1. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+1. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached, slow on Windows or beside other test runs; paste into `## Notes`.
 EOF
 )")"
 assert_eq "the self-test step present only in the REVIEW → DONE paragraph gives one \"do not name\" line" \
@@ -602,7 +613,7 @@ assert_eq "the self-test step present only in the REVIEW → DONE paragraph give
 
 fresh_case boundaries-before-phase
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
-2. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached, slow on Windows or beside other test runs; paste into `## Notes`.
 3. `bash scripts/check-boundaries.sh`
 4. `bash scripts/phase.sh set $1 REVIEW`
 5. Commit.
@@ -613,8 +624,8 @@ assert_eq "the check-boundaries step moved before the phase step gives one out-o
 
 fresh_case same-step
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
-2. `bash scripts/selftest.sh`, then `bash scripts/phase.sh set $1 REVIEW` —
-   detached, slow on Windows; paste into `## Notes`.
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh`, then `bash scripts/phase.sh set $1 REVIEW` —
+   detached, slow on Windows or beside other test runs; paste into `## Notes`.
 3. Commit.
 4. `bash scripts/check-boundaries.sh`
 EOF
@@ -625,7 +636,7 @@ assert_eq "two needles in the same step count as out of order" \
 fresh_case first-step-wins
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
 2. `bash scripts/phase.sh set $1 REVIEW`
-3. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+3. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached, slow on Windows or beside other test runs; paste into `## Notes`.
 4. `bash scripts/check-boundaries.sh`
 5. If that failed, `bash scripts/phase.sh set $1 REVIEW` again.
 EOF
@@ -635,7 +646,7 @@ assert_eq "a needle in more than one step is judged by its FIRST step" \
 
 fresh_case phase-missing
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
-2. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached, slow on Windows or beside other test runs; paste into `## Notes`.
 3. Commit.
 4. `bash scripts/check-boundaries.sh`
 EOF
@@ -645,7 +656,7 @@ assert_eq "the phase step missing gives its own \"do not name\" line, and the or
 
 fresh_case boundaries-missing
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
-2. `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached, slow on Windows or beside other test runs; paste into `## Notes`.
 3. `bash scripts/phase.sh set $1 REVIEW`
 4. Commit.
 EOF
@@ -656,7 +667,7 @@ assert_eq "the check-boundaries step missing gives its own \"do not name\" line"
 fresh_case continuation-counts
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
 2. The whole harness self-test, every suite:
-   `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+   `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached, slow on Windows or beside other test runs; paste into `## Notes`.
 3. `bash scripts/phase.sh set $1 REVIEW`
 4. Commit, then run
    `bash scripts/check-boundaries.sh`.
@@ -669,7 +680,7 @@ fresh_case indented-after-blank
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
 2. The whole harness self-test, every suite.
 
-   `bash scripts/selftest.sh` — detached, slow on Windows; paste into `## Notes`.
+   `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached, slow on Windows or beside other test runs; paste into `## Notes`.
 3. `bash scripts/phase.sh set $1 REVIEW`
 4. `bash scripts/check-boundaries.sh`
 EOF
@@ -705,7 +716,7 @@ done
 
 fresh_case words-in-next-step
 write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
-2. `bash scripts/selftest.sh`
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh`, slower beside other test runs.
 3. `bash scripts/phase.sh set $1 REVIEW` — detached, slow on Windows; `## Notes`.
 4. `bash scripts/check-boundaries.sh`
 EOF
@@ -720,25 +731,25 @@ describe "AC-4: complete-story's GATES → REVIEW bullet names the full self-tes
 
 fresh_case bullet-without
 write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, sets the phase before committing**, then pushes.' \
-  'Elsewhere: run `bash scripts/selftest.sh` at some point.'
+  'Elsewhere: run `SELFTEST_JOBS=4 bash scripts/selftest.sh` at some point.'
 assert_eq "the needle present elsewhere in the file but not in that bullet gives one line" \
   "$NO_BULLET_NEEDLE" "$(procedure_problems "$d")"
 
 fresh_case bullet-targeted
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, then `bash scripts/selftest.sh procedure`.**'
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, then `SELFTEST_JOBS=4 bash scripts/selftest.sh procedure`.**'
 assert_eq "a targeted run in the bullet is not the full self-test" \
   "$NO_BULLET_NEEDLE" "$(procedure_problems "$d")"
 
 fresh_case bullet-after-blank
 write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, sets the phase before committing.**
 
-  Then `bash scripts/selftest.sh`.'
+  Then `SELFTEST_JOBS=4 bash scripts/selftest.sh`.'
 assert_eq "the bullet ends at a blank line: the needle after it is not in the bullet" \
   "$NO_BULLET_NEEDLE" "$(procedure_problems "$d")"
 
 fresh_case bullet-next-bullet
 write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, sets the phase before committing.**
-- Then `bash scripts/selftest.sh`.'
+- Then `SELFTEST_JOBS=4 bash scripts/selftest.sh`.'
 assert_eq "the bullet ends at the next \`- \` line: the needle in the next bullet is not in it" \
   "$NO_BULLET_NEEDLE" "$(procedure_problems "$d")"
 
@@ -752,7 +763,7 @@ describe "HARNESS-068 AC-1: the diff review is a numbered GATES → REVIEW step,
 
 fresh_case review-after-selftest
 write_advance "$d" "$GOOD_TOOLS" "$(cat <<EOF
-1. \`bash scripts/selftest.sh\` — detached, slow on Windows; paste into \`## Notes\`.
+1. \`SELFTEST_JOBS=4 bash scripts/selftest.sh\` — detached, slow on Windows or beside other test runs; paste into \`## Notes\`.
 2. ${RV#1. }
 3. \`bash scripts/phase.sh set \$1 REVIEW\`
 4. Commit.
@@ -791,8 +802,8 @@ assert_eq "a step naming the diff-review skill without the backticked needle doe
 
 fresh_case review-same-step-as-selftest
 write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
-1. Run the `diff-review` skill, then `bash scripts/selftest.sh` — detached,
-   slow on Windows; `## Notes`. Report into `## Diff review`; a Must fix
+1. Run the `diff-review` skill, then `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached,
+   slow on Windows or beside other test runs; `## Notes`. Report into `## Diff review`; a Must fix
    means `bash scripts/gates.sh` again; go on at `Verdict: Ship.`.
 2. `bash scripts/phase.sh set $1 REVIEW`
 3. Commit.
@@ -820,7 +831,7 @@ $(no_step "$STEP_REVIEW")" "$(procedure_problems "$d")"
 
 fresh_case review-order-before-words
 write_advance "$d" "$GOOD_TOOLS" "$(cat <<EOF
-1. \`bash scripts/selftest.sh\` — detached, slow on Windows; paste into \`## Notes\`.
+1. \`SELFTEST_JOBS=4 bash scripts/selftest.sh\` — detached, slow on Windows or beside other test runs; paste into \`## Notes\`.
 2. ${RV#1. }
 3. \`bash scripts/phase.sh set \$1 REVIEW\`
 4. Commit.
@@ -857,7 +868,7 @@ assert_eq "\`Verdict: Ship\` without its full stop does not satisfy the needle" 
 fresh_case rwords-in-next-step
 write_advance "$d" "$GOOD_TOOLS" "$(cat <<'EOF'
 1. Review the change with the `diff-review` skill.
-2. `bash scripts/selftest.sh` — detached, slow on Windows; `## Notes`. Paste
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached, slow on Windows or beside other test runs; `## Notes`. Paste
    the review into `## Diff review`; a Must fix means `bash scripts/gates.sh`
    again; go on at `Verdict: Ship.`.
 3. `bash scripts/phase.sh set $1 REVIEW`
@@ -875,45 +886,45 @@ $(no_rword 'Verdict: Ship.')" "$(procedure_problems "$d")"
 describe "HARNESS-068 AC-3: complete-story's bullet names the review before the self-test"
 
 fresh_case bullet-no-review
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then sets the phase.'
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `SELFTEST_JOBS=4 bash scripts/selftest.sh`**, then sets the phase.'
 assert_eq "a bullet naming the self-test but not \`diff-review\` gives one \"does not name\" line" \
   "$NO_BULLET_REVIEW" "$(procedure_problems "$d")"
 
 fresh_case bullet-review-after
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then a `diff-review`.'
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `SELFTEST_JOBS=4 bash scripts/selftest.sh`**, then a `diff-review`.'
 assert_eq "a bullet naming \`diff-review\` only after the self-test gives one \"names … after\" line" \
   "$BULLET_REVIEW_AFTER" "$(procedure_problems "$d")"
 
 fresh_case bullet-review-after-next-line
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `SELFTEST_JOBS=4 bash scripts/selftest.sh`**, then
   a `diff-review` on a continuation line.'
 assert_eq "\`diff-review\` on a later line of the bullet, after the self-test, is still after it" \
   "$BULLET_REVIEW_AFTER" "$(procedure_problems "$d")"
 
 fresh_case bullet-review-elsewhere
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then sets the phase.' \
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `SELFTEST_JOBS=4 bash scripts/selftest.sh`**, then sets the phase.' \
   'Elsewhere: run a `diff-review` at some point.'
 assert_eq "\`diff-review\` present elsewhere in the file but not in that bullet gives one \"does not name\" line" \
   "$NO_BULLET_REVIEW" "$(procedure_problems "$d")"
 
 fresh_case bullet-review-next-bullet
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then sets the phase.
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `SELFTEST_JOBS=4 bash scripts/selftest.sh`**, then sets the phase.
 - Then a `diff-review`.'
 assert_eq "\`diff-review\` in the next bullet is not in the GATES → REVIEW bullet" \
   "$NO_BULLET_REVIEW" "$(procedure_problems "$d")"
 
 fresh_case bullet-review-unquoted
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a diff-review, then the full `bash scripts/selftest.sh`**.'
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a diff-review, then the full `SELFTEST_JOBS=4 bash scripts/selftest.sh`**.'
 assert_eq "diff-review without its backticks is not the needle" \
   "$NO_BULLET_REVIEW" "$(procedure_problems "$d")"
 
 fresh_case bullet-first-review-wins
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, then the full `bash scripts/selftest.sh`**, and a second `diff-review` of any fix.'
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs a `diff-review`, then the full `SELFTEST_JOBS=4 bash scripts/selftest.sh`**, and a second `diff-review` of any fix.'
 assert_eq "the FIRST \`diff-review\` is judged: before the self-test, a later mention does not matter" \
   "" "$(procedure_problems "$d")"
 
 fresh_case bullet-first-selftest-wins
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, a `diff-review`, then `bash scripts/selftest.sh` again.'
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `SELFTEST_JOBS=4 bash scripts/selftest.sh`**, a `diff-review`, then `SELFTEST_JOBS=4 bash scripts/selftest.sh` again.'
 assert_eq "the FIRST self-test is judged: a \`diff-review\` before only its second mention is still after" \
   "$BULLET_REVIEW_AFTER" "$(procedure_problems "$d")"
 
@@ -988,10 +999,81 @@ $(ponytail 'one small test')" "$(procedure_problems "$d")"
 fresh_case all-three-files
 rm -f "$d/$SKILL"
 write_advance "$d" "$GOOD_TOOLS" "$REST"
-write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `bash scripts/selftest.sh`**, then sets the phase.'
+write_complete "$d" "$GOOD_TOOLS" '- **GATES → REVIEW runs the full `SELFTEST_JOBS=4 bash scripts/selftest.sh`**, then sets the phase.'
 assert_eq "the three files are judged in order: advance-story, complete-story, then the skill" \
   "$(no_step "$STEP_REVIEW")
 $NO_BULLET_REVIEW
 $S: file is missing" "$(procedure_problems "$d")"
+
+# ---------------------------------------------------------------------------
+# HARNESS-072: the step runs the self-test at SELFTEST_JOBS=4. The expected
+# lines in this block are the ACs' own text, written out literally rather than
+# built from the helpers above, so a helper that drifted from the AC is caught.
+OLD_SELFTEST='`bash scripts/selftest.sh`'
+
+describe "HARNESS-072 AC-1: advance-story's step names \`SELFTEST_JOBS=4 bash scripts/selftest.sh\`"
+
+fresh_case old-spelling-step
+write_advance "$d" "$GOOD_TOOLS" "${GOOD_STEPS//"$STEP_SELFTEST"/$OLD_SELFTEST}"
+assert_eq "a step reading the old spelling \`bash scripts/selftest.sh\`, everything else compliant, gives exactly the AC-1 line" \
+  '.claude/commands/advance-story.md: its GATES → REVIEW steps do not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`' \
+  "$(procedure_problems "$d")"
+
+fresh_case other-value-step
+write_advance "$d" "$GOOD_TOOLS" "${GOOD_STEPS//SELFTEST_JOBS=4/SELFTEST_JOBS=1}"
+assert_eq "a step running \`SELFTEST_JOBS=1 bash scripts/selftest.sh\` does not name the token: the value is part of it" \
+  '.claude/commands/advance-story.md: its GATES → REVIEW steps do not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`' \
+  "$(procedure_problems "$d")"
+
+fresh_case tool-pattern-unchanged
+write_advance "$d" "${GOOD_TOOLS//"$TOOL_SELFTEST"/Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*)}" "$GOOD_STEPS"
+assert_eq "the allowed-tools entry is still \`Bash(bash scripts/selftest.sh:*)\`: an entry carrying the variable does not permit it" \
+  "$(no_tool "$A" 'Bash(bash scripts/selftest.sh:*)')" "$(procedure_problems "$d")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-072 AC-2: complete-story's bullet names the same token, after \`diff-review\`"
+
+fresh_case old-spelling-bullet
+write_complete "$d" "$GOOD_TOOLS" "${GOOD_BULLET//"$STEP_SELFTEST"/$OLD_SELFTEST}"
+assert_eq "a bullet reading \`the full \`bash scripts/selftest.sh\`\` (old spelling) gives exactly the AC-2 line" \
+  '.claude/commands/complete-story.md: its GATES → REVIEW bullet does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`' \
+  "$(procedure_problems "$d")"
+
+fresh_case other-value-bullet
+write_complete "$d" "$GOOD_TOOLS" "${GOOD_BULLET//SELFTEST_JOBS=4/SELFTEST_JOBS=1}"
+assert_eq "a bullet running \`SELFTEST_JOBS=1 bash scripts/selftest.sh\` does not name the token" \
+  '.claude/commands/complete-story.md: its GATES → REVIEW bullet does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`' \
+  "$(procedure_problems "$d")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-072 AC-3: the self-test step says \`other test runs\`"
+
+fresh_case word-other-test-runs
+write_advance "$d" "$GOOD_TOOLS" "${GOOD_STEPS//other test runs/elsewhere}" \
+  "Prose outside the steps says other test runs."
+assert_eq "\`other test runs\` missing from the self-test step but present elsewhere in the file gives exactly the AC-3 line" \
+  '.claude/commands/advance-story.md: its `SELFTEST_JOBS=4 bash scripts/selftest.sh` step does not say `other test runs`' \
+  "$(procedure_problems "$d")"
+
+fresh_case other-test-runs-in-next-step
+write_advance "$d" "$GOOD_TOOLS" "$(with_review "$(cat <<'EOF'
+2. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — detached, slow on Windows; `## Notes`.
+3. `bash scripts/phase.sh set $1 REVIEW` — slower while other test runs share the host.
+4. `bash scripts/check-boundaries.sh`
+EOF
+)")"
+assert_eq "\`other test runs\` in a DIFFERENT step does not satisfy the self-test step" \
+  '.claude/commands/advance-story.md: its `SELFTEST_JOBS=4 bash scripts/selftest.sh` step does not say `other test runs`' \
+  "$(procedure_problems "$d")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-072 AC-4: a single suite under the new spelling is not the full run"
+
+fresh_case targeted-new-spelling
+targeted='`SELFTEST_JOBS=4 bash scripts/selftest.sh reporting`'
+write_advance "$d" "$GOOD_TOOLS" "${GOOD_STEPS//"$STEP_SELFTEST"/$targeted}"
+assert_eq "a step naming \`SELFTEST_JOBS=4 bash scripts/selftest.sh reporting\`, everything else compliant, gives exactly one \"do not name\" line" \
+  '.claude/commands/advance-story.md: its GATES → REVIEW steps do not name `SELFTEST_JOBS=4 bash scripts/selftest.sh`' \
+  "$(procedure_problems "$d")"
 
 summary "procedure"
