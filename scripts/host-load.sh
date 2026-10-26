@@ -22,10 +22,12 @@
 # and prints nothing for an empty listing. When the listing cannot be had or
 # its header cannot be parsed it says so in one line rather than reassure.
 #
-# Known limits, not handled: a row whose STIME is two words (an MSYS process
-# over a day old may print `Oct 25`) or whose UID holds a space shifts the
-# command one field, and a command holding a newline continues on lines of
-# its own. Bash 3.2, awk and coreutils only.
+# A command holding a newline continues on lines of its own, and any row whose
+# PID or PPID field is not all digits is skipped as one; a continuation line
+# whose words 2 and 3 happen to be numbers is still read as a process.
+# Known limits, not handled (HARNESS-076): a row whose STIME is two words (an
+# MSYS process over a day old may print `Oct 25`) or whose UID holds a space
+# shifts the command one field. Bash 3.2, awk and coreutils only.
 
 HOST_LOAD_CANNOT="selftest: cannot list this host's processes; other test runs, if any, were not noticed."
 
@@ -69,6 +71,7 @@ host_load_others() {
       next
     }
     {
+      if ($pc !~ /^[0-9]+$/ || $ppc !~ /^[0-9]+$/) next  # a continuation line of a multi-line command
       n++; pid[n] = $pc; ppid[n] = $ppc; par[$pc] = $ppc
       c = $cc; for (i = cc + 1; i <= NF; i++) c = c " " $i
       cmd[n] = c

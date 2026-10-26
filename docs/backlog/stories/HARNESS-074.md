@@ -5,7 +5,7 @@ slug: the-self-test-warns-when-other-test-runs
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-074-the-self-test-warns-when-other-test-runs
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, scripts/selftest.sh, .claude/tests/_lib.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -1149,3 +1149,14 @@ Verdict: Ship.
   (`ps -ef` -> `ps -eo args`; `command -v ps ... || return 1` -> `return 0`),
   output in `## Regressions`. Resolved model: RED `test-developer` on Opus 5.5
   (`claude-opus-5-5`), its declared `opus`, no override.
+- **Second GREEN verified by the orchestrator (2026-10-26).** Reran
+  `bash scripts/selftest.sh host-load`: 54 executed, 54 declared, passed
+  (RED return: 53/1); `gates.sh --fast` exit 0. The guard
+  `if ($pc !~ /^[0-9]+$/ || $ppc !~ /^[0-9]+$/) next` sits at the top of the
+  per-row block; the header's Known limits now attribute the STIME and
+  UID-with-a-space limits to HARNESS-076 (planned on main as `5962311`, in
+  worktree `D:/adh-HARNESS-076`). The feature-developer reported `lib` 324/0,
+  `sigpipe` 91/0, `grep-count` 38/0, and the real-host repro now printing
+  nothing (`rc=0`) while `ps -ef` still showed the continuation row. Resolved
+  model: GREEN `feature-developer` on Opus 5.5 (`claude-opus-5-5`), its
+  declared `opus`, no override.
