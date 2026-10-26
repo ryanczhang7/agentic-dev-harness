@@ -5,7 +5,7 @@ slug: the-self-test-warns-when-other-test-runs
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-074-the-self-test-warns-when-other-test-runs
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, scripts/selftest.sh, .claude/tests/_lib.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -765,3 +765,34 @@ so a slower host moves both sides.
   real-host check.
 - Resolved models: RED `test-developer` on Opus 5.5 (`claude-opus-5-5`), its
   declared `opus`, no override.
+- **GREEN verified by the orchestrator (2026-10-26).** Reran
+  `bash scripts/selftest.sh host-load`: 48 executed, 48 declared, passed (RED:
+  22 passed, 26 failed); `gates.sh --fast` exit 0; `mutate.sh --check` clean.
+  The feature-developer reported `selftest` 268/0, `run-lock` 140/0, `lib`
+  324/0, `sigpipe` 91/0, `grep-count` 38/0, both tree guards 0 findings over
+  54 files, and confirmed five of the 22 pass-on-arrival assertions against
+  the shipped files by `mutate.sh` (output in its report; e.g. dropping `>&2`
+  turned exactly the predicted 12 red). Real-host preview, not DV-2: with
+  another project's `gates.sh --fast` live it printed
+  `selftest: 2 other test run(s) are on this host; ...` naming both pids.
+  Resolved model: GREEN `feature-developer` on Opus 5.5 (`claude-opus-5-5`),
+  its declared `opus`, no override.
+- **GREEN's findings, for the PO (2026-10-26).**
+  1. The Contract's "CI sees `/dev/null`" is half true: only processes that
+     source `_lib.sh` (every fixture run and golden) do. CI's top-level
+     `bash scripts/selftest.sh` reads the runner's real `ps -ef`, harmless
+     where no other harness run exists. `selftest.sh`'s header says so.
+  2. Real `ps -ef` on this host prints a command's embedded newlines as extra
+     rows (seen for a `bash -c '...<<EOF...'` tool shell). Those rows carry
+     junk PID/PPID; none falsely matched today, but a crafted one could. The
+     fix (skip rows whose PID/PPID are not numeric) has no failing test, so it
+     was not written (law 1). Named as a known limit in `host-load.sh`'s
+     header; a follow-up story candidate.
+  3. RED's two-field STIME and UID-with-a-space limits are unhandled, as the
+     Contract's `cmd..NF` rule implies; GREEN checked that the header's
+     character offset is not a fix either (Linux fixture: CMD header at 52,
+     row commands at 56). Named in the file header.
+  4. Wrappers (`timeout`, `nohup`) are not matched themselves; their child is,
+     so the run is still reported.
+  5. `host_load_others` on an empty file returns 0, not 1: an empty file has
+     no header to refuse, and AC-6 needs an empty listing to print nothing.
