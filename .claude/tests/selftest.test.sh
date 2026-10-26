@@ -543,13 +543,14 @@ phase 73
 phase-guard 388
 plan 284
 policy 17
-procedure 98
+procedure 118
 profiles 132
 refresh 215
 reporting 27
 run-lock 140
 security-audit 51
 selftest 268
+selftest-needed 139
 settings 70
 shipped-docs 14
 sigpipe 91
