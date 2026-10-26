@@ -4,8 +4,8 @@ title: The self-test warns when other test runs share the host
 slug: the-self-test-warns-when-other-test-runs
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-074-the-self-test-warns-when-other-test-runs
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, scripts/selftest.sh, .claude/tests/_lib.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -1201,3 +1201,14 @@ only; rather than another code round here, it is carried into HARNESS-076's
   nothing (`rc=0`) while `ps -ef` still showed the continuation row. Resolved
   model: GREEN `feature-developer` on Opus 5.5 (`claude-opus-5-5`), its
   declared `opus`, no override.
+- **Full self-test before REVIEW (2026-10-26, GATES, orchestrator).** After the
+  round-2 diff review returned `Verdict: Ship.`, with no other test run live on
+  the host, `SELFTEST_JOBS=4 bash scripts/selftest.sh` ran detached from
+  15:06:50, stdout and stderr captured apart. Exit status 0. Last lines:
+
+      assertion floors: all 29 suite(s) met their declared floor (4125 assertions executed, 3948 declared).
+      29 harness suite(s) passed.
+
+  Duration: 702 s. Stderr was empty: the run's own `host_load_warn`, reading
+  the real `ps -ef`, found no foreign run - consistent with the host, and the
+  first top-level run of the shipped warning. (29 suites: `host-load` is new.)
