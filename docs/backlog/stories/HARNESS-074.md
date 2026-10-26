@@ -269,6 +269,28 @@ the `ps -ef | grep -c '[.]test[.]sh'` count beside it, and write `WAIVED` with
 that reason. This is the one check of the real `ps -ef` shape on the host the
 story is for.
 
+Result (GATES, 2026-10-26, orchestrator). **WAIVED - no other run was live.**
+At the top level with `HARNESS_PS_LISTING` unset, `ps -ef | grep -c
+'[.]test[.]sh' was `0` and no `selftest.sh` or `gates.sh` from another tree was in
+`ps -ef`; `env -u HARNESS_PS_LISTING bash scripts/selftest.sh host-load` then
+printed nothing on stderr (the silent result) and passed:
+
+```
+test.sh procs: 0
+(stderr empty)
+assertion floors: all 1 suite(s) met their declared floor (48 assertions executed, 48 declared).
+1 harness suite(s) passed.
+```
+
+The real `ps -ef` shape on this host was nevertheless exercised: GREEN's
+dispatch, running the same command earlier the same day while another
+project's `gates.sh --fast` was live, saw
+`selftest: 2 other test run(s) are on this host; expect this run to be slower, not wrong:`
+followed by `selftest:   pid 1710: bash scripts/gates.sh --fast` and
+`selftest:   pid 1863: bash scripts/gates.sh --fast` (its report, recorded under
+`## Notes`). That run was GREEN's, not this phase's, so the waiver stands and
+the preview is cited as corroboration only.
+
 ## Amendments
 
 **AC-2, 2026-10-26, approved by the user in chat** ("Record an Amendment
@@ -297,28 +319,6 @@ correcting AC-2's clause that P and G match the patterns").
   own negative list names `bash C:\x\run-selftest091.sh`. Recorded in
   `## Notes` before this amendment.
 
-
-Result (GATES, 2026-10-26, orchestrator). **WAIVED - no other run was live.**
-At the top level with `HARNESS_PS_LISTING` unset, `ps -ef | grep -c
-'[.]test[.]sh' was `0` and no `selftest.sh` or `gates.sh` from another tree was in
-`ps -ef`; `env -u HARNESS_PS_LISTING bash scripts/selftest.sh host-load` then
-printed nothing on stderr (the silent result) and passed:
-
-```
-test.sh procs: 0
-(stderr empty)
-assertion floors: all 1 suite(s) met their declared floor (48 assertions executed, 48 declared).
-1 harness suite(s) passed.
-```
-
-The real `ps -ef` shape on this host was nevertheless exercised: GREEN's
-dispatch, running the same command earlier the same day while another
-project's `gates.sh --fast` was live, saw
-`selftest: 2 other test run(s) are on this host; expect this run to be slower, not wrong:`
-followed by `selftest:   pid 1710: bash scripts/gates.sh --fast` and
-`selftest:   pid 1863: bash scripts/gates.sh --fast` (its report, recorded under
-`## Notes`). That run was GREEN's, not this phase's, so the waiver stands and
-the preview is cited as corroboration only.
 
 ## Model guidance
 
