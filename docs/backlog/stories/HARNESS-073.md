@@ -4,8 +4,8 @@ title: CI runs each tree guard once, inside the self-test
 slug: ci-runs-each-tree-guard-once-inside-the
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-073-ci-runs-each-tree-guard-once-inside-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.github/workflows/gates.yml, scripts/doctor.sh, .claude/tests/doctor.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
