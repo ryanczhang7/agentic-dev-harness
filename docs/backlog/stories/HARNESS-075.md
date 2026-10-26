@@ -4,8 +4,8 @@ title: The pre-REVIEW self-test runs only when the diff touches a harness path
 slug: the-pre-review-self-test-runs-only-when
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-075-the-pre-review-self-test-runs-only-when
 depends_on: [HARNESS-072, HARNESS-073, HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -410,3 +410,20 @@ name, below the table.
   `CLAUDE.md`, `.gitignore` and `scripts/*.sh` (present or not) all classify
   `harness` on this tree; `src/*.ts` `source`/`test`, `docs/**` `docs`,
   `package.json` `manifest`, `.dockerignore` `config`.
+- **PO checks before RED (2026-10-26).** Dependencies HARNESS-072, 073 and 074
+  are DONE. Verified against today's tree: `gates.sh:984-993` is the
+  enumeration the Contract mirrors (`for b in origin/main main`, `merge-base`,
+  `diff --name-only` plus `ls-files --others --exclude-standard`, `sort -u`,
+  `classify_stdin`); note that `gates.sh` falls back to the base itself when
+  `merge-base` fails, whereas this story's AC-3 answers `run` - a deliberate
+  difference, not a copy error. `classify.sh` gives the categories Context
+  names (`scripts/x.sh`, `.claude/tests/project-x.test.sh`,
+  `.github/workflows/ci.yml`, `CLAUDE.md`, `.claude/settings.json`,
+  `.gitignore` all `harness`; `src/app.ts` `source`; `src/app.test.ts`
+  `test`; `docs/wiki/x.md` `docs`; `package.json` `manifest`; `.dockerignore`
+  `config`). `classify_stdin` is at `.claude/hooks/lib.sh:1257`.
+  `scripts/selftest-needed.sh` does not exist. One stale figure in Context:
+  the 4-job self-test was planned at "about 6 minutes"; HARNESS-073 and 074
+  measured 751 s and 702 s on this host. Gate holding the artefact: the
+  harness self-test; `required_gates` stays empty; `epic:` empty; no changed
+  signatures.
