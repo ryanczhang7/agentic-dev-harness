@@ -4,8 +4,8 @@ title: The full self-test step runs with SELFTEST_JOBS=4
 slug: the-full-self-test-step-runs-with-selfte
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-072-the-full-self-test-step-runs-with-selfte
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -552,6 +552,32 @@ the fix, so it is taken in the same dispatch rather than deferred. The
 `procedure` suite checks that each required entry is present (`has_entry`),
 not the exact list, so an added entry does not touch a frozen test.
 
+### Round 2 (2026-10-25, the fix only: `git diff 1214957 c58f4f5 -- .claude/commands`)
+
+Reviewer: a fresh `feature-developer` dispatch, resolved to **Opus 5.5
+(`claude-opus-5-5`)**, its declared `opus`, no override. It changed no file.
+
+What this change does: The `allowed-tools:` line in both commands gains
+`Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*)` straight after the kept
+`Bash(bash scripts/selftest.sh:*)`. Step 2 now says a slow run is slower, not
+wrong, most often because other test runs share the host, so an idle slow host
+is covered too.
+
+Checked: round 1's Must fix is addressed as far as the frontmatter can show;
+round 1's Nice to have taken, no sentence lost; frontmatter readers unaffected
+(`procedure.test.sh`'s `has_entry` tests trimmed entries for equality, the
+frozen `tool-pattern-unchanged` case still holds because the bare entry is
+kept; `plan.test.sh` reads only `model:`; `policy.test.sh` and
+`settings.test.sh` do not read `allowed-tools`; no script parses it); step 2
+still holds the token whole on one line (line 210) and `other test runs`.
+`procedure: 98 passed, 0 failed`, floor met; `policy` passed.
+
+Not checked: whether Claude Code's matcher matches an allow rule that itself
+begins with an assignment. The docs do not say; the first real GATES → REVIEW
+run that reaches step 2 without a permission prompt is the proof.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -630,3 +656,22 @@ not the exact list, so an added entry does not touch a frozen test.
   the duration sentence and the new "other test runs" sentence. Resolved
   model: GREEN `feature-developer` on Opus 5.5 (`claude-opus-5-5`), its
   declared `opus`, no override.
+- **Full self-test before REVIEW (2026-10-25, GATES, orchestrator).** After
+  round 2 returned `Verdict: Ship.`, and, as the user asked, after waiting
+  for the other active test runs to finish (6,811 s: the round-2 reviewer's
+  `plan` run in this tree and another session's self-test in clean_calendar;
+  no `gates.sh` run was active), `SELFTEST_JOBS=4 bash scripts/selftest.sh`
+  ran detached. Exit status 0. Last lines:
+
+      assertion floors: all 28 suite(s) met their declared floor (4066 assertions executed, 3886 declared).
+      28 harness suite(s) passed.
+
+  Duration: 7,684 s (about 2 h 8 min) at `SELFTEST_JOBS=4`. A manga-translator
+  self-test started on the same host at the same minute and ran alongside, so
+  this is not a clean measure of the speed-up against HARNESS-036's idle
+  336 s; it is one contended run. The Bash tool ran the command directly, so
+  this run does not show whether the new `allowed-tools` entry avoids a
+  permission prompt (this session is in auto mode).
+- **Foreign commit on this branch.** `4a7b47b` (HARNESS-075 PLANNED, docs
+  only) was committed onto this branch by another session. It was left out
+  of both review rounds and rides along in this PR.
