@@ -4,8 +4,8 @@ title: CI runs each tree guard once, inside the self-test
 slug: ci-runs-each-tree-guard-once-inside-the
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-073-ci-runs-each-tree-guard-once-inside-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.github/workflows/gates.yml, scripts/doctor.sh, .claude/tests/doctor.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -589,6 +589,59 @@ line, checked with `grep`, and the backup removed.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Run at GATES → REVIEW step 1, 2026-10-26, over `git diff main...HEAD` at
+`b8b44c1`. Reviewer: a fresh `feature-developer` dispatch, resolved to **Opus
+5.5 (`claude-opus-5-5`)**, its declared `opus`, no override. It changed no
+file. Report as returned, lightly condensed in "What I checked":
+
+What this change does: it removes the two tree-guard steps (`check-sigpipe.sh`
+and `check-grep-count.sh`) from `.github/workflows/gates.yml`. Those guards'
+verdict is now carried only by the `sigpipe` and `grep-count` suites inside the
+self-test step. `doctor.sh` stops asking a workflow to run the two guards. The
+two suites' real-tree "zero findings" assertions now print the guard's finding
+lines (`<path>:<line>: ...`) when they fail.
+
+What I checked:
+- **The central claim holds.** Each suite's `run_guard "$REPO_ROOT"`
+  (`sigpipe.test.sh:130-134,497`; `grep-count.test.sh:50-54,272`) runs the
+  same guard from the checkout root with no pathspec, over the same
+  `classify.sh --list harness` population, on the same runner and job as the
+  removed step. A finding raises the count and the exit status, each asserted
+  separately; a guard that crashes before its census goes to `_bad`; a suite
+  that dies early is caught by the floors. `selftest.sh` has no skip
+  mechanism, and `refresh-harness.sh` ships `.claude/tests`. A PR gets one
+  self-test run (the colour-forced one is off-PR), which suffices for static
+  scans.
+- **`_bad`'s detail filter is sound.** The guards print only finding lines and
+  one census line; `index($0,"check-<guard>: ") != 1` drops only the census.
+  Stderr is merged and kept. Each branch runs exactly one `_ok` or `_bad`.
+- **Suites run here:** `doctor` 69/0 (floor 69 = executed); `sigpipe` 91/0
+  (C-5 pins on `doctor.sh:68`/`:140` hold); `grep-count` 38/0; `ci-local`
+  28/0; `ci-local.sh --dry-run` lists neither guard.
+- **Nothing else depends on the old setup** across `.github`, `scripts`,
+  `.claude/{hooks,commands,skills,harness,tests}`, `CLAUDE.md`, `README.md`,
+  `docs/wiki`.
+- **Consumers whose workflows still carry the guard steps are fine:** the
+  want-list is a substring match per wanted name; the retained case pins it.
+- **The new doctor cases discriminate:** whole-line matches; each control
+  removes one wanted script; no needle satisfied by its negation.
+
+**Nice to have:**
+
+1. **Two test comments still describe a CI step that no longer exists** (`.claude/tests/grep-count.test.sh:267-271`, `.claude/tests/sigpipe.test.sh:518-523`)
+   - **What this is:** The comments explaining why each suite asserts zero findings on the real tree.
+   - **Problem:** `grep-count.test.sh` still says "only the CI step would notice"; after this change no CI step exists. `sigpipe.test.sh` has the same sentence, corrected by the HARNESS-073 note below it.
+   - **Fix:** Reword the `grep-count.test.sh` sentence to say the self-test is now the only place a finding is caught. Comment-only, but in a test file, so it needs a return to RED.
+   - **If we skip it:** A later reader may think a CI step still backs the assertion and treat it as redundant.
+
+Verdict: Ship.
+
+**Orchestrator's disposition (lead-po).** Finding 1 is Nice to have, listed
+only; not worth a return to RED by itself. It is carried forward: the next
+story that touches `grep-count.test.sh` rewords the comment.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -681,3 +734,16 @@ line, checked with `grep`, and the backup removed.
   (its C-5 pins on doctor.sh held), `ci-local: 28 passed, 0 failed`,
   `gates.sh --fast` exit 0. `doctor.sh` on this repository now prints
   `ok       ci           runs the self-test, the gates and the boundaries check`.
+- **Full self-test before REVIEW (2026-10-26, GATES, orchestrator).** After the
+  diff review returned `Verdict: Ship.`, and after waiting 60 s for a leftover
+  `gates.sh --fast` run (orphaned, most likely from GREEN's stopped dispatch;
+  read-only), `SELFTEST_JOBS=4 bash scripts/selftest.sh` ran detached from
+  11:37:30. Exit status 0. Last lines:
+
+      assertion floors: all 28 suite(s) met their declared floor (4071 assertions executed, 3894 declared).
+      28 harness suite(s) passed.
+
+  Duration: 751 s (about 12.5 min), the first full run under HARNESS-072's
+  `SELFTEST_JOBS=4` step on a host without another project's self-test
+  running alongside for most of it. Compare 7,684 s for HARNESS-072's run
+  beside a manga-translator self-test, and 336 s idle at HARNESS-036.
