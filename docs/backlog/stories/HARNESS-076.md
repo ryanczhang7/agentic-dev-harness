@@ -320,3 +320,13 @@ name, below the table.
 - `plan.sh conflicts` will report CONFLICT with any story that touches
   `floors.conf` or `selftest.test.sh` (every story that adds or raises a
   floor does); that is a wave ordering, not a dependency.
+- **Carried from HARNESS-074 (2026-10-26, orchestrator), read before RED.**
+  1. HARNESS-074 returned to RED after this story was planned and added
+     AC-8 and AC-9; its `host-load` floor is now **54**, not 48. Every "48"
+     above means 074's floor as it then stood; RED raises from 54.
+  2. 074 now skips any row whose PID or PPID is not all digits (its AC-8). A
+     UID holding a space therefore moves PID out of field 2 and that user's
+     rows are skipped, not shifted. 074's `host-load.sh` header still says
+     such a row "shifts the command one field" (its round-2 diff review,
+     Nice to have 1); correct that sentence when this story touches the
+     header.
