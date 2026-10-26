@@ -20,6 +20,24 @@
 # with SELFTEST_JOBS=4, with identical per-suite results. Suites start in suite
 # order, so the slowest one (phase-guard) still sets the floor.
 #
+# Other test runs on the host (HARNESS-074). Once the run lock is taken and
+# before the first suite, scripts/host-load.sh reads `ps -ef` and, if other
+# harness test runs (bash or sh running a selftest.sh, *.test.sh or gates.sh)
+# outside this run's own process tree are live - another worktree, another
+# project - says so on stderr: how many, and the first five by pid and
+# command. A slow run then arrives with its circumstances. It is a warning
+# only: it never refuses, never waits, and never changes the exit status or a
+# byte of stdout. A listing that cannot be read or parsed gets one line saying
+# so; an empty listing prints nothing; a missing host-load.sh gets one line and
+# the run proceeds. HARNESS_PS_LISTING=<file> replaces `ps -ef` with that
+# file's contents. .claude/tests/_lib.sh exports it as /dev/null, so every
+# selftest.sh a suite starts - each fixture run and the whole-run goldens, on
+# CI as anywhere - sees an empty listing and stays silent. The top-level run
+# does not source _lib.sh: CI's own `bash scripts/selftest.sh` reads the
+# runner's real `ps -ef`, where no other harness run is expected.
+# On Git Bash a process started outside the MSYS runtime (from PowerShell or
+# cmd) is not in `ps -ef`, so is not noticed either.
+#
 # These test the harness, not the project built with it: the phase lock, the
 # path classifier, the hooks. They need bash, git and coreutils and nothing
 # else, so they run before a stack has been chosen - which is the point, since
@@ -318,6 +336,13 @@ trap selftest_exit EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 run_lock_acquire "$ROOT" "scripts/selftest.sh${*:+ $*}" || exit 2
+
+if [ -f "$ROOT/scripts/host-load.sh" ]; then
+  . "$ROOT/scripts/host-load.sh"
+  host_load_warn "$$" "${HARNESS_RUN_LOCK_PID:-$$}" >&2
+else
+  printf 'selftest: scripts/host-load.sh is missing; other test runs on this host were not checked.\n' >&2
+fi
 
 # --- run --------------------------------------------------------------------
 fails=0; ran=0; floored=0; met=0; executed=0; declared=0

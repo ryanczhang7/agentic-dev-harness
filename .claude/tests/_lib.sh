@@ -13,6 +13,15 @@
 
 set -uo pipefail
 
+# scripts/selftest.sh warns on stderr about other harness test runs it finds in
+# `ps -ef` (HARNESS-074), and HARNESS_PS_LISTING replaces that listing with a
+# file. Pointing it at /dev/null here - unconditionally, exported - makes every
+# fixture run any suite starts see an empty host and print nothing, whatever
+# else the machine is running; that is what keeps selftest.test.sh's empty-
+# stderr goldens and run-lock.test.sh's fixtures deterministic. Only
+# host-load.test.sh points it at listings of its own, per call.
+export HARNESS_PS_LISTING=/dev/null
+
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$TESTS_DIR/../.." && pwd)"
 
