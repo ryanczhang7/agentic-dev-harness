@@ -5,7 +5,7 @@ slug: ci-runs-each-tree-guard-once-inside-the
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-073-ci-runs-each-tree-guard-once-inside-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.github/workflows/gates.yml, scripts/doctor.sh, .claude/tests/doctor.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -179,9 +179,80 @@ line. Paste both suites' red lines and `mutate.sh`'s restore lines. This is
 the evidence that dropping the CI steps dropped no check: the self-test fails
 on the same tree the steps would have failed on.
 
+Result (GATES, 2026-10-26, run by the orchestrator, with RED's corrected
+expression for the grep-count half; ok lines elided):
+
+```
+=== mutate: scripts/plan.sh (1 line(s) changed by 297s/ || true)"/ || printf 0)"/) ===
+=== mutate: running bash scripts/selftest.sh grep-count ===
+    FAIL AC-4: and the finding count in that census is zero
+         expected: 0 findings
+         actual:   1
+         scripts/plan.sh:297: grep -c prints 0 AND exits 1 on no-match, so this printing fallback appends a second value; the caller gets "0\n0", which equals neither the count nor zero
+    FAIL AC-4: so it exits 0 against this tree
+         expected: 0
+         actual:   1
+    FAIL AC-4: and the tree does carry || true instances for the rule to judge
+         expected: 2
+         actual:   1
+grep-count: 35 passed, 3 failed
+FAIL grep-count  did 35 units of work, below the floor of 38 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_plan.sh.20261026T162457Z.11645.bak) ===
+```
+
+The finding-count assertion went red and its detail carries the
+`scripts/plan.sh:297:` finding line (AC-3). The `|| true` census assertion also
+went red (2 -> 1), as RED predicted.
+
+The sigpipe half, against a real line of `scripts/gates.sh` (line 428,
+`grep -q '^## Gate results' "$f" || ...`, rewritten as `cat "$f" | grep -q ... ||`):
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 428s/^  grep -q \(.*\) "\$f" || /  cat "$f" | grep -q \1 || /) ===
+=== mutate: running bash scripts/selftest.sh sigpipe ===
+    FAIL C-3: and the real tree has no findings at all
+         expected: 0 findings
+         actual:   1
+         scripts/gates.sh:428: pipeline into an early-exit reader under pipefail; the writer can be killed by SIGPIPE and 141 becomes the status this line is judged by
+    FAIL C-3: so the guard exits 0 against it
+         expected: 0
+         actual:   1
+sigpipe: 89 passed, 2 failed
+FAIL sigpipe  did 89 units of work, below the floor of 91 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261026T162533Z.15236.bak) ===
+```
+
+Red on C-3's finding count, detail carries the `scripts/gates.sh:428:` line
+(AC-3); file restored, `mutate.sh --check` clean. Both are probes against a
+real line of the tree the rule judges. The grep-count mutation also serves as
+the orchestrator's one "does the suite discriminate" check: a single
+finding-count assertion caught it, and the suite was 38/0 again afterwards.
+
 **DV-2 (the step list). Owner: GATES.** Paste `bash scripts/ci-local.sh
 --dry-run` on the story branch into `## Gate probes` (AC-1), and the `ok ci`
 line of `bash scripts/doctor.sh` run on this repository.
+
+Result (GATES, 2026-10-26, orchestrator; recorded here rather than in
+`## Gate probes`, since this story adds or changes no gate). AC-1,
+`bash scripts/ci-local.sh --dry-run` on the story branch at GREEN's tree:
+
+```
+bash scripts/selftest.sh
+FORCE_COLOR=1 CLICOLOR_FORCE=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always bash scripts/selftest.sh
+bash scripts/gates.sh --list
+bash scripts/gates.sh --audit
+bash scripts/gates.sh
+bash scripts/check-boundaries.sh origin/main
+```
+
+Neither guard is listed; the five remaining steps are in order. AC-2 on this
+repository, `bash scripts/doctor.sh 2>&1 | grep ' ci '`:
+
+```
+  ok       ci           runs the self-test, the gates and the boundaries check
+```
 
 ## Model guidance
 
@@ -520,10 +591,21 @@ line, checked with `grep`, and the backup removed.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-26T16:28:31Z
+    commit: 2d06663
+    tree:   dbe3c30afd35c18628497aaa3eaa7f5d08dc5df8
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
