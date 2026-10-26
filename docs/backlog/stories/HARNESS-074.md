@@ -1008,6 +1008,47 @@ Verdict: Ship.
 **Orchestrator's disposition (lead-po):** the user chose (2026-10-26) to take findings 1 and 3 in this story - AC-8 and AC-9 added under `## Amendments`, a return to RED for their tests, the junk-row guard in GREEN - and to file finding 2 as a follow-up story. See
 `## Notes`.
 
+### Round 2 (2026-10-26, the fix only: `git diff 1bf2c5b HEAD -- scripts .claude/tests`)
+
+Reviewer: a fresh `feature-developer` dispatch, resolved to **Opus 5.5
+(`claude-opus-5-5`)**, its declared `opus`, no override. It changed no file.
+
+What this change does: `scripts/host-load.sh` now skips any listing row whose
+PID or PPID is not all digits, so a multi-line command's later lines are never
+reported as test runs; the header says so, and admits a continuation line with
+numeric words 2 and 3 still parses as a process. `host-load.test.sh` gains AC-8
+(four continuation shapes plus a numeric control) and AC-9 (a stub `ps` on
+PATH; a PATH with no `ps`); floor 48 -> 54.
+
+Checked: the guard runs before anything is recorded, so a skipped row leaves no
+trace in the parent map, descendants or ancestor walk; Linux, macOS and
+Cygwin/MSYS `ps -ef` print PID/PPID as plain integers - on this host every row
+the guard would skip was a continuation line, none of this user's real rows; a
+UID with a space skips all that user's rows together, no worse than before
+(they were undetected already); AC-9's stub refuses any argument but `-ef`,
+PATH changes only inside the `bash -c` child, later cases unaffected;
+`command -v awk` gives an absolute path on ubuntu-latest and every other tool
+on that branch is a builtin; AC-9 cannot pass for the wrong reason (precondition
+shows awk runs; both mutations in `## Regressions` turned their case red);
+`## Regressions` "Return 1" shows fenced output with restore lines; both floor
+copies say 54. `host-load: 54 passed, 0 failed`, floor met.
+
+**Nice to have:**
+
+1. **One sentence in the header comment is now out of date** (`scripts/host-load.sh:28-30`)
+   - **What this is:** The "Known limits" sentence about a UID holding a space.
+   - **Problem:** It says such a row "shifts the command one field"; with the new guard the row is skipped, not shifted.
+   - **Fix:** Reword it to say that user's rows are skipped by the guard (unless the name's second word is a number). Comment only.
+   - **If we skip it:** Whoever picks up HARNESS-076 starts from a wrong description of today's behaviour.
+
+Not checked: the suite on Linux or macOS; AC-9's PATH handling there is from reading, not a run.
+
+Verdict: Ship.
+
+**Orchestrator's disposition (lead-po):** finding 1 is Nice to have and listed
+only; rather than another code round here, it is carried into HARNESS-076's
+`## Notes`, the story that owns the UID-with-a-space limit.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
