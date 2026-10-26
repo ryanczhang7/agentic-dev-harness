@@ -68,6 +68,13 @@ jobs:
       # right home, since it is already `on: pull_request` and already required.
       # Nothing downstream cares which file it is in: doctor.sh accepts any
       # workflow, and ci-local.sh globs *.yml.
+      #
+      # THE TWO TREE GUARDS RUN INSIDE THIS STEP, not as steps of their own.
+      # `check-sigpipe.sh` and `check-grep-count.sh` are static scans of the
+      # checkout, and the `sigpipe` suite (C-3) and the `grep-count` suite
+      # (AC-4) run each one over this checkout and assert zero findings - so a
+      # finding fails this step, and the failing suite prints the guard's
+      # `<path>:<line>:` lines. A separate step could only repeat that verdict.
       - name: Harness self-test
         run: bash scripts/selftest.sh
 
@@ -102,31 +109,6 @@ jobs:
       - name: Harness self-test, with colour forced
         if: github.event_name != 'pull_request'
         run: FORCE_COLOR=1 CLICOLOR_FORCE=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always bash scripts/selftest.sh
-
-      # The SIGPIPE guard. Five instances of one defect shipped in this
-      # repository before it existed, and a hand sweep that fixed four of them
-      # left NINE more standing, across five files - including the
-      # blocked-pattern check in gates.sh, which stops blocking when the pattern
-      # lands early in a large log. A sweep looks for the shape it has already
-      # seen; a guard looks for the class.
-      #
-      # IT BELONGS IN CI RATHER THAN THE SELF-TEST because the defect is a race
-      # on the pipe buffer: the same file passes on a Windows checkout and fails
-      # on ubuntu-latest, so the run that matters is the one on the runner. Two
-      # of the original five were found exactly that way and never locally.
-      # Needs nothing but bash and git, so it sits in this job for the same
-      # reason the self-test does.
-      - name: Refuse pipefail SIGPIPE matchers
-        run: bash scripts/check-sigpipe.sh
-
-      # The sibling guard: `grep -c` prints 0 AND exits 1 on no-match, so a
-      # fallback that PRINTS appends a second value and the caller gets "0\n0",
-      # which equals neither the count nor zero. `|| true` is correct and is not
-      # flagged. Same family as the step above - both produce a matcher that
-      # reports the opposite of the truth while every process in it exits
-      # cleanly - and here for the same reason: bash and git only.
-      - name: Refuse a printing grep -c fallback
-        run: bash scripts/check-grep-count.sh
 
       - name: Show configured gates
         run: bash scripts/gates.sh --list

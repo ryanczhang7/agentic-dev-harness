@@ -5,7 +5,7 @@ slug: ci-runs-each-tree-guard-once-inside-the
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-073-ci-runs-each-tree-guard-once-inside-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.github/workflows/gates.yml, scripts/doctor.sh, .claude/tests/doctor.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/grep-count.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -587,3 +587,15 @@ line, checked with `grep`, and the backup removed.
   the story claims.
 - Resolved models: RED `test-developer` on Opus 5.5 (`claude-opus-5-5`), its
   declared `opus`, no override.
+- **GREEN (2026-10-26).** The feature-developer dispatch made both edits and
+  was then stopped when the session ended, before it reported; its model is
+  therefore unrecorded (planned `opus`). The orchestrator checked the diff
+  against the Contract (doctor.sh:180 want-list is
+  `selftest.sh gates.sh check-boundaries.sh`, the `ok ci` line reads
+  `runs the self-test, the gates and the boundaries check`, nothing above line
+  140 moved; gates.yml drops both guard steps and their comments and the
+  self-test step's comment says the guards run inside it) and reran:
+  `doctor: 69 passed, 0 failed` (RED: 66/3), `sigpipe: 91 passed, 0 failed`
+  (its C-5 pins on doctor.sh held), `ci-local: 28 passed, 0 failed`,
+  `gates.sh --fast` exit 0. `doctor.sh` on this repository now prints
+  `ok       ci           runs the self-test, the gates and the boundaries check`.
