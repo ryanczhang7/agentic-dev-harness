@@ -5,7 +5,7 @@ slug: the-pre-review-self-test-runs-only-when
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-075-the-pre-review-self-test-runs-only-when
 depends_on: [HARNESS-072, HARNESS-073, HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -719,3 +719,30 @@ branch.
   change is then judged `skip`, the AC-1 cases and the AC-2 control go red,
   and the plain skip and zero-change cases stay green (RED measured 40 failed
   on its scratch candidate; to be confirmed against the shipped script).
+- **GREEN verified by the orchestrator (2026-10-26).** Feature-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, its declared `opus`, no override)
+  wrote `scripts/selftest-needed.sh`, the two command files and the
+  `CLAUDE.md` line; `lib.sh`, `gates.sh` and every test file untouched.
+  Orchestrator reran: `selftest-needed: 139 passed, 0 failed` (RED's
+  unmutated control row, 139/0, confirmed against the shipped script),
+  `procedure: 118 passed, 0 failed`, `shipped-docs` 14/14, floors met.
+  DV-1's mutation targets the one `"harness"` literal, in the decision line
+  `awk -F'\t' '$1 == "harness" { print $2 }'`; use `s/"harness"/"harnessX"/`
+  per the correction above.
+- **Open: AC-5 as worded cannot be observed (2026-10-26), found by GREEN,
+  reproduced by the orchestrator.** AC-5 (and DV-1's first reading) say the
+  real-branch line "names `scripts/selftest-needed.sh` among the harness
+  paths". The Contract pins the list to the first three paths in `sort -u`
+  order then `, +N more`, and the suite pins that with `assert_eq`; `.claude/`
+  and `CLAUDE.md` sort before `scripts/`, so on this branch the script is the
+  8th of 8 and falls inside `+5 more`. Reproduced independently by feeding the
+  same enumeration to `classify.sh --only harness` (not the subagent's probe):
+
+      selftest-needed: run — 8 harness path(s) changed against origin/main (merge-base 1282a65): .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/floors.conf, +5 more
+      ... classify.sh --only harness: 8 paths, the last scripts/selftest-needed.sh
+
+  The script counts the path; only the AC's observable is wrong. Proposed
+  `## Amendments` entry, awaiting the user: AC-5 to read "answers `run`, and
+  `scripts/selftest-needed.sh` is among the harness paths it counts (shown by
+  `classify.sh --only harness` over the same enumeration, pasted beside the
+  line)". Must be settled before GATES runs DV-1.

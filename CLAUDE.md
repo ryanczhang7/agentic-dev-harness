@@ -157,6 +157,7 @@ Never guess a build command. Every project-specific command lives in
 ```bash
 bash scripts/doctor.sh           # is the toolchain installed?
 bash scripts/selftest.sh         # the harness's own tests (bash + git only)
+bash scripts/selftest-needed.sh  # does this story's diff touch a harness path? exit 0 run / 1 skip
 bash scripts/gates.sh            # all gates
 bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and GREEN
 bash scripts/gates.sh --gate unit
