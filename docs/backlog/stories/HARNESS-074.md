@@ -5,7 +5,7 @@ slug: the-self-test-warns-when-other-test-runs
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-074-the-self-test-warns-when-other-test-runs
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, scripts/selftest.sh, .claude/tests/_lib.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -223,6 +223,44 @@ against the final text) and `bash scripts/selftest.sh host-load`, AC-2
 cannot run it: the function does not exist in RED. Paste the red lines and
 `mutate.sh`'s restore line.
 
+
+Result (GATES, 2026-10-26, run by the orchestrator; ok lines elided). The
+descendant closure at `host-load.sh:85` with its `desc[pid[i]] = 1; ch = 1` body
+replaced by `ch = 0`, so root's descendants are never marked ours:
+
+```
+=== mutate: scripts/host-load.sh (1 line(s) changed by /# descendants of root are ours/s/desc\[pid\[i\]\] = 1; ch = 1/ch = 0/) ===
+=== mutate: running bash scripts/selftest.sh host-load ===
+    FAIL D1 (suite of this run), D2 (fixture under D1), P, G and GG (ancestors) are not printed; X and Y still are
+         expected: 5001	bash scripts/selftest.sh
+         5002	/usr/bin/bash /d/other/.claude/tests/plan.test.sh
+    FAIL control - D2 with its PPID rewired to an unrelated pid IS printed: exclusion is by ancestry, not command text
+         expected: 5001	bash scripts/selftest.sh
+         5002	/usr/bin/bash /d/other/.claude/tests/plan.test.sh
+    FAIL control - with S's parent link broken, GG (bash /d/me/scripts/gates.sh) is no longer an ancestor and IS printed
+         expected: 5001	bash scripts/selftest.sh
+         5002	/usr/bin/bash /d/other/.claude/tests/plan.test.sh
+    FAIL root R (an ancestor of S holding the run lock): R's other descendants E1, E2 are not printed either
+         expected: 5001	bash scripts/selftest.sh
+         5002	/usr/bin/bash /d/other/.claude/tests/plan.test.sh
+    FAIL control - the same listing rooted at S prints E1 and E2: it is the root that makes them ours
+         expected: 5001	bash scripts/selftest.sh
+         5002	/usr/bin/bash /d/other/.claude/tests/plan.test.sh
+FAIL host-load  did 43 units of work, below the floor of 48 in .claude/tests/floors.conf
+
+assertion floors: 0 of 1 suite(s) met their declared floor.
+host-load: 43 passed, 5 failed
+FAIL host-load  did 43 units of work, below the floor of 48 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_host-load.sh.20261026T183938Z.24.bak) ===
+```
+
+Exactly the five AC-2 assertions went red (D1 and D2 printed; the rewired,
+broken-link and rooted-at-R controls with them), while AC-1, AC-3 and every
+fixture case stayed green: 43 passed, 5 failed, as RED predicted. File restored,
+`mutate.sh --check` clean. This is also the orchestrator's one "does the suite
+discriminate" mutation; `host-load` was 48/0 again afterwards.
+
 **DV-2 (the real host). Owner: GATES.** Run `bash scripts/selftest.sh
 host-load` at the top level (no `HARNESS_PS_LISTING` in the environment) while
 another project's self-test is live on this host, and paste the warning lines
@@ -258,6 +296,29 @@ correcting AC-2's clause that P and G match the patterns").
   `run-selftest091.sh` (`091.sh` suffix) match no listed suffix, and AC-3's
   own negative list names `bash C:\x\run-selftest091.sh`. Recorded in
   `## Notes` before this amendment.
+
+
+Result (GATES, 2026-10-26, orchestrator). **WAIVED - no other run was live.**
+At the top level with `HARNESS_PS_LISTING` unset, `ps -ef | grep -c
+'[.]test[.]sh' was `0` and no `selftest.sh` or `gates.sh` from another tree was in
+`ps -ef`; `env -u HARNESS_PS_LISTING bash scripts/selftest.sh host-load` then
+printed nothing on stderr (the silent result) and passed:
+
+```
+test.sh procs: 0
+(stderr empty)
+assertion floors: all 1 suite(s) met their declared floor (48 assertions executed, 48 declared).
+1 harness suite(s) passed.
+```
+
+The real `ps -ef` shape on this host was nevertheless exercised: GREEN's
+dispatch, running the same command earlier the same day while another
+project's `gates.sh --fast` was live, saw
+`selftest: 2 other test run(s) are on this host; expect this run to be slower, not wrong:`
+followed by `selftest:   pid 1710: bash scripts/gates.sh --fast` and
+`selftest:   pid 1863: bash scripts/gates.sh --fast` (its report, recorded under
+`## Notes`). That run was GREEN's, not this phase's, so the waiver stands and
+the preview is cited as corroboration only.
 
 ## Model guidance
 
@@ -695,10 +756,21 @@ so a slower host moves both sides.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-26T18:40:31Z
+    commit: 5a1cbea
+    tree:   3520341300ded05733966c3e7bfa06f7c8cf212a
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
