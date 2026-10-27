@@ -5,7 +5,7 @@ slug: the-pre-review-self-test-runs-only-when
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-075-the-pre-review-self-test-runs-only-when
 depends_on: [HARNESS-072, HARNESS-073, HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -295,12 +295,78 @@ it now says `skip` - the real tree, not a fixture, seen to be misjudged by
 the mutant and judged correctly by the restored file. One mutation, two
 readings, one restore.
 
+*Result (GATES, orchestrator, 2026-10-26).* Expression `s/"harness"/"harnessX"/`
+per the PO correction in `## Notes` (the `"docs"` form would also redden the
+plain AC-2 skip). The literal occurs once, on line 63, the decision line.
+
+First reading, the restored tree (AC-5 as amended) - the line, then
+`classify.sh --only harness` over the same enumeration:
+
+    selftest-needed: run — 8 harness path(s) changed against origin/main (merge-base 1282a65): .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/floors.conf, +5 more
+    rc=0
+    .claude/commands/advance-story.md
+    .claude/commands/complete-story.md
+    .claude/tests/floors.conf
+    .claude/tests/procedure.test.sh
+    .claude/tests/selftest.test.sh
+    .claude/tests/selftest-needed.test.sh
+    CLAUDE.md
+    scripts/selftest-needed.sh
+
+The mutation, the suite under it (red lines abridged to one per case; every
+AC-1 case, AC-2's control, the two list-shape cases and the two "run"
+base cases went red, four assertions each; the plain AC-2 skip, the
+zero-change case and AC-3's fail-toward-run trio stayed green), the real
+branch under the same mutant, and the restore:
+
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by s/"harness"/"harnessX"/) ===
+      63 - harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')"
+      63 + harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harnessX" { print $2 }')"
+      AC-1: a harness path among the story's changes answers run, exit 0
+        FAIL a COMMITTED new scripts/x.sh answers run and names it [from root]: exits 0
+        FAIL an UNCOMMITTED (staged) .claude/tests/project-x.test.sh answers run and names it [from root]: exits 0
+        FAIL an UNTRACKED .github/workflows/ci.yml answers run and names it [from root]: exits 0
+        FAIL an unstaged edit to CLAUDE.md answers run and names it [from root]: exits 0
+        FAIL a DELETED scripts/y.sh answers run and names it: classification is by path [from root]: exits 0
+        FAIL a mixed diff whose ONLY harness path is scripts/z.sh, beside source, test, docs, manifest, config and vendor paths, answers run (AC-2's control) [from root]: exits 0
+        FAIL exactly three harness paths are all listed, in sort order, with no `+N more` [from root]: exits 0
+        FAIL four harness paths list the first three in sort order, then `, +1 more` [from root]: exits 0
+      AC-2: no harness path among the changes answers skip, exit 1
+      AC-3: when the diff cannot be computed, it answers run, exit 0
+      AC-3: an explicit base ref is used in place of the resolution
+        FAIL `selftest-needed.sh release` diffs against release and says `against release` [from root]: exits 0
+      AC-3: origin/main is preferred over main when both resolve
+        FAIL with both refs present and no argument, origin/main is the base [from root]: exits 0
+    selftest-needed: 99 passed, 40 failed
+    --- real branch under the mutant:
+    selftest-needed: skip — no harness path among 9 changed path(s) against origin/main (merge-base 1282a65); CI runs the self-test on the PR
+    rc=1
+    === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261027T002134Z.6423.bak) ===
+      63: harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')"
+
+    selftest-needed: run — 8 harness path(s) changed against origin/main (merge-base 1282a65): .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/floors.conf, +5 more
+    rc after restore=0
+
+40 failed is exactly the count RED's handoff predicted for this mutant on its
+scratch candidate. (The real branch counted 9 paths under the mutant and 8
+after: the story file, `docs`, was modified in the working tree during the
+mutant run and committed before the final reading.)
+
 **DV-2 (the fail-toward-run default, on a real clone). Owner: GATES.**
 `git clone --depth 1 --branch <story branch> file://$PWD <scratch>` and run
 the script there: with no `origin/main` fetched it **must** answer `run`
 with `no origin/main or main to compare against` (or, if the shallow clone
 carries the ref, `no merge base with origin/main`), exit 0. Paste the line.
 This is AC-3 against a tree git made, not a fixture the suite arranged.
+
+*Result (GATES, orchestrator, 2026-10-26).* Depth-1 clone of the story branch
+into the session scratchpad; the clone carried only the story branch and its
+`origin/` tracking ref, no `origin/main`, no `main`:
+
+    * story/HARNESS-075-the-pre-review-self-test-runs-only-when
+      remotes/origin/story/HARNESS-075-the-pre-review-self-test-runs-only-when
+    selftest-needed: run — cannot compute the diff: no origin/main or main to compare against; defaulting to run
+    rc=0
 
 ## Model guidance
 
@@ -647,10 +713,21 @@ branch.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-27T00:22:51Z
+    commit: 80c6543
+    tree:   7c3ce47d04b1bc0794a8f13bc23ab1e4e08b7dd7
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
