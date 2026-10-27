@@ -498,6 +498,81 @@ EOF
 out="$(gates --audit)"
 assert_contains "no covers lines is noted by the audit" "no \`covers\` lines" "$out"
 
+# ---------------------------------------------------------------------------
+describe "covers (HARNESS-078): a changed path is seen by its real name, not git's quoted one"
+
+# The changed-path enumeration read `git diff --name-only` and `git ls-files
+# --others` under the default core.quotePath, so git printed a non-ASCII name
+# C-quoted - "src/render/caf\303\251.ts" - and the `[ -e ]` test beside it
+# found no such file and skipped it as DELETED. No FAIL, no WARN, and "All
+# required gates passed" over a file only an optional gate reads. The expected
+# lines are today's FAIL and WARN formats (the cases above), read out, not
+# derived; the paths are written with printf, never sed -i. Every case removes
+# its file after itself, so the next case sees the diff it expects.
+write_conf "$FIX" <<'EOF'
+gate     | unit        | required | . | printf 'Tests  47 passed (47)\n'
+gate     | integration | optional | . | printf 'Tests  25 passed (25)\n'
+evidence | unit        | Tests +[1-9][0-9]* passed
+evidence | integration | Tests +[1-9][0-9]* passed
+covers   | unit        | src/core/**
+covers   | integration | src/render/**
+EOF
+rm -f "$FIX/src/render/mesh.ts"
+
+# AC-1: the `git ls-files --others` half. An UNTRACKED src/render/café.ts.
+H78_CAFE_TS='src/render/café.ts'
+printf 'export const c = 1\n' > "$FIX/$H78_CAFE_TS"
+assert_eq "AC-1 precondition: git lists src/render/café.ts, and nothing else, as untracked under src/render" \
+  "$H78_CAFE_TS" "$(git -C "$FIX" ls-files -z --others --exclude-standard -- src/render | tr '\0' '\n')"
+out="$(gates)"
+assert_contains "AC-1: an UNTRACKED src/render/café.ts that only an optional gate reads FAILs, named unquoted" \
+  "FAIL         changes: src/render/café.ts is exercised only by optional gate(s): integration" "$out"
+assert_contains "AC-1: and the run fails" "required gate(s) failed" "$out"
+assert_not_contains "AC-1: and the run does not claim all required gates passed" "All required gates passed" "$out"
+rm -f "$FIX/$H78_CAFE_TS"
+
+# AC-2: the `git diff` half. A COMMITTED src/shaders/café.glsl no covers line
+# claims, on the story branch and not on main.
+H78_CAFE_GLSL='src/shaders/café.glsl'
+printf 'void main() {}\n' > "$FIX/$H78_CAFE_GLSL"
+git -C "$FIX" add -- "$H78_CAFE_GLSL" >/dev/null 2>&1
+git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "café shader" >/dev/null 2>&1
+assert_eq "AC-2 precondition: the story branch's commits against main hold src/shaders/café.glsl under its UTF-8 name, and it is not untracked" \
+  "$H78_CAFE_GLSL|" \
+  "$(git -C "$FIX" diff -z --name-only main HEAD -- src/shaders/ | tr '\0' '\n' | grep -vxF 'src/shaders/sky.glsl')|$(git -C "$FIX" ls-files -z --others --exclude-standard -- src/shaders/ | tr '\0' '\n')"
+out="$(gates)"
+assert_contains "AC-2: a COMMITTED src/shaders/café.glsl no covers line claims WARNs, named unquoted" \
+  "WARN         changes: src/shaders/café.glsl is exercised by no gate with a covers line" "$out"
+git -C "$FIX" rm -q -- "$H78_CAFE_GLSL" >/dev/null 2>&1
+git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "drop café shader" >/dev/null 2>&1
+
+# AC-3: names git C-quotes under ANY core.quotePath - `"`, `\` and a tab. These
+# tell `-z` from `core.quotePath=false`, which AC-1 and AC-2 cannot. Decision 3:
+# Git Bash cannot hold them (it maps `"` and a tab to private-use code points,
+# so git sees a non-ASCII name, and cannot create `\` at all), so on
+# MINGW/MSYS/CYGWIN they are not run, and one stdout line says so; a skip is not
+# counted as a pass. Everywhere else the fixture holding the name byte for byte
+# is itself an assert_eq, so a host that should run them cannot skip quietly.
+H78_TAB="$(printf '\t')"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    printf '    SKIP %s\n' "covers AC-3 (HARNESS-078 decision 3): the untracked src/render/a\"b.ts, src/render/a\\b.ts and src/render/a<TAB>b.ts cases are not run on $(uname -s): Git Bash maps \" and a tab to private-use code points and cannot create \\ at all; not counted as a pass"
+    ;;
+  *)
+    for h78_name in 'src/render/a"b.ts' 'src/render/a\b.ts' "src/render/a${H78_TAB}b.ts"; do
+      h78_label="$(printf '%s' "$h78_name" | sed "s/$H78_TAB/<TAB>/")"
+      printf 'export const q = 1\n' > "$FIX/$h78_name"
+      assert_eq "AC-3 precondition: git lists $h78_label, and nothing else, as untracked under src/render, byte for byte" \
+        "$h78_name" "$(git -C "$FIX" ls-files -z --others --exclude-standard -- src/render | tr '\0' '\n')"
+      out="$(gates)"
+      assert_contains "AC-3: an UNTRACKED $h78_label that only an optional gate reads FAILs, named byte for byte" \
+        "FAIL         changes: $h78_name is exercised only by optional gate(s): integration" "$out"
+      assert_contains "AC-3: $h78_label: and the run fails" "required gate(s) failed" "$out"
+      rm -f "$FIX/$h78_name"
+    done
+    ;;
+esac
+
 rm -f "$FIX/src/render/mesh.ts" "$FIX/tests/other.test.ts"
 set_phase "$FIX" ""
 git -C "$FIX" checkout -q -- . 2>/dev/null

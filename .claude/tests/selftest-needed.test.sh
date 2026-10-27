@@ -408,4 +408,63 @@ for where in root subdir; do
   gf_assert "an awk that exits 2" "$where"
 done
 
+# ---------------------------------------------------------------------------
+# HARNESS-078: the answer is one line whatever lib.sh prints while loading
+# (AC-4), and a harness path git C-quotes under ANY core.quotePath is seen by
+# its real name (AC-5). Both have a harness change on the story branch, so the
+# only correct answer is the pinned `run` line, compared whole by `expect`.
+
+describe "HARNESS-078 AC-4: a lib.sh that prints while it is sourced does not add a line to the answer"
+
+# The fixture's COPY of lib.sh is test data: an `echo` goes in as its line 2,
+# rewritten with awk, not `sed -i`. The rewrite is committed on main BEFORE
+# the story branch, so lib.sh is not itself a changed path and the answer
+# names exactly one: scripts/x.sh, committed on the story branch.
+new_fixture; SN="$d/scripts/selftest-needed.sh"
+FLIB="$d/.claude/hooks/lib.sh"
+awk 'NR == 2 { print "echo lib-loaded-on-stdout" } { print }' "$FLIB" > "$WORK/lib.sh" && cat "$WORK/lib.sh" > "$FLIB"
+commit_all "a lib.sh that prints on load"; story_branch
+put scripts/x.sh '#!/usr/bin/env bash'; commit_all "add x"
+assert_eq "precondition: sourcing the fixture's lib.sh prints exactly \`lib-loaded-on-stdout\` on stdout" \
+  "lib-loaded-on-stdout" "$( (CLAUDE_PROJECT_DIR="$d"; . "$FLIB") 2>/dev/null)"
+assert_eq "precondition: the only path changed against main is scripts/x.sh, and the tree is clean" \
+  "scripts/x.sh|" "$(gitc diff --name-only main HEAD 2>/dev/null)|$(gitc status --porcelain 2>/dev/null)"
+expect "a lib.sh that prints a line on load: the answer is still the one pinned run line" 0 \
+  "selftest-needed: run $D 1 harness path(s) changed against main (merge-base $(short main)): scripts/x.sh" yes
+
+describe "HARNESS-078 AC-5: a harness path named with \`\"\`, \`\\\` or a tab is seen, and named byte for byte"
+
+# git C-quotes `"`, `\` and a tab under core.quotePath=false too, so the
+# quoted name classified `source` and the script answered skip - a wrong-way
+# skip. Each name is run UNTRACKED (the `ls-files` listing) and COMMITTED (the
+# `git diff` listing), because each listing needs its own `-z`. Decision 3:
+# Git Bash cannot hold these names, so on MINGW/MSYS/CYGWIN the cases are not
+# run and one stdout line says so; a skip is not counted as a pass. Everywhere
+# else the fixture holding the name byte for byte is an assert_eq.
+H78_TAB="$(printf '\t')"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    printf '    SKIP %s\n' "HARNESS-078 AC-5 (decision 3): the .claude/tests/a\"b.test.sh, .claude/tests/a\\b.test.sh and .claude/tests/a<TAB>b.test.sh cases, untracked and committed, are not run on $(uname -s): Git Bash maps \" and a tab to private-use code points and cannot create \\ at all; not counted as a pass"
+    ;;
+  *)
+    for h78_name in '.claude/tests/a"b.test.sh' '.claude/tests/a\b.test.sh' ".claude/tests/a${H78_TAB}b.test.sh"; do
+      h78_label="$(printf '%s' "$h78_name" | sed "s/$H78_TAB/<TAB>/")"
+
+      new_fixture; SN="$d/scripts/selftest-needed.sh"; story_branch
+      mkdir -p "$d/.claude/tests"; printf 'true\n' > "$d/$h78_name"
+      assert_eq "precondition: git lists $h78_label, and nothing else, as untracked, byte for byte" \
+        "$h78_name" "$(gitc ls-files -z --others --exclude-standard 2>/dev/null | tr '\0' '\n')"
+      expect "an UNTRACKED $h78_label answers run and names it byte for byte" 0 \
+        "selftest-needed: run $D 1 harness path(s) changed against main (merge-base $(short main)): $h78_name" yes
+
+      new_fixture; SN="$d/scripts/selftest-needed.sh"; story_branch
+      mkdir -p "$d/.claude/tests"; printf 'true\n' > "$d/$h78_name"; commit_all "quoted name"
+      assert_eq "precondition: the commit holds $h78_label, and nothing else, byte for byte, and the tree is clean" \
+        "$h78_name|" "$(gitc diff -z --name-only main HEAD 2>/dev/null | tr '\0' '\n')|$(gitc status --porcelain 2>/dev/null)"
+      expect "a COMMITTED $h78_label answers run and names it byte for byte" 0 \
+        "selftest-needed: run $D 1 harness path(s) changed against main (merge-base $(short main)): $h78_name" yes
+    done
+    ;;
+esac
+
 summary "selftest-needed"
