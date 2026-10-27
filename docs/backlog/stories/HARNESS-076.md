@@ -5,7 +5,7 @@ slug: host-load-reads-a-day-old-git-bash-run
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-076-host-load-reads-a-day-old-git-bash-run
 depends_on: [HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -522,3 +522,16 @@ UNCONFIGURED, nothing failed for a config or timeout reason;
   D1, D2 shifted) passes on arrival because the bug already hides those rows;
   RED kept it as an ancestry guard and added the all-rows variant, which is
   red - accepted.
+- **GREEN verified by the orchestrator (2026-10-27).** Feature-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override)
+  changed only `scripts/host-load.sh`: `stc` recorded from a header column
+  named `STIME`; `s = cc`, or `s = cc + 1` on a row whose STIME is a month
+  abbreviation followed by a one- or two-digit day; the join, `interp`, the
+  separator test and the path scan read `s`. The header comment now names the
+  rule and says a UID with a space is skipped, not shifted. Orchestrator
+  reran: `host-load` 72 assertions executed, 72 declared, `1 harness suite(s)
+  passed` (RED's unmutated control row, 72/0, confirmed); `.claude/tests/`
+  untouched; `s = cc + 1` occurs once (line 82), so DV-1's expression applies
+  as written. The Contract's "`k < NF` test" reads `k`, not `cc`, so nothing
+  changed there; `k` follows `s`. shellcheck is not installed on this host,
+  so the developer could not run it.

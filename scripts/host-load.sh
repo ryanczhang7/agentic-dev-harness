@@ -25,9 +25,13 @@
 # A command holding a newline continues on lines of its own, and any row whose
 # PID or PPID field is not all digits is skipped as one; a continuation line
 # whose words 2 and 3 happen to be numbers is still read as a process.
-# Known limits, not handled (HARNESS-076): a row whose STIME is two words (an
-# MSYS process over a day old may print `Oct 25`) or whose UID holds a space
-# shifts the command one field. Bash 3.2, awk and coreutils only.
+# An MSYS process 24 hours old or more prints STIME as two words (`Oct 25`,
+# `Oct  5`), which shifts the command one field: on each row whose header-named
+# STIME column holds a month abbreviation followed by a one- or two-digit day,
+# the command is read one field later (HARNESS-076).
+# Known limits, not handled: a row whose UID holds a space moves PID out of its
+# field and is skipped by the all-digits test above, not reported. Bash 3.2,
+# awk and coreutils only.
 
 HOST_LOAD_CANNOT="selftest: cannot list this host's processes; other test runs, if any, were not noticed."
 
@@ -66,6 +70,7 @@ host_load_others() {
         if ($i == "PID") pc = i
         else if ($i == "PPID") ppc = i
         else if ($i == "COMMAND" || $i == "CMD") cc = i
+        else if ($i == "STIME") stc = i  # optional
       }
       if (!pc || !ppc || !cc) { bad = 1; exit 1 }
       next
@@ -73,12 +78,14 @@ host_load_others() {
     {
       if ($pc !~ /^[0-9]+$/ || $ppc !~ /^[0-9]+$/) next  # a continuation line of a multi-line command
       n++; pid[n] = $pc; ppid[n] = $ppc; par[$pc] = $ppc
-      c = $cc; for (i = cc + 1; i <= NF; i++) c = c " " $i
+      s = cc  # where the command starts; one later after a two-word STIME
+      if (stc && $stc ~ /^[A-Z][a-z][a-z]$/ && $(stc + 1) ~ /^[0-9][0-9]?$/) s = cc + 1
+      c = $s; for (i = s + 1; i <= NF; i++) c = c " " $i
       cmd[n] = c
       k = 0
-      if (interp($cc)) k = cc
-      else if (index($cc, "/") || index($cc, "\\")) {
-        for (i = cc + 1; i < NF; i++) if (interp($i)) { k = i; break }
+      if (interp($s)) k = s
+      else if (index($s, "/") || index($s, "\\")) {
+        for (i = s + 1; i < NF; i++) if (interp($i)) { k = i; break }
       }
       run[n] = (k && k < NF && $(k + 1) ~ /(selftest\.sh|\.test\.sh|gates\.sh)$/)
     }
