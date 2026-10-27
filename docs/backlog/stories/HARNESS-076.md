@@ -4,8 +4,8 @@ title: Host-load reads a day-old Git Bash run
 slug: host-load-reads-a-day-old-git-bash-run
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-076-host-load-reads-a-day-old-git-bash-run
 depends_on: [HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -166,9 +166,13 @@ per foreign run, listing order) and return codes. The change is inside the awk:
 <file>` helper writes `12:07:33` on every row. RED extends it so a row can
 carry its own STIME - a fourth `|` field, defaulting to today's `12:07:33`
 when absent, so every existing fixture is unchanged byte for byte - and
-renders the MSYS value as `ffmt` does, `%10s` right-aligned: `    Oct 25`,
-`     Oct  5` (two spaces inside, as `ctime` pads a single-digit day), the
-Linux value as the existing `%5s`. The four new ACs become new `describe`
+renders a two-word MSYS value as `ffmt` does, `%10s` right-aligned: `    Oct 25`,
+`    Oct  5` (two spaces inside, as `ctime` pads a single-digit day), the
+Linux value as the existing `%5s`. *Amended in RED, 2026-10-27:* the one-word
+default keeps the existing `%8s`, because `%10s` on `12:07:33` would add two
+spaces to every existing row and break "unchanged byte for byte", and the width
+is not load-bearing (`host_load_others` splits on whitespace); and `Oct  5`
+under `%10s` has four leading spaces, not the five the text first showed. The four new ACs become new `describe`
 blocks alongside 074's, reusing `base_rows`, `ac2_rows` and the AC-3 lists;
 074's assertions are not edited. New assertions raise the `host-load` floor
 from 48 to the measured count, written in BOTH `floors.conf` (`floor |
@@ -201,6 +205,25 @@ RED cannot run it: the rule does not exist in RED. Paste the red lines, the
 pass/fail counts (RED predicts them in the handoff) and `mutate.sh`'s restore
 line.
 
+*Result (GATES, orchestrator, 2026-10-27).* RED's expression against the
+shipped line 82; the five two-word assertions went red, every one-word case
+(074's 54 and this story's controls) stayed green; `67 passed, 5 failed` is
+exactly RED's predicted count; restored and green again:
+
+    === mutate: scripts/host-load.sh (1 line(s) changed by s/s = cc + 1/s = cc/) ===
+      82 -       if (stc && $stc ~ /^[A-Z][a-z][a-z]$/ && $(stc + 1) ~ /^[0-9][0-9]?$/) s = cc + 1
+      82 +       if (stc && $stc ~ /^[A-Z][a-z][a-z]$/ && $(stc + 1) ~ /^[0-9][0-9]?$/) s = cc
+    === mutate: running bash scripts/selftest.sh host-load ===
+        FAIL MSYS, X at 'Oct 25' and Y at 'Oct  5': exactly X and Y are printed, in listing order, no day number in the command
+        FAIL every row of the AC-2 world at 'Oct 25': still exactly X and Y - ancestry is unaffected by the shift
+        FAIL control - D2 at 'Oct 25' with its PPID rewired to an unrelated pid IS printed, as 'bash scripts/selftest.sh' with no day number
+        FAIL every row at 'Oct 25': gates.sh --gate unit, sh selftest.sh, /usr/bin/bash a.test.sh, bash.exe under C:\Program Files - each printed with its full command
+        FAIL two foreign runs at 'Oct 25': stderr is exactly the header line and two pid lines, each command from the interpreter on
+    host-load: 67 passed, 5 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_host-load.sh.20261027T072204Z.10370.bak) ===
+
+    host-load: 72 passed, 0 failed
+
 **DV-2 (the real host). Owner: GATES.** At the top level, with no
 `HARNESS_PS_LISTING` in the environment, run
 `ps -ef | awk 'NR > 1 && $5 ~ /^[A-Z][a-z][a-z]$/'` and paste what it prints:
@@ -214,6 +237,23 @@ no such row, paste the row count and the host uptime beside `WAIVED`: the
 shape is then confirmed from the source only (`## Context`), and a day-old
 process - or a host up more than a day with a process `ps` cannot open - is
 what would produce one.
+
+*Result (GATES, orchestrator, 2026-10-27): **WAIVED** - no such row exists on
+this host today.* `HARNESS_PS_LISTING` unset in the environment; at the top
+level:
+
+    $ ps -ef | awk 'NR > 1 && $5 ~ /^[A-Z][a-z][a-z]$/'
+    (no output)
+    count: 0 of 15 rows
+    $ awk '{printf "uptime: %.1f h\n", $1/3600}' /proc/uptime
+    uptime: 15.2 h
+
+The host has been up 15.2 hours, so no process on it can be 24 hours old and
+the boot-time fallback cannot produce a two-word row either. The shape stands
+confirmed from `ps.cc` alone (`## Context`); the live check is owed by the
+first GATES run on a host up more than a day, whichever story that is. (The
+15 rows did include two foreign harness runs with one-word STIMEs, from
+`/d/clean_calendar` - the case 074 already catches.)
 
 ## Model guidance
 
@@ -266,8 +306,42 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All in `.claude/tests/host-load.test.sh`, five new `describe` blocks headed
+`HARNESS-076`, inserted after 074's AC-4 block and before 074's AC-5/AC-7
+blocks (AC-7 deletes the fixture's `host-load.sh`, and AC-4 here needs it).
+074's 54 assertions are not edited. Level: unit (`host_load_others` called
+directly over a fixture listing) for AC-1..AC-3; end to end (`bash
+scripts/selftest.sh` in a `make_project_fixture`) for AC-4. Every comparison is
+whole-output `assert_eq`.
+
+Instrument change: `listing <msys|linux> <file>` reads an optional fourth `|`
+field, STIME, defaulting to `12:07:33` (MSYS, `%8s`) / `12:07` (Linux, `%5s`);
+a two-word MSYS value is rendered `%10s` (`    Oct 25`, `    Oct  5`). Two
+filters, `stime_on <pid> <stime>` and `stime_all <stime>`, append it to rows.
+
+| Block | Assertion | AC | Today |
+|---|---|---|---|
+| fixture rows | X's row is `   ryanc    5001    3999 ?            Oct 25 bash scripts/selftest.sh ` | instrument | pass |
+| fixture rows | Y's row carries `Oct  5` (two spaces) | instrument | pass |
+| fixture rows | S's row is byte-identical to 074's `12:07:33` row | instrument | pass |
+| fixture rows | Linux X row carries the one token `Oct20` | instrument | pass |
+| AC-1 | X `Oct 25`, Y `Oct  5`: stdout is exactly `LX\nLY` | AC-1 | **FAIL** (empty) |
+| AC-1 | same: rc 0 | AC-1 | pass |
+| AC-1 | control: all-`HH:MM:SS` listing prints `LX\nLY` | AC-1 control | pass |
+| AC-2 | GG, D1, D2 at `Oct 25`: exactly `LX\nLY` | AC-2 | pass (see below) |
+| AC-2 | every row of the AC-2 world at `Oct 25`: exactly `LX\nLY` | AC-2 | **FAIL** (empty) |
+| AC-2 | control: D2 rewired to ppid 7777, `Oct 25`: `LX\nLY\nD2<TAB>bash scripts/selftest.sh` | AC-2 control | **FAIL** (D2 missing) |
+| AC-3 | five negatives, every row `Oct 25`: empty | AC-3 | pass (see below) |
+| AC-3 | same: rc 0 | AC-3 | pass |
+| AC-3 | four positives, every row `Oct 25`: the four full-command lines | AC-3 | **FAIL** (empty) |
+| AC-3 | control: Linux listing, `Oct20` on X and Y: `LX\nLY` | AC-3 control | pass |
+| AC-3 | header with no STIME column: `LX` and rc 0 (Contract: STIME optional) | Contract | pass |
+| AC-4 | foreign2 at `Oct 25`: stderr is the header line + two `pid` lines + nothing else | AC-4 | **FAIL** (empty stderr) |
+| AC-4 | same: exit status = empty-listing run's | AC-4 | pass |
+| AC-4 | same: stdout byte-identical to empty-listing run's | AC-4 | pass |
+
+18 new assertions, 72 executed in all. Floors raised 54 -> 72 in both
+`floors.conf` and `selftest.test.sh`'s COUNTS table.
 
 ## Handoff: RED -> GREEN
 
@@ -289,12 +363,199 @@ name, below the table.
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
 
+Model: this RED ran on **Opus 5.5 (`claude-opus-5-5`)**, the agent's declared
+`opus`; the dispatching brief named no override.
+
+**Command.** `bash scripts/selftest.sh host-load` (about 10 s here). Then
+`bash scripts/selftest.sh selftest` for the COUNTS row (268 passed, 0 failed).
+
+**Failure output** (2026-10-27, this tree, `scripts/host-load.sh` as 074 shipped it):
+
+    HARNESS-076 AC-1  a run over a day old (STIME 'Oct 25' / 'Oct  5') is still printed, command from the interpreter on
+      FAIL MSYS, X at 'Oct 25' and Y at 'Oct  5': exactly X and Y are printed, in listing order, no day number in the command
+           expected: 5001	bash scripts/selftest.sh
+           5002	/usr/bin/bash /d/other/.claude/tests/plan.test.sh
+           actual:   
+
+    HARNESS-076 AC-2  a shifted row keeps its PID and PPID: this run's own tree is still not printed
+      FAIL every row of the AC-2 world at 'Oct 25': still exactly X and Y - ancestry is unaffected by the shift
+           expected: 5001	bash scripts/selftest.sh
+           5002	/usr/bin/bash /d/other/.claude/tests/plan.test.sh
+           actual:   
+      FAIL control - D2 at 'Oct 25' with its PPID rewired to an unrelated pid IS printed, as 'bash scripts/selftest.sh' with no day number
+           expected: 5001	bash scripts/selftest.sh
+           5002	/usr/bin/bash /d/other/.claude/tests/plan.test.sh
+           4102	bash scripts/selftest.sh
+           actual:   5001	bash scripts/selftest.sh
+           5002	/usr/bin/bash /d/other/.claude/tests/plan.test.sh
+
+    HARNESS-076 AC-3  the shift moves where the command starts, not what counts as a test run
+      FAIL every row at 'Oct 25': gates.sh --gate unit, sh selftest.sh, /usr/bin/bash a.test.sh, bash.exe under C:\Program Files - each printed with its full command
+           expected: 6101	bash scripts/gates.sh --gate unit
+           6102	sh scripts/selftest.sh
+           6103	/usr/bin/bash /x/.claude/tests/a.test.sh
+           6104	C:\Program Files\Git\usr\bin\bash.exe scripts/selftest.sh
+           actual:   
+
+    HARNESS-076 AC-4  selftest.sh warns about two foreign runs over a day old, exactly as about fresh ones
+      FAIL two foreign runs at 'Oct 25': stderr is exactly the header line and two pid lines, each command from the interpreter on
+           expected: selftest: 2 other test run(s) are on this host; expect this run to be slower, not wrong:
+           selftest:   pid 9100001: bash /d/other1/scripts/selftest.sh
+           selftest:   pid 9100002: bash /d/other2/scripts/selftest.sh
+           x
+           actual:   x
+
+    host-load: 67 passed, 5 failed
+    assertion floors: all 1 suite(s) met their declared floor (67 assertions executed, 54 declared).
+
+(That floor line was read against the old floor 54; with the floor now 72 and
+the floor counting PASSES, a RED run sits below it, 67 < 72 - expected.)
+
+**Why these are the right failures.** The function exists, so nothing is
+`command not found`. Each red is the bug itself: a two-word STIME row is read
+with `$cc` = the day number, `interp("25")` is false, and the row is silent -
+empty stdout (AC-1, AC-2 all-rows, AC-3 positives), the rewired D2 missing
+while X and Y at `HH:MM:SS` still print (AC-2 control: the failure is exactly
+one row, the shifted one), empty stderr (AC-4: `actual: x` is the sentinel
+only). Every one-word assertion, 074's 54 included, is green, so the fixture
+helper change broke nothing.
+
+**Files touched.**
+- `.claude/tests/host-load.test.sh` - `listing` takes an optional 4th field;
+  `stime_on`, `stime_all` filters; five HARNESS-076 blocks (18 assertions).
+- `.claude/tests/floors.conf` - `host-load` 54 -> 72, dated comment.
+- `.claude/tests/selftest.test.sh` - COUNTS row `host-load 72`.
+- this story - `## Contract` (amended, see below), `## Test plan`, this handoff.
+
+**Contract amendment (in place, `.claude/tests/host-load.test.sh` paragraph).**
+One-word default stays `%8s` (`%10s` would add two spaces to every existing
+row; width is not load-bearing). Also corrected: `Oct  5` under `%10s` is
+`    Oct  5` (four leading spaces), not the five the text first showed. No
+acceptance criterion changed.
+
+**What the tests pin about `host_load_others`.** Name, arguments
+`<self-pid> <root-pid> <listing-file>`, output `<pid><TAB><command>` per
+foreign run in listing order, rc 0 on a parsed listing, rc 1 on a header
+missing PID/PPID/COMMAND|CMD (074's), all unchanged. New: on an MSYS row whose
+STIME field (header column named `STIME`) is a month abbreviation followed by
+a one- or two-digit day, the command begins one field later - both for what is
+printed and for the interpreter/script test. A header with NO `STIME` column
+must still parse (not return 1). The Linux one-token `Oct20` must not shift.
+**Not constrained:** how the shift is coded (the Contract's `s = cc` /
+`s = cc + 1` is a recommendation the tests satisfy, measured below, but any
+rule that passes is admissible); whether `stc` is required to equal the
+column before COMMAND; the header comment's wording (the Contract asks for it;
+no test reads it). Fixtures do NOT distinguish the Contract's month rule from
+a "skip a leading all-digit word" rule - as the Contract itself says; the
+month rule is a design decision, not a tested one.
+
+**Passed on arrival** (13 of the 18): the four fixture-row pins (instrument
+checks - they fail if the helper stops writing two words, which would make
+the AC reds vacuous); AC-1 rc and the AC-1 all-`HH:MM:SS` control; AC-2's
+literal-AC listing (GG/D1/D2 at `Oct 25`, X/Y fresh) - green today *because
+of* the bug, it guards against a fix that breaks ancestry and is only
+meaningful once the all-rows and rewired cases are green; AC-3 negatives and
+rc, the Linux `Oct20` control, the no-STIME-header case; AC-4 rc and stdout.
+The one-word controls re-assert 074 behaviour and are earned by 074's DV-1;
+the rest are earned by DV-1 below together with the candidate run. None
+needed a separate mutation in RED (Contract, "The RED shape").
+
+**Expected values of the controls / DV-1 prediction.** Measured outside the
+tree: a copy of the repo in the scratchpad with a Contract-shaped candidate
+`host-load.sh` (header `else if ($i == "STIME") stc = i`; row `s = cc` then
+`if (stc && $stc ~ /^[A-Z][a-z][a-z]$/ && $(stc + 1) ~ /^[0-9][0-9]?$/) s = cc + 1`;
+every data-row `cc` read as `s`). Claims about the shipped module until GREEN
+and GATES measure them.
+
+| Run | Prediction | Measured on candidate |
+|---|---|---|
+| suite, shipped 074 `host-load.sh` (today) | 67 passed, 5 failed | 67 passed, 5 failed (real tree) |
+| suite, Contract-shaped fix | 72 passed, 0 failed | 72 passed, 0 failed |
+| DV-1: fix with shift disabled, `sed 's/s = cc + 1/s = cc/'` | 67 passed, 5 failed - exactly the five reds above | 67 passed, 5 failed, the same five names |
+| AC-2 rewired control under DV-1 | X, Y printed, D2 missing | as predicted |
+| Linux `Oct20` control under fix | `LX\nLY` | as predicted |
+
+For DV-1 to be runnable as written, GREEN should keep the shift on ONE line
+containing the literal `s = cc + 1` exactly once, so GATES can run
+`bash scripts/mutate.sh scripts/host-load.sh 's/s = cc + 1/s = cc/' -- bash scripts/selftest.sh host-load`.
+If GREEN codes it differently, it names the replacement expression here.
+
+**Declined, in writing.** DV-1 (defect put back) and DV-2 (the real host) are
+owned by GATES. RED cannot run DV-1 against the tree - the rule it disables
+does not exist yet; the candidate measurement above is a prediction, not DV-1.
+DV-2 was not run.
+
+**Discovered.** Nothing that changes the approach: the Contract's rule passes
+the whole suite as written. `bash scripts/gates.sh --fast`: every gate
+UNCONFIGURED, nothing failed for a config or timeout reason;
+`check-sigpipe.sh` and `check-grep-count.sh`: 0 findings over 56 files.
+
+## Diff review
+
+Fresh `feature-developer` dispatch, `diff-review` skill, 2026-10-27.
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), declared `opus`, no
+override (GATES row of `models.conf`). Changed no file. Report, condensed to
+its checks, finding and verdict:
+
+    What this change does: host_load_others records the STIME column; on a row
+    whose STIME is a month abbreviation and a one- or two-digit day it reads the
+    command one field later. 18 new assertions; floor 54 -> 72.
+    host-load: 72 passed, 0 failed (72 executed, 72 declared).
+
+    Checked in scratch fixtures against the shipped host-load.sh:
+    (a) the month test reads only the STIME field: a one-word-STIME row whose
+        command is "Jan 5 bash scripts/selftest.sh" is not shifted; a header with
+        no STIME column never shifts; Linux "Oct20" / "2024" never shift.
+    (b) stc is set only in the NR == 1 block; with no STIME column it stays 0
+        and the test is false on every row.
+    (c) STIME as the last header column (impossible with ps -ef): no crash,
+        same result as before the change.
+    (d) short rows ("... Oct 25", "... Oct", "... Oct 25 bash"): $s empty or
+        bare interpreter, not reported, no error.
+    (e) the boot-time fallback's two-word STIME on a SYSTEM row is handled the
+        same way: reported with its full command.
+    (f) a UID with a space whose second word is not a number is still skipped.
+    (g) the AC-1, AC-2 control, AC-3 positive and AC-4 assertions pin whole
+        outputs and were red on the 074 tree; the helper's two-word branch is
+        pinned byte for byte for both "Oct 25" and "Oct  5".
+    (h) the header comment matches the code for the STIME rule.
+
+    Nice to have:
+    1. The header's "Known limits" sentence (host-load.sh:32-33) says a UID
+       with a space is skipped by the all-digits test. For a truncated account
+       like "Ryan 123" the row passes that test and is read with PID 123 and the
+       command from the STIME field: not reported, rc 0 - misread, not skipped.
+       Behaviour is 074's and out of scope; only the wording is new. Fix:
+       "is skipped, or read with the wrong PID and command; either way it is
+       not reported". Comment only.
+
+    Not checked: a live day-old row (DV-2, waived).
+    Model: Opus 5.5 (claude-opus-5-5).
+
+    Verdict: Ship.
+
+**PO disposition.** `Verdict: Ship.` - GATES → REVIEW goes on. Nice to have 1
+is left as written: correcting it changes the tree, which restarts the review
+and the gate run for a comment no test reads. It is recorded in `## Notes`
+for whichever story next touches `host-load.sh`'s header.
+
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-27T07:23:00Z
+    commit: 7e3a5d4
+    tree:   f291f801ab0f2567d44e920dbd56908e32fa5a69
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -330,3 +591,60 @@ name, below the table.
      such a row "shifts the command one field" (its round-2 diff review,
      Nice to have 1); correct that sentence when this story touches the
      header.
+- **PO checks before RED (2026-10-27, orchestrator).** HARNESS-074 is DONE;
+  `host-load` floor is 54 in both `floors.conf:47` and `selftest.test.sh:538`.
+  `scripts/host-load.sh` matches the Contract's reading: header loop sets
+  `cc` at line 68, requires `pc`/`ppc`/`cc` at 70, data row reads `$cc` at
+  76-81 with no STIME handling. The `listing` helper
+  (`host-load.test.sh:49-61`) prints STIME with `%8s`, not `ffmt`'s `%10s`.
+  The Contract asks for both `%10s` rendering and existing fixtures unchanged
+  byte for byte, which `12:07:33` cannot satisfy under `%10s` (two more
+  spaces). The width is not load-bearing - the awk splits on whitespace - so
+  RED keeps `%8s` for the one-word default and renders a two-word value as
+  the Contract's `    Oct 25` / `     Oct  5` strings; RED may amend that
+  Contract block in place with that reason. `ps -ef` on this host today:
+  0 rows with a two-word STIME; DV-2 stays with GATES. No epic. Resolved
+  model for this planning check: Fable 5.1 (`claude-fable-5-1`).
+- **RED verified by the orchestrator (2026-10-27).** Test-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override).
+  Reran `bash scripts/selftest.sh host-load`: `67 passed, 5 failed`, the five
+  being exactly the new two-word cases (AC-1; AC-2 all-rows and its rewired-D2
+  control; AC-3 positives; AC-4 stderr), each red by OUTPUT - empty where X
+  and Y are owed, D2 missing, stderr only the sentinel - not by a missing
+  function. 74's 54 earlier assertions green; floor 54 -> 72 in both files.
+  `scripts/` untouched (`git diff --quiet HEAD -- scripts/`). Correction to
+  the PO check above: `printf '%10s' 'Oct  5'` gives FOUR leading spaces
+  (`    Oct  5`), as RED found, not five. AC-2 as literally written (only GG,
+  D1, D2 shifted) passes on arrival because the bug already hides those rows;
+  RED kept it as an ancestry guard and added the all-rows variant, which is
+  red - accepted.
+- **GREEN verified by the orchestrator (2026-10-27).** Feature-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override)
+  changed only `scripts/host-load.sh`: `stc` recorded from a header column
+  named `STIME`; `s = cc`, or `s = cc + 1` on a row whose STIME is a month
+  abbreviation followed by a one- or two-digit day; the join, `interp`, the
+  separator test and the path scan read `s`. The header comment now names the
+  rule and says a UID with a space is skipped, not shifted. Orchestrator
+  reran: `host-load` 72 assertions executed, 72 declared, `1 harness suite(s)
+  passed` (RED's unmutated control row, 72/0, confirmed); `.claude/tests/`
+  untouched; `s = cc + 1` occurs once (line 82), so DV-1's expression applies
+  as written. The Contract's "`k < NF` test" reads `k`, not `cc`, so nothing
+  changed there; `k` follows `s`. shellcheck is not installed on this host,
+  so the developer could not run it.
+- **Known, not fixed (2026-10-27, from `## Diff review` Nice to have 1).**
+  `scripts/host-load.sh:32-33` says a row whose UID holds a space is skipped
+  by the all-digits test. That holds only when the account's second word is
+  not a number: `Ryan 123` passes the test and is read with PID 123 and the
+  command from the STIME field - not reported either way, but misread, not
+  skipped. `## Out of scope` above makes the same claim. Reword when the
+  header is next touched: "is skipped, or read with the wrong PID and
+  command; either way it is not reported".
+- **Self-test at GATES → REVIEW (2026-10-27).** `bash scripts/selftest-needed.sh`
+  answered `run` (4 harness paths against origin/main, merge-base 825ac69) -
+  its first use at this step since HARNESS-075 shipped it.
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh`, detached, alone in this
+  worktree, no orphaned run found beforehand: exit 0, 1,354 s.
+
+      assertion floors: all 30 suite(s) met their declared floor (4337 assertions executed, 4160 declared).
+      30 harness suite(s) passed.
+      exit=0 duration=1354s

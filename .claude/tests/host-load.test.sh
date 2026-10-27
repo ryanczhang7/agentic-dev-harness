@@ -44,26 +44,44 @@ TAB="$(printf '\t')"
 
 # --- listings ----------------------------------------------------------------
 
-# listing <msys|linux> <file>   Rows on stdin as `pid|ppid|command`; writes a
-# `ps -ef` listing of that shape, header first, rows in the given order.
+# listing <msys|linux> <file>   Rows on stdin as `pid|ppid|command[|stime]`;
+# writes a `ps -ef` listing of that shape, header first, rows in the given
+# order. STIME defaults to 12:07:33 (MSYS) / 12:07 (Linux) when the fourth
+# field is absent, so a three-field row renders exactly as it did in 074.
+# HARNESS-076: a two-word MSYS STIME (`Oct 25`, `Oct  5`) is right-aligned in
+# ten columns as ps.cc's ffmt `%10s` does; the one-word default keeps `%8s`
+# (the width is not load-bearing - host_load_others splits on whitespace - and
+# `%10s` would add two spaces to every existing row). Linux keeps `%5s`.
 listing() {
-  local shape="$1" out="$2" pid ppid cmd
+  local shape="$1" out="$2" pid ppid cmd stime
   {
     if [ "$shape" = msys ]; then
       printf '     UID     PID    PPID  TTY        STIME COMMAND\n'
     else
       printf 'UID          PID    PPID  C STIME TTY          TIME CMD\n'
     fi
-    while IFS='|' read -r pid ppid cmd; do
+    while IFS='|' read -r pid ppid cmd stime; do
       [ -z "$pid" ] && continue
       if [ "$shape" = msys ]; then
-        printf '%8s %7s %7s %-8s %8s %s \n' ryanc "$pid" "$ppid" '?' 12:07:33 "$cmd"
+        case "$stime" in
+          '')    stime=12:07:33 ;;
+          *' '*) stime="$(printf '%10s' "$stime")" ;;
+        esac
+        printf '%8s %7s %7s %-8s %8s %s \n' ryanc "$pid" "$ppid" '?' "$stime" "$cmd"
       else
-        printf '%-8s %7s %7s %2s %5s %-12s %8s %s\n' ryanc "$pid" "$ppid" 0 12:07 pts/0 00:00:00 "$cmd"
+        printf '%-8s %7s %7s %2s %5s %-12s %8s %s\n' ryanc "$pid" "$ppid" 0 "${stime:-12:07}" pts/0 00:00:00 "$cmd"
       fi
     done
   } > "$out"
 }
+
+# stime_on <pid> <stime>   A filter over `pid|ppid|command` rows: gives the
+# row whose pid is <pid> that STIME as its fourth field. Every other row passes
+# through unchanged.
+stime_on() { sed -e "s/^$1|.*/&|$2/"; }
+
+# stime_all <stime>   A filter giving every row that STIME.
+stime_all() { sed -e "s/\$/|$1/"; }
 
 # The world of AC-1/AC-2. This run is S (4003), launched by P (4002), launched
 # by G (4001), launched by GG (4000). Another tree's `bash scripts/selftest.sh`
@@ -317,6 +335,128 @@ assert_eq "seven foreign runs: stdout byte-identical to the empty-listing run" "
 FIRST="$(awk 'NF { print; exit }' "$W/merged")"
 assert_eq "the warning is printed before the first suite's header" \
   "selftest: 2 other test run(s) are on this host; expect this run to be slower, not wrong:" "$FIRST"
+
+# ===========================================================================
+# HARNESS-076  a two-word STIME. ps.cc's start_time() prints `HH:MM:SS` for a
+# process under 24 h old and `Mon DD` at or over it - `Oct 25`, and `Oct  5`
+# (two spaces, ctime's padding) for a single-digit day: two words where the
+# header has one, so every field after STIME moves right by one. Linux procps
+# prints one token (`Oct20`) and nothing moves. The shapes are read out of the
+# source (story ## Context), never derived. These blocks sit here, before
+# 074's AC-7 deletes the fixture's host-load.sh, because AC-4 needs it.
+# ===========================================================================
+
+base_rows | stime_on "$X" 'Oct 25' | stime_on "$Y" 'Oct  5' | listing msys "$W/076-ac1"
+ac2_rows | stime_on "$GG" 'Oct 25' | stime_on "$D1" 'Oct 25' | stime_on "$D2" 'Oct 25' \
+  | listing msys "$W/076-ac2"
+ac2_rows | stime_all 'Oct 25' | listing msys "$W/076-ac2-all"
+ac2_rows | sed -e "s/^$D2|$D1|/$D2|7777|/" \
+  | stime_on "$GG" 'Oct 25' | stime_on "$D1" 'Oct 25' | stime_on "$D2" 'Oct 25' \
+  | listing msys "$W/076-ac2-rewired"
+cat <<'EOF' | stime_all 'Oct 25' | listing msys "$W/076-ac3-not"
+6001|1|grep -i selftest.sh
+6002|1|vim scripts/selftest.sh
+6003|1|bash scripts/plan.sh conflicts
+6004|1|bash C:\x\run-selftest091.sh
+6005|1|node vitest.test.sh
+EOF
+cat <<'EOF' | stime_all 'Oct 25' | listing msys "$W/076-ac3-yes"
+6101|1|bash scripts/gates.sh --gate unit
+6102|1|sh scripts/selftest.sh
+6103|1|/usr/bin/bash /x/.claude/tests/a.test.sh
+6104|1|C:\Program Files\Git\usr\bin\bash.exe scripts/selftest.sh
+EOF
+base_rows | stime_on "$X" Oct20 | stime_on "$Y" Oct20 | listing linux "$W/076-ac3-linux"
+foreign 2 | stime_on 9100001 'Oct 25' | stime_on 9100002 'Oct 25' | listing msys "$W/076-foreign2"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-076  the fixture rows carry the STIME ps.cc prints, and 074's rows are unchanged"
+
+# The helper is the instrument every case below reads through: pin what it
+# wrote, so a fixture that silently stopped carrying two words cannot make a
+# red case green or a green case vacuous.
+assert_eq "X's row in the AC-1 listing: STIME 'Oct 25' right-aligned in ten columns, command after it" \
+  "   ryanc    5001    3999 ?            Oct 25 bash scripts/selftest.sh " \
+  "$(awk -v p="$X" '$2 == p' "$W/076-ac1")"
+assert_eq "Y's row in the AC-1 listing: STIME 'Oct  5' (two spaces, ctime's single-digit day)" \
+  "   ryanc    5002    5001 ?            Oct  5 /usr/bin/bash /d/other/.claude/tests/plan.test.sh " \
+  "$(awk -v p="$Y" '$2 == p' "$W/076-ac1")"
+assert_eq "S's row in the AC-1 listing keeps the one-word default 12:07:33, byte for byte as in 074" \
+  "$(awk -v p="$S" '$2 == p' "$W/ac1-msys")" "$(awk -v p="$S" '$2 == p' "$W/076-ac1")"
+assert_eq "Linux control: X's row carries the one-token procps STIME Oct20" \
+  "ryanc       5001    3999  0 Oct20 pts/0        00:00:00 bash scripts/selftest.sh" \
+  "$(awk -v p="$X" '$2 == p' "$W/076-ac3-linux")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-076 AC-1  a run over a day old (STIME 'Oct 25' / 'Oct  5') is still printed, command from the interpreter on"
+
+others "$S" "$S" "$W/076-ac1"
+assert_eq "MSYS, X at 'Oct 25' and Y at 'Oct  5': exactly X and Y are printed, in listing order, no day number in the command" \
+  "$LX
+$LY" "$OUT"
+assert_eq "MSYS, two-word STIME rows: host_load_others returns 0" "0" "$RC"
+
+others "$S" "$S" "$W/ac1-msys"
+assert_eq "control - the same listing with HH:MM:SS on every row: the identical two lines" \
+  "$LX
+$LY" "$OUT"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-076 AC-2  a shifted row keeps its PID and PPID: this run's own tree is still not printed"
+
+others "$S" "$S" "$W/076-ac2"
+assert_eq "GG, D1 and D2 at 'Oct 25': none of them is printed; X and Y still are" \
+  "$LX
+$LY" "$OUT"
+
+others "$S" "$S" "$W/076-ac2-all"
+assert_eq "every row of the AC-2 world at 'Oct 25': still exactly X and Y - ancestry is unaffected by the shift" \
+  "$LX
+$LY" "$OUT"
+
+others "$S" "$S" "$W/076-ac2-rewired"
+assert_eq "control - D2 at 'Oct 25' with its PPID rewired to an unrelated pid IS printed, as 'bash scripts/selftest.sh' with no day number" \
+  "$LX
+$LY
+$D2${TAB}bash scripts/selftest.sh" "$OUT"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-076 AC-3  the shift moves where the command starts, not what counts as a test run"
+
+others 60000 60000 "$W/076-ac3-not"
+assert_eq "every row at 'Oct 25': grep, vim, plan.sh, run-selftest091.sh and node vitest.test.sh - none is printed" "" "$OUT"
+assert_eq "every row at 'Oct 25', no test runs: host_load_others returns 0" "0" "$RC"
+
+others 60000 60000 "$W/076-ac3-yes"
+assert_eq "every row at 'Oct 25': gates.sh --gate unit, sh selftest.sh, /usr/bin/bash a.test.sh, bash.exe under C:\\Program Files - each printed with its full command" \
+  "6101${TAB}bash scripts/gates.sh --gate unit
+6102${TAB}sh scripts/selftest.sh
+6103${TAB}/usr/bin/bash /x/.claude/tests/a.test.sh
+6104${TAB}C:\\Program Files\\Git\\usr\\bin\\bash.exe scripts/selftest.sh" "$OUT"
+
+others "$S" "$S" "$W/076-ac3-linux"
+assert_eq "control - Linux listing with the one-token STIME Oct20 on X and Y: the two AC-1 lines, no shift applied" \
+  "$LX
+$LY" "$OUT"
+
+# Contract: STIME is optional in the header. A header without it is parsed as
+# 074 parses it - not refused, and the command still read from COMMAND.
+printf '     UID     PID    PPID  TTY COMMAND\n   ryanc    5001    3999 ?   bash scripts/selftest.sh \n' > "$W/076-no-stime"
+others "$S" "$S" "$W/076-no-stime"
+assert_eq "a header with no STIME column is not refused: X is printed and host_load_others returns 0" \
+  "$LX rc=0" "$OUT rc=$RC"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-076 AC-4  selftest.sh warns about two foreign runs over a day old, exactly as about fresh ones"
+
+selftest "$W/076-foreign2"
+assert_eq "two foreign runs at 'Oct 25': stderr is exactly the header line and two pid lines, each command from the interpreter on" \
+  "selftest: 2 other test run(s) are on this host; expect this run to be slower, not wrong:
+selftest:   pid 9100001: bash /d/other1/scripts/selftest.sh
+selftest:   pid 9100002: bash /d/other2/scripts/selftest.sh
+x" "$SERR"
+assert_eq "two foreign runs at 'Oct 25': exit status identical to the empty-listing run" "$E_RC" "$SRC"
+assert_eq "two foreign runs at 'Oct 25': stdout byte-identical to the empty-listing run" "$E_OUT" "$SOUT"
 
 # ---------------------------------------------------------------------------
 describe "HARNESS-074 AC-5  a listing that cannot be read or parsed says so, in one line"
