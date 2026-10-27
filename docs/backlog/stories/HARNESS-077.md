@@ -5,7 +5,7 @@ slug: selftest-needed-answers-run-when-its-lib
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-077-selftest-needed-answers-run-when-its-lib
 depends_on: [HARNESS-075]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, docs/backlog/stories/HARNESS-075.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -327,6 +327,34 @@ RED cannot run this: in RED the fix does not exist, and the case is red
 against the shipped file for the defect itself, which is the ordinary RED
 evidence and is recorded in the handoff instead.
 
+*Result (GATES, orchestrator, 2026-10-27).* Expression actually run, against
+GREEN's line 63: `s|^( \. "\$LIB" ) >/dev/null|{ . "$LIB"; } 2>/dev/null|` -
+the probe turned back into HARNESS-075's silent guarded source. Exactly the
+12 AC-1 assertions went red (both runs, all six each, the one-line assertion
+included, as the corrected prediction says); everything else - AC-2,
+AC-3(a)/(b), all 174 of HARNESS-075 - stayed green; restored and green:
+
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by s|^( \. "\$LIB" ) >/dev/null|{ . "$LIB"; } 2>/dev/null|) ===
+      63 - ( . "$LIB" ) >/dev/null || fallback "cannot load $LIB"
+      63 + { . "$LIB"; } 2>/dev/null || fallback "cannot load $LIB"
+    === mutate: running bash scripts/selftest.sh selftest-needed ===
+        FAIL a lib.sh with an unbound variable on line 2 [from root]: exits 0
+        FAIL a lib.sh with an unbound variable on line 2 [from root]: the first line begins `cannot compute the diff: `
+        FAIL a lib.sh with an unbound variable on line 2 [from root]: the first line ends `; defaulting to run`
+        FAIL a lib.sh with an unbound variable on line 2 [from root]: stdout is exactly one line
+        FAIL a lib.sh with an unbound variable on line 2 [from root]: stderr is not empty
+        FAIL a lib.sh with an unbound variable on line 2 [from root]: stderr names the unbound variable
+        FAIL a lib.sh with an unbound variable on line 2 [from subdir]: exits 0
+        FAIL a lib.sh with an unbound variable on line 2 [from subdir]: the first line begins `cannot compute the diff: `
+        FAIL a lib.sh with an unbound variable on line 2 [from subdir]: the first line ends `; defaulting to run`
+        FAIL a lib.sh with an unbound variable on line 2 [from subdir]: stdout is exactly one line
+        FAIL a lib.sh with an unbound variable on line 2 [from subdir]: stderr is not empty
+        FAIL a lib.sh with an unbound variable on line 2 [from subdir]: stderr names the unbound variable
+    selftest-needed: 204 passed, 12 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261027T151242Z.507.bak)
+
+    selftest-needed: 216 passed, 0 failed
+
 **DV-2 (earning AC-2's test, which passes on arrival). Owner: GATES.**
 `bash scripts/mutate.sh scripts/selftest-needed.sh '/diff --no-renames/s/ -c core.quotePath=false//' -- bash scripts/selftest.sh selftest-needed`
 removes the flag from the `git diff` line only (the `ls-files` line keeps
@@ -340,6 +368,27 @@ UTF-8 name survives the commit (HARNESS-075 Return 1 checked the untracked
 side with `od -c`); if the committed side does not, say so with the `od`
 output and the case is wrong, not the mutation. Not owned by RED: the test
 passes on arrival there and the mutation is the only thing that earns it.
+
+*Result (GATES, orchestrator, 2026-10-27).* The expression as written,
+against GREEN's line 85. The committed-café case went red on its `exits 0`
+and whole-line assertions in both runs (4, as predicted), `actual:` a `skip`
+counting 1 changed path; the untracked-café case stayed green, as did
+everything else; restored and green:
+
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by /diff --no-renames/s/ -c core.quotePath=false//) ===
+      85 - tracked="$(git -c core.quotePath=false diff --no-renames --name-only "$mb" 2>/dev/null)" \
+      85 + tracked="$(git diff --no-renames --name-only "$mb" 2>/dev/null)" \
+    === mutate: running bash scripts/selftest.sh selftest-needed ===
+        FAIL a COMMITTED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: exits 0
+        FAIL a COMMITTED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: the first line is exactly the pinned line
+             expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base cf0528e): .claude/tests/project-café.test.sh
+             actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base cf0528e); CI runs the self-test on the PR
+        FAIL a COMMITTED .claude/tests/project-café.test.sh answers run and names it unquoted [from subdir]: exits 0
+        FAIL a COMMITTED .claude/tests/project-café.test.sh answers run and names it unquoted [from subdir]: the first line is exactly the pinned line
+    selftest-needed: 212 passed, 4 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261027T151427Z.746.bak) ===
+
+    selftest-needed: 216 passed, 0 failed
 
 ## Model guidance
 
@@ -655,10 +704,21 @@ mine to edit; flagged to the orchestrator.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-27T15:16:25Z
+    commit: 51cb925
+    tree:   41dd089ff25474368f7fe007a2e3c66bb8901535
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
