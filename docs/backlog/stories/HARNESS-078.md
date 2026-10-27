@@ -5,7 +5,7 @@ slug: the-covers-check-sees-every-changed-path
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-078-the-covers-check-sees-every-changed-path
 depends_on: [HARNESS-077]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/selftest-needed.sh, scripts/host-load.sh, .claude/tests/gates.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -824,3 +824,21 @@ numeric control. The structural controls are the pre-existing ASCII
   unchanged (the AC section's diff against the PLANNED commit is empty).
   Amended blocks so far: 2 of the Contract's 6 - under the 3 the PLANNED
   model condition sets.
+- **GREEN verified by the orchestrator (2026-10-27).** Feature-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override)
+  changed only the three scripts. `gates.sh`: `-z` on both listings through
+  `tr '\0' '\n'`, the newline-limit comment, the category filter keeping the
+  whole path after the first tab (`substr($0, length($1) + 2)`), and a
+  `shown` copy of `$path` with `\` doubled for the FAIL/WARN lines that
+  `%b` prints. `selftest-needed.sh`: `-z` on `:88`/`:90` (quotePath dropped),
+  the same filter at `:95`, `. "$LIB" >/dev/null` at `:66`, header and probe
+  comments. `host-load.sh`: header comment only. `.claude/tests/` untouched;
+  the first `gates.sh` hunk is `@@ -991`, so `:82` and `:734` are unmoved.
+  Orchestrator reran on this host: `gates: 856 passed, 0 failed`,
+  `selftest-needed: 226 passed, 0 failed`, `sigpipe: 91 passed, 0 failed`,
+  each with its AC-3/AC-5 SKIP line - RED's expected counts. The Linux side
+  (865/0 and 280/0, no SKIP) is the developer's WSL run, logs in the session
+  scratchpad; GATES' DV-2 re-observes it under mutation. Note for DV-2: with
+  `quotePath=false` dropped, removing `-z` from `selftest-needed.sh` should
+  also redden HARNESS-075/077's café cases on Windows, not only the 24
+  Linux AC-5 reds.
