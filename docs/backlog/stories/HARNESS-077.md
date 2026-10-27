@@ -480,3 +480,14 @@ name, below the table.
   one suite, one parenthetical, two notes. The ACs do not join two
   behaviours: every one is "a failure to classify answers `run`", seen from
   a different failure. Not split.
+- **PO checks before RED (2026-10-27, orchestrator).** HARNESS-075 is DONE;
+  HARNESS-076 merged since planning and touched only `host-load` rows, so
+  the `plan.sh conflicts` collision is spent. Verified against today's tree:
+  `scripts/selftest-needed.sh:54` is the guarded direct source and `:78` the
+  unguarded classify assignment, as the Contract says; `lib.sh:21-22` sets
+  `HARNESS_ROOT` and `HARNESS_DIR="$HARNESS_ROOT/.claude/harness"`; the
+  `selftest-needed` floor is 174 in `floors.conf:61` and `selftest.test.sh:553`;
+  `advance-story.md:213` carries the three-cause parenthetical. Criteria are
+  testable as written; the gate holding the artifact is the harness self-test;
+  `required_gates` stays empty; no epic; no changed signatures. Resolved
+  model for this check: Fable 5.1 (`claude-fable-5-1`).
