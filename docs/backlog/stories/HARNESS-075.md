@@ -1184,6 +1184,12 @@ docs only and also left for that story, since it touches the step text
   `core.quotePath=true`, so a non-ASCII source path prints C-quoted and
   misclassifies in the `covers` check. Outside this story's `touches:`; a
   candidate for its own story.
+- **Known, not fixed (HARNESS-077, from the second review's finding 4).**
+  Names containing `"`, `\` or a tab are still C-quoted by
+  `git diff --name-only` and `git ls-files` despite `core.quotePath=false`,
+  so `selftest-needed.sh` and `gates.sh:991-992` both classify them `source`;
+  POSIX hosts only (Windows cannot create them). `-z` output is the fix when
+  either is taken up.
 - **RED return 1 verified by the orchestrator (2026-10-26).** Test-developer
   (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override) added
   four cases (35 assertions, 64 lines, 0 removed) to `selftest-needed.test.sh`;

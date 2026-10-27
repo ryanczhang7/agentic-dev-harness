@@ -318,4 +318,94 @@ assert_eq "precondition: the file exists under its UTF-8 name" "yes" "$([ -f "$d
 expect "an UNTRACKED $CAFE answers run and names it unquoted" 0 \
   "selftest-needed: run $D 1 harness path(s) changed against main (merge-base $(short main)): $CAFE" yes
 
+# ---------------------------------------------------------------------------
+# HARNESS-077: the wrong-way skips HARNESS-075's second diff review left open
+# (findings 1-3). Each case has a harness change on the branch, so the only
+# correct answers are `run` - and every one of them answers `skip` (or exits
+# 1 silently) against the HARNESS-075 script except AC-2, which passes on
+# arrival and is earned by the story's DV-2 mutation.
+#
+# gf_run <cwd> [env...]   Runs the fixture's script from <cwd>, with optional
+# `VAR=value` words set for its environment only; sets RC, FIRST, NOUT, ERR as
+# run_sn does. gf_assert <label> <where>   Asserts the fail-toward-run SHAPE:
+# exit 0, GF_PRE prefix, GF_SUF suffix, one line. The reason text between them
+# is the implementer's; stderr is asserted only by the AC-1 case.
+gf_run() {   # <cwd> [env...]
+  local cwd="$1" i; shift
+  ( cd "$cwd" && env "$@" bash "$SN" ) >"$WORK/o" 2>"$WORK/e"
+  RC=$?
+  OL=(); mapfile -t OL < "$WORK/o"
+  for i in "${!OL[@]}"; do OL[$i]="${OL[$i]%$'\r'}"; done
+  NOUT="${#OL[@]}"; FIRST="${OL[0]-}"
+  ERR=""; [ -s "$WORK/e" ] && ERR="$(cat "$WORK/e")"
+}
+gf_assert() {   # <label> <where>
+  assert_eq "$1 [from $2]: exits 0" 0 "$RC"
+  assert_eq "$1 [from $2]: the first line begins \`cannot compute the diff: \`" "$GF_PRE" "${FIRST:0:${#GF_PRE}}"
+  assert_eq "$1 [from $2]: the first line ends \`; defaulting to run\`" "$GF_SUF" \
+    "$([ "${#FIRST}" -ge "${#GF_SUF}" ] && printf '%s' "${FIRST: -${#GF_SUF}}")"
+  assert_eq "$1 [from $2]: stdout is exactly one line" 1 "$NOUT"
+}
+
+describe "HARNESS-077 AC-1: a lib.sh that trips \`set -u\` when sourced answers run, and its error reaches stderr"
+
+# The fixture's COPY of lib.sh is test data: a line reading an unset variable
+# goes in as its line 2. Rewritten with awk, not `sed -i` (GNU-only).
+new_fixture; SN="$d/scripts/selftest-needed.sh"; story_branch
+put scripts/x.sh '#!/usr/bin/env bash'; commit_all "add x"
+FLIB="$d/.claude/hooks/lib.sh"
+awk 'NR == 2 { print "echo \"$NOPE_UNSET\"" } { print }' "$FLIB" > "$WORK/lib.sh" && cat "$WORK/lib.sh" > "$FLIB"
+assert_eq "precondition: sourcing the fixture's lib.sh under \`set -u\` in a subshell fails" \
+  "fails" "$( ( set -u; . "$FLIB" ) >/dev/null 2>&1 && printf loads || printf fails)"
+for where in root subdir; do
+  cwd="$d"; [ "$where" = subdir ] && cwd="$d/$SUBDIR"
+  gf_run "$cwd"
+  gf_assert "a lib.sh with an unbound variable on line 2" "$where"
+  assert_eq "a lib.sh with an unbound variable on line 2 [from $where]: stderr is not empty" \
+    "non-empty" "$([ -n "$ERR" ] && printf non-empty || printf empty)"
+  assert_contains "a lib.sh with an unbound variable on line 2 [from $where]: stderr names the unbound variable" \
+    "NOPE_UNSET" "$ERR"
+done
+
+describe "HARNESS-077 AC-2: a COMMITTED harness path with a non-ASCII name is seen, and named unquoted"
+
+new_fixture; SN="$d/scripts/selftest-needed.sh"; story_branch
+put "$CAFE" 'true'; commit_all "café"
+assert_eq "precondition: the file exists under its UTF-8 name" "yes" "$([ -f "$d/$CAFE" ] && printf yes || printf no)"
+assert_eq "precondition: the commit holds it under its UTF-8 name, and nothing else is changed or untracked" \
+  "$CAFE|" "$(gitc -c core.quotePath=false diff --name-only main HEAD 2>/dev/null)|$(gitc status --porcelain 2>/dev/null)"
+expect "a COMMITTED $CAFE answers run and names it unquoted" 0 \
+  "selftest-needed: run $D 1 harness path(s) changed against main (merge-base $(short main)): $CAFE" yes
+
+describe "HARNESS-077 AC-3(a): with paths.conf missing, a harness change answers run, not a misfiled skip"
+
+new_fixture; SN="$d/scripts/selftest-needed.sh"; story_branch
+put scripts/x.sh '#!/usr/bin/env bash'; commit_all "add x"
+rm -f "$d/.claude/harness/paths.conf"
+assert_eq "precondition: the fixture's .claude/harness/paths.conf is gone" \
+  "gone" "$([ -e "$d/.claude/harness/paths.conf" ] && printf present || printf gone)"
+assert_eq "precondition: without it, the fixture's classify.sh misfiles scripts/x.sh as source" \
+  "source" "$(cd "$d" && bash scripts/classify.sh scripts/x.sh 2>/dev/null | awk -F'\t' '{ print $1 }')"
+for where in root subdir; do
+  cwd="$d"; [ "$where" = subdir ] && cwd="$d/$SUBDIR"
+  gf_run "$cwd"
+  gf_assert "paths.conf missing" "$where"
+done
+
+describe "HARNESS-077 AC-3(b): a classify pipeline that exits non-zero answers run, not skip"
+
+# The contrivance, confined to the one invocation: a fake `awk` first on PATH,
+# exiting 2. $WORK is a POSIX path (mktemp), so it holds no `:` to split PATH.
+new_fixture; SN="$d/scripts/selftest-needed.sh"; story_branch
+put scripts/x.sh '#!/usr/bin/env bash'; commit_all "add x"
+mkdir -p "$WORK/fakebin"
+printf '#!/usr/bin/env bash\nexit 2\n' > "$WORK/fakebin/awk"; chmod +x "$WORK/fakebin/awk"
+assert_eq "precondition: with the fake first on PATH, \`awk 'BEGIN{}'\` exits 2" \
+  2 "$(PATH="$WORK/fakebin:$PATH" awk 'BEGIN{}' >/dev/null 2>&1; printf '%s' "$?")"
+for where in root subdir; do
+  cwd="$d"; [ "$where" = subdir ] && cwd="$d/$SUBDIR"
+  gf_run "$cwd" PATH="$WORK/fakebin:$PATH"
+  gf_assert "an awk that exits 2" "$where"
+done
+
 summary "selftest-needed"

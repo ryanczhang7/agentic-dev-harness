@@ -23,7 +23,12 @@
 # to the base itself, and this answers `run`; a failing `git diff` or
 # `git ls-files` answers `run` rather than an empty set; a rename counts under
 # both names (`--no-renames`); and a non-ASCII name is listed unquoted
-# (`core.quotePath=false`).
+# (`core.quotePath=false`). `lib.sh` is probe-loaded in a subshell first, so a
+# library that will not load answers `run` and its error reaches stderr, and a
+# missing `paths.conf` or a failing classify step answers `run` too (HARNESS-077).
+# Known limit: names containing `"`, `\` or a tab are still C-quoted by git
+# despite `core.quotePath=false`, so they classify `source`; POSIX hosts only
+# (Windows cannot create them), and `-z` output is the fix if it is ever needed.
 
 set -uo pipefail
 
@@ -51,8 +56,17 @@ cd "$TOP" || fallback "not a git checkout"
 
 export CLAUDE_PROJECT_DIR="$SELF_ROOT"
 LIB="$SELF_ROOT/.claude/hooks/lib.sh"
-{ [ -f "$LIB" ] && . "$LIB"; } 2>/dev/null || fallback "cannot load $LIB"
+# Probe first: a `set -u` trip or an `exit` in a sourced file ends the whole
+# script, so it is sourced in a subshell (stderr kept, so the error is seen)
+# before the real source, which then cannot fail that way.
+[ -f "$LIB" ] || fallback "cannot load $LIB"
+( . "$LIB" ) >/dev/null || fallback "cannot load $LIB"
+. "$LIB"
 declare -F classify_stdin >/dev/null || fallback "$LIB defines no classify_stdin"
+# Without its rules classify_stdin calls every path `source`, so a `skip` from
+# here would be wrong by construction. On disk, not the index.
+RULES="${HARNESS_DIR:-$SELF_ROOT/.claude/harness}/paths.conf"
+[ -r "$RULES" ] || fallback "cannot classify the changed paths: no $RULES"
 
 base="${1-}"
 if [ -z "$base" ]; then
@@ -75,7 +89,8 @@ untracked="$(git -c core.quotePath=false ls-files --others --exclude-standard 2>
 changed="$(printf '%s\n%s\n' "$tracked" "$untracked" | awk 'length' | sort -u)"
 n=0; [ -n "$changed" ] && n="$(printf '%s\n' "$changed" | awk 'END { print NR }')"
 
-harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')"
+harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')" \
+  || fallback "cannot classify the changed paths: classify_stdin failed"
 
 if [ -z "$harness" ]; then
   printf 'selftest-needed: skip %s no harness path among %s changed path(s) against %s (merge-base %s); CI runs the self-test on the PR\n' \

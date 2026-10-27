@@ -210,8 +210,9 @@ Then, **in this order**:
 2. `bash scripts/selftest-needed.sh` — it answers `run` (exit 0) when the
    story's changes, committed or not, include a path `classify.sh` calls
    `harness` - the files the harness suites read - and `skip` (exit 1)
-   otherwise. When it cannot compute the diff (no `origin/main` or `main`, no
-   merge base, not a git checkout) it says why and answers `run`. On `skip`,
+   otherwise. When it cannot compute the diff (for example no base to compare
+   against, no merge base, git failing, or its own library or `paths.conf`
+   not loading) it says why and answers `run`. On `skip`,
    paste its line into `## Notes` as
    `- Self-test skipped at GATES → REVIEW (<date>): selftest-needed: skip — ...`
    and go on to step 3. CI runs the self-test on the PR either way, so a
