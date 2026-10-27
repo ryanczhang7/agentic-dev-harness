@@ -988,9 +988,14 @@ if [ -n "$COVERS" ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
     changes_note="(changes not checked: no main branch to compare against)"
   else
     mb="$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null || printf '%s' "$base")"
-    changed="$( { git -C "$ROOT" diff --name-only "$mb" 2>/dev/null
-                  git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null; } \
-                | sort -u | classify_stdin | awk -F'\t' '$1 == "source" { print $2 }')"
+    # -z: git C-quotes a non-ASCII name under the default core.quotePath, and
+    # `"`, `\` and a tab under any setting; NUL-separated output is never
+    # quoted (HARNESS-078). Known limit: a name holding a newline still splits
+    # into two paths that name no file, and is dropped unreported.
+    changed="$( { git -C "$ROOT" diff -z --name-only "$mb" 2>/dev/null
+                  git -C "$ROOT" ls-files -z --others --exclude-standard 2>/dev/null; } \
+                | tr '\0' '\n' | sort -u | classify_stdin \
+                | awk -F'\t' '$1 == "source" { print substr($0, length($1) + 2) }')"
     total=0; covered=0
     while IFS= read -r path; do
       [ -n "$path" ] || continue
@@ -1004,13 +1009,19 @@ if [ -n "$COVERS" ] && [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
         case " $reqs $opts " in *" $cid "*) continue ;; esac
         if [ "$creq" = "required" ]; then reqs="$reqs $cid"; else opts="$opts $cid"; fi
       done <<< "$COVERS"
+      # `results` is printed with %b, so a `\` in the name is doubled to print
+      # as itself (HARNESS-078); glob_matches and -e above take the raw path.
+      case "$path" in
+        *\\*) shown="$(printf '%s' "$path" | sed 's/\\/\\\\/g')" ;;
+        *) shown="$path" ;;
+      esac
       if [ -n "$reqs" ]; then
         covered=$((covered+1))
       elif [ -n "$opts" ]; then
-        results="$results\nFAIL         changes: $path is exercised only by optional gate(s):$opts - add required_gates: [$(printf '%s' "${opts# }" | sed 's/ /, /g')] to the story, or a covers line for a required gate"
+        results="$results\nFAIL         changes: $shown is exercised only by optional gate(s):$opts - add required_gates: [$(printf '%s' "${opts# }" | sed 's/ /, /g')] to the story, or a covers line for a required gate"
         fails=$((fails+1))
       else
-        results="$results\nWARN         changes: $path is exercised by no gate with a covers line"
+        results="$results\nWARN         changes: $shown is exercised by no gate with a covers line"
         chwarn=$((chwarn+1))
       fi
     done <<< "$changed"

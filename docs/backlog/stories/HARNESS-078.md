@@ -4,8 +4,8 @@ title: The covers check sees every changed path by its real name, and selftest-n
 slug: the-covers-check-sees-every-changed-path
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-078-the-covers-check-sees-every-changed-path
 depends_on: [HARNESS-077]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/selftest-needed.sh, scripts/host-load.sh, .claude/tests/gates.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -83,7 +83,7 @@ stays empty.
   against main (merge-base <short>): <path>` line, from the fixture root and
   from `src/`. *Reproduces the bug:* today stdout is two lines and the first is
   the library's.
-- **AC-5** *(decision 1 - included pending the user's confirmation)* — Given a
+- **AC-5** *(decision 1 - confirmed by the user, 2026-10-27)* — Given a
   harness path named `.claude/tests/a"b.test.sh`, then `a\b`, then `a<TAB>b`,
   changed on the story branch, when `bash scripts/selftest-needed.sh` runs, then
   it answers `run` (exit 0) naming that path byte-for-byte, under the same host
@@ -123,9 +123,48 @@ After: both git commands take `-z`, and the NUL-separated stream becomes one
 path per line before `sort -u`, with `tr '\0' '\n'` (coreutils and BSD both
 have it; no python, no `read -d ''` loop needed, because everything downstream
 - `classify_stdin`, the `while read` over `$changed` - is line-based already).
-The rest of the pipeline and the loop are unchanged. Keep it to the same three
-lines plus, at most, a comment directly above them (next block); nothing above
-line 965 moves.
+~~The rest of the pipeline and the loop are unchanged.~~ Keep the enumeration
+to the same three lines plus, at most, a comment directly above them (next
+block); nothing above line 965 moves.
+
+**Amended by RED (2026-10-27): `-z` alone does not satisfy AC-3, and two more
+edits below line 991 are required.** Measured on Linux (WSL, git 2.43, gawk
+5.2), with the "After" pipeline above typed out verbatim in a scratch script
+(no source edited) over a repo holding the three AC-3 names, then the loop's
+`-e` test and the summary's `printf '%b'`, piped to `od -An -c`: `a"b.ts`
+comes out right; the tab name is dropped, cut at its tab; the backslash name
+prints with a BACKSPACE byte (od's `\b`; a literal backslash would be `\\`).
+
+     D R O P P E D a s d e l e t
+     e d : s r c / r e n d e r / a
+     \n
+     \n F A I L c h
+     a n g e s : s r c / r e n d e
+     r / a " b . t s i s e x e r
+     ...
+     i n t e g r a t i o n \n F A I L
+     c h a n g e s
+     : s r c / r e n d e r / a \b .
+     t s i s e x e r c i s e d
+
+1. **A tab in the name is cut by the awk filter.** `classify_stdin` prints
+   `<category>\t<path>` and the filter `awk -F'\t' '$1 == "source" { print $2 }'`
+   prints only the text up to the path's own tab, so `src/render/a<TAB>b.ts`
+   becomes `src/render/a`, which `-e` then drops as deleted. The filter must
+   print everything after the FIRST tab, e.g.
+   `awk -F'\t' '$1 == "source" { print substr($0, length($1) + 2) }'`.
+2. **A backslash in the name is interpreted by `printf '%b'`.** The FAIL and
+   WARN lines (`:1010`, `:1013`) put `$path` into `$results`, which is printed
+   with `printf '\n--- gate summary ---%b\n' "$results"` (`:1055`) and recorded
+   with `printf '%b' "$results"` (`:1191`). `%b` turns the `\b` of
+   `src/render/a\b.ts` into a backspace (and a `\c` would end the summary
+   outright). `$path` must have each `\` doubled before it is appended to
+   `$results`, in both lines - the mechanism is GREEN's (a `sed 's/\\/\\\\/g'`
+   is portable to bash 3.2; check any `${path//...}` form there before using
+   it). The `glob_matches` call and the `-e` test keep the raw `$path`.
+
+Both edits are below line 991, so the `sigpipe.test.sh` pins (`:82`, `:734`)
+still do not move.
 
 **A name holding a newline is still broken after this, and the story does not
 fix it.** `tr` turns its embedded newline into a record separator, the two
@@ -184,6 +223,21 @@ line pins anywhere (`grep -rnoE '(selftest-needed|host-load)\.sh:[0-9]+'` over
   limit" (`:29-31`) is replaced by the newline limit in the `gates.sh` wording.
   If the user declines decision 1 before RED: delete AC-5 and this bullet, and
   `:29-31` stays as it is.
+- **`:92` (amended by RED, 2026-10-27): the harness filter must print
+  everything after the first tab**, as in the `gates.sh` block's amendment 1:
+  `awk -F'\t' '$1 == "harness" { print substr($0, length($1) + 2) }'`.
+  Measured on Linux with the `-z | tr` listing typed out in a scratch script:
+  the three AC-5 names come out of `classify_stdin | awk -F'\t' ... print $2`
+  as `.claude/tests/a` (the tab name, cut), `.claude/tests/a"b.test.sh` and
+  `.claude/tests/a\b.test.sh` - so without this the AC-5 tab cases answer
+  `run` naming the wrong path. The `%b` defect does not arise here: the
+  answer is printed with `%s`.
+
+      . c l a u d e / t e s t s / a \n
+      . c l a u d e / t e s t s / a "
+      b . t e s t . s h \n . c l a u d
+      e / t e s t s / a \ b . t e s t
+      . s h \n
 
 ### `scripts/host-load.sh` - header comment only (`:32-34`)
 
@@ -234,6 +288,28 @@ No code change, no test. `host-load.test.sh` does not read the header.
   `bash scripts/mutate.sh scripts/gates.sh 's/ diff -z --name-only/ diff --name-only/;s/ ls-files -z --others/ ls-files --others/' -- bash .claude/tests/gates.test.sh`
   (adjust the expression to what GREEN wrote, and say so), compare the failure
   count with RED's handoff, confirm green after the restore. **Owner: GATES.**
+
+  *Result (GATES, orchestrator, 2026-10-27, this host).* The expression as
+  written applied unchanged to GREEN's lines 995-996. Exactly the 4 AC-1/AC-2
+  assertions went red - RED's predicted count for this host - and every
+  pre-existing `covers` assertion stayed green; AC-3 printed its SKIP line;
+  restored and green:
+
+      === mutate: scripts/gates.sh (2 line(s) changed by s/ diff -z --name-only/ diff --name-only/;s/ ls-files -z --others/ ls-files --others/) ===
+        995 -     changed="$( { git -C "$ROOT" diff -z --name-only "$mb" 2>/dev/null
+        996 -                   git -C "$ROOT" ls-files -z --others --exclude-standard 2>/dev/null; } \
+        995 +     changed="$( { git -C "$ROOT" diff --name-only "$mb" 2>/dev/null
+        996 +                   git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null; } \
+      === mutate: running bash scripts/selftest.sh gates ===
+          FAIL AC-1: an UNTRACKED src/render/café.ts that only an optional gate reads FAILs, named unquoted
+          FAIL AC-1: and the run fails
+          FAIL AC-1: and the run does not claim all required gates passed
+          FAIL AC-2: a COMMITTED src/shaders/café.glsl no covers line claims WARNs, named unquoted
+          SKIP covers AC-3 (HARNESS-078 decision 3): ... not run on MINGW64_NT-10.0-26200 ...
+      gates: 852 passed, 4 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261027T202859Z.1745.bak) ===
+
+      gates: 856 passed, 0 failed
 - **DV-2 - the POSIX-only cases (AC-3, AC-5) watched failing.** These cannot
   run on this host at all (decision 3), so their RED failure is never observed
   here. At GATES, if `wsl.exe -e uname -s` prints `Linux` (WSL is present on
@@ -244,6 +320,45 @@ No code change, no test. `host-load.test.sh` does not read the header.
   the observed GREEN of those cases - which also catches a GREEN that used
   `core.quotePath=false` instead of `-z`, the one wrong fix AC-1/AC-2 cannot.
   **Owner: GATES.**
+
+  *Result (GATES, orchestrator, 2026-10-27, WSL).* Run, not waived:
+  `wsl.exe` runs Ubuntu here (`Linux 6.18.54.1-microsoft-standard-WSL2
+  x86_64`, git 2.43.0). A throwaway clone of the committed branch at
+  `4d3aef4`, clean; both mutations through that clone's `mutate.sh`, each
+  restored and verified; then both suites green. The `selftest-needed.sh`
+  expression is against GREEN's `:88`/`:90`, not the planned `:85`/`:87`.
+  `gates`: 10 red - AC-1 x3, AC-2 x1 and AC-3's three names x2 - RED's
+  Linux prediction. `selftest-needed`: 32 red - the 24 AC-5 assertions plus
+  8 from HARNESS-075/077's café cases, which now depend on `-z` because GREEN
+  dropped `core.quotePath=false` (predicted in GREEN's note). That the AC-3
+  and AC-5 names go red without `-z` is what distinguishes it from a
+  `quotePath=false` fix. Abridged to the lines that name a case (the full
+  log is the session's scratchpad `wsl-dv2.log`):
+
+      Linux 6.18.54.1-microsoft-standard-WSL2 x86_64
+      git version 2.43.0
+      4d3aef4 HARNESS-078 GREEN: the covers check and selftest-needed read paths NUL-separated, whole and unescaped
+      ##### gates.sh: -z removed
+      === mutate: scripts/gates.sh (2 line(s) changed by s/ diff -z --name-only/ diff --name-only/;s/ ls-files -z --others/ ls-files --others/) ===
+          FAIL AC-1: an UNTRACKED src/render/café.ts that only an optional gate reads FAILs, named unquoted
+          FAIL AC-2: a COMMITTED src/shaders/café.glsl no covers line claims WARNs, named unquoted
+          FAIL AC-3: an UNTRACKED src/render/a"b.ts that only an optional gate reads FAILs, named byte for byte
+          FAIL AC-3: an UNTRACKED src/render/a\b.ts that only an optional gate reads FAILs, named byte for byte
+          FAIL AC-3: an UNTRACKED src/render/a<TAB>b.ts that only an optional gate reads FAILs, named byte for byte
+      gates: 855 passed, 10 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /tmp/h78dv2.mDe10b/r/.claude/state/mutations/scripts_gates.sh.20261027T202903Z.384.bak) ===
+      ##### selftest-needed.sh: -z removed
+      === mutate: scripts/selftest-needed.sh (2 line(s) changed by s/ diff -z --no-renames/ diff --no-renames/;s/ ls-files -z --others/ ls-files --others/) ===
+          FAIL an UNTRACKED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: exits 0
+          FAIL a COMMITTED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: exits 0
+          FAIL an UNTRACKED .claude/tests/a"b.test.sh answers run and names it byte for byte [from root]: exits 0
+          FAIL a COMMITTED .claude/tests/a\b.test.sh answers run and names it byte for byte [from root]: exits 0
+          FAIL an UNTRACKED .claude/tests/a<TAB>b.test.sh answers run and names it byte for byte [from root]: exits 0
+      selftest-needed: 248 passed, 32 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /tmp/h78dv2.mDe10b/r/.claude/state/mutations/scripts_selftest-needed.sh.20261027T202926Z.19028.bak) ===
+      ##### restored, both suites
+      gates: 865 passed, 0 failed
+      selftest-needed: 280 passed, 0 failed
 
 AC-4's test fails in RED on this host against the unfixed script, so it is
 earned in RED; no mutation is owed for a test written against existing code.
@@ -325,10 +440,307 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All five criteria are mechanical (Contract, "Oracle partition"): every expected
+line is read out of today's formats and pinned whole or as an exact substring.
+Every case is at the level the criterion lives: the real `scripts/gates.sh` and
+`scripts/selftest-needed.sh`, run in a fixture repository, through the suites'
+own helpers. No new helper, no test-only dependency, no floor change.
+
+**`.claude/tests/gates.test.sh`** - a new `describe "covers (HARNESS-078): ..."`
+block inside the `covers` section, after its `--audit` cases and before its
+cleanup lines, on the same fixture (`story/T-1-fixture`, phase GATES, story
+T-1 with no `required_gates`). It writes the block's `unit`+`integration` conf
+(`src/core/**` required, `src/render/**` optional) and removes `mesh.ts` first,
+so the only optional-gate path in each run is the case's own.
+
+| Case | Asserts | AC |
+|---|---|---|
+| precondition | `git ls-files -z --others -- src/render` lists exactly `src/render/café.ts` | AC-1 |
+| AC-1 FAIL line | output holds `FAIL         changes: src/render/café.ts is exercised only by optional gate(s): integration` | AC-1 |
+| AC-1 run fails | output holds `required gate(s) failed` | AC-1 |
+| AC-1 no false pass | output does NOT hold `All required gates passed` | AC-1 |
+| precondition | `git diff -z --name-only main HEAD -- src/shaders/` (less the block's `sky.glsl`) is exactly `src/shaders/café.glsl`, and it is not untracked | AC-2 |
+| AC-2 WARN line | output holds `WARN         changes: src/shaders/café.glsl is exercised by no gate with a covers line` | AC-2 |
+| AC-3 x3 names, POSIX only | precondition `ls-files -z --others -- src/render` is the name byte for byte (assert_eq); FAIL line names it byte for byte; `required gate(s) failed` | AC-3 |
+
+Each case removes its file after itself (AC-2 by `git rm` + a commit, so the
+story branch no longer differs from main by it); the block's original cleanup
+then runs unchanged. The whole suite was run, Windows and Linux, and the only
+failures are this block's (see Handoff).
+
+**`.claude/tests/selftest-needed.test.sh`** - two blocks before `summary`.
+
+| Case | Asserts | AC |
+|---|---|---|
+| AC-4 preconditions | sourcing the fixture's lib.sh copy prints exactly `lib-loaded-on-stdout`; the only path changed against main is `scripts/x.sh`, tree clean | AC-4 |
+| AC-4 `expect`, root and `src/` | exit 0; first line is the whole pinned `run ... 1 harness path(s) ...: scripts/x.sh` line; stdout is exactly one line; stderr empty | AC-4 |
+| AC-5 x3 names x {untracked, committed}, POSIX only | precondition: the `-z` listing (`ls-files --others` / `diff main HEAD`) is the name byte for byte; then `expect` as above with the name in the pinned line | AC-5 |
+
+AC-4's lib.sh rewrite is committed on `main` before the story branch, so
+lib.sh is not itself a changed path and the pinned count stays `1`.
+AC-5 runs each name both untracked and committed because each of the two
+listings (`:85`, `:87`) needs its own `-z`.
+
+**The host rule (decision 3).** Both POSIX-only groups sit in
+`case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)`, which prints one `    SKIP ...`
+line on stdout and runs nothing; on any other host the precondition is an
+`assert_eq`, so a Linux host cannot skip them quietly. Skipped cases are not
+counted. The PO's measurement was re-taken on this host (Handoff) and holds.
 
 ## Handoff: RED -> GREEN
+
+**Model.** This RED dispatch ran on Opus 5.5 (`claude-opus-5-5`), as its
+system context identified it; dispatched as `test-developer`, whose `model:`
+is `opus`. No override was stated in the brief.
+
+**Read the two Contract amendments first** (`gates.sh` enumeration block,
+"Amended by RED", and the `selftest-needed.sh` `:92` bullet). The Contract's
+`-z` fix alone does NOT turn AC-3's backslash and tab cases or AC-5's tab
+cases green: a tab in a path is cut by the `awk -F'\t' ... print $2` filters
+in both scripts, and `gates.sh` prints `$results` with `printf '%b'`, which
+turns `a\b` into `a<BACKSPACE>`. Both measured on Linux; both fixes are
+below `gates.sh:991`, so the `sigpipe.test.sh` pins still do not move. The
+acceptance criteria are untouched. 2 of the Contract's 6 `###` blocks are
+amended (for the Model guidance success condition).
+
+### Commands
+
+    bash scripts/selftest.sh gates              # ~7.5 min on this host
+    bash scripts/selftest.sh selftest-needed    # ~1.2 min on this host
+    bash .claude/tests/gates.test.sh            # the suite alone, same result
+
+The POSIX-only cases (AC-3, AC-5) never run on this host. They were run in
+RED under WSL (Ubuntu, git 2.43, bash 5.2, gawk 5.2), from a throwaway clone
+of this branch with the two edited suites copied in:
+
+    MSYS_NO_PATHCONV=1 wsl.exe -e bash -c 'W=$(mktemp -d /tmp/h78.XXXXXX);
+      git clone -q /mnt/d/agentic-dev-harness "$W/r" && cd "$W/r" &&
+      git checkout -q story/HARNESS-078-the-covers-check-sees-every-changed-path &&
+      cp /mnt/d/agentic-dev-harness/.claude/tests/{gates,selftest-needed}.test.sh .claude/tests/ &&
+      bash .claude/tests/gates.test.sh; bash .claude/tests/selftest-needed.test.sh; rm -rf "$W"'
+
+(`MSYS_NO_PATHCONV=1` stops Git Bash rewriting `/mnt/...` arguments; the WSL
+VM's `/tmp` is wiped when it idles out, so keep logs on `/mnt/c`.) GREEN can
+use the same to watch AC-3/AC-5 go green before GATES' DV-2.
+
+### RED output - this host (MINGW64_NT-10.0-26200)
+
+`gates`: 856 executed, `852 passed, 4 failed`; every failure is this
+story's. Verbatim, abridged only where a line reads `...` (the gate-run
+preamble and the untracked-file advice; the other three failures print the
+same output):
+
+    covers (HARNESS-078): a changed path is seen by its real name, not git's quoted one
+      FAIL AC-1: an UNTRACKED src/render/café.ts that only an optional gate reads FAILs, named unquoted
+           expected to contain: FAIL         changes: src/render/café.ts is exercised only by optional gate(s): integration
+           actual:
+           --- gate summary ---
+           PASS         unit (1s, observed 47)
+           PASS         integration (0s, observed 25)
+
+           changes: 1 changed source path(s), all exercised by a required gate
+
+           untracked: 2 gated file(s) are not part of the recorded tree:
+               UNTRACKED  "src/render/caf\303\251.ts"
+               UNTRACKED  tests/other.test.ts
+           ...
+           All required gates passed (2 ran, 0 unconfigured, 0 known).
+      FAIL AC-1: and the run fails
+           expected to contain: required gate(s) failed
+      FAIL AC-1: and the run does not claim all required gates passed
+           expected NOT to contain: All required gates passed
+      FAIL AC-2: a COMMITTED src/shaders/café.glsl no covers line claims WARNs, named unquoted
+           expected to contain: WARN         changes: src/shaders/café.glsl is exercised by no gate with a covers line
+           ...
+           changes: 1 changed source path(s), all exercised by a required gate
+           ...
+           All required gates passed (2 ran, 0 unconfigured, 0 known).
+      SKIP covers AC-3 (HARNESS-078 decision 3): the untracked src/render/a"b.ts, src/render/a\b.ts and src/render/a<TAB>b.ts cases are not run on MINGW64_NT-10.0-26200: Git Bash maps " and a tab to private-use code points and cannot create \ at all; not counted as a pass
+
+    gates: 852 passed, 4 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (852 assertions executed, 682 declared).
+    1 of 1 harness suite(s) FAILED.
+
+**Why it is the right failure.** `changes: 1 changed source path(s)` is
+`src/core/thing.ts` alone: `café.ts` (and, for AC-2, `café.glsl`) reached
+the loop C-quoted, failed `[ -e ]`, and was dropped as deleted - the defect
+exactly, while the gates themselves pass. The quoted form is visible in the
+same output (the `untracked:` report, a different enumeration and out of
+scope). Both preconditions passed, so the fixture holds the names as the
+criteria describe.
+
+`selftest-needed`: 226 executed, `222 passed, 4 failed`:
+
+    HARNESS-078 AC-4: a lib.sh that prints while it is sourced does not add a line to the answer
+      FAIL a lib.sh that prints a line on load: the answer is still the one pinned run line [from root]: the first line is exactly the pinned line
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 8ff2c59): scripts/x.sh
+           actual:   lib-loaded-on-stdout
+      FAIL a lib.sh that prints a line on load: the answer is still the one pinned run line [from root]: stdout is exactly one line
+           expected: 1
+           actual:   2
+      FAIL a lib.sh that prints a line on load: the answer is still the one pinned run line [from subdir]: the first line is exactly the pinned line
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 8ff2c59): scripts/x.sh
+           actual:   lib-loaded-on-stdout
+      FAIL a lib.sh that prints a line on load: the answer is still the one pinned run line [from subdir]: stdout is exactly one line
+           expected: 1
+           actual:   2
+
+    HARNESS-078 AC-5: a harness path named with `"`, `\` or a tab is seen, and named byte for byte
+      SKIP HARNESS-078 AC-5 (decision 3): the .claude/tests/a"b.test.sh, .claude/tests/a\b.test.sh and .claude/tests/a<TAB>b.test.sh cases, untracked and committed, are not run on MINGW64_NT-10.0-26200: Git Bash maps " and a tab to private-use code points and cannot create \ at all; not counted as a pass
+
+    selftest-needed: 222 passed, 4 failed
+
+**Right failure:** the library's line comes first and the verdict second -
+`:64`'s unredirected `. "$LIB"`, exactly; exit 0 and empty stderr already hold.
+
+### RED output - Linux (WSL), the POSIX-only cases
+
+`gates`: 865 executed, `855 passed, 10 failed` - the 4 above plus 6 AC-3
+(`"`, `\`, tab x {FAIL line, run fails}); all 3 AC-3 preconditions passed.
+`selftest-needed`: 280 executed, `252 passed, 28 failed` - the 4 AC-4 plus
+24 AC-5 (3 names x {untracked, committed} x {root, src/} x {exit, first
+line}); all 6 preconditions passed. Gates, one name each, the `expected`
+and `UNTRACKED` lines of each failure (the rest is the same summary as above):
+
+    FAIL AC-3: an UNTRACKED src/render/a"b.ts that only an optional gate reads FAILs, named byte for byte
+         expected to contain: FAIL         changes: src/render/a"b.ts is exercised only by optional gate(s): integration
+             UNTRACKED  "src/render/a\"b.ts"
+    FAIL AC-3: an UNTRACKED src/render/a\b.ts that only an optional gate reads FAILs, named byte for byte
+         expected to contain: FAIL         changes: src/render/a\b.ts is exercised only by optional gate(s): integration
+             UNTRACKED  "src/render/a\\b.ts"
+    FAIL AC-3: an UNTRACKED src/render/a<TAB>b.ts that only an optional gate reads FAILs, named byte for byte
+             UNTRACKED  "src/render/a\tb.ts"
+    gates: 855 passed, 10 failed
+
+and selftest-needed, one of the 24:
+
+    FAIL a COMMITTED .claude/tests/a\b.test.sh answers run and names it byte for byte [from root]: exits 0
+         expected: 0
+         actual:   1
+    FAIL a COMMITTED .claude/tests/a\b.test.sh answers run and names it byte for byte [from root]: the first line is exactly the pinned line
+         expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base c261258): .claude/tests/a\b.test.sh
+         actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base c261258); CI runs the self-test on the PR
+    selftest-needed: 252 passed, 28 failed
+
+Right failure: every one is the C-quoted name dropped (gates.sh) or
+classified `source` (selftest-needed: `skip`, exit 1) - the wrong-way skip
+AC-5 names.
+
+### Host measurement (decision 3), re-taken in RED
+
+On this host, in a scratch repo, `printf` creating each name, then
+`git ls-files --others` and `-z`:
+
+    MINGW64_NT-10.0-26200
+    created:  a " b . t s
+    host.sh: line 8: /tmp/tmp.kEPN4n5oHZ/a\b.ts: No such file or directory
+    cannot create:  a \ b . t s
+    created:  a \t b . t s
+    created:  c a f 303 251 . t s
+    --- ls-files --others (default quotePath):
+    "a\357\200\211b.ts"
+    "a\357\200\242b.ts"
+    "caf\303\251.ts"
+
+The PO's measurement holds: `"` reaches git as U+F022, a tab as U+F009, and
+`\` cannot be created. `printf '\t'` does produce a real tab here (the
+`created: a \t b` line); it is the filesystem layer that remaps it.
+
+### Files touched
+
+- `.claude/tests/gates.test.sh` - additions only (AC-1, AC-2, AC-3).
+- `.claude/tests/selftest-needed.test.sh` - additions only (AC-4, AC-5).
+- `docs/backlog/stories/HARNESS-078.md` - the two Contract amendments,
+  `## Test plan`, this handoff.
+- Not touched: `floors.conf`, `selftest.test.sh`, `sigpipe.test.sh`, anything
+  under `scripts/`.
+
+### Floors - unchanged
+
+`gates` 682 and `selftest-needed` 216 stay. This host now executes 856 and
+226 (Linux: 865 and 280); the `gates` floor was already 168 below the count
+before this story, and raising either is optional (`floors.conf` header).
+
+### What the tests pin, and what they leave to GREEN
+
+No module, function or signature is imported or called by the new tests; they
+drive the two scripts as commands. Pinned:
+
+- `gates.sh` output holds, byte for byte, `FAIL         changes: <path> is
+  exercised only by optional gate(s): integration` and `WARN         changes:
+  <path> is exercised by no gate with a covers line`, with `<path>` as the
+  filesystem holds it, and a run with such a FAIL ends `required gate(s)
+  failed`, never `All required gates passed`.
+- `selftest-needed.sh`'s stdout is exactly one line, the pinned `run` line,
+  whatever `lib.sh` prints on stdout while loading; and names a harness path
+  holding `"`, `\` or a tab byte for byte, `run`, exit 0, from root and `src/`.
+- **`-z`, not `core.quotePath=false`.** AC-1, AC-2 and every pre-existing
+  `café` case pass under either. Only AC-3/AC-5 tell them apart, and only on
+  a POSIX host - so on this host nothing distinguishes the two fixes; Linux CI
+  (or WSL) is the only place a `quotePath=false` GREEN goes red.
+
+Left to GREEN: the escaping mechanism for `%b` (amendment 2), the exact awk
+form of the after-first-tab filter (amendments), whether to drop
+`-c core.quotePath=false` in `selftest-needed.sh`, and all comment wording
+(`host-load.sh`, `selftest-needed.sh` header, the `gates.sh` known-limit
+comment) - no test reads any comment.
+
+### Passed on arrival among the new assertions
+
+- **Preconditions** (2 on this host: AC-1, AC-2; plus AC-4's 2; Linux adds 3
+  AC-3 and 6 AC-5). They assert the fixture, not the scripts; each would go
+  red if the fixture failed to hold the name (that is how a Linux host is
+  stopped from skipping quietly). Not separately mutated.
+- **AC-4's `exits 0` and `nothing on stderr` (4)** and **AC-5's `stdout is
+  exactly one line` and `nothing on stderr` (24, Linux)**: these come from
+  the shared `expect` helper, whose assertions were earned in HARNESS-075's
+  RED (script absent, exit 127). They are not what AC-4/AC-5 claim; the
+  claimed assertions (first line, line count for AC-4; exit and first line
+  for AC-5) are red above. No new mutation is owed for them (rules.md,
+  "Mutation work per story").
+
+### Negative controls - expected values
+
+There is no threshold in this story (Contract, "Oracle partition"), so no
+numeric control. The structural controls are the pre-existing ASCII
+`covers` cases (`mesh.ts`, `thing.ts`, `sky.glsl`) and the HARNESS-075/077
+`café` cases: all green now, all must stay green after GREEN.
+
+| Control | Expected after GREEN | Measured in RED (this host) |
+|---|---|---|
+| pre-existing `covers` assertions | all pass | all pass (the 4 failures are all HARNESS-078's) |
+| `gates` suite, this host | 856 passed, 0 failed | 852 passed, 4 failed |
+| `selftest-needed` suite, this host | 226 passed, 0 failed | 222 passed, 4 failed |
+| `gates` suite, Linux | 865 passed, 0 failed | 855 passed, 10 failed |
+| `selftest-needed` suite, Linux | 280 passed, 0 failed | 252 passed, 28 failed |
+
+### Deferred verifications - declined
+
+- **DV-1 - declined; owned by GATES.** RED cannot run it: there is no `-z` to
+  remove until GREEN. **Predicted red count** with `-z` removed from both
+  enumeration commands and GREEN's other two edits in place: on this host
+  **4** (`gates: 852 passed, 4 failed` - the same 4 as RED: AC-1 x3, AC-2
+  x1), every pre-existing `covers` assertion green; on Linux **10** (those 4
+  plus AC-3's 6). Note the mutation expression in DV-1 assumes `diff -z
+  --name-only` / `ls-files -z --others` word order; adjust to what GREEN
+  wrote.
+- **DV-2 - declined; owned by GATES.** Not run as a mutation here. Fact for
+  GATES: `wsl.exe -e uname -s` prints `Linux` on this host and the
+  distribution has git 2.43, bash 5.2 and gawk 5.2, so DV-2 can be run
+  rather than WAIVED, with the command above. Predicted reds with `-z`
+  removed: gates **10** on Linux; selftest-needed **24** on Linux (all AC-5
+  cases) if `-c core.quotePath=false` is kept, and on this host **0** - no
+  case on Windows distinguishes `-z` in `selftest-needed.sh` while
+  `quotePath=false` stays. If GREEN drops `quotePath=false`, the mutation also
+  turns the HARNESS-075/077 `café` cases red on this host.
+
+### Discovered, changing the approach
+
+- The two Contract defects above (tab cut by awk; `%b` on `$results`).
+- `gates.sh`'s `untracked:` report (HARNESS-014) prints the same names
+  C-quoted (`UNTRACKED  "src/render/caf\303\251.ts"`) - another enumeration,
+  out of scope by `## Out of scope`; recorded only.
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
      to the Feature Developer, whose context is fresh. Must contain:
@@ -373,12 +785,87 @@ name, below the table.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Fresh `feature-developer` dispatch, `diff-review` skill, 2026-10-27.
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), declared `opus`, no
+override (GATES row of `models.conf`). Changed no file. Report, condensed to
+its checks, findings and verdict:
+
+    What this change does: the covers check and selftest-needed list changed
+    paths with git -z | tr, keep everything after classify_stdin's first tab,
+    and gates.sh doubles each \ in the name it puts into %b-printed $results;
+    selftest-needed discards the library's stdout on the real source.
+
+    Checked (scratch fixtures; escape fixtures written as files): (a) a\cb,
+    a\0101b, a\x41b, a\b, tail\, a\\b, a\nb, \, \\\, a%sb, a%b and a plain name
+    all print byte for byte through both %b sinks (:1066, :1202). (b) <TAB>lead,
+    a<TAB><TAB>b, trail<TAB>, a<TAB>b<TAB>c come back whole (gawk 5.4; POSIX
+    length/substr only). (c) selftest-needed: normal -> run rc 0; fake git
+    exiting 128 on diff -> run "git diff against main failed" rc 0; empty
+    branch -> skip rc 1. (e) newline split: gates.sh never checks the real
+    file; selftest-needed's harness rules are prefixes, so it leans to run.
+    (f) CI's ubuntu prints Linux; the SKIP is a bare printf no assert counts.
+    (g) a quotePath=false fix reddens AC-3 and all 24 AC-5 assertions on
+    Linux; keeping $2 reddens the tab cases; no doubling reddens the a\b line.
+    (h) comments match, but for finding 4. selftest-needed: 226 passed, 0 failed.
+
+    Should fix:
+    1. Other $results lines still send user-controlled text through %b
+       unescaped (gates.sh:734, 738, 762, 774, 783-820): waiver reasons, log
+       excerpts, the evidence regex. printf '%b|' 'expected /\bok\b/ then \c
+       never' prints backspaces and stops at \c, so every later result line
+       vanishes from the summary and ## Gate results. Pre-existing; same sink.
+       Fix (follow-up): build $results with real newlines, print with %s, and
+       drop the new doubling.
+    2. check-boundaries.sh:173-176 and lib.sh's untracked_gated (:1456-1458,
+       gated_stdin :1364) still read C-quoted names and $2. Case: a docs-only PR
+       editing docs/wiki/café.md -> listed "docs/caf\303\251.md" -> classified
+       source -> "1 source file(s) changed with no test changes" -> PR refused.
+       Fails closed. Out of scope by this story's ## Out of scope; follow-up.
+    3. No case drives selftest-needed's || fallback when git diff/ls-files
+       fails; it now depends on pipefail through the tr pipe. Works today (fake
+       git probe above). One gf_run case with a fake git; pre-existing gap.
+
+    Nice to have:
+    4. The newline-limit comment (gates.sh:991-994, selftest-needed.sh:30-31)
+       says the halves "name no file"; a half can name a real path
+       (src/core/thing.ts<NL>x -> src/core/thing.ts, counted as covered). The
+       conclusion holds. Reword: "neither of which is the file, and the file
+       itself is never checked".
+
+    Not checked: mawk, BWK awk, bash 3.2 itself; selftest.sh gates (relied on
+    the pasted results).
+    Model: Opus 5.5 (claude-opus-5-5).
+
+    Verdict: Ship.
+
+**PO disposition.** `Verdict: Ship.` - GATES → REVIEW goes on. 1 and 2 are
+outside this story's scope (its `## Out of scope` names other enumerations,
+and the `%b` sinks for non-path values predate it) and go to one follow-up
+story, proposed to the user at REVIEW; 2 is the more consequential - a
+false CI refusal of a docs-only PR. 3 is a pre-existing test gap for a path
+this story did not change in kind; it joins the same follow-up. 4 is a
+comment, left: changing it restarts the review. All four recorded in
+`## Notes`.
+
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-27T20:41:25Z
+    commit: 4d3aef4
+    tree:   ea25a91b2a7c65d668c6ba888f2922178c6c750d
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -443,3 +930,71 @@ name, below the table.
 - **Decision 1 confirmed by the user (2026-10-27), before RED:** "Keep AC-5
   (selftest-needed.sh takes the same -z fix) and push the HARNESS-078 PLANNED
   commit straight to main." AC-5 stays in scope as written.
+- **PO checks before RED (2026-10-27, orchestrator).** HARNESS-077 is DONE.
+  Verified against today's tree: `gates.sh:991-993` is the enumeration the
+  Contract quotes; the `sigpipe.test.sh` pins are `gates.sh:82` and `:734`,
+  both above it; `gates.test.sh:387` opens the `covers` block, which asserts
+  the "exercised only by optional gate" line once today;
+  `selftest-needed.sh:64` is the unredirected `. "$LIB"`, `:85`/`:87` the two
+  listings; `host-load.sh:32-34` the UID sentence; floors `gates 682`,
+  `selftest-needed 216`. AC-5's label updated from "pending" to "confirmed"
+  before this PLANNED commit (wording of the criterion unchanged). Criteria
+  testable as written; the gate holding the artifact is the harness self-test
+  (`gates`, `selftest-needed` suites); `required_gates` stays empty; no epic;
+  no changed signatures. Resolved model for this check: Fable 5.1
+  (`claude-fable-5-1`).
+- **RED verified by the orchestrator (2026-10-27).** Test-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override).
+  Reran on this host: `gates: 852 passed, 4 failed` (AC-1 x3, AC-2 x1 - the
+  non-ASCII names dropped as deleted) and `selftest-needed: 222 passed, 4
+  failed` (AC-4: two stdout lines, the library's first), each with the
+  visible AC-3 / AC-5 SKIP line; `scripts/` untouched; floors unchanged. RED
+  also ran the POSIX-only cases in WSL (Ubuntu) and watched them fail (10 and
+  28 red); DV-2 can therefore be run at GATES, not waived.
+  **RED's two Contract amendments, reproduced independently** on inputs of my
+  own, not RED's script: `printf 'harness\tdocs/x\ty.md\n' | awk -F'\t'
+  '$1 == "harness" { print $2 }'` prints `docs/x` (a tab in a name truncates
+  it after `classify_stdin`), and `printf '%b' "lib\new.sh"` turns `\n` into
+  a newline (`gates.sh:1055` and `:1191` print `$results` with `%b`). So `-z`
+  alone does not pass AC-3/AC-5; the amended blocks are accepted. Criteria
+  unchanged (the AC section's diff against the PLANNED commit is empty).
+  Amended blocks so far: 2 of the Contract's 6 - under the 3 the PLANNED
+  model condition sets.
+- **GREEN verified by the orchestrator (2026-10-27).** Feature-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override)
+  changed only the three scripts. `gates.sh`: `-z` on both listings through
+  `tr '\0' '\n'`, the newline-limit comment, the category filter keeping the
+  whole path after the first tab (`substr($0, length($1) + 2)`), and a
+  `shown` copy of `$path` with `\` doubled for the FAIL/WARN lines that
+  `%b` prints. `selftest-needed.sh`: `-z` on `:88`/`:90` (quotePath dropped),
+  the same filter at `:95`, `. "$LIB" >/dev/null` at `:66`, header and probe
+  comments. `host-load.sh`: header comment only. `.claude/tests/` untouched;
+  the first `gates.sh` hunk is `@@ -991`, so `:82` and `:734` are unmoved.
+  Orchestrator reran on this host: `gates: 856 passed, 0 failed`,
+  `selftest-needed: 226 passed, 0 failed`, `sigpipe: 91 passed, 0 failed`,
+  each with its AC-3/AC-5 SKIP line - RED's expected counts. The Linux side
+  (865/0 and 280/0, no SKIP) is the developer's WSL run, logs in the session
+  scratchpad; GATES' DV-2 re-observes it under mutation. Note for DV-2: with
+  `quotePath=false` dropped, removing `-z` from `selftest-needed.sh` should
+  also redden HARNESS-075/077's café cases on Windows, not only the 24
+  Linux AC-5 reds.
+- **Known, not fixed (2026-10-27, from `## Diff review`), for one follow-up
+  story.** (1) `gates.sh`'s other `$results` lines - waiver reasons, log
+  excerpts at `:734`/`:762`, the evidence regex at `:738` - reach `printf '%b'`
+  unescaped, so a `\c` truncates the summary and `## Gate results`; the clean
+  fix is real newlines and `%s`, which also retires this story's doubling.
+  (2) `check-boundaries.sh:173-176` and `lib.sh`'s `untracked_gated`
+  (`:1456-1458`, `gated_stdin` `:1364`) still read C-quoted names and `$2`: a
+  docs-only PR touching `docs/wiki/café.md` is refused as an untested source
+  change. (3) No test drives `selftest-needed.sh`'s `|| fallback` on a failing
+  `git diff`/`ls-files`. (4) The newline-limit comments say the halves "name
+  no file"; a half can name a real path.
+- **Self-test at GATES → REVIEW (2026-10-27).** `bash scripts/selftest-needed.sh`
+  answered `run` (5 harness paths against origin/main, merge-base f81793b).
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh`, detached, alone in this
+  worktree (another session's test runs in `.claude/worktrees/jolly-brattain-aa87af`
+  shared the host - load, not an orphan here): exit 0, 2,249 s.
+
+      assertion floors: all 30 suite(s) met their declared floor (4395 assertions executed, 4202 declared).
+      30 harness suite(s) passed.
+      exit=0 duration=2249s

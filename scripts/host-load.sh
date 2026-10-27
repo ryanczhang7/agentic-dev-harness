@@ -29,9 +29,9 @@
 # `Oct  5`), which shifts the command one field: on each row whose header-named
 # STIME column holds a month abbreviation followed by a one- or two-digit day,
 # the command is read one field later (HARNESS-076).
-# Known limits, not handled: a row whose UID holds a space moves PID out of its
-# field and is skipped by the all-digits test above, not reported. Bash 3.2,
-# awk and coreutils only.
+# Known limits, not handled: a row whose UID holds a space moves PID out of
+# its field and is skipped, or read with the wrong PID and command; either
+# way it is not reported. Bash 3.2, awk and coreutils only.
 
 HOST_LOAD_CANNOT="selftest: cannot list this host's processes; other test runs, if any, were not noticed."
 

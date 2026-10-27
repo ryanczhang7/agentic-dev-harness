@@ -22,13 +22,13 @@
 # numbers. Deliberate differences: with no merge base, `gates.sh` falls back
 # to the base itself, and this answers `run`; a failing `git diff` or
 # `git ls-files` answers `run` rather than an empty set; a rename counts under
-# both names (`--no-renames`); and a non-ASCII name is listed unquoted
-# (`core.quotePath=false`). `lib.sh` is probe-loaded in a subshell first, so a
+# both names (`--no-renames`). Both scripts read NUL-separated output (`-z`),
+# so no name is C-quoted: not a non-ASCII one, and not `"`, `\` or a tab
+# (HARNESS-078). `lib.sh` is probe-loaded in a subshell first, so a
 # library that will not load answers `run` and its error reaches stderr, and a
 # missing `paths.conf` or a failing classify step answers `run` too (HARNESS-077).
-# Known limit: names containing `"`, `\` or a tab are still C-quoted by git
-# despite `core.quotePath=false`, so they classify `source`; POSIX hosts only
-# (Windows cannot create them), and `-z` output is the fix if it is ever needed.
+# Known limit: a name holding a newline still splits into two paths that name
+# no file, and is misread.
 
 set -uo pipefail
 
@@ -56,12 +56,14 @@ cd "$TOP" || fallback "not a git checkout"
 
 export CLAUDE_PROJECT_DIR="$SELF_ROOT"
 LIB="$SELF_ROOT/.claude/hooks/lib.sh"
-# Probe first: a `set -u` trip or an `exit` in a sourced file ends the whole
-# script, so it is sourced in a subshell (stderr kept, so the error is seen)
-# before the real source, which then cannot fail that way.
+# Probe first: a `set -u` trip or a non-zero `exit` in a sourced file ends
+# the whole script, so it is sourced in a subshell (stderr kept, so the
+# error is seen) before the real source, which then cannot fail that way.
+# Both discard stdout: the answer is one line, and a library that prints
+# on load must not add one.
 [ -f "$LIB" ] || fallback "cannot load $LIB"
 ( . "$LIB" ) >/dev/null || fallback "cannot load $LIB"
-. "$LIB"
+. "$LIB" >/dev/null
 declare -F classify_stdin >/dev/null || fallback "$LIB defines no classify_stdin"
 # Without its rules classify_stdin calls every path `source`, so a `skip` from
 # here would be wrong by construction. On disk, not the index.
@@ -80,16 +82,17 @@ mb="$(git merge-base "$base" HEAD 2>/dev/null)" && [ -n "$mb" ] \
   || fallback "no merge base with $base"
 short="$(git rev-parse --short "$mb" 2>/dev/null)"
 
-# --no-renames lists both sides of a rename; quotePath=false names a non-ASCII
-# path as the filesystem does, not C-quoted.
-tracked="$(git -c core.quotePath=false diff --no-renames --name-only "$mb" 2>/dev/null)" \
+# --no-renames lists both sides of a rename; -z names every path as the
+# filesystem does, never C-quoted. The `tr` sits inside each substitution so
+# that pipefail still carries git's failure to its fallback.
+tracked="$(git diff -z --no-renames --name-only "$mb" 2>/dev/null | tr '\0' '\n')" \
   || fallback "git diff against $base failed"
-untracked="$(git -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null)" \
+untracked="$(git ls-files -z --others --exclude-standard 2>/dev/null | tr '\0' '\n')" \
   || fallback "git ls-files failed"
 changed="$(printf '%s\n%s\n' "$tracked" "$untracked" | awk 'length' | sort -u)"
 n=0; [ -n "$changed" ] && n="$(printf '%s\n' "$changed" | awk 'END { print NR }')"
 
-harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')" \
+harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print substr($0, length($1) + 2) }')" \
   || fallback "cannot classify the changed paths: classify_stdin failed"
 
 if [ -z "$harness" ]; then
