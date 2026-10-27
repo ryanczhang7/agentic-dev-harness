@@ -2,7 +2,7 @@
 description: Move one story forward by exactly one phase
 model: fable
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -207,7 +207,16 @@ Then, **in this order**:
    for the user. Go on only once the report's last line is `Verdict: Ship.`.
    It comes before the self-test because a fix changes the tree, and a fix
    found after the self-test wastes that run.
-2. `SELFTEST_JOBS=4 bash scripts/selftest.sh` — the whole harness self-test,
+2. `bash scripts/selftest-needed.sh` — it answers `run` (exit 0) when the
+   story's changes, committed or not, include a path `classify.sh` calls
+   `harness` - the files the harness suites read - and `skip` (exit 1)
+   otherwise. When it cannot compute the diff (no `origin/main` or `main`, no
+   merge base, not a git checkout) it says why and answers `run`. On `skip`,
+   paste its line into `## Notes` as
+   `- Self-test skipped at GATES → REVIEW (<date>): selftest-needed: skip — ...`
+   and go on to step 3. CI runs the self-test on the PR either way, so a
+   skipped run is deferred to CI, not lost. On `run`,
+   `SELFTEST_JOBS=4 bash scripts/selftest.sh` — the whole harness self-test,
    every suite, once, while the story is still at GATES. CI runs every
    suite, and one the story never touched can still fail on its change: a
    line number another suite pins, a floor, a value an upstream suite

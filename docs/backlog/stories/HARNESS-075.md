@@ -4,8 +4,8 @@ title: The pre-REVIEW self-test runs only when the diff touches a harness path
 slug: the-pre-review-self-test-runs-only-when
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-075-the-pre-review-self-test-runs-only-when
 depends_on: [HARNESS-072, HARNESS-073, HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -128,11 +128,26 @@ request.
   later step than the self-test is one "names ... after" line; one whose
   `allowed-tools` lacks the entry is one line naming the file and the entry.
 - **AC-5** — Given this repository on the story branch, when
-  `bash scripts/selftest-needed.sh` runs, then it answers `run` and names
-  `scripts/selftest-needed.sh` among the harness paths (the statement in
+  `bash scripts/selftest-needed.sh` runs, then it answers `run`, and
+  `scripts/selftest-needed.sh` is among the harness paths it counts, shown by
+  `classify.sh --only harness` over the same enumeration, pasted beside the
+  line (amended 2026-10-26, see `## Amendments`; the statement in
   `## Context` that behaviour here does not change, made checkable; pasted in
   DV-1, not asserted by a suite, because the answer depends on which branch
   the suite runs on).
+
+## Amendments
+
+- **AC-5, 2026-10-26, approved by the user in chat.** Was: "then it answers
+  `run` and names `scripts/selftest-needed.sh` among the harness paths". Now:
+  "then it answers `run`, and `scripts/selftest-needed.sh` is among the
+  harness paths it counts, shown by `classify.sh --only harness` over the same
+  enumeration, pasted beside the line". Why: the Contract pins the line to the
+  first three harness paths in `sort -u` order then `, +N more` (the suite
+  asserts it with `assert_eq`), and `.claude/` and `CLAUDE.md` sort before
+  `scripts/`, so on this branch the script is path 8 of 8 and the old wording
+  could never be observed. Found by GREEN, reproduced by the orchestrator
+  (`## Notes`, "Open: AC-5"). DV-1's first reading follows the amended AC.
 
 ## Contract
 
@@ -209,6 +224,27 @@ allowed-tools lacks `Bash(bash scripts/selftest-needed.sh:*)` ``.
 text; every HARNESS-068/072 case keeps its verdict. The floor rises; RED
 records the new count in both files.
 
+*Amended in RED (2026-10-26, test-developer), three points the block left
+open; the fault-line texts above are unchanged:*
+- *complete-story's bullet* gets its own "does not name" line,
+  `` .claude/commands/complete-story.md: its GATES → REVIEW bullet does not name `bash scripts/selftest-needed.sh` ``,
+  in the existing bullet style. Reason: the pinned `its step 2 does not name`
+  wording is false for a bullet, which has no step 2. Its "after" line is the
+  generic `` <file>: names `bash scripts/selftest-needed.sh` after ... `` above.
+  The bullet check runs only when the bullet names the self-test at all (else
+  the existing "does not name `SELFTEST_JOBS=4 ...`" line already reports it).
+- *advance-story, which step counts.* The self-test's step (the first step
+  holding `STEP_SELFTEST`) is judged. `STEP_NEEDED` in that step before the
+  self-test: silent; after it: the "after" line. Absent from that step but in a
+  LATER step: the "after" line (AC-4's control). In no step, or only in an
+  EARLIER step: the "does not name" line (AC-4: "in the same step"). Judged
+  only when the self-test step exists, like the step's words.
+- *`skip`* is a fifth entry in `STEP_WORDS`, so its fault line is the existing
+  `` its `SELFTEST_JOBS=4 bash scripts/selftest.sh` step does not say `skip` ``.
+  Output order inside advance-story: tools (the new `lacks` line after the two
+  existing tool lines), the existing step checks, the word lines (`skip`
+  last), then the selftest-needed line, then the review checks.
+
 **The step text (advance-story, step 2 of GATES → REVIEW).** Still one
 numbered step, now beginning `` `bash scripts/selftest-needed.sh` — ``: it
 says the script answers `run` when the story's changes (committed or not)
@@ -245,7 +281,9 @@ want-list is untouched.
 **DV-1 (defect put back; the story's central claim; AC-5; and the probe
 against the real tree). Owner: GATES.** On the story branch, with the GATES
 edits in the working tree, run `bash scripts/selftest-needed.sh` and paste
-the line: it **must** say `run` and name `scripts/selftest-needed.sh`. Then
+the line: it **must** say `run`, and `classify.sh --only harness` over the
+same enumeration, pasted beside it, **must** list `scripts/selftest-needed.sh`
+(AC-5 as amended). Then
 put the defect back - the one the story must never ship, a harness change
 judged `skip`:
 `bash scripts/mutate.sh scripts/selftest-needed.sh 's/"harness"/"docs"/' -- bash scripts/selftest.sh selftest-needed`
@@ -257,12 +295,118 @@ it now says `skip` - the real tree, not a fixture, seen to be misjudged by
 the mutant and judged correctly by the restored file. One mutation, two
 readings, one restore.
 
+*Result (GATES, orchestrator, 2026-10-26).* Expression `s/"harness"/"harnessX"/`
+per the PO correction in `## Notes` (the `"docs"` form would also redden the
+plain AC-2 skip). The literal occurs once, on line 63, the decision line.
+
+First reading, the restored tree (AC-5 as amended) - the line, then
+`classify.sh --only harness` over the same enumeration:
+
+    selftest-needed: run — 8 harness path(s) changed against origin/main (merge-base 1282a65): .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/floors.conf, +5 more
+    rc=0
+    .claude/commands/advance-story.md
+    .claude/commands/complete-story.md
+    .claude/tests/floors.conf
+    .claude/tests/procedure.test.sh
+    .claude/tests/selftest.test.sh
+    .claude/tests/selftest-needed.test.sh
+    CLAUDE.md
+    scripts/selftest-needed.sh
+
+The mutation, the suite under it (red lines abridged to one per case; every
+AC-1 case, AC-2's control, the two list-shape cases and the two "run"
+base cases went red, four assertions each; the plain AC-2 skip, the
+zero-change case and AC-3's fail-toward-run trio stayed green), the real
+branch under the same mutant, and the restore:
+
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by s/"harness"/"harnessX"/) ===
+      63 - harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')"
+      63 + harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harnessX" { print $2 }')"
+      AC-1: a harness path among the story's changes answers run, exit 0
+        FAIL a COMMITTED new scripts/x.sh answers run and names it [from root]: exits 0
+        FAIL an UNCOMMITTED (staged) .claude/tests/project-x.test.sh answers run and names it [from root]: exits 0
+        FAIL an UNTRACKED .github/workflows/ci.yml answers run and names it [from root]: exits 0
+        FAIL an unstaged edit to CLAUDE.md answers run and names it [from root]: exits 0
+        FAIL a DELETED scripts/y.sh answers run and names it: classification is by path [from root]: exits 0
+        FAIL a mixed diff whose ONLY harness path is scripts/z.sh, beside source, test, docs, manifest, config and vendor paths, answers run (AC-2's control) [from root]: exits 0
+        FAIL exactly three harness paths are all listed, in sort order, with no `+N more` [from root]: exits 0
+        FAIL four harness paths list the first three in sort order, then `, +1 more` [from root]: exits 0
+      AC-2: no harness path among the changes answers skip, exit 1
+      AC-3: when the diff cannot be computed, it answers run, exit 0
+      AC-3: an explicit base ref is used in place of the resolution
+        FAIL `selftest-needed.sh release` diffs against release and says `against release` [from root]: exits 0
+      AC-3: origin/main is preferred over main when both resolve
+        FAIL with both refs present and no argument, origin/main is the base [from root]: exits 0
+    selftest-needed: 99 passed, 40 failed
+    --- real branch under the mutant:
+    selftest-needed: skip — no harness path among 9 changed path(s) against origin/main (merge-base 1282a65); CI runs the self-test on the PR
+    rc=1
+    === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261027T002134Z.6423.bak) ===
+      63: harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')"
+
+    selftest-needed: run — 8 harness path(s) changed against origin/main (merge-base 1282a65): .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/floors.conf, +5 more
+    rc after restore=0
+
+40 failed is exactly the count RED's handoff predicted for this mutant on its
+scratch candidate. (The real branch counted 9 paths under the mutant and 8
+after: the story file, `docs`, was modified in the working tree during the
+mutant run and committed before the final reading.)
+
+*Re-run after Return 1 (GATES, orchestrator, 2026-10-26)*, against the fixed
+script, where the decision line is now line 78 and the `"harness"` literal
+still occurs once. Same expression. First reading of the restored tree gives
+the same `run` line and the same eight classified paths as above, with
+`scripts/selftest-needed.sh` last. Under the mutant: every original red
+again, plus the Return 1 relative-call, rename and non-ASCII cases (the
+corrupted-index case stays green, as it decides before the category check);
+the plain skip, zero-change and fail-toward-run cases stay green. One
+`exits 0` line per case shown:
+
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by s/"harness"/"harnessX"/) ===
+      AC-1 / Contract: called by a relative path from inside the checkout, it still answers run
+        FAIL `bash ../scripts/selftest-needed.sh` from src/ exits 0
+        FAIL `bash selftest-needed.sh` from scripts/ exits 0
+      AC-1: a renamed harness file counts under its OLD name too
+        FAIL a committed `git mv scripts/r.sh tools/r.sh` answers run and names scripts/r.sh [from root]: exits 0
+      AC-3 / PO decision 3: when git itself fails to list the changes, it answers run
+      AC-1: a harness path with a non-ASCII name is seen, and named as the filesystem names it
+        FAIL an UNTRACKED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: exits 0
+    selftest-needed: 122 passed, 52 failed
+    --- real branch under the mutant:
+    selftest-needed: skip — no harness path among 9 changed path(s) against origin/main (merge-base 1282a65); CI runs the self-test on the PR
+    rc=1
+    === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261027T043819Z.1593.bak) ===
+      78: harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')"
+
+    selftest-needed: run — 8 harness path(s) changed against origin/main (merge-base 1282a65): .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/floors.conf, +5 more
+    rc after restore=0
+
+52 = the 40 predicted for the original suite + 12 (three new cases, two
+runs each, exit and whole-line assertions).
+
 **DV-2 (the fail-toward-run default, on a real clone). Owner: GATES.**
 `git clone --depth 1 --branch <story branch> file://$PWD <scratch>` and run
 the script there: with no `origin/main` fetched it **must** answer `run`
 with `no origin/main or main to compare against` (or, if the shallow clone
 carries the ref, `no merge base with origin/main`), exit 0. Paste the line.
 This is AC-3 against a tree git made, not a fixture the suite arranged.
+
+*Result (GATES, orchestrator, 2026-10-26).* Depth-1 clone of the story branch
+into the session scratchpad; the clone carried only the story branch and its
+`origin/` tracking ref, no `origin/main`, no `main`:
+
+    * story/HARNESS-075-the-pre-review-self-test-runs-only-when
+      remotes/origin/story/HARNESS-075-the-pre-review-self-test-runs-only-when
+    selftest-needed: run — cannot compute the diff: no origin/main or main to compare against; defaulting to run
+    rc=0
+
+*Re-run after Return 1 (GATES, orchestrator, 2026-10-26)*, fresh depth-1
+clone of the branch carrying the fixed script; same refs, same answer:
+
+    * story/HARNESS-075-the-pre-review-self-test-runs-only-when
+      remotes/origin/story/HARNESS-075-the-pre-review-self-test-runs-only-when
+    selftest-needed: run — cannot compute the diff: no origin/main or main to compare against; defaulting to run
+    rc=0
 
 ## Model guidance
 
@@ -310,8 +454,50 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+Two harness suites, both shell, both run by `bash scripts/selftest.sh <name>`.
+
+**`.claude/tests/selftest-needed.test.sh` (new, 139 executed).** Integration
+level: each case is a real git repository built with `make_project_fixture`
+(its one commit renamed to `main`), a story branch, and the change the AC
+names; the fixture's own copy of `scripts/selftest-needed.sh` is run once from
+the fixture root and once from `src/`. Each run asserts the exit status, the
+WHOLE first stdout line (`assert_eq`, em dash included, SHA read back with
+`git rev-parse --short` on the ref the fixture arranged), exactly one stdout
+line, and - on the run/skip paths - empty stderr.
+
+| Case | AC | Expected |
+|---|---|---|
+| committed new `scripts/x.sh` | AC-1 | run, 1 path, against main |
+| staged-not-committed `.claude/tests/project-x.test.sh` | AC-1 | run |
+| untracked `.github/workflows/ci.yml` | AC-1 | run |
+| unstaged edit to `CLAUDE.md` (committed on main) | AC-1 | run |
+| unstaged deletion of `scripts/y.sh` (committed on main) | AC-1 | run |
+| mixed: `src/app.ts`, `src/app.test.ts`, `docs/wiki/x.md`, `package.json`, `.dockerignore`, `vendor/lib.js`, `scripts/z.sh` + ignored untracked `node_modules/pkg/index.js` | AC-1, AC-2 control | run, 1 path `scripts/z.sh` |
+| exactly three harness paths | Contract (list shape) | three listed, no `+N more` |
+| four harness paths | Contract (list shape) | three listed, `, +1 more` |
+| the mixed set without `scripts/z.sh` | AC-2 | skip, `6 changed path(s)`, exit 1 |
+| no changes | AC-2 | skip, `0 changed path(s)`, exit 1 |
+| no `main`/`origin/main` (branch is `trunk`) | AC-3 | run, `no origin/main or main to compare against` |
+| `main` an unrelated root commit (plumbing) + precondition | AC-3 | run, `no merge base with main` |
+| plain directory, `GIT_CEILING_DIRECTORIES` above it + precondition | AC-3 | run, `not a git checkout` |
+| `$1 = release` where main moved past release with a harness commit; control: no argument | AC-3 explicit base | run against release / skip against main |
+| `origin/main` (update-ref, one commit behind main) and `main`; control: `$1 = main` | AC-3 origin/main first | run against origin/main / skip against main |
+| two arguments; `--help` | Contract (usage) | exit 2, empty stdout, non-empty stderr |
+
+**`.claude/tests/procedure.test.sh` (98 -> 118 executed).** Static, the
+existing grep-for-the-shape guard. `procedure_problems` gains the AC-4 checks
+(see the Contract amendment for the exact rules). The real-tree assertion is
+the AC-4 red; twenty new fixture cases pin each new fault line and its
+controls: step 2 without the call; the call in a later step; after the
+self-test within the step; only in an earlier step; only in prose; unquoted;
+with an argument; first-mention-wins; `skip` missing / in another step; each
+command's allowed-tools without the entry, without `:*`, only in the body, the
+`lacks` line's order; the bullet without the call, with it after, with it only
+elsewhere, with no self-test at all; and the five-line output a tree without
+this story's edits prints, in order. Every HARNESS-032/068/072 case keeps its
+expected lines byte for byte; only their INPUT fixtures gained the new text.
+
+AC-5 is DV-1's (GATES), not a suite assertion.
 
 ## Handoff: RED -> GREEN
 
@@ -332,6 +518,267 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the test-developer dispatch, RED, 2026-10-26. Model: the agent's own
+`model:` (`opus`), resolved to **Opus 5.5** (`claude-opus-5-5`); no override was
+given in the dispatch.
+
+**Commands.**
+
+    bash scripts/selftest.sh selftest-needed
+    bash scripts/selftest.sh procedure
+    bash scripts/selftest.sh selftest       # the C-3 floor table
+
+**Files touched (RED).** `.claude/tests/selftest-needed.test.sh` (new),
+`.claude/tests/procedure.test.sh`, `.claude/tests/floors.conf`,
+`.claude/tests/selftest.test.sh` (COUNTS rows only), this story (`## Contract`
+amendment, `## Test plan`, this handoff). Not touched: `scripts/selftest-needed.sh`,
+`.claude/commands/advance-story.md`, `.claude/commands/complete-story.md`,
+`CLAUDE.md`.
+
+**Floors.** `selftest-needed | 139` (new, between `security-audit` and
+`settings` in `floors.conf`; after `selftest` in the COUNTS table) and
+`procedure | 98 -> 118`, in both files, each the EXECUTED count of the RED run
+below. `bash scripts/selftest.sh selftest` after the edit:
+
+    selftest: 268 passed, 0 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (268 assertions executed, 268 declared).
+    1 harness suite(s) passed.
+
+**RED output, `selftest-needed`** (local, Windows/Git Bash, 2m42s): every run
+exits 127 because the script is missing; first and last lines of the run:
+
+    === selftest-needed ===
+
+      the script exists
+        FAIL scripts/selftest-needed.sh exists in this repository
+             expected: 
+             actual:   missing
+
+      AC-1: a harness path among the story's changes answers run, exit 0
+        FAIL a COMMITTED new scripts/x.sh answers run and names it [from root]: exits 0
+             expected: 0
+             actual:   127
+        FAIL a COMMITTED new scripts/x.sh answers run and names it [from root]: the first line is exactly the pinned line
+             expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base de7b7d1): scripts/x.sh
+             actual:   
+        FAIL a COMMITTED new scripts/x.sh answers run and names it [from root]: stdout is exactly one line
+             expected: 1
+             actual:   0
+        FAIL a COMMITTED new scripts/x.sh answers run and names it [from root]: nothing on stderr
+             expected: 
+             actual:   bash: /tmp/tmp.XXXXXXXXXX/scripts/selftest-needed.sh: No such file or directory
+    ...
+      Contract: a second argument, or a `-`-prefixed one, is a usage error, exit 2
+        FAIL two arguments exit 2
+             expected: 2
+             actual:   127
+        FAIL a `-`-prefixed argument exits 2
+             expected: 2
+             actual:   127
+
+    selftest-needed: 6 passed, 133 failed
+    FAIL selftest-needed  did 6 units of work, below the floor of 139 in .claude/tests/floors.conf
+
+    assertion floors: 0 of 1 suite(s) met their declared floor.
+    1 of 1 harness suite(s) FAILED.
+
+(The temp directory name is elided; it differs per run. That capture also
+carried HARNESS-074's host-load warning, two other `gates.sh --fast` runs on the
+host - not from this suite.)
+
+Why each failure is the right one: every `exits N` reads `actual: 127`, every
+first-line assertion reads `actual:` empty, every one-line assertion reads
+`actual: 0`, every stderr assertion reads `bash: <fixture>/scripts/selftest-needed.sh:
+No such file or directory`. No fixture or setup error: the two preconditions
+(unrelated `main`; directory outside any checkout) PASS, and the whole suite
+was run against a scratch candidate implementation (below) and went 139/0.
+
+The 6 that pass in RED: the two preconditions, and the four usage-error
+companions (`prints nothing on stdout`, `says why on stderr`, for two
+arguments and for `--help`), which a missing script also satisfies. Each is
+paired with an `exits 2` assertion that is red now, so the pair is not
+satisfiable by absence.
+
+**RED output, `procedure`** (local, 2m12s): `procedure: 117 passed, 1 failed`.
+The one red is the real-tree assertion, and it prints exactly the five AC-4
+lines and nothing else:
+
+    FAIL procedure_problems over the real tree prints nothing: ... and (HARNESS-075 AC-4) both commands permit selftest-needed.sh, step 2 names it before the self-test and says `skip`, and complete-story's bullet names it before the self-test
+         expected: 
+         actual:   .claude/commands/advance-story.md: allowed-tools lacks `Bash(bash scripts/selftest-needed.sh:*)`
+         .claude/commands/advance-story.md: its `SELFTEST_JOBS=4 bash scripts/selftest.sh` step does not say `skip`
+         .claude/commands/advance-story.md: its step 2 does not name `bash scripts/selftest-needed.sh`
+         .claude/commands/complete-story.md: allowed-tools lacks `Bash(bash scripts/selftest-needed.sh:*)`
+         .claude/commands/complete-story.md: its GATES → REVIEW bullet does not name `bash scripts/selftest-needed.sh`
+
+Line by line: (1)/(4) neither command's frontmatter carries the new entry; (2)
+the real step 2 never says `skip` - the step text the Contract describes ("on
+`skip`, paste the script's line into `## Notes`") clears it; (3) step 2 does
+not call the script; (5) complete-story's bullet does not name it. All 117
+fixture cases pass, every pre-existing case with its expected lines unchanged.
+
+**What each new test asserts.**
+
+- `selftest-needed` - see `## Test plan`'s table: one row per case, each run
+  twice (root, `src/`), 3-4 assertions per run. AC-1: rows 1-6; AC-2: rows 9-10
+  with row 6 as its control; AC-3: rows 11-15; Contract-only: rows 7, 8, 16.
+- `procedure`, block "HARNESS-075 AC-4" (20 cases, all AC-4): the three
+  controls the AC names (`needed-missing`, `needed-later-step`,
+  `needed-tool-advance`/`-complete`), and the refinements listed in
+  `## Test plan`.
+
+**The interface the tests already pin (stated as fact).**
+
+- `scripts/selftest-needed.sh`, run as `bash <fixture>/scripts/selftest-needed.sh [base-ref]`
+  with cwd = fixture root or `<root>/src`. It must find `.claude/hooks/lib.sh`
+  relative to ITS OWN location, and the repo through git from the cwd (the
+  not-a-checkout case copies `scripts/`, `.claude/hooks/`, `.claude/harness/`
+  into a plain directory and sets `GIT_CEILING_DIRECTORIES`).
+- stdout: exactly one line, the Contract's shapes byte for byte:
+  `selftest-needed: run — N harness path(s) changed against <base> (merge-base <short>): p1, p2, p3[, +K more]`,
+  `selftest-needed: skip — no harness path among N changed path(s) against <base> (merge-base <short>); CI runs the self-test on the PR`,
+  `selftest-needed: run — cannot compute the diff: <reason>; defaulting to run`.
+  `<short>` is compared against `git rev-parse --short <ref>` of the base's
+  tip, which here is the merge-base; use `git rev-parse --short <mb>`, not a
+  fixed-width `cut`.
+- exit 0 run, 1 skip, 2 usage (two args, or one beginning `-`); usage message
+  on stderr, stdout empty.
+- stderr EMPTY on every run/skip path, including runs where the fixture has
+  staged, unstaged, deleted and untracked files - silence git's stderr the way
+  `gates.sh:991-992` does. Not asserted on the fail-toward-run paths.
+- The changed count `N` in `skip` counts the `sort -u` set, including
+  `vendor/lib.js` (tracked) and excluding an ignored untracked file.
+- Path order in the list is `sort -u`'s; the fixtures use `scripts/a.sh`..
+  `scripts/d.sh`, whose order is locale-independent.
+
+Not constrained: the internals (a `lib.sh` helper vs twelve duplicated lines;
+whether `$1` is verified before `merge-base`), the stderr text of the usage
+error and of the fail-toward-run paths, and the behaviour with an explicit
+base that does not resolve (no case; the Contract does not say).
+
+**Negative controls - expected values.** In RED no assertion in
+`selftest-needed` exercised a real script. I measured the controls OUTSIDE the
+repository: a candidate `selftest-needed.sh` written in the session scratchpad
+(never in this tree), dropped into a scratch copy of `scripts/` + `.claude/`,
+with the unchanged suite run from that copy. Candidate: 139 passed, 0 failed.
+Each mutation of the candidate, and what the suite measured:
+
+| Mutation of the candidate | Expected | Measured (failed assertions) |
+|---|---|---|
+| none | 0 red | 139 passed, 0 failed |
+| `$1=="harness"` -> `$1=="harnessX"` (no path is harness) | AC-1 cases + AC-2 control + both "run" base cases red; plain skip, zero, AC-3 green | 40 failed: 10 cases x 4; plain skip and zero-change green |
+| `$1=="harness"` -> `$1=="docs"` (DV-1's expression as written) | as above | 42 failed: as above, **plus the plain AC-2 skip red** (4), mixed control 2 |
+| decide by `changed` empty instead of `harness` empty | the skip cases red | 12 failed: plain skip, explicit-base control, origin/main control |
+| no `cd` to the top level | untracked from `src/` red | 2 failed: the untracked case from subdir |
+| `for b in main origin/main` | origin/main case red | 4 failed |
+| `$1` ignored | explicit-base case + its `$1=main` control red | 8 failed |
+| `ls-files --others` dropped | untracked case red | 4 failed |
+| `+N more` dropped | four-path case red | 2 failed |
+
+These are claims about the candidate, not the shipped script; GREEN confirms
+the unmutated row (139/0) and GATES' DV-1 confirms one mutant row against the
+real file. Timings above are local (Windows/Git Bash), none from CI.
+
+**The `procedure` guard's new checks, probed** (`scripts/mutate.sh` on the
+test file, restored and verified by it):
+
+    === mutate: .claude/tests/procedure.test.sh (1 line(s) changed by s/  has_entry "\$TOOL_NEEDED" || printf/  true || printf/) ===
+        FAIL control: advance-story's allowed-tools without the entry gives exactly one line naming the file and the entry
+        FAIL control: complete-story's allowed-tools without the entry gives exactly one line naming the file and the entry
+        FAIL the entry spelled without `:*` does not count
+        FAIL the entry only in the body, not the allowed-tools line, does not count
+        FAIL the lacks line prints after the two existing "do not permit" lines
+        FAIL no entry, no call, no `skip` in either command gives five lines: ...
+    procedure: 111 passed, 7 failed
+    === mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+    === mutate: ... (s/if \[ "\$K" != "-1" \] \&\& \[ "\${SN\[\$K\]}" -gt "\${SN\[\$ks\]}" \]; then/if false; then/) ===
+        FAIL control: selftest-needed.sh named in a LATER step than the self-test gives exactly one "names … after" line
+             expected: .claude/commands/advance-story.md: names `bash scripts/selftest-needed.sh` after `SELFTEST_JOBS=4 bash scripts/selftest.sh`
+             actual:   .claude/commands/advance-story.md: its step 2 does not name `bash scripts/selftest-needed.sh`
+    procedure: 116 passed, 2 failed
+    === mutate: command exited 1; restored (verified byte-for-byte ...) ===
+
+(The other red in each is the real-tree assertion, red anyway in RED.)
+
+**Discovered - changes for later phases.**
+
+1. **DV-1's mutation expression, as written, contradicts DV-1's own expected
+   reading.** `s/"harness"/"docs"/` makes `docs/wiki/x.md` a "harness" path, and
+   the AC-2 skip fixture carries `docs/wiki/x.md` (AC-2 lists docs among the
+   skip paths, and its control is "the same source/test/docs paths"). So under
+   that mutant the plain AC-2 skip goes RED, not green (measured above). DV-1
+   already says "adjust the expression ... name it": GATES should replace
+   `"harness"` with a category no path has (e.g. `"harnessX"`), which measured
+   exactly the reading DV-1 describes. I did not edit DV-1 (not my section).
+2. **The real step 2 needs the word `skip`** - not just the call. The Contract's
+   step text has it; the brief's expected RED list did not mention it.
+3. The `gates.sh --fast` run: every gate is UNCONFIGURED in this repository
+   (`BOOTSTRAPPED=no`); the harness self-test is the judge. It reported the new
+   suite as untracked (to be staged with the RED commit). `check-sigpipe.sh`
+   and `check-grep-count.sh` tree-wide: 0 findings with the new suite present.
+
+**Deferred verifications.** DV-1 and DV-2 are owned by GATES and need the real
+`scripts/selftest-needed.sh`, which RED cannot write; I did not run them and
+decline both here, in writing. The candidate measurements above are not DV-1:
+they are against a scratch candidate, not the shipped file and not the real
+branch.
+
+### Return 1
+
+Written by the test-developer dispatch, RED (return from GATES), 2026-10-26.
+Model: declared `opus`, resolved to **Opus 5.5** (`claude-opus-5-5`); no
+override in the dispatch.
+
+**Command.** `bash scripts/selftest.sh selftest-needed` (34 s locally). Today:
+`selftest-needed: 154 passed, 20 failed`; the 20 reds are pasted in
+`## Regressions`, "RED evidence". Green means `174 passed, 0 failed`.
+
+**Files touched.** `.claude/tests/selftest-needed.test.sh` (64 lines added, a
+new last block before `summary`; nothing existing changed),
+`.claude/tests/floors.conf` (`selftest-needed | 139 -> 174`, plus a history
+note), `.claude/tests/selftest.test.sh` (C-3 COUNTS row `selftest-needed 174`),
+this story (`## Regressions` RED evidence, this subsection). Source untouched.
+
+**New floor: 174** (139 + 35, every new assertion unconditional), in both files.
+`bash scripts/selftest.sh selftest` after the edit: `selftest: 268 passed, 0
+failed`. `check-sigpipe.sh`: 0 findings; `check-grep-count.sh`: 0 findings.
+`gates.sh --fast`: every gate UNCONFIGURED (`BOOTSTRAPPED=no`), as before.
+
+**The four cases, what each pins, and the fix each needs** (mechanics are
+yours; these are the diff review's suggestions):
+
+| Case | AC | Pins | Fix |
+|---|---|---|---|
+| harness change (committed `scripts/x.sh`); `bash ../scripts/selftest-needed.sh` from `src/`, and `bash selftest-needed.sh` from `scripts/` | AC-1 / Contract "any directory" | exit 0, first line == the root call's `run — 1 harness path(s) ... : scripts/x.sh`, one line, empty stderr | resolve `SELF_ROOT` from `BASH_SOURCE` BEFORE `cd "$TOP"`; and fail toward `run` if `lib.sh` will not source / `classify_stdin` is missing |
+| `scripts/r.sh` on main, committed `git mv scripts/r.sh tools/r.sh` on the story branch | AC-1 (rename) | exit 0, `run — 1 harness path(s) changed against main (merge-base <main>): scripts/r.sh`, one line, empty stderr; root and `src/` | `git diff --no-renames --name-only`, so both sides are listed; `tools/r.sh` classifies `source` (precondition asserted), so the count is 1 |
+| staged `scripts/new.sh`, then `printf garbage > .git/index` | AC-3 / PO decision 3 | exit 0, first line begins `selftest-needed: run — cannot compute the diff: ` and ends `; defaulting to run`, one line; root and `src/`. Reason text and stderr NOT asserted | check the exit status of `git diff` and of `git ls-files` (both exit 128 here; `rev-parse` and `merge-base` still succeed) and `fallback "<reason>"` on either |
+| untracked `.claude/tests/project-café.test.sh` only | AC-1 (non-ASCII) | exit 0, `run — 1 harness path(s) ... : .claude/tests/project-café.test.sh` (UTF-8, unquoted), one line, empty stderr; root and `src/` | `git -c core.quotePath=false` on both `diff` and `ls-files` |
+
+Note on case 3: the precondition asserts `git diff` fails; the script must not
+reach the `skip` branch with an empty set. Note on case 1 from `scripts/`: the
+current code sources `/tmp/.claude/hooks/lib.sh` - `dirname` of a bare
+`selftest-needed.sh` is `.`, resolved against the top level after the `cd`.
+
+**Not constrained.** The fallback reason wording for case 3; how `lib.sh`
+failure is detected; whether `--no-renames` or `-M` with both columns is used,
+as long as the old path appears; `-z` vs `quotePath=false`.
+
+**Host check for case 4.** The UTF-8 name survives on this Windows/Git Bash
+host: `od -c` shows `caf 303 251`, and `git -c core.quotePath=false ls-files
+--others` prints it byte for byte while the default prints the C-quoted
+`"...caf\303\251..."`. Linux CI handles UTF-8 names natively.
+
+**Passed on arrival (15 of 35), and what earns them.** The three preconditions
+(fixture facts, not script behaviour), and the one-line / empty-stderr
+companions the defects do not reach. Every one sits in a case whose `exits 0`
+and whole-line assertions are red against the shipped file now, so each case
+was watched to fail by the real defect; no mutation needed.
+
+**Deferred verifications.** None owned by RED; DV-1 and DV-2 remain GATES'.
+Timings: all local; none from CI.
 
 ## Regressions
 
@@ -358,12 +805,267 @@ name, below the table.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+**Return 1: GATES → RED (2026-10-26), from the diff review.** No existing
+test is wrong; the suite is incomplete. Four wrong-way `skip`s pass every
+assertion in `selftest-needed.test.sh`, because the suite calls the script
+only by absolute path, never renames, never breaks git, and uses only ASCII
+names. Found by the fresh diff review (`## Diff review`, findings 1-4);
+findings 1-3 reproduced by the orchestrator on separate inputs:
+
+    --- 1: relative call from docs/ (this repository)
+    ../scripts/selftest-needed.sh: line 43: cd: ../scripts/..: No such file or directory
+    ../scripts/selftest-needed.sh: line 45: /.claude/hooks/lib.sh: No such file or directory
+    ../scripts/selftest-needed.sh: line 63: classify_stdin: command not found
+    selftest-needed: skip — no harness path among 9 changed path(s) against origin/main (merge-base 1282a65); CI runs the self-test on the PR
+    rc=1
+    --- 2: rename scripts/mover.sh -> tools/mover.sh (scratch fixture)
+    selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base b85adf5); CI runs the self-test on the PR
+    rc=1
+    --- 3: corrupt index with a staged harness file (scratch fixture)
+    selftest-needed: run — 1 harness path(s) changed against main (merge-base b85adf5): scripts/new.sh
+    rc(before)=0
+    selftest-needed: skip — no harness path among 0 changed path(s) against main (merge-base b85adf5); CI runs the self-test on the PR
+    rc(corrupt)=1
+
+What the suite should assert in addition (each the AC it belongs to):
+
+- AC-1 / Contract ("run from any directory inside the checkout"): the
+  script called by a RELATIVE path from a subdirectory (`cd src && bash
+  ../scripts/selftest-needed.sh`) and from `scripts/` itself (`bash
+  selftest-needed.sh`) on a harness change answers `run`, exit 0, with the
+  same pinned line as the root call.
+- AC-1 (Context: "a deleted or renamed script still counts"): a committed
+  `git mv scripts/r.sh tools/r.sh` answers `run` and names `scripts/r.sh`
+  (the rename is seen as its two paths).
+- AC-3 / PO decision 3 ("`git diff` failing ... answers `run`"): with a
+  staged harness file and a corrupted `.git/index`, it answers `run` with
+  `cannot compute the diff: ...; defaulting to run`, exit 0. The reason text
+  after `cannot compute the diff: ` is the implementer's (as for the other
+  fail-toward-run stderr, not constrained beyond the prefix and suffix).
+- AC-1: an untracked harness file with a non-ASCII name
+  (`.claude/tests/project-café.test.sh`) answers `run` and names it
+  unquoted.
+
+These fail against today's script for the right reason - the code is
+defective - so "watched to fail" is earned in the ordinary way: RED records
+each new case red against the current file, GREEN makes the fix (compute
+`SELF_ROOT` before the `cd` and fail toward `run` if `lib.sh` will not load;
+`--no-renames`; check both git exits; `-c core.quotePath=false`) and they go
+green. No existing assertion changes.
+
+**RED evidence (test-developer, 2026-10-26, Opus 5.5).** The four cases are in
+`.claude/tests/selftest-needed.test.sh`, a new last block before `summary`.
+Run against the shipped, unedited `scripts/selftest-needed.sh` with
+`bash scripts/selftest.sh selftest-needed` (local, Windows/Git Bash, 34 s,
+two other `gates.sh` runs on the host). Every one of the 139 pre-existing
+assertions passes; exactly 20 of the 35 new ones fail, and each red is the
+defect the diff review named - `skip`, exit 1, where `run`, exit 0 is owed:
+
+    AC-1 / Contract: called by a relative path from inside the checkout, it still answers run
+      FAIL `bash ../scripts/selftest-needed.sh` from src/ exits 0
+           expected: 0
+           actual:   1
+      FAIL `bash ../scripts/selftest-needed.sh` from src/: the first line is exactly the line the root call gives
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 14ab6a8): scripts/x.sh
+           actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base 14ab6a8); CI runs the self-test on the PR
+      FAIL `bash ../scripts/selftest-needed.sh` from src/: nothing on stderr
+           expected: 
+           actual:   ../scripts/selftest-needed.sh: line 43: cd: ../scripts/..: No such file or directory
+           ../scripts/selftest-needed.sh: line 45: /.claude/hooks/lib.sh: No such file or directory
+           ../scripts/selftest-needed.sh: line 63: classify_stdin: command not found
+      FAIL `bash selftest-needed.sh` from scripts/ exits 0
+           expected: 0
+           actual:   1
+      FAIL `bash selftest-needed.sh` from scripts/: the first line is exactly the line the root call gives
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 14ab6a8): scripts/x.sh
+           actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base 14ab6a8); CI runs the self-test on the PR
+      FAIL `bash selftest-needed.sh` from scripts/: nothing on stderr
+           expected: 
+           actual:   selftest-needed.sh: line 45: /tmp/.claude/hooks/lib.sh: No such file or directory
+           selftest-needed.sh: line 63: classify_stdin: command not found
+
+    AC-1: a renamed harness file counts under its OLD name too
+      FAIL a committed `git mv scripts/r.sh tools/r.sh` answers run and names scripts/r.sh [from root]: exits 0
+           expected: 0
+           actual:   1
+      FAIL a committed `git mv scripts/r.sh tools/r.sh` answers run and names scripts/r.sh [from root]: the first line is exactly the pinned line
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 12902f6): scripts/r.sh
+           actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base 12902f6); CI runs the self-test on the PR
+      FAIL ... [from subdir]: exits 0                                   (same expected/actual as root)
+      FAIL ... [from subdir]: the first line is exactly the pinned line (same expected/actual as root)
+
+    AC-3 / PO decision 3: when git itself fails to list the changes, it answers run
+      FAIL a corrupted index [from root]: exits 0
+           expected: 0
+           actual:   1
+      FAIL a corrupted index [from root]: the first line begins `cannot compute the diff: `
+           expected: selftest-needed: run — cannot compute the diff: 
+           actual:   selftest-needed: skip — no harness path among 0 
+      FAIL a corrupted index [from root]: the first line ends `; defaulting to run`
+           expected: ; defaulting to run
+           actual:   self-test on the PR
+      FAIL a corrupted index [from subdir]: exits 0 / begins / ends     (same expected/actual as root)
+
+    AC-1: a harness path with a non-ASCII name is seen, and named as the filesystem names it
+      FAIL an UNTRACKED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: exits 0
+           expected: 0
+           actual:   1
+      FAIL an UNTRACKED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: the first line is exactly the pinned line
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 6171ebf): .claude/tests/project-café.test.sh
+           actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base 6171ebf); CI runs the self-test on the PR
+      FAIL ... [from subdir]: exits 0 / the first line ...              (same expected/actual as root)
+
+    selftest-needed: 154 passed, 20 failed
+    FAIL selftest-needed  did 154 units of work, below the floor of 174 in .claude/tests/floors.conf
+
+(The subdir lines are abbreviated here only where their expected and actual
+are byte-identical to the root line above them; the full capture is the
+command above, rerunnable.) The 15 new assertions that pass on arrival are
+the three preconditions (classify.sh calls `tools/r.sh` `source`; `git diff`
+fails on the corrupted index; the UTF-8 file exists) - which pin the fixture,
+not the script - and the companions the defect does not reach: `stdout is
+exactly one line` in every case (the wrong-way `skip` is also one line), and
+`nothing on stderr` in the rename and non-ASCII cases (the defect there is
+silent). Each sits beside a red `exits 0` and a red whole-line assertion in
+the same case, so none is satisfiable alone. No existing case's expected
+line or assertion changed (`git diff` of the suite is additions only).
+
+## Diff review
+
+Fresh `feature-developer` dispatch, `diff-review` skill, 2026-10-26.
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), its declared `opus`, no
+override (GATES row of `models.conf`). Changed no file. Report as returned:
+
+    What this change does: adds scripts/selftest-needed.sh, which lists the
+    story's changed paths (committed, staged, unstaged, untracked, against the
+    merge base with origin/main or main) and answers run (exit 0) when
+    classify_stdin calls any of them harness, skip (exit 1) when none is, and
+    run when it cannot compute the diff. advance-story.md step 2 and
+    complete-story.md's GATES -> REVIEW bullet call it before the full
+    self-test; CLAUDE.md lists it.
+
+    Checked in scratch fixtures: a path with a space and one with " -x" (fine);
+    an empty changed set (classify_stdin drops the empty line, n and the
+    decision right); a $1 that does not resolve (falls back to run); set -u with
+    ${1-} (fine); the exported CLAUDE_PROJECT_DIR (reaches only git; nothing
+    sources this script); a consumer copy (reads that consumer's own paths.conf
+    through SELF_ROOT). selftest-needed: 139 passed, 0 failed.
+
+    Load assumed: one interactive run per story at GATES -> REVIEW.
+
+    Must fix:
+    1. Run from a subdirectory by a relative path, the script cannot load its
+       own library and answers skip (scripts/selftest-needed.sh:38-45, :63).
+       SELF_ROOT is computed after cd "$TOP", so a relative BASH_SOURCE is read
+       against the wrong directory; the source is unchecked and the failed
+       classify_stdin leaves harness empty -> skip. Case: cd docs && bash
+       ../scripts/selftest-needed.sh -> skip, exit 1; by absolute path -> run.
+       The suite's subdirectory cases call the script by absolute path. Fix:
+       compute SELF_ROOT before the cd; fail toward run if lib.sh will not load.
+    2. A renamed harness file counts only under its new name (:59-60). git
+       diff --name-only reports a rename's destination only. Case: git mv
+       scripts/helper.sh tools/helper.sh -> skip, exit 1. Fix: --no-renames.
+       gates.sh:991 does not need it (it reads only existing source paths).
+    3. When git diff or git ls-files fails, the answer is skip (:59-61). Both
+       silence stderr and nothing checks their exit. Case: staged
+       scripts/new.sh, then garbage in .git/index -> skip, 0 changed paths.
+       PO decision 3 says git diff failing answers run. Fix: check each exit,
+       fallback "git diff failed".
+
+    Should fix:
+    4. A harness file with a non-ASCII name is not seen (:59-60): default
+       core.quotePath=true prints a C-quoted path that matches no paths.conf
+       rule, so it classifies source. Case: untracked
+       .claude/tests/project-café.test.sh -> skip. Fix: git -c
+       core.quotePath=false on both; only -z removes quoting of tab, newline,
+       '"', '\'. gates.sh:991-992 has the same blind spot for source paths -
+       fix both or record it as known.
+    5. No test pins any of 1-4; each fix needs a RED case, earned by mutation
+       since the code exists. Four cases, one per finding, new_fixture style.
+
+    Not checked: a real nested worktree under .claude/worktrees/<name> (by
+    reading, both --show-toplevel and SELF_ROOT resolve to it). procedure.test.sh
+    not run; the command prose read right.
+
+    Model: Opus 5.5 (claude-opus-5-5), as the agent definition declares.
+
+    Verdict: fix 1, 2 and 3 first.
+
+**PO disposition.** 1-3 Must fix, 4 taken too (one flag, same lines, same
+RED); all four go back to RED as new cases (`## Regressions`, Return 1).
+`gates.sh:991-992`'s quoting blind spot is out of this story's `touches:`
+and recorded as known in `## Notes`, not fixed here. The review runs again
+on the fix before the self-test.
+
+### Second review (after Return 1)
+
+Fresh `feature-developer` dispatch, `diff-review` skill, 2026-10-27.
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), declared `opus`, no
+override. Changed no file. Report, condensed to its findings and evidence
+(the full text is the subagent's return):
+
+    Checked and right: the join (empty -> 0 changed; names " ", "src/ lead.ts",
+    "scripts/ sp/a.sh" counted correctly; awk 'length' drops only empty lines);
+    rename+modify and staged rename -> run naming scripts/r.sh; a copy with
+    diff.renames=copies -> skip (correct: the original did not change); both new
+    fallback lines carry the pinned prefix/suffix; a lib.sh syntax error or
+    non-zero last command -> run; both commands' allowed-tools and prose match
+    the Contract; three of the four new cases cannot pass against their defect.
+    selftest-needed: 174 passed, 0 failed (57 s); procedure: 118 passed, 0 failed.
+
+    Should fix:
+    1. A lib.sh that trips `set -u` at load time exits the script silently, rc=1,
+       read as skip (:54). Case: `echo "$NOPE_UNSET"` as lib.sh line 2 -> empty
+       stdout, empty stderr, rc=1; without the 2>/dev/null it prints
+       "unbound variable", still rc=1. Fix: drop the 2>/dev/null; probe-load in a
+       subshell `( . "$LIB" ) >/dev/null 2>&1 || fallback ...` before the real
+       source. Today's lib.sh loads clean; CI is the backstop.
+    2. The committed side of core.quotePath=false has no test (:71). The café
+       case is untracked only. Case: flag removed from the git diff line only ->
+       the suite stays green; the same file committed -> skip. Fix: a committed
+       twin of the café case, in RED, earned by that mutation.
+
+    Nice to have:
+    3. A failure inside classify_stdin | awk still gives skip (:78). Reachable
+       only with paths.conf missing or a broken awk, which break the lock and
+       classify.sh first. Fix: `|| fallback`, with a RED case first.
+    4. Names with `"`, `\` or a tab stay C-quoted despite quotePath=false and
+       classify as source; Windows cannot create them; POSIX only. Record as
+       known beside the gates.sh note; -z is the fix if ever.
+    5. advance-story's step 2 parenthetical lists three fallback causes; the
+       script now has six. Docs only; no needle depends on it.
+
+    Not checked: a nested .claude/worktrees/<name> checkout; a POSIX host.
+    Model: Opus 5.5 (claude-opus-5-5).
+
+    Verdict: Ship.
+
+**PO disposition (second review).** `Verdict: Ship.`: no Must fix, so
+GATES → REVIEW goes on. Findings 1-4 go to a follow-up story rather than a
+third cycle: 1 and 3 are wrong-way skips that need a broken harness tree
+to reach, 2 is a test gap with no code defect behind it, and 4 is POSIX-only.
+All four are caught by CI's own self-test run. That story should carry RED
+cases for 1, 2 and 3, and record 4 beside `gates.sh:991-992`. Finding 5 is
+docs only and also left for that story, since it touches the step text
+`procedure.test.sh` reads.
+
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-27T04:39:31Z
+    commit: 2bfffd7
+    tree:   559f0bc608e6c1f9eb05e1db122df123e006b75c
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -410,3 +1112,115 @@ name, below the table.
   `CLAUDE.md`, `.gitignore` and `scripts/*.sh` (present or not) all classify
   `harness` on this tree; `src/*.ts` `source`/`test`, `docs/**` `docs`,
   `package.json` `manifest`, `.dockerignore` `config`.
+- **PO checks before RED (2026-10-26).** Dependencies HARNESS-072, 073 and 074
+  are DONE. Verified against today's tree: `gates.sh:984-993` is the
+  enumeration the Contract mirrors (`for b in origin/main main`, `merge-base`,
+  `diff --name-only` plus `ls-files --others --exclude-standard`, `sort -u`,
+  `classify_stdin`); note that `gates.sh` falls back to the base itself when
+  `merge-base` fails, whereas this story's AC-3 answers `run` - a deliberate
+  difference, not a copy error. `classify.sh` gives the categories Context
+  names (`scripts/x.sh`, `.claude/tests/project-x.test.sh`,
+  `.github/workflows/ci.yml`, `CLAUDE.md`, `.claude/settings.json`,
+  `.gitignore` all `harness`; `src/app.ts` `source`; `src/app.test.ts`
+  `test`; `docs/wiki/x.md` `docs`; `package.json` `manifest`; `.dockerignore`
+  `config`). `classify_stdin` is at `.claude/hooks/lib.sh:1257`.
+  `scripts/selftest-needed.sh` does not exist. One stale figure in Context:
+  the 4-job self-test was planned at "about 6 minutes"; HARNESS-073 and 074
+  measured 751 s and 702 s on this host. Gate holding the artefact: the
+  harness self-test; `required_gates` stays empty; `epic:` empty; no changed
+  signatures.
+- **RED verified by the orchestrator (2026-10-26).** Reran both suites:
+  `selftest-needed: 6 passed, 133 failed` (every script call exits 127 -
+  `scripts/selftest-needed.sh` does not exist; the 6 passing are two fixture
+  preconditions and four usage-error companions a missing script also
+  satisfies, each paired with a red `exits 2`), and
+  `procedure: 117 passed, 1 failed`, the real-tree assertion printing exactly
+  five AC-4 lines (both commands lack the `allowed-tools` entry; advance-story's
+  step 2 does not name the script and does not say `skip`; complete-story's
+  bullet does not name it). Floors `selftest-needed 139` and `procedure 118`
+  in both `floors.conf` and `selftest.test.sh`. `scripts/`,
+  `.claude/commands/` and `CLAUDE.md` untouched (`git diff --quiet HEAD`);
+  `mutate.sh --check` clean. Resolved model: RED `test-developer` on Opus 5.5
+  (`claude-opus-5-5`), its declared `opus`, no override.
+- **PO correction to DV-1 (2026-10-26), found by RED.** DV-1's mutation
+  `s/"harness"/"docs"/` contradicts its own expected result: AC-2's skip
+  fixture must hold a `docs` path, so under that mutant the plain skip case
+  also answers `run` and goes red. Checked by reasoning against the Contract
+  (the skip fixture's `docs/wiki/x.md` would match `$1=="docs"`). GATES uses a
+  category no path has instead, e.g. `s/"harness"/"harnessX"/`: every harness
+  change is then judged `skip`, the AC-1 cases and the AC-2 control go red,
+  and the plain skip and zero-change cases stay green (RED measured 40 failed
+  on its scratch candidate; to be confirmed against the shipped script).
+- **GREEN verified by the orchestrator (2026-10-26).** Feature-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, its declared `opus`, no override)
+  wrote `scripts/selftest-needed.sh`, the two command files and the
+  `CLAUDE.md` line; `lib.sh`, `gates.sh` and every test file untouched.
+  Orchestrator reran: `selftest-needed: 139 passed, 0 failed` (RED's
+  unmutated control row, 139/0, confirmed against the shipped script),
+  `procedure: 118 passed, 0 failed`, `shipped-docs` 14/14, floors met.
+  DV-1's mutation targets the one `"harness"` literal, in the decision line
+  `awk -F'\t' '$1 == "harness" { print $2 }'`; use `s/"harness"/"harnessX"/`
+  per the correction above.
+- **Resolved (user approved the amendment, 2026-10-26; see `## Amendments`):
+  AC-5 as worded cannot be observed (2026-10-26), found by GREEN,
+  reproduced by the orchestrator.** AC-5 (and DV-1's first reading) say the
+  real-branch line "names `scripts/selftest-needed.sh` among the harness
+  paths". The Contract pins the list to the first three paths in `sort -u`
+  order then `, +N more`, and the suite pins that with `assert_eq`; `.claude/`
+  and `CLAUDE.md` sort before `scripts/`, so on this branch the script is the
+  8th of 8 and falls inside `+5 more`. Reproduced independently by feeding the
+  same enumeration to `classify.sh --only harness` (not the subagent's probe):
+
+      selftest-needed: run — 8 harness path(s) changed against origin/main (merge-base 1282a65): .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/floors.conf, +5 more
+      ... classify.sh --only harness: 8 paths, the last scripts/selftest-needed.sh
+
+  The script counts the path; only the AC's observable is wrong. Proposed
+  `## Amendments` entry, awaiting the user: AC-5 to read "answers `run`, and
+  `scripts/selftest-needed.sh` is among the harness paths it counts (shown by
+  `classify.sh --only harness` over the same enumeration, pasted beside the
+  line)". Must be settled before GATES runs DV-1.
+- **Known, not fixed here (2026-10-26, from `## Diff review` finding 4).**
+  `gates.sh:991-992` lists changed paths with git's default
+  `core.quotePath=true`, so a non-ASCII source path prints C-quoted and
+  misclassifies in the `covers` check. Outside this story's `touches:`; a
+  candidate for its own story.
+- **RED return 1 verified by the orchestrator (2026-10-26).** Test-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override) added
+  four cases (35 assertions, 64 lines, 0 removed) to `selftest-needed.test.sh`;
+  floor 139 -> 174 in `floors.conf` and the C-3 table. Reran:
+  `selftest-needed: 154 passed, 20 failed`, the 20 exactly the new
+  exit/line/stderr assertions of the four cases, each actual a wrong-way
+  `skip`; all 139 earlier assertions green. `scripts/`, `.claude/commands/`
+  and `CLAUDE.md` untouched (`git diff --quiet HEAD`).
+- **GREEN after return 1, verified by the orchestrator (2026-10-26).**
+  Feature-developer (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`,
+  no override) changed only `scripts/selftest-needed.sh`: `SELF_ROOT`
+  resolved before the `cd`, `lib.sh` loaded through a guard that answers
+  `run`, `--no-renames` and `core.quotePath=false` on both listings, each
+  listing's exit checked with a `fallback`. Orchestrator reran: the suite
+  `174 assertions executed, 174 declared`, `1 harness suite(s) passed`; the
+  relative calls `cd docs && bash ../scripts/selftest-needed.sh` and
+  `cd scripts && bash selftest-needed.sh` both answer `run`, exit 0, on this
+  branch. Two things for the re-review to judge: (a) the `lib.sh` guard
+  (`cannot load ...` / `defines no classify_stdin`) is reached by no test -
+  defensive, toward `run`; (b) a failure inside the `classify_stdin | awk`
+  pipeline still yields an empty `harness` and so `skip` - untested and
+  unfixed, left rather than adding production code no failing test demanded.
+  The developer made two of its edits with `sed -i` (source is writable in
+  GREEN; no lock refusal was involved) and removed the `.none` backup it left;
+  `git status` shows only the script and this story.
+- **Self-test at GATES → REVIEW (2026-10-27).** `bash scripts/selftest-needed.sh`
+  answered `run` (8 harness paths against origin/main, merge-base 1282a65).
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh`, detached, alone in this
+  worktree (two `gates.sh` runs of another project, `/d/fantasy-world-builder`,
+  shared the host): exit 0, 817 s.
+
+      assertion floors: all 30 suite(s) met their declared floor (4319 assertions executed, 4142 declared).
+      30 harness suite(s) passed.
+      exit=0 duration=817s
+
+- **Follow-up owed (from the second diff review).** A story to close review
+  findings 1-5: probe-load `lib.sh` so a `set -u` failure answers `run`
+  rather than a silent exit 1; a committed twin of the non-ASCII case; a
+  `|| fallback` on the classify pipeline; `"`/`\`/tab names recorded as
+  known beside `gates.sh:991-992`; step 2's list of fallback causes.
