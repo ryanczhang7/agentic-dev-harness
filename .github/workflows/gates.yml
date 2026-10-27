@@ -119,6 +119,20 @@ jobs:
       - name: Audit the gate manifest
         run: bash scripts/gates.sh --audit
 
+      # ONE SLOW GATE CAN HAVE A JOB OF ITS OWN. When this job creeps toward its
+      # `timeout-minutes` and one gate is most of it (a browser suite, an
+      # emulator), split it rather than raising the cap or marking it `slow` -
+      # `slow` would also drop it from the --fast runs RED and GREEN rely on:
+      #
+      #   jobs:
+      #     gates:        ... run: bash scripts/gates.sh --skip integration
+      #     integration:  ... run: bash scripts/gates.sh --gate integration
+      #
+      # Between them they run exactly what one full run does, in parallel. Each
+      # job needs its own checkout and toolchain steps. An id project.conf does
+      # not declare is refused, so a typo cannot quietly put the gate back in
+      # the first job; neither half is a recorded run, which is right - the
+      # story's record comes from a full local run. ci-local.sh replays both.
       - name: Run gates
         run: bash scripts/gates.sh
 

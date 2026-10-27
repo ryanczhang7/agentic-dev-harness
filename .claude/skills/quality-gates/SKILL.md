@@ -15,7 +15,21 @@ coverage gate"; the manifest knows whether that means `pytest --cov`,
     bash scripts/gates.sh --list       # what is configured
     bash scripts/gates.sh --gate unit  # one gate
     bash scripts/gates.sh --required   # required only
+    bash scripts/gates.sh --skip integration   # everything but that gate
     bash scripts/gates.sh --audit      # check the manifest itself, run nothing
+
+**Splitting one slow gate into its own CI job.** `--skip <id>` is the
+complement of `--gate <id>`: every gate a full run would run, minus the one it
+names. A workflow whose single gates job is creeping toward its timeout runs
+`bash scripts/gates.sh --skip integration` in one job and
+`bash scripts/gates.sh --gate integration` in another, and between them they
+run exactly what one full run did. Repeat it to leave out more
+(`--skip a --skip b`); it takes one id, never a comma list. An id `project.conf`
+does not declare is refused, exit 2, so a typo cannot quietly put the gate back
+in the first job. It refuses `--gate`, `--fast` and `--required`, and like them
+it is never recorded into a story: the record comes from a full local run.
+Prefer this to marking the gate `slow`, which also takes it out of the
+`--fast` runs RED and GREEN rely on.
 
 Failures write their output to `.claude/state/gate-logs/<gate>.log`.
 

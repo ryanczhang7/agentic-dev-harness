@@ -7,6 +7,7 @@
 #   bash scripts/gates.sh --gate unit      run one gate, `ondemand` or not  (not recorded: a partial run is not evidence)
 #   bash scripts/gates.sh --required       required gates only  (not recorded)
 #   bash scripts/gates.sh --fast           every gate not marked `slow`  (not recorded)
+#   bash scripts/gates.sh --skip integration   every gate a full run would run, but that one  (not recorded)
 #   bash scripts/gates.sh --audit          check the manifest itself, run nothing
 #
 # The gate NAMES are stable across every project ("the coverage gate"); the
@@ -43,6 +44,16 @@
 # mutation tool run on every full run. A run that leaves one out prints
 # `ON REQUEST   <id> (not run: <why>; ...)` and counts it in nothing. --audit
 # refuses one on a required gate, and a `mutation` gate with no `ondemand` line.
+#
+# `--skip <id>` runs what a full run would, minus the gate it names. It is how a
+# CI workflow splits one slow gate into a job of its own: `--skip integration`
+# in one job, `--gate integration` in the other. Repeat it to leave out more
+# (`--skip a --skip b`); it takes one id, so `a,b` is an id, and no gate has it.
+# An id project.conf does not declare is refused, exit 2, before anything runs:
+# a typo must not quietly run everything. It composes with neither --gate,
+# --fast nor --required, and refuses each, exit 2. Leaving out a required gate
+# is allowed, so the run is never recorded, and its summary names what it left
+# out. --list marks each gate it names; --audit refuses an unknown one.
 #
 # A full run writes its own summary into the story's ## Gate results, stamped
 # with the commit and a hash of the code it ran against. Nobody pastes it.
@@ -84,20 +95,28 @@ BOOTSTRAPPED="${BOOTSTRAPPED#*=}"; BOOTSTRAPPED="${BOOTSTRAPPED//[[:space:]]/}"
 [ -z "$BOOTSTRAPPED" ] && BOOTSTRAPPED=no
 
 RUN_LOCK_SELF="scripts/gates.sh${*:+ $*}"   # what the run lock records; the loop below shifts $@ away
-ONLY=""; REQUIRED_ONLY=0; LIST=0; AUDIT=0; STORY=""; FAST=0
+ONLY=""; REQUIRED_ONLY=0; LIST=0; AUDIT=0; STORY=""; FAST=0; SKIPS=""; NL=$'\n'
 while [ $# -gt 0 ]; do
   case "$1" in
     --list) LIST=1 ;;
     --gate) shift; ONLY="${1:-}" ;;
+    --skip) shift; [ -n "${1:-}" ] || { printf 'error: --skip needs a gate id; see --list\n' >&2; exit 2; }; SKIPS="$SKIPS$NL$1" ;;
     --required) REQUIRED_ONLY=1 ;;
     --fast) FAST=1 ;;
     --audit) AUDIT=1 ;;
     --story) shift; STORY="${1:-}"; valid_story_id "$STORY" || { printf "error: story id '%s' is not one path component: an id is letters, digits, '.', '_' or '-', and starts with a letter or digit\n" "$STORY" >&2; exit 2; } ;;
-    -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,59p' "$0"; exit 0 ;;
     *) printf 'unknown option: %s\n' "$1" >&2; exit 2 ;;
   esac
   shift
 done
+# --skip subtracts from a full run, and the other three are already subsets.
+# Refused rather than composed: nobody has to work out what the pair means.
+if [ -n "$SKIPS" ]; then
+  [ -n "$ONLY" ] && { printf 'error: --skip cannot be combined with --gate: --gate runs one gate, --skip leaves gates out of a full run\n' >&2; exit 2; }
+  [ "$FAST" = 1 ] && { printf 'error: --skip cannot be combined with --fast: --fast already leaves out the `slow` gates\n' >&2; exit 2; }
+  [ "$REQUIRED_ONLY" = 1 ] && { printf 'error: --skip cannot be combined with --required\n' >&2; exit 2; }
+fi
 
 # --- parsing project.conf without a process per field -----------------------
 # Both loops below walk the whole manifest, so whatever runs per field runs once
@@ -222,6 +241,15 @@ if [ -n "$ONLY" ]; then
     *" $ONLY "*) ;;
     *) printf "error: no gate named '%s' in project.conf; see --list\n" "$ONLY" >&2; exit 2 ;;
   esac
+fi
+# The same for --skip (HARNESS-079), and worse if missed: a CI job meant to
+# leave `integration` to another job would run it after all, and say nothing.
+if [ -n "$SKIPS" ]; then
+  while IFS= read -r sk; do
+    [ -n "$sk" ] || continue
+    case "$sk" in *[[:space:]]*) ;; *) case " $GATE_IDS " in *" $sk "*) continue ;; esac ;; esac
+    printf "error: --skip names no gate '%s' in project.conf; see --list\n" "$sk" >&2; exit 2
+  done <<< "$SKIPS"
 fi
 
 # IS THE TREE THE CODE? (HARNESS-030) Everything below judges the working tree
@@ -451,7 +479,7 @@ if [ -n "$STORY" ] && [ -f "$STORY_FILE" ]; then
   STORY_REQUIRES=" $(frontmatter_list "$STORY_FILE" required_gates) "
 fi
 
-fails=0; warns=0; known=0; unconfigured=0; ran=0; noevidence=0; blocked=0; skipped=""
+fails=0; warns=0; known=0; unconfigured=0; ran=0; noevidence=0; blocked=0; skipped=""; skipped_by_flag=""
 results=""
 # Every gate line the loop REACHES is recorded here, before any filter or
 # refusal can `continue` past it; after the loop the list is compared with
@@ -500,6 +528,16 @@ while IFS= read -r line; do
 
   [ -n "$ONLY" ] && [ "$ONLY" != "$id" ] && continue
   [ "$REQUIRED_ONLY" = 1 ] && [ "$req" != "required" ] && continue
+
+  # --skip leaves a gate out by name, ahead of every other disposition, so it
+  # is reported once, as skipped, whether it is required, slow or on request.
+  is_skip=1
+  case "$SKIPS$NL" in *"$NL$id$NL"*) is_skip=0 ;; esac
+  if [ "$is_skip" = 0 ] && [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ]; then
+    skipped_by_flag="$skipped_by_flag $id"
+    results="$results\nSKIPPED      $id (left out by --skip; bash scripts/gates.sh --gate $id)"
+    continue
+  fi
 
   # An `ondemand` gate runs only when asked for: by name (--gate), or by a
   # story that escalated it. Decided before --fast's `slow` check, so it is
@@ -558,6 +596,7 @@ while IFS= read -r line; do
       [ "$cid" = "$id" ] && printf '%-12s %-9s %-6s covers:   %s\n' "" "" "" "$cglob"
     done <<< "$COVERS"
     [ -n "$waiver" ] && printf '%-12s %-9s %-6s waiver:   %s\n' "" "" "" "$waiver"
+    [ "$is_skip" = 0 ] && printf '%-12s %-9s %-6s skip:     left out by --skip (run it with --gate %s)\n' "" "" "" "$id"
     while IFS="$TAB" read -r bid bpat; do
       [ "$bid" = "$id" ] && printf '%-12s %-9s %-6s blocked-when: %s\n' "" "" "" "$bpat"
     done <<< "$BLOCKEDWHEN"
@@ -1119,7 +1158,7 @@ fi
 # `--required` all write it too - so without the line a `--gate unit` could
 # discharge GATES, whose entire job is the full suite.
 FULLRUN=yes
-{ [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ]; } && FULLRUN=no
+{ [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ] || [ -n "$SKIPS" ]; } && FULLRUN=no
 
 # A full run with a story to record into refuses to record while anything is
 # named above: the stamp would describe a tree that is not the one about to be
@@ -1186,10 +1225,14 @@ if [ "$FAST" = 1 ]; then
   fi
   printf 'This is a subset, not a verdict. The full run before REVIEW is what judges the story.\n'
 fi
+if [ -n "$SKIPS" ]; then
+  printf '\n--skip skipped:%s\n' "$skipped_by_flag"
+  printf 'This is a subset, not a verdict: the gates it left out ran nowhere in this run.\n'
+fi
 
 # --- record -----------------------------------------------------------------
 # Only a full run is evidence. `--gate unit` passing says nothing about lint.
-if [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ]; then
+if [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ] || [ -n "$SKIPS" ]; then
   printf '\n(not recorded in the story: a partial run is not evidence of anything)\n'
 else
   if [ -z "$STORY" ]; then
@@ -1236,7 +1279,7 @@ fi
 printf '\nAll required gates passed (%d ran, %d unconfigured, %d known).\n' "$ran" "$unconfigured" "$known"
 # The verdict above is about the code; the refusal is about the record.
 [ "$REFUSED" = 1 ] && exit 1
-if [ "$FAST" = 0 ] && [ -z "$ONLY" ] && [ "$REQUIRED_ONLY" = 0 ]; then
+if [ "$FAST" = 0 ] && [ -z "$ONLY" ] && [ "$REQUIRED_ONLY" = 0 ] && [ -z "$SKIPS" ]; then
   printf 'CI runs one more script that this does not: bash scripts/check-boundaries.sh\n'
   printf 'It is not a gate because it judges the COMMIT rather than the code - the phase in\n'
   printf 'the committed frontmatter, the criteria against the base branch, and whether this\n'
