@@ -4,8 +4,8 @@ title: selftest-needed answers run when its library or classifier fails
 slug: selftest-needed-answers-run-when-its-lib
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-077-selftest-needed-answers-run-when-its-lib
 depends_on: [HARNESS-075]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, docs/backlog/stories/HARNESS-075.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -862,3 +862,9 @@ either change would restart the review and the gate run. Recorded in
       assertion floors: all 30 suite(s) met their declared floor (4379 assertions executed, 4202 declared).
       30 harness suite(s) passed.
       exit=0 duration=923s
+- **Merged as #164 (2026-10-27, `3b95bb5`).** CI on the PR head: `boundaries`
+  success, its check step 1 s; `gates` success, its "Harness self-test" step
+  3m30s (`30 harness suite(s) passed.`, `selftest-needed: 216 passed, 0
+  failed`, `procedure: 118 passed, 0 failed`), far inside the job's
+  45-minute limit.
+  https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/40536671332
