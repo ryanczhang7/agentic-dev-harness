@@ -5,7 +5,7 @@ slug: the-pre-review-self-test-runs-only-when
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-075-the-pre-review-self-test-runs-only-when
 depends_on: [HARNESS-072, HARNESS-073, HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -352,6 +352,38 @@ scratch candidate. (The real branch counted 9 paths under the mutant and 8
 after: the story file, `docs`, was modified in the working tree during the
 mutant run and committed before the final reading.)
 
+*Re-run after Return 1 (GATES, orchestrator, 2026-10-26)*, against the fixed
+script, where the decision line is now line 78 and the `"harness"` literal
+still occurs once. Same expression. First reading of the restored tree gives
+the same `run` line and the same eight classified paths as above, with
+`scripts/selftest-needed.sh` last. Under the mutant: every original red
+again, plus the Return 1 relative-call, rename and non-ASCII cases (the
+corrupted-index case stays green, as it decides before the category check);
+the plain skip, zero-change and fail-toward-run cases stay green. One
+`exits 0` line per case shown:
+
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by s/"harness"/"harnessX"/) ===
+      AC-1 / Contract: called by a relative path from inside the checkout, it still answers run
+        FAIL `bash ../scripts/selftest-needed.sh` from src/ exits 0
+        FAIL `bash selftest-needed.sh` from scripts/ exits 0
+      AC-1: a renamed harness file counts under its OLD name too
+        FAIL a committed `git mv scripts/r.sh tools/r.sh` answers run and names scripts/r.sh [from root]: exits 0
+      AC-3 / PO decision 3: when git itself fails to list the changes, it answers run
+      AC-1: a harness path with a non-ASCII name is seen, and named as the filesystem names it
+        FAIL an UNTRACKED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: exits 0
+    selftest-needed: 122 passed, 52 failed
+    --- real branch under the mutant:
+    selftest-needed: skip — no harness path among 9 changed path(s) against origin/main (merge-base 1282a65); CI runs the self-test on the PR
+    rc=1
+    === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261027T043819Z.1593.bak) ===
+      78: harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')"
+
+    selftest-needed: run — 8 harness path(s) changed against origin/main (merge-base 1282a65): .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/floors.conf, +5 more
+    rc after restore=0
+
+52 = the 40 predicted for the original suite + 12 (three new cases, two
+runs each, exit and whole-line assertions).
+
 **DV-2 (the fail-toward-run default, on a real clone). Owner: GATES.**
 `git clone --depth 1 --branch <story branch> file://$PWD <scratch>` and run
 the script there: with no `origin/main` fetched it **must** answer `run`
@@ -362,6 +394,14 @@ This is AC-3 against a tree git made, not a fixture the suite arranged.
 *Result (GATES, orchestrator, 2026-10-26).* Depth-1 clone of the story branch
 into the session scratchpad; the clone carried only the story branch and its
 `origin/` tracking ref, no `origin/main`, no `main`:
+
+    * story/HARNESS-075-the-pre-review-self-test-runs-only-when
+      remotes/origin/story/HARNESS-075-the-pre-review-self-test-runs-only-when
+    selftest-needed: run — cannot compute the diff: no origin/main or main to compare against; defaulting to run
+    rc=0
+
+*Re-run after Return 1 (GATES, orchestrator, 2026-10-26)*, fresh depth-1
+clone of the branch carrying the fixed script; same refs, same answer:
 
     * story/HARNESS-075-the-pre-review-self-test-runs-only-when
       remotes/origin/story/HARNESS-075-the-pre-review-self-test-runs-only-when
@@ -961,9 +1001,9 @@ on the fix before the self-test.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-27T00:22:51Z
-    commit: 80c6543
-    tree:   7c3ce47d04b1bc0794a8f13bc23ab1e4e08b7dd7
+    run:    2026-10-27T04:39:31Z
+    commit: 2bfffd7
+    tree:   559f0bc608e6c1f9eb05e1db122df123e006b75c
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
