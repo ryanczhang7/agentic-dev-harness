@@ -4,8 +4,8 @@ title: The pre-REVIEW self-test runs only when the diff touches a harness path
 slug: the-pre-review-self-test-runs-only-when
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-075-the-pre-review-self-test-runs-only-when
 depends_on: [HARNESS-072, HARNESS-073, HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -997,6 +997,58 @@ RED); all four go back to RED as new cases (`## Regressions`, Return 1).
 and recorded as known in `## Notes`, not fixed here. The review runs again
 on the fix before the self-test.
 
+### Second review (after Return 1)
+
+Fresh `feature-developer` dispatch, `diff-review` skill, 2026-10-27.
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), declared `opus`, no
+override. Changed no file. Report, condensed to its findings and evidence
+(the full text is the subagent's return):
+
+    Checked and right: the join (empty -> 0 changed; names " ", "src/ lead.ts",
+    "scripts/ sp/a.sh" counted correctly; awk 'length' drops only empty lines);
+    rename+modify and staged rename -> run naming scripts/r.sh; a copy with
+    diff.renames=copies -> skip (correct: the original did not change); both new
+    fallback lines carry the pinned prefix/suffix; a lib.sh syntax error or
+    non-zero last command -> run; both commands' allowed-tools and prose match
+    the Contract; three of the four new cases cannot pass against their defect.
+    selftest-needed: 174 passed, 0 failed (57 s); procedure: 118 passed, 0 failed.
+
+    Should fix:
+    1. A lib.sh that trips `set -u` at load time exits the script silently, rc=1,
+       read as skip (:54). Case: `echo "$NOPE_UNSET"` as lib.sh line 2 -> empty
+       stdout, empty stderr, rc=1; without the 2>/dev/null it prints
+       "unbound variable", still rc=1. Fix: drop the 2>/dev/null; probe-load in a
+       subshell `( . "$LIB" ) >/dev/null 2>&1 || fallback ...` before the real
+       source. Today's lib.sh loads clean; CI is the backstop.
+    2. The committed side of core.quotePath=false has no test (:71). The café
+       case is untracked only. Case: flag removed from the git diff line only ->
+       the suite stays green; the same file committed -> skip. Fix: a committed
+       twin of the café case, in RED, earned by that mutation.
+
+    Nice to have:
+    3. A failure inside classify_stdin | awk still gives skip (:78). Reachable
+       only with paths.conf missing or a broken awk, which break the lock and
+       classify.sh first. Fix: `|| fallback`, with a RED case first.
+    4. Names with `"`, `\` or a tab stay C-quoted despite quotePath=false and
+       classify as source; Windows cannot create them; POSIX only. Record as
+       known beside the gates.sh note; -z is the fix if ever.
+    5. advance-story's step 2 parenthetical lists three fallback causes; the
+       script now has six. Docs only; no needle depends on it.
+
+    Not checked: a nested .claude/worktrees/<name> checkout; a POSIX host.
+    Model: Opus 5.5 (claude-opus-5-5).
+
+    Verdict: Ship.
+
+**PO disposition (second review).** `Verdict: Ship.`: no Must fix, so
+GATES → REVIEW goes on. Findings 1-4 go to a follow-up story rather than a
+third cycle: 1 and 3 are wrong-way skips that need a broken harness tree
+to reach, 2 is a test gap with no code defect behind it, and 4 is POSIX-only.
+All four are caught by CI's own self-test run. That story should carry RED
+cases for 1, 2 and 3, and record 4 beside `gates.sh:991-992`. Finding 5 is
+docs only and also left for that story, since it touches the step text
+`procedure.test.sh` reads.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -1157,3 +1209,18 @@ on the fix before the self-test.
   The developer made two of its edits with `sed -i` (source is writable in
   GREEN; no lock refusal was involved) and removed the `.none` backup it left;
   `git status` shows only the script and this story.
+- **Self-test at GATES → REVIEW (2026-10-27).** `bash scripts/selftest-needed.sh`
+  answered `run` (8 harness paths against origin/main, merge-base 1282a65).
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh`, detached, alone in this
+  worktree (two `gates.sh` runs of another project, `/d/fantasy-world-builder`,
+  shared the host): exit 0, 817 s.
+
+      assertion floors: all 30 suite(s) met their declared floor (4319 assertions executed, 4142 declared).
+      30 harness suite(s) passed.
+      exit=0 duration=817s
+
+- **Follow-up owed (from the second diff review).** A story to close review
+  findings 1-5: probe-load `lib.sh` so a `set -u` failure answers `run`
+  rather than a silent exit 1; a committed twin of the non-ASCII case; a
+  `|| fallback` on the classify pipeline; `"`/`\`/tab names recorded as
+  known beside `gates.sh:991-992`; step 2's list of fallback causes.
