@@ -4,8 +4,8 @@ title: The covers check sees every changed path by its real name, and selftest-n
 slug: the-covers-check-sees-every-changed-path
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-078-the-covers-check-sees-every-changed-path
 depends_on: [HARNESS-077]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/selftest-needed.sh, scripts/host-load.sh, .claude/tests/gates.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -998,3 +998,16 @@ comment, left: changing it restarts the review. All four recorded in
       assertion floors: all 30 suite(s) met their declared floor (4395 assertions executed, 4202 declared).
       30 harness suite(s) passed.
       exit=0 duration=2249s
+- **Verdict on the PLANNED model departure (REVIEW, 2026-10-27).** The
+  condition set at PLANNED was "more than 3 of the Contract's 6 `###` blocks
+  amended in RED means the plan was weaker". RED amended 2 (the `gates.sh`
+  enumeration block and a `selftest-needed.sh :92` bullet), so by that
+  condition the Opus-written plan was not weaker. The two amendments were
+  real defects in the plan (tab truncation in `awk -F'\t'`, `%b` on a
+  backslash), each reproduced independently before it was accepted.
+- **Merged as #165 (2026-10-27, `45bf6a5`).** CI on the PR head: `boundaries`
+  success, its check step 1 s; `gates` success, its "Harness self-test" step
+  3m38s (`30 harness suite(s) passed.`). On ubuntu `gates: 865 passed, 0
+  failed` and `selftest-needed: 280 passed, 0 failed` - the Linux counts, no
+  SKIP line, so AC-3 and AC-5 ran and passed there.
+  https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/40588798245
