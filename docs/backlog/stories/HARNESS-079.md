@@ -4,8 +4,8 @@ title: gates.sh --skip runs every gate but the named ones
 slug: gates-sh-skip-runs-every-gate-but-the-na
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-079-gates-sh-skip-runs-every-gate-but-the-na
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .github/workflows/gates.yml, .claude/skills/quality-gates/SKILL.md, .claude/harness/VERSION] # files this story expects to write; `plan.sh conflicts` reads it
@@ -229,6 +229,9 @@ name, below the table.
   orchestrating session started for this story, resolved: **opus** (Opus 5.5,
   `claude-opus-5-5`, the session model). Departs from the `fable` row for
   PLANNED; no success condition was set for it, so no verdict is claimed.
+- RED — no subagent dispatch: written inline by the same session, resolved:
+  **opus** (Opus 5.5, `claude-opus-5-5`). Matches the `opus` row.
+
 ## Out of scope
 
 - A comma-list spelling (PO decision 1).
@@ -243,7 +246,110 @@ name, below the table.
 
 ## Test plan
 
+All at the script level, through the real `scripts/gates.sh` and
+`scripts/ci-local.sh` copied into throwaway fixture projects.
+
+| Suite | Block | AC | Assertions |
+|---|---|---|---|
+| `gates` | `HARNESS-079 AC-1` | AC-1 | 13 - executed set by marker, PASS per gate, one SKIPPED line, exit; plain-run control; `--skip` twice |
+| `gates` | `HARNESS-079 AC-2` | AC-2 | 12 - `intgration`, `integration,build`, no id, `unit integration`: exit 2, id named, nothing executed |
+| `gates` | `HARNESS-079 AC-3` | AC-3 | 20 - five orderings of `--gate`/`--fast`/`--required`: exit 2, "cannot be combined with <other>", nothing executed |
+| `gates` | `HARNESS-079 AC-4` | AC-4 | 8 - `--skip unit` with an active story: not-recorded line, no recorded line, story byte-identical, FULL=no, no CI note; full-run control records |
+| `gates` | `HARNESS-079 AC-5` | AC-5 | 4 - whole `--skip skipped: integration build` line, the caveat after it, manifest order, plain-run control |
+| `gates` | `HARNESS-079 AC-6` | AC-6 | 8 - `--list --skip`: exit, one `skip:` line, under integration, nothing ran; `--audit --skip` unknown/known |
+| `gates` | `HARNESS-079 AC-7` | AC-7 (help half) | 5 - `--help` exit, usage line, `--gate integration`, "Leaving out a required gate", reaches "Nobody pastes it." |
+| `ci-local` | `HARNESS-079 AC-8` | AC-8 | 4 - two-job `gates.yml` under `--dry-run`: exit, each step once, `--skip` first |
+| `sigpipe` | C-5 freshness list | (Contract line budget) | the two `scripts/gates.sh` pins moved to 93 and 773 |
+
+AC-7's second half (the workflow comment and the skill paragraph) is read, not
+tested.
+
 ## Handoff: RED -> GREEN
+
+**Run:** `bash scripts/selftest.sh gates`, `bash scripts/selftest.sh sigpipe`,
+`bash scripts/selftest.sh ci-local`. For the new block alone, faster: the
+`HARNESS-079` block of `.claude/tests/gates.test.sh` is self-contained (its own
+fixture `F79`, its own helpers `g79`, `g79err`, `ran79`, `reset79`, `h79_combo`)
+and needs only `_lib.sh` plus the file's `count_line`/`count_re`.
+
+**Files touched in RED:** `.claude/tests/gates.test.sh` (AC-1..AC-7, appended
+before `summary`), `.claude/tests/ci-local.test.sh` (AC-8, appended before
+`summary`), `.claude/tests/sigpipe.test.sh` (two pins), `.claude/tests/floors.conf`
+and `.claude/tests/selftest.test.sh` (floors), this story.
+
+**Why the failures are the right ones.** Today `--skip` falls through to
+`*) printf 'unknown option: %s\n'`, exit 2. So every run-shaped assertion is
+red (nothing ran, no SKIPPED line, no summary line, no `skip:` line, exit 2 not
+0) and every message assertion is red (`unknown option: --skip` names neither
+the id nor `cannot be combined`). Measured on the new block alone against the
+shipped `gates.sh`, 2026-10-27: `h79: 31 passed, 39 failed` of 70 (the AC-7
+needle was then tightened, see below; the count is unchanged). Whole suites, same
+day, after the tightening: `gates: 880 passed, 40 failed` (920 executed; all
+40 reds in the new block), `sigpipe: 90 passed, 1 failed` (the C-5 freshness
+check, on exactly the two moved pins), `ci-local: 32 passed, 0 failed`.
+
+**Passed on arrival, and what earns each.**
+
+- The exit-2 and "no gate command executed" halves of AC-2, AC-3 and the
+  `--audit` unknown case pass today because `unknown option` also exits 2
+  before anything runs. Each sits beside a message assertion that is red today
+  and pins *why* it exits; GREEN must not reach them by leaving `--skip` an
+  unknown option. Not separately earned.
+- AC-4's "nothing claims to have recorded", "story byte-identical" and "no CI
+  note" pass today because the run never starts. **DV-1 earns them** at GATES,
+  by putting the recording back.
+- AC-1/AC-4/AC-5 controls (plain full runs) pass by design.
+- AC-8 passes on arrival: `ci-local.sh` is unchanged and already replays every
+  `run:` line. Earned in RED by one mutation that drops any step containing
+  `--gate ` (the shape of a parser keeping one `gates.sh` step):
+
+      bash scripts/mutate.sh scripts/ci-local.sh 's/^    steps+=("\$label|\$cmd")$/    case "$cmd" in *"--gate "*) ;; *) steps+=("$label|$cmd") ;; esac/' -- bash scripts/selftest.sh ci-local
+        HARNESS-079 AC-8: a gates.yml split into two jobs is replayed, both halves, in order
+          FAIL AC-8: the second job's step is printed, once
+               expected: 1
+               actual:   0
+          FAIL AC-8: in file order, the --skip job first
+               --skip at line 1, --gate at none: bash scripts/gates.sh --skip integration
+      ci-local: 29 passed, 3 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/scripts_ci-local.sh.20261027T203921Z.41737.bak) ===
+        132:     steps+=("$label|$cmd")
+
+  (The third red was an existing case, `and so is its continuation`, which
+  also carries a `--gate` step.) Restored and green after: `ci-local: 32
+  passed, 0 failed`.
+
+**A needle corrected inside RED.** AC-7 first asserted `never recorded` in
+`--help`; today's `--fast` paragraph already says "A --fast run is never
+recorded", so it passed on arrival and could not fail. It now asserts
+`Leaving out a required gate`, which only the new paragraph says.
+
+**What the tests pin, exactly** (GREEN must produce these strings):
+
+- a results line beginning `SKIPPED      <id>` (status padded to 13 columns,
+  as `PASS         `);
+- stderr `--skip names no gate '<id>'` style: the tests pin `'<id>'` quoted, and
+  for the empty case the words `--skip needs a gate id`;
+- stderr containing `--skip cannot be combined with --gate` / `--fast` /
+  `--required` (the words `combined with ` immediately before the option);
+- the whole line `(not recorded in the story: a partial run is not evidence of anything)`;
+- the whole line `--skip skipped: <ids in manifest order>`, and the next line
+  beginning `This is a subset, not a verdict`;
+- in `--list`, a line containing `skip:     left out by --skip` inside the
+  skipped gate's entry (after its id line, before the next gate's);
+- in `--help`: `bash scripts/gates.sh --skip integration`, `--gate integration`,
+  `Leaving out a required gate`, and `Nobody pastes it.` (the help range must
+  reach the header's last line).
+
+Not constrained: the exact wording around those strings, the order of the
+three combination checks, where in the file the checks live, and the `--help`
+text beyond the needles.
+
+**sigpipe pins.** RED moved `scripts/gates.sh:82` → `:93` and `:734` → `:773`
+per the Contract's line budget. `sigpipe` is red on its freshness check until
+GREEN's lines land there; if GREEN's layout differs, it says so and the pins
+come back through RED.
+
+**Negative controls:** none are measurements; nothing to calibrate.
 
 ## Gate results
 

@@ -3779,4 +3779,181 @@ assert_eq "AC-11: configuring.md's kinds table has the keep-when row once, strai
 assert_eq "AC-11: and the count above the table says nine" 1 \
   "$(count_line 'Nine more kinds, each explained in the skill and in `project.conf`'"'"'s own' "$(tr -d '\r' < "$CFG69")")"
 
+# ---------------------------------------------------------------------------
+# HARNESS-079: --skip <id> runs every gate a full run would, minus the named
+# ones, so a CI workflow can split one slow gate into a job of its own:
+# `--skip integration` in one job, `--gate integration` in the other.
+#
+# Each gate command touches a MARKER under $M79, so "not executed" is a file
+# that does not exist rather than a word missing from the summary. `build` is
+# required AND slow, so a run that executes it is a full run minus one, and not
+# --fast under another name.
+F79="$(make_project_fixture)"
+trap '[ -n "$H30_SLEEP" ] && kill "$H30_SLEEP" 2>/dev/null; rm -rf "$FIX" "$H30W" "$F69" "$F79"' EXIT
+mkdir -p "$F79/.git/info"
+printf '%s\n' .claude/harness/project.conf .claude/state/ >> "$F79/.git/info/exclude"
+M79="$F79/.claude/state/m79"
+mkdir -p "$M79"
+write_conf "$F79" <<'EOF'
+gate     | lint        | required | . | : > .claude/state/m79/lint; printf 'Checked 12 files\n'
+gate     | unit        | required | . | : > .claude/state/m79/unit; printf 'Tests  47 passed (47)\n'
+gate     | integration | optional | . | : > .claude/state/m79/integration; printf 'Tests  9 passed (9)\n'
+gate     | build       | required | . | : > .claude/state/m79/build; printf 'Bundled 3 targets\n'
+evidence | lint        | Checked [1-9][0-9]* files
+evidence | unit        | Tests +[1-9][0-9]* passed
+evidence | integration | Tests +[1-9][0-9]* passed
+evidence | build       | Bundled [1-9][0-9]* targets
+slow     | integration | a real browser; minutes, not seconds
+slow     | build       | a release bundle
+EOF
+story "$F79" T-1 GATES </dev/null
+git -C "$F79" add -A >/dev/null 2>&1
+git -C "$F79" -c user.email=t@t -c user.name=t commit -qm "HARNESS-079 fixture story" >/dev/null 2>&1
+git -C "$F79" checkout -q -B story/T-1-fixture 2>/dev/null
+set_phase "$F79" ""
+
+g79()    { ( cd "$F79" && bash scripts/gates.sh "$@" 2>&1 ); }
+g79err() { ( cd "$F79" && bash scripts/gates.sh "$@" 2>&1 >/dev/null ); }
+# ran79   The gates whose command executed since the last reset79, in manifest
+# order, space-separated; `none` when nothing ran.
+ran79() {
+  local g r=""
+  for g in lint unit integration build; do [ -e "$M79/$g" ] && r="$r $g"; done
+  if [ -n "$r" ]; then printf '%s' "${r# }"; else printf none; fi
+}
+reset79() { rm -f "$M79"/*; }
+
+describe "HARNESS-079 AC-1: --skip runs every gate a full run would, minus the one it names"
+
+reset79
+out="$(g79 --skip integration)"; rc=$?
+assert_eq "AC-1: lint, unit and build executed; integration did not" "lint unit build" "$(ran79)"
+assert_eq "AC-1: lint is PASS"  1 "$(count_re '^PASS +lint( |$)'  "$out")"
+assert_eq "AC-1: unit is PASS"  1 "$(count_re '^PASS +unit( |$)'  "$out")"
+assert_eq "AC-1: build, slow and required, is PASS: a full run minus one, not --fast" 1 \
+  "$(count_re '^PASS +build( |$)' "$out")"
+assert_eq "AC-1: exactly one line reports integration SKIPPED" 1 \
+  "$(count_re '^SKIPPED      integration( |$)' "$out")"
+assert_eq "AC-1: and integration is reported nowhere as PASS" 0 "$(count_re '^PASS +integration' "$out")"
+assert_eq "AC-1: the run exits 0" 0 "$rc"
+# Control: without --skip the same manifest runs all four, so the absence above
+# is the flag's doing.
+reset79
+out="$(g79)"; rc=$?
+assert_eq "AC-1 control: a plain full run executes all four" "lint unit integration build" "$(ran79)"
+assert_eq "AC-1 control: and reports nothing SKIPPED" 0 "$(count_re '^SKIPPED ' "$out")"
+# Repeatable: one id per --skip.
+reset79
+out="$(g79 --skip integration --skip build)"; rc=$?
+assert_eq "AC-1: --skip twice leaves both out" "lint unit" "$(ran79)"
+assert_eq "AC-1: integration reported SKIPPED once" 1 "$(count_re '^SKIPPED      integration( |$)' "$out")"
+assert_eq "AC-1: build reported SKIPPED once"       1 "$(count_re '^SKIPPED      build( |$)' "$out")"
+assert_eq "AC-1: and exits 0" 0 "$rc"
+
+describe "HARNESS-079 AC-2: an id project.conf does not declare is refused before anything runs"
+
+for bad in intgration 'integration,build'; do
+  reset79
+  err="$(g79err --skip "$bad")"; rc=$?
+  assert_eq "AC-2 [$bad]: exits 2" 2 "$rc"
+  assert_contains "AC-2 [$bad]: stderr names the id" "'$bad'" "$err"
+  assert_eq "AC-2 [$bad]: no gate command executed" none "$(ran79)"
+done
+reset79
+err="$(g79err --skip)"; rc=$?
+assert_eq "AC-2 [no id]: --skip with nothing after it exits 2" 2 "$rc"
+assert_contains "AC-2 [no id]: and says --skip needs a gate id" "--skip needs a gate id" "$err"
+assert_eq "AC-2 [no id]: no gate command executed" none "$(ran79)"
+# An id with a space would match two adjacent ids in a space-joined list.
+reset79
+err="$(g79err --skip 'unit integration')"; rc=$?
+assert_eq "AC-2 [two words]: an id with a space is refused, exit 2" 2 "$rc"
+assert_contains "AC-2 [two words]: and named" "'unit integration'" "$err"
+assert_eq "AC-2 [two words]: no gate command executed" none "$(ran79)"
+
+describe "HARNESS-079 AC-3: --skip with --gate, --fast or --required is refused"
+
+h79_combo() { # <label> <the other option> <args...>
+  local label="$1" other="$2"; shift 2
+  reset79
+  err="$(g79err "$@")"; rc=$?
+  assert_eq "AC-3 [$label]: exits 2" 2 "$rc"
+  assert_contains "AC-3 [$label]: says it cannot be combined" "--skip cannot be combined with" "$err"
+  assert_contains "AC-3 [$label]: and names the other option" "combined with $other" "$err"
+  assert_eq "AC-3 [$label]: no gate command executed" none "$(ran79)"
+}
+h79_combo "--skip then --gate"     --gate     --skip integration --gate unit
+h79_combo "--gate then --skip"     --gate     --gate unit --skip integration
+h79_combo "--skip then --fast"     --fast     --skip integration --fast
+h79_combo "--fast then --skip"     --fast     --fast --skip integration
+h79_combo "--skip then --required" --required --skip integration --required
+
+describe "HARNESS-079 AC-4: a --skip run is never recorded, even with a required gate left out"
+
+set_phase "$F79" GATES
+cp "$F79/docs/backlog/stories/T-1.md" "$F79/.claude/state/T-1.before79"
+reset79
+out="$(g79 --skip unit)"; rc=$?
+assert_eq "AC-4: the gates it did not skip ran" "lint integration build" "$(ran79)"
+assert_eq "AC-4: the not-recorded line is printed, whole" 1 \
+  "$(count_line '(not recorded in the story: a partial run is not evidence of anything)' "$out")"
+assert_eq "AC-4: nothing claims to have recorded" 0 "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-4: the story file is byte-for-byte unchanged" yes \
+  "$(cmp -s "$F79/.claude/state/T-1.before79" "$F79/docs/backlog/stories/T-1.md" && printf yes || printf no)"
+assert_eq "AC-4: the stamp says FULL=no" 1 \
+  "$(count_re '^FULL=no$' "$(tr -d '\r' < "$F79/.claude/state/last-gate-run")")"
+assert_eq "AC-4: and the full-run note about check-boundaries.sh is absent" 0 \
+  "$(count_re '^CI runs one more script' "$out")"
+# Control: the same tree, the same story, a plain full run records.
+out="$(g79)"; rc=$?
+assert_eq "AC-4 control: a full run on the same tree records" 1 \
+  "$(count_re '^recorded in docs/backlog/stories/T-1\.md' "$out")"
+assert_eq "AC-4 control: and stamps FULL=yes" 1 \
+  "$(count_re '^FULL=yes$' "$(tr -d '\r' < "$F79/.claude/state/last-gate-run")")"
+set_phase "$F79" ""
+git -C "$F79" checkout -q -- docs/backlog/stories/T-1.md 2>/dev/null
+
+describe "HARNESS-079 AC-5: the summary names the gates --skip left out"
+
+reset79
+out="$(g79 --skip integration --skip build)"
+assert_eq "AC-5: one whole line names both, in manifest order" 1 \
+  "$(count_line '--skip skipped: integration build' "$out")"
+assert_eq "AC-5: followed by the subset caveat" 1 \
+  "$(printf '%s\n' "$out" | awk 'p && /^This is a subset, not a verdict/ { n++ } { p = ($0 == "--skip skipped: integration build") } END { print n + 0 }')"
+# Order is the manifest's, not the command line's.
+out="$(g79 --skip build --skip integration)"
+assert_eq "AC-5: given in the other order, the line is still in manifest order" 1 \
+  "$(count_line '--skip skipped: integration build' "$out")"
+# Control: a plain run prints no such line.
+out="$(g79)"
+assert_eq "AC-5 control: a full run prints no --skip line" 0 "$(count_re '^--skip skipped' "$out")"
+
+describe "HARNESS-079 AC-6: --list marks what --skip leaves out; --audit refuses an unknown id"
+
+reset79
+out="$(g79 --list --skip integration)"; rc=$?
+assert_eq "AC-6: --list --skip exits 0" 0 "$rc"
+assert_eq "AC-6: exactly one skip: line" 1 "$(count_re 'skip:     left out by --skip' "$out")"
+assert_eq "AC-6: and it sits in integration's entry" yes \
+  "$(printf '%s\n' "$out" | awk '/^[a-z]/ { g = $1 } /skip:     left out by --skip/ { s = g } END { print (s == "integration") ? "yes" : "no (under " s ")" }')"
+assert_eq "AC-6: --list runs nothing" none "$(ran79)"
+err="$(g79err --audit --skip intgration)"; rc=$?
+assert_eq "AC-6: --audit --skip <unknown> exits 2" 2 "$rc"
+assert_contains "AC-6: and names the id" "'intgration'" "$err"
+out="$(g79 --audit --skip integration)"; rc=$?
+assert_eq "AC-6: --audit --skip <known> exits 0" 0 "$rc"
+assert_eq "AC-6: and passes the manifest audit" 1 "$(count_line 'Manifest audit passed.' "$out")"
+
+describe "HARNESS-079 AC-7: --help documents --skip and the split it exists for"
+
+out="$(g79 --help)"; rc=$?
+assert_eq "AC-7: --help exits 0" 0 "$rc"
+assert_contains "AC-7: --help shows the --skip usage line" "bash scripts/gates.sh --skip integration" "$out"
+assert_contains "AC-7: and the other half of the split" "--gate integration" "$out"
+# Not "never recorded": --fast's paragraph already says that, so it could not fail.
+assert_contains "AC-7: and says leaving out a required gate is allowed, unrecorded" "Leaving out a required gate" "$out"
+# --help prints the whole header, not a range that stops short of it.
+assert_contains "AC-7: and reaches the header's last line" "Nobody pastes it." "$out"
+
 summary "gates"

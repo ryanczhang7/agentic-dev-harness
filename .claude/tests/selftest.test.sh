@@ -529,11 +529,11 @@ while read -r n v; do
 done <<'COUNTS'
 boundaries 136
 briefs 31
-ci-local 28
+ci-local 32
 classify 55
 doctor 69
 gate-reminder 32
-gates 682
+gates 920
 grep-count 38
 host-load 72
 lib 324
