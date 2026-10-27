@@ -440,3 +440,6 @@ name, below the table.
      misbehaviour with a reproducing test; the comment items ride along.
   6. **`sigpipe.test.sh` is not changed.** The brief expected the fix to move
      its `gates.sh` pins; they are lines 82 and 734, both above the edit.
+- **Decision 1 confirmed by the user (2026-10-27), before RED:** "Keep AC-5
+  (selftest-needed.sh takes the same -z fix) and push the HARNESS-078 PLANNED
+  commit straight to main." AC-5 stays in scope as written.
