@@ -4,8 +4,8 @@ title: The pre-REVIEW self-test runs only when the diff touches a harness path
 slug: the-pre-review-self-test-runs-only-when
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-075-the-pre-review-self-test-runs-only-when
 depends_on: [HARNESS-072, HARNESS-073, HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -1224,3 +1224,8 @@ docs only and also left for that story, since it touches the step text
   rather than a silent exit 1; a committed twin of the non-ASCII case; a
   `|| fallback` on the classify pipeline; `"`/`\`/tab names recorded as
   known beside `gates.sh:991-992`; step 2's list of fallback causes.
+- **Merged as #162 (2026-10-27, `be42dc1`).** CI on the PR head: `boundaries`
+  success in 9 s; `gates` success, its "Harness self-test" step 3m05s
+  (`30 harness suite(s) passed.`, `selftest-needed: 174 passed, 0 failed`,
+  `procedure: 118 passed, 0 failed`), far inside the job's limit.
+  https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/40453045096
