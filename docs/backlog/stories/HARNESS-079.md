@@ -4,8 +4,8 @@ title: gates.sh --skip runs every gate but the named ones
 slug: gates-sh-skip-runs-every-gate-but-the-na
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-079-gates-sh-skip-runs-every-gate-but-the-na
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .github/workflows/gates.yml, .claude/skills/quality-gates/SKILL.md, .claude/harness/VERSION] # files this story expects to write; `plan.sh conflicts` reads it
@@ -391,6 +391,41 @@ come back through RED.
 
 **Negative controls:** none are measurements; nothing to calibrate.
 
+## Diff review
+
+Fresh `feature-developer` dispatch at GATES, `diff-review` skill, read-only.
+Resolved model: **opus** (the agent's own `model:`, Opus 5.5,
+`claude-opus-5-5`; no override). Report, verbatim in substance:
+
+- *Checked:* disposition order (skip after `GATE_REQ`/`reached`, before
+  ondemand and slow); lost-gate accounting does not blame a skipped gate;
+  FULLRUN/record/closing note all carry `[ -n "$SKIPS" ]`, REFUSED branches
+  unreachable; `--list` mark and `--audit` id validation before the mutation
+  check and run lock; ids `*`, `l*`, `lin?`, `[lu]nit`, `lint\r` refused, `lint`
+  accepted, prefix ids cannot match; CRLF manifests; same id twice reported
+  once; story-escalated gate skipped and unrecorded; `--help` range ends at
+  "Nobody pastes it."; pins at 93 and 773; builtins only per gate.
+- **Should fix 1.** PO decision 3 (an `ondemand` gate named by `--skip` is
+  reported once, as SKIPPED) has no test: moving the skip block below the
+  ondemand block would print `ON REQUEST` and every assertion would stay
+  green. Fix: an `ondemand` gate in F79 and one describe - a return to RED -
+  or decline with a reason.
+- *Nice to have 2.* `gate-reminder.sh:112`'s message and the comment above
+  `FULLRUN=yes` list `--fast`, `--gate`, `--required` as the partial modes and
+  not `--skip`. Behaviour correct (FULL=no blocks GATES).
+- *Nice to have 3.* `--skip` on a gate hides that gate's own manifest faults
+  (ondemand with no reason, etc.); in the documented split the `--gate` job
+  and the `--audit` step still report them.
+- Verdict: Ship.
+
+**Disposition (orchestrator, 2026-10-27).** 1 is declined: it pins a PO
+decision rather than an acceptance criterion, the combination it guards
+(`--skip` on an `ondemand` gate) is one the CI split never produces, and the
+cost is a return to RED plus a second full gates run. Recorded as a follow-up
+in `## Notes`. 2 and 3 are follow-ups too: 2 touches `gate-reminder.sh`, outside
+this story's `touches:`; 3 is covered by `--audit` in every workflow that
+uses the split.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -410,3 +445,19 @@ come back through RED.
     ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
+
+- Full self-test at GATES → REVIEW (2026-10-27): `SELFTEST_JOBS=4 bash scripts/selftest.sh`,
+  exit 0, 1845 s, last line `30 harness suite(s) passed.` (floors: 4453 executed,
+  4444 declared).
+- Release: `.claude/harness/VERSION` 97 → 98 (2026-10-27), in the REVIEW commit,
+  so the consuming project (`D:\fantasy-world-builder`) can refresh to it and split
+  its `gates.yml`.
+- Follow-ups from the diff review, not done here: (1) a test that `--skip` on an
+  `ondemand` gate reports it SKIPPED, not ON REQUEST (PO decision 3); (2)
+  `--skip` in `gate-reminder.sh:112`'s partial-run list and the comment above
+  `FULLRUN=yes`; (3) optionally, a header clause that a skipped gate's own
+  manifest faults are left to `--audit` / `--gate`.
+- Merge order with HARNESS-078: both write `scripts/gates.sh`,
+  `.claude/tests/gates.test.sh` and `.claude/tests/floors.conf`. Whichever lands
+  second rebases, re-measures the `gates` floor, and re-runs the gates for a new
+  record.
