@@ -4,8 +4,8 @@ title: selftest-needed answers run when its library or classifier fails
 slug: selftest-needed-answers-run-when-its-lib
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-077-selftest-needed-answers-run-when-its-lib
 depends_on: [HARNESS-075]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, docs/backlog/stories/HARNESS-075.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -702,6 +702,59 @@ mine to edit; flagged to the orchestrator.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Fresh `feature-developer` dispatch, `diff-review` skill, 2026-10-27.
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), declared `opus`, no
+override (GATES row of `models.conf`). Changed no file. Report, condensed to
+its checks, findings and verdict:
+
+    What this change does: selftest-needed.sh probe-loads lib.sh in a subshell
+    (stdout discarded, stderr kept) before the real source, so a library that
+    will not load answers run and shows its error; it answers run when the
+    paths.conf classify_stdin reads is missing on disk, and when the classify
+    pipeline exits non-zero. Four new blocks pin AC-1, AC-2, AC-3(a)/(b).
+
+    Checked in scratch fixtures:
+    (a) lib.sh at load time only assigns globals and calls _session_root, which
+        reads an unexported HOOK_INPUT; no traps, cd, writes or stdin. Probe and
+        real source share set -uo pipefail and the environment. exit 3,
+        return 1 and a syntax error on lib.sh line 2 each give rc 0 and the
+        pinned fallback line; the syntax error's message reaches stderr.
+    (c) RULES uses HARNESS_DIR, the variable classify_stdin reads; a consumer
+        layout and a HOOK_INPUT pointing at another worktree both agree with
+        the classifier.
+    (d) no new non-zero on the happy path: empty diff -> skip, 0 changed path(s),
+        rc 1; docs-only -> skip, rc 1.
+    (e) both new reasons sit between the pinned prefix and suffix.
+    (f) AC-3(a) removes paths.conf from the working tree only, so a check
+        against the index would go red; AC-3(b)'s fake awk is under mktemp's
+        /tmp, no ':' to split PATH on ubuntu, precondition asserted, nothing
+        before the classify line calls awk - not vacuous on CI.
+    (g) the parenthetical is in the "for example" form; needles outside it;
+        procedure: 118 passed, 0 failed.
+    (h) HARNESS-075: 6 lines added, 0 removed, after the named entry.
+    selftest-needed: 216 passed, 0 failed.
+
+    Nice to have:
+    1. A lib.sh that prints on load breaks the one-line stdout contract
+       (:63-64): the probe discards stdout, the real source does not; "echo
+       loaded" on lib.sh line 2 gives two stdout lines. Pre-existing; today's
+       lib.sh prints nothing. Fix: `. "$LIB" >/dev/null` on line 64.
+    2. The probe's comment overclaims about `exit` (:59-61): a top-level
+       `exit 0` passes the probe and the real source then ends the script with
+       rc 0 and no line. Safe direction (rc 0 = run), pre-existing. Fix: reword
+       to "a set -u trip or a non-zero exit". Comment only.
+
+    Model: Opus 5.5 (claude-opus-5-5).
+
+    Verdict: Ship.
+
+**PO disposition.** `Verdict: Ship.` - GATES → REVIEW goes on. Both Nice to
+haves are left as written: each needs a `lib.sh` this tree does not have, and
+either change would restart the review and the gate run. Recorded in
+`## Notes` for whichever story next touches those lines.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -793,3 +846,19 @@ mine to edit; flagged to the orchestrator.
   `cannot classify the changed paths: classify_stdin failed`, as RED
   predicted. AC-4 read: the header carries the `"`/`\`/tab limit and HARNESS-075's
   `## Notes` the sibling line.
+- **Known, not fixed (2026-10-27, from `## Diff review` Nice to haves 1-2).**
+  `scripts/selftest-needed.sh:64`'s real `. "$LIB"` does not redirect stdout,
+  so a `lib.sh` that prints on load adds a line to the script's one-line
+  output (fix: `. "$LIB" >/dev/null`); and the comment at `:59-61` says an
+  `exit` in the sourced file cannot end the script after the probe, which is
+  false for a top-level `exit 0` (rc 0 = `run`, no line; reword to "a `set -u`
+  trip or a non-zero `exit`"). Both pre-date this story; today's `lib.sh`
+  triggers neither.
+- **Self-test at GATES → REVIEW (2026-10-27).** `bash scripts/selftest-needed.sh`
+  answered `run` (5 harness paths against origin/main, merge-base 5d59447).
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh`, detached, alone in this
+  worktree, no orphaned run found beforehand: exit 0, 923 s.
+
+      assertion floors: all 30 suite(s) met their declared floor (4379 assertions executed, 4202 declared).
+      30 harness suite(s) passed.
+      exit=0 duration=923s
