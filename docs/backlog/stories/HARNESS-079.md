@@ -5,7 +5,7 @@ slug: gates-sh-skip-runs-every-gate-but-the-na
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-079-gates-sh-skip-runs-every-gate-but-the-na
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .github/workflows/gates.yml, .claude/skills/quality-gates/SKILL.md, .claude/harness/VERSION] # files this story expects to write; `plan.sh conflicts` reads it
@@ -194,6 +194,25 @@ AC-4's assertions on the not-recorded line and on the story file being
 unchanged **must** go red; every assertion outside AC-4 must stay green. Paste
 the red lines, the restore lines, and a green run after.
 
+*Result (GATES, 2026-10-27).* Exactly AC-4's three record assertions went red;
+the other 917 stayed green. (AC-4's FULL=no and no-CI-note assertions stay
+green under this mutant, correctly: `FULLRUN` is still `no`, which is a
+separate line.)
+
+    === mutate: scripts/gates.sh (1 line(s) changed by s/^if \[ -n "\$ONLY" \] || \[ "\$REQUIRED_ONLY" = 1 \] || \[ "\$FAST" = 1 \] || \[ -n "\$SKIPS" \]; then$/if [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ]; then/) ===
+      1224 - if [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ] || [ -n "$SKIPS" ]; then
+      1224 + if [ -n "$ONLY" ] || [ "$REQUIRED_ONLY" = 1 ] || [ "$FAST" = 1 ]; then
+    === mutate: running bash scripts/selftest.sh gates ===
+      HARNESS-079 AC-4: a --skip run is never recorded, even with a required gate left out
+        FAIL AC-4: the not-recorded line is printed, whole
+        FAIL AC-4: nothing claims to have recorded
+        FAIL AC-4: the story file is byte-for-byte unchanged
+    gates: 917 passed, 3 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/scripts_gates.sh.20261027T210034Z.883.bak) ===
+
+Green after the restore: `gates: 920 passed, 0 failed` (the GREEN run of the
+same tree, 2026-10-27).
+
 **DV-2 (the rule against a real line of the tree; AC-2). Owner: GATES.**
 The unknown-id rule is probed against this repository's own
 `.claude/harness/project.conf`, not a fixture: `bash scripts/gates.sh --list
@@ -201,6 +220,24 @@ The unknown-id rule is probed against this repository's own
 `integration` entry; then, with `mutate.sh` renaming the real
 `gate | integration` line's id to `integ`, the same command must exit 2 naming
 `'integration'`. Paste both, and the restore.
+
+*Result (GATES, 2026-10-27).* Probe command
+`o=$(bash scripts/gates.sh --list --skip integration 2>&1); rc=$?; printf "%s\n" "$o" | grep -E "^integ|skip:|error:"; echo "exit $rc"; [ $rc = 0 ]`.
+Unmutated, against the real manifest:
+
+    integration  optional  .      <unconfigured>
+                                  skip:     left out by --skip (run it with --gate integration)
+    exit 0
+
+With the real line 315 renamed by `mutate.sh`:
+
+    === mutate: .claude/harness/project.conf (1 line(s) changed by s/^gate | integration | optional/gate | integ | optional/) ===
+      315 - gate | integration | optional | . |
+      315 + gate | integ | optional | . |
+    error: --skip names no gate 'integration' in project.conf; see --list
+    exit 2
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/.claude_harness_project.conf.20261027T210024Z.1961.bak) ===
+      315: gate | integration | optional | . |
 
 ## Model guidance
 
@@ -356,9 +393,20 @@ come back through RED.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-27T21:15:31Z
+    commit: 66e9627
+    tree:   dadaf0ce5c09e1abe59638f72bd154c00dcd9687
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
