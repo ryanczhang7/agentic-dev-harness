@@ -4,8 +4,8 @@ title: gates.sh --skip runs every gate but the named ones
 slug: gates-sh-skip-runs-every-gate-but-the-na
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-079-gates-sh-skip-runs-every-gate-but-the-na
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .github/workflows/gates.yml, .claude/skills/quality-gates/SKILL.md, .claude/harness/VERSION] # files this story expects to write; `plan.sh conflicts` reads it
@@ -457,6 +457,7 @@ uses the split.
   `--skip` in `gate-reminder.sh:112`'s partial-run list and the comment above
   `FULLRUN=yes`; (3) optionally, a header clause that a skipped gate's own
   manifest faults are left to `--audit` / `--gate`.
+- Merged as #166 (c3f4d79, 2026-10-27), right after HARNESS-078 as #165; GitHub merged it without a rebase.
 - Merge order with HARNESS-078: both write `scripts/gates.sh`,
   `.claude/tests/gates.test.sh` and `.claude/tests/floors.conf`. Whichever lands
   second rebases, re-measures the `gates` floor, and re-runs the gates for a new
