@@ -5,7 +5,7 @@ slug: gates-sh-skip-runs-every-gate-but-the-na
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-079-gates-sh-skip-runs-every-gate-but-the-na
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, .claude/tests/gates.test.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .github/workflows/gates.yml, .claude/skills/quality-gates/SKILL.md, .claude/harness/VERSION] # files this story expects to write; `plan.sh conflicts` reads it
@@ -231,6 +231,9 @@ name, below the table.
   PLANNED; no success condition was set for it, so no verdict is claimed.
 - RED — no subagent dispatch: written inline by the same session, resolved:
   **opus** (Opus 5.5, `claude-opus-5-5`). Matches the `opus` row.
+- GREEN — no subagent dispatch: inline, resolved: **opus** (Opus 5.5,
+  `claude-opus-5-5`). Matches the `opus` row. Built the Contract's blocks
+  exactly; the two `sigpipe` pins landed on 93 and 773 as budgeted.
 
 ## Out of scope
 
