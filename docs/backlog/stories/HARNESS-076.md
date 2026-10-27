@@ -5,7 +5,7 @@ slug: host-load-reads-a-day-old-git-bash-run
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-076-host-load-reads-a-day-old-git-bash-run
 depends_on: [HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -205,6 +205,25 @@ RED cannot run it: the rule does not exist in RED. Paste the red lines, the
 pass/fail counts (RED predicts them in the handoff) and `mutate.sh`'s restore
 line.
 
+*Result (GATES, orchestrator, 2026-10-27).* RED's expression against the
+shipped line 82; the five two-word assertions went red, every one-word case
+(074's 54 and this story's controls) stayed green; `67 passed, 5 failed` is
+exactly RED's predicted count; restored and green again:
+
+    === mutate: scripts/host-load.sh (1 line(s) changed by s/s = cc + 1/s = cc/) ===
+      82 -       if (stc && $stc ~ /^[A-Z][a-z][a-z]$/ && $(stc + 1) ~ /^[0-9][0-9]?$/) s = cc + 1
+      82 +       if (stc && $stc ~ /^[A-Z][a-z][a-z]$/ && $(stc + 1) ~ /^[0-9][0-9]?$/) s = cc
+    === mutate: running bash scripts/selftest.sh host-load ===
+        FAIL MSYS, X at 'Oct 25' and Y at 'Oct  5': exactly X and Y are printed, in listing order, no day number in the command
+        FAIL every row of the AC-2 world at 'Oct 25': still exactly X and Y - ancestry is unaffected by the shift
+        FAIL control - D2 at 'Oct 25' with its PPID rewired to an unrelated pid IS printed, as 'bash scripts/selftest.sh' with no day number
+        FAIL every row at 'Oct 25': gates.sh --gate unit, sh selftest.sh, /usr/bin/bash a.test.sh, bash.exe under C:\Program Files - each printed with its full command
+        FAIL two foreign runs at 'Oct 25': stderr is exactly the header line and two pid lines, each command from the interpreter on
+    host-load: 67 passed, 5 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_host-load.sh.20261027T072204Z.10370.bak) ===
+
+    host-load: 72 passed, 0 failed
+
 **DV-2 (the real host). Owner: GATES.** At the top level, with no
 `HARNESS_PS_LISTING` in the environment, run
 `ps -ef | awk 'NR > 1 && $5 ~ /^[A-Z][a-z][a-z]$/'` and paste what it prints:
@@ -218,6 +237,23 @@ no such row, paste the row count and the host uptime beside `WAIVED`: the
 shape is then confirmed from the source only (`## Context`), and a day-old
 process - or a host up more than a day with a process `ps` cannot open - is
 what would produce one.
+
+*Result (GATES, orchestrator, 2026-10-27): **WAIVED** - no such row exists on
+this host today.* `HARNESS_PS_LISTING` unset in the environment; at the top
+level:
+
+    $ ps -ef | awk 'NR > 1 && $5 ~ /^[A-Z][a-z][a-z]$/'
+    (no output)
+    count: 0 of 15 rows
+    $ awk '{printf "uptime: %.1f h\n", $1/3600}' /proc/uptime
+    uptime: 15.2 h
+
+The host has been up 15.2 hours, so no process on it can be 24 hours old and
+the boot-time fallback cannot produce a two-word row either. The shape stands
+confirmed from `ps.cc` alone (`## Context`); the live check is owed by the
+first GATES run on a host up more than a day, whichever story that is. (The
+15 rows did include two foreign harness runs with one-word STIMEs, from
+`/d/clean_calendar` - the case 074 already catches.)
 
 ## Model guidance
 
@@ -456,10 +492,21 @@ UNCONFIGURED, nothing failed for a config or timeout reason;
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-27T07:23:00Z
+    commit: 7e3a5d4
+    tree:   f291f801ab0f2567d44e920dbd56908e32fa5a69
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
