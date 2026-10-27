@@ -5,7 +5,7 @@ slug: selftest-needed-answers-run-when-its-lib
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-077-selftest-needed-answers-run-when-its-lib
 depends_on: [HARNESS-075]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, docs/backlog/stories/HARNESS-075.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -719,3 +719,17 @@ mine to edit; flagged to the orchestrator.
   reasoning, checked: the mutant restores the silent exit, so the one-line
   assertion cannot stay green. For GREEN: AC-3(a)'s `paths.conf` deletion is
   tracked, so the check must test the file on disk, not the index.
+- **GREEN verified by the orchestrator (2026-10-27).** Feature-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override)
+  changed `scripts/selftest-needed.sh` (probe-load of `lib.sh` in a subshell
+  with stderr kept, then the real source; a `paths.conf`-on-disk check via
+  `${HARNESS_DIR:-...}`; `|| fallback` on the classify assignment; header
+  sentences), the step 2 parenthetical in `advance-story.md`, and one
+  sibling line in HARNESS-075's `## Notes`. `.claude/tests/` untouched; the
+  `"harness"` literal occurs once; the probe is alone on line 63, so DV-1's
+  expression applies. Orchestrator reran: `selftest-needed: 216 passed, 0
+  failed` (RED's unmutated count confirmed), and for AC-5
+  `procedure: 118 passed, 0 failed`. AC-3(b)'s reason under the fix is
+  `cannot classify the changed paths: classify_stdin failed`, as RED
+  predicted. AC-4 read: the header carries the `"`/`\`/tab limit and HARNESS-075's
+  `## Notes` the sibling line.
