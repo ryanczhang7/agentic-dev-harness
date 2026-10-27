@@ -686,6 +686,60 @@ decline both here, in writing. The candidate measurements above are not DV-1:
 they are against a scratch candidate, not the shipped file and not the real
 branch.
 
+### Return 1
+
+Written by the test-developer dispatch, RED (return from GATES), 2026-10-26.
+Model: declared `opus`, resolved to **Opus 5.5** (`claude-opus-5-5`); no
+override in the dispatch.
+
+**Command.** `bash scripts/selftest.sh selftest-needed` (34 s locally). Today:
+`selftest-needed: 154 passed, 20 failed`; the 20 reds are pasted in
+`## Regressions`, "RED evidence". Green means `174 passed, 0 failed`.
+
+**Files touched.** `.claude/tests/selftest-needed.test.sh` (64 lines added, a
+new last block before `summary`; nothing existing changed),
+`.claude/tests/floors.conf` (`selftest-needed | 139 -> 174`, plus a history
+note), `.claude/tests/selftest.test.sh` (C-3 COUNTS row `selftest-needed 174`),
+this story (`## Regressions` RED evidence, this subsection). Source untouched.
+
+**New floor: 174** (139 + 35, every new assertion unconditional), in both files.
+`bash scripts/selftest.sh selftest` after the edit: `selftest: 268 passed, 0
+failed`. `check-sigpipe.sh`: 0 findings; `check-grep-count.sh`: 0 findings.
+`gates.sh --fast`: every gate UNCONFIGURED (`BOOTSTRAPPED=no`), as before.
+
+**The four cases, what each pins, and the fix each needs** (mechanics are
+yours; these are the diff review's suggestions):
+
+| Case | AC | Pins | Fix |
+|---|---|---|---|
+| harness change (committed `scripts/x.sh`); `bash ../scripts/selftest-needed.sh` from `src/`, and `bash selftest-needed.sh` from `scripts/` | AC-1 / Contract "any directory" | exit 0, first line == the root call's `run — 1 harness path(s) ... : scripts/x.sh`, one line, empty stderr | resolve `SELF_ROOT` from `BASH_SOURCE` BEFORE `cd "$TOP"`; and fail toward `run` if `lib.sh` will not source / `classify_stdin` is missing |
+| `scripts/r.sh` on main, committed `git mv scripts/r.sh tools/r.sh` on the story branch | AC-1 (rename) | exit 0, `run — 1 harness path(s) changed against main (merge-base <main>): scripts/r.sh`, one line, empty stderr; root and `src/` | `git diff --no-renames --name-only`, so both sides are listed; `tools/r.sh` classifies `source` (precondition asserted), so the count is 1 |
+| staged `scripts/new.sh`, then `printf garbage > .git/index` | AC-3 / PO decision 3 | exit 0, first line begins `selftest-needed: run — cannot compute the diff: ` and ends `; defaulting to run`, one line; root and `src/`. Reason text and stderr NOT asserted | check the exit status of `git diff` and of `git ls-files` (both exit 128 here; `rev-parse` and `merge-base` still succeed) and `fallback "<reason>"` on either |
+| untracked `.claude/tests/project-café.test.sh` only | AC-1 (non-ASCII) | exit 0, `run — 1 harness path(s) ... : .claude/tests/project-café.test.sh` (UTF-8, unquoted), one line, empty stderr; root and `src/` | `git -c core.quotePath=false` on both `diff` and `ls-files` |
+
+Note on case 3: the precondition asserts `git diff` fails; the script must not
+reach the `skip` branch with an empty set. Note on case 1 from `scripts/`: the
+current code sources `/tmp/.claude/hooks/lib.sh` - `dirname` of a bare
+`selftest-needed.sh` is `.`, resolved against the top level after the `cd`.
+
+**Not constrained.** The fallback reason wording for case 3; how `lib.sh`
+failure is detected; whether `--no-renames` or `-M` with both columns is used,
+as long as the old path appears; `-z` vs `quotePath=false`.
+
+**Host check for case 4.** The UTF-8 name survives on this Windows/Git Bash
+host: `od -c` shows `caf 303 251`, and `git -c core.quotePath=false ls-files
+--others` prints it byte for byte while the default prints the C-quoted
+`"...caf\303\251..."`. Linux CI handles UTF-8 names natively.
+
+**Passed on arrival (15 of 35), and what earns them.** The three preconditions
+(fixture facts, not script behaviour), and the one-line / empty-stderr
+companions the defects do not reach. Every one sits in a case whose `exits 0`
+and whole-line assertions are red against the shipped file now, so each case
+was watched to fail by the real defect; no mutation needed.
+
+**Deferred verifications.** None owned by RED; DV-1 and DV-2 remain GATES'.
+Timings: all local; none from CI.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -758,6 +812,83 @@ each new case red against the current file, GREEN makes the fix (compute
 `SELF_ROOT` before the `cd` and fail toward `run` if `lib.sh` will not load;
 `--no-renames`; check both git exits; `-c core.quotePath=false`) and they go
 green. No existing assertion changes.
+
+**RED evidence (test-developer, 2026-10-26, Opus 5.5).** The four cases are in
+`.claude/tests/selftest-needed.test.sh`, a new last block before `summary`.
+Run against the shipped, unedited `scripts/selftest-needed.sh` with
+`bash scripts/selftest.sh selftest-needed` (local, Windows/Git Bash, 34 s,
+two other `gates.sh` runs on the host). Every one of the 139 pre-existing
+assertions passes; exactly 20 of the 35 new ones fail, and each red is the
+defect the diff review named - `skip`, exit 1, where `run`, exit 0 is owed:
+
+    AC-1 / Contract: called by a relative path from inside the checkout, it still answers run
+      FAIL `bash ../scripts/selftest-needed.sh` from src/ exits 0
+           expected: 0
+           actual:   1
+      FAIL `bash ../scripts/selftest-needed.sh` from src/: the first line is exactly the line the root call gives
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 14ab6a8): scripts/x.sh
+           actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base 14ab6a8); CI runs the self-test on the PR
+      FAIL `bash ../scripts/selftest-needed.sh` from src/: nothing on stderr
+           expected: 
+           actual:   ../scripts/selftest-needed.sh: line 43: cd: ../scripts/..: No such file or directory
+           ../scripts/selftest-needed.sh: line 45: /.claude/hooks/lib.sh: No such file or directory
+           ../scripts/selftest-needed.sh: line 63: classify_stdin: command not found
+      FAIL `bash selftest-needed.sh` from scripts/ exits 0
+           expected: 0
+           actual:   1
+      FAIL `bash selftest-needed.sh` from scripts/: the first line is exactly the line the root call gives
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 14ab6a8): scripts/x.sh
+           actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base 14ab6a8); CI runs the self-test on the PR
+      FAIL `bash selftest-needed.sh` from scripts/: nothing on stderr
+           expected: 
+           actual:   selftest-needed.sh: line 45: /tmp/.claude/hooks/lib.sh: No such file or directory
+           selftest-needed.sh: line 63: classify_stdin: command not found
+
+    AC-1: a renamed harness file counts under its OLD name too
+      FAIL a committed `git mv scripts/r.sh tools/r.sh` answers run and names scripts/r.sh [from root]: exits 0
+           expected: 0
+           actual:   1
+      FAIL a committed `git mv scripts/r.sh tools/r.sh` answers run and names scripts/r.sh [from root]: the first line is exactly the pinned line
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 12902f6): scripts/r.sh
+           actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base 12902f6); CI runs the self-test on the PR
+      FAIL ... [from subdir]: exits 0                                   (same expected/actual as root)
+      FAIL ... [from subdir]: the first line is exactly the pinned line (same expected/actual as root)
+
+    AC-3 / PO decision 3: when git itself fails to list the changes, it answers run
+      FAIL a corrupted index [from root]: exits 0
+           expected: 0
+           actual:   1
+      FAIL a corrupted index [from root]: the first line begins `cannot compute the diff: `
+           expected: selftest-needed: run — cannot compute the diff: 
+           actual:   selftest-needed: skip — no harness path among 0 
+      FAIL a corrupted index [from root]: the first line ends `; defaulting to run`
+           expected: ; defaulting to run
+           actual:   self-test on the PR
+      FAIL a corrupted index [from subdir]: exits 0 / begins / ends     (same expected/actual as root)
+
+    AC-1: a harness path with a non-ASCII name is seen, and named as the filesystem names it
+      FAIL an UNTRACKED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: exits 0
+           expected: 0
+           actual:   1
+      FAIL an UNTRACKED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: the first line is exactly the pinned line
+           expected: selftest-needed: run — 1 harness path(s) changed against main (merge-base 6171ebf): .claude/tests/project-café.test.sh
+           actual:   selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base 6171ebf); CI runs the self-test on the PR
+      FAIL ... [from subdir]: exits 0 / the first line ...              (same expected/actual as root)
+
+    selftest-needed: 154 passed, 20 failed
+    FAIL selftest-needed  did 154 units of work, below the floor of 174 in .claude/tests/floors.conf
+
+(The subdir lines are abbreviated here only where their expected and actual
+are byte-identical to the root line above them; the full capture is the
+command above, rerunnable.) The 15 new assertions that pass on arrival are
+the three preconditions (classify.sh calls `tools/r.sh` `source`; `git diff`
+fails on the corrupted index; the UTF-8 file exists) - which pin the fixture,
+not the script - and the companions the defect does not reach: `stdout is
+exactly one line` in every case (the wrong-way `skip` is also one line), and
+`nothing on stderr` in the rename and non-ASCII cases (the defect there is
+silent). Each sits beside a red `exits 0` and a red whole-line assertion in
+the same case, so none is satisfiable alone. No existing case's expected
+line or assertion changed (`git diff` of the suite is additions only).
 
 ## Diff review
 
@@ -961,3 +1092,11 @@ on the fix before the self-test.
   `core.quotePath=true`, so a non-ASCII source path prints C-quoted and
   misclassifies in the `covers` check. Outside this story's `touches:`; a
   candidate for its own story.
+- **RED return 1 verified by the orchestrator (2026-10-26).** Test-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override) added
+  four cases (35 assertions, 64 lines, 0 removed) to `selftest-needed.test.sh`;
+  floor 139 -> 174 in `floors.conf` and the C-3 table. Reran:
+  `selftest-needed: 154 passed, 20 failed`, the 20 exactly the new
+  exit/line/stderr assertions of the four cases, each actual a wrong-way
+  `skip`; all 139 earlier assertions green. `scripts/`, `.claude/commands/`
+  and `CLAUDE.md` untouched (`git diff --quiet HEAD`).

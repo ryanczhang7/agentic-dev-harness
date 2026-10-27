@@ -254,4 +254,68 @@ assert_eq "a \`-\`-prefixed argument exits 2" 2 "$RC"
 assert_eq "a \`-\`-prefixed argument prints nothing on stdout" 0 "$NOUT"
 assert_eq "a \`-\`-prefixed argument says why on stderr" yes "$([ -n "$ERR" ] && printf yes || printf no)"
 
+# ---------------------------------------------------------------------------
+# HARNESS-075, Return 1 (GATES -> RED, from the diff review, findings 1-4).
+# Four wrong-way skips the cases above could not see: the script called by a
+# RELATIVE path, a rename, git itself failing, and a non-ASCII name. Every
+# other case calls the script by absolute path, so these are the only ones
+# that do not.
+
+describe "AC-1 / Contract: called by a relative path from inside the checkout, it still answers run"
+
+new_fixture; story_branch
+put scripts/x.sh '#!/usr/bin/env bash'; commit_all "add x"
+REL_LINE="selftest-needed: run $D 1 harness path(s) changed against main (merge-base $(short main)): scripts/x.sh"
+for rel in "src|../scripts/selftest-needed.sh" "scripts|selftest-needed.sh"; do
+  SN="${rel#*|}"; run_sn "$d/${rel%%|*}"
+  assert_eq "\`bash $SN\` from ${rel%%|*}/ exits 0" 0 "$RC"
+  assert_eq "\`bash $SN\` from ${rel%%|*}/: the first line is exactly the line the root call gives" "$REL_LINE" "$FIRST"
+  assert_eq "\`bash $SN\` from ${rel%%|*}/: stdout is exactly one line" 1 "$NOUT"
+  assert_eq "\`bash $SN\` from ${rel%%|*}/: nothing on stderr" "" "$ERR"
+done
+
+describe "AC-1: a renamed harness file counts under its OLD name too"
+
+# tools/ is not a harness path (classify.sh calls tools/r.sh `source`), so the
+# rename's destination alone answers skip; its source, scripts/r.sh, is the
+# one harness path.
+new_fixture; SN="$d/scripts/selftest-needed.sh"
+put scripts/r.sh '#!/usr/bin/env bash'; commit_all "add r"; story_branch
+mkdir -p "$d/tools"; gitc mv scripts/r.sh tools/r.sh >/dev/null 2>&1; commit_all "move r"
+assert_eq "precondition: the rename's destination, tools/r.sh, is not a harness path in the fixture" \
+  "source" "$(cd "$d" && bash scripts/classify.sh tools/r.sh 2>/dev/null | awk -F'\t' '{ print $1 }')"
+expect "a committed \`git mv scripts/r.sh tools/r.sh\` answers run and names scripts/r.sh" 0 \
+  "selftest-needed: run $D 1 harness path(s) changed against main (merge-base $(short main)): scripts/r.sh" yes
+
+describe "AC-3 / PO decision 3: when git itself fails to list the changes, it answers run"
+
+# A staged harness file, then an index git cannot read: `git diff` and
+# `git ls-files` both fail, while rev-parse and merge-base still work. The
+# reason text between the prefix and the suffix is the implementer's.
+new_fixture; SN="$d/scripts/selftest-needed.sh"; story_branch
+put scripts/new.sh '#!/usr/bin/env bash'; gitc add scripts/new.sh >/dev/null 2>&1
+printf garbage > "$d/.git/index"
+assert_eq "precondition: \`git diff\` fails on the corrupted index" \
+  "fails" "$(gitc diff --name-only main >/dev/null 2>&1 && printf works || printf fails)"
+GF_PRE="selftest-needed: run $D cannot compute the diff: "
+GF_SUF="; defaulting to run"
+for where in root subdir; do
+  cwd="$d"; [ "$where" = subdir ] && cwd="$d/$SUBDIR"
+  run_sn "$cwd"
+  assert_eq "a corrupted index [from $where]: exits 0" 0 "$RC"
+  assert_eq "a corrupted index [from $where]: the first line begins \`cannot compute the diff: \`" "$GF_PRE" "${FIRST:0:${#GF_PRE}}"
+  assert_eq "a corrupted index [from $where]: the first line ends \`; defaulting to run\`" "$GF_SUF" \
+    "$([ "${#FIRST}" -ge "${#GF_SUF}" ] && printf '%s' "${FIRST: -${#GF_SUF}}")"
+  assert_eq "a corrupted index [from $where]: stdout is exactly one line" 1 "$NOUT"
+done
+
+describe "AC-1: a harness path with a non-ASCII name is seen, and named as the filesystem names it"
+
+new_fixture; SN="$d/scripts/selftest-needed.sh"; story_branch
+CAFE='.claude/tests/project-café.test.sh'
+put "$CAFE" 'true'
+assert_eq "precondition: the file exists under its UTF-8 name" "yes" "$([ -f "$d/$CAFE" ] && printf yes || printf no)"
+expect "an UNTRACKED $CAFE answers run and names it unquoted" 0 \
+  "selftest-needed: run $D 1 harness path(s) changed against main (merge-base $(short main)): $CAFE" yes
+
 summary "selftest-needed"
