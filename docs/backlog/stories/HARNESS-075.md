@@ -5,7 +5,7 @@ slug: the-pre-review-self-test-runs-only-when
 epic: 
 type: chore
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-075-the-pre-review-self-test-runs-only-when
 depends_on: [HARNESS-072, HARNESS-073, HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -711,6 +711,121 @@ branch.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+**Return 1: GATES → RED (2026-10-26), from the diff review.** No existing
+test is wrong; the suite is incomplete. Four wrong-way `skip`s pass every
+assertion in `selftest-needed.test.sh`, because the suite calls the script
+only by absolute path, never renames, never breaks git, and uses only ASCII
+names. Found by the fresh diff review (`## Diff review`, findings 1-4);
+findings 1-3 reproduced by the orchestrator on separate inputs:
+
+    --- 1: relative call from docs/ (this repository)
+    ../scripts/selftest-needed.sh: line 43: cd: ../scripts/..: No such file or directory
+    ../scripts/selftest-needed.sh: line 45: /.claude/hooks/lib.sh: No such file or directory
+    ../scripts/selftest-needed.sh: line 63: classify_stdin: command not found
+    selftest-needed: skip — no harness path among 9 changed path(s) against origin/main (merge-base 1282a65); CI runs the self-test on the PR
+    rc=1
+    --- 2: rename scripts/mover.sh -> tools/mover.sh (scratch fixture)
+    selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base b85adf5); CI runs the self-test on the PR
+    rc=1
+    --- 3: corrupt index with a staged harness file (scratch fixture)
+    selftest-needed: run — 1 harness path(s) changed against main (merge-base b85adf5): scripts/new.sh
+    rc(before)=0
+    selftest-needed: skip — no harness path among 0 changed path(s) against main (merge-base b85adf5); CI runs the self-test on the PR
+    rc(corrupt)=1
+
+What the suite should assert in addition (each the AC it belongs to):
+
+- AC-1 / Contract ("run from any directory inside the checkout"): the
+  script called by a RELATIVE path from a subdirectory (`cd src && bash
+  ../scripts/selftest-needed.sh`) and from `scripts/` itself (`bash
+  selftest-needed.sh`) on a harness change answers `run`, exit 0, with the
+  same pinned line as the root call.
+- AC-1 (Context: "a deleted or renamed script still counts"): a committed
+  `git mv scripts/r.sh tools/r.sh` answers `run` and names `scripts/r.sh`
+  (the rename is seen as its two paths).
+- AC-3 / PO decision 3 ("`git diff` failing ... answers `run`"): with a
+  staged harness file and a corrupted `.git/index`, it answers `run` with
+  `cannot compute the diff: ...; defaulting to run`, exit 0. The reason text
+  after `cannot compute the diff: ` is the implementer's (as for the other
+  fail-toward-run stderr, not constrained beyond the prefix and suffix).
+- AC-1: an untracked harness file with a non-ASCII name
+  (`.claude/tests/project-café.test.sh`) answers `run` and names it
+  unquoted.
+
+These fail against today's script for the right reason - the code is
+defective - so "watched to fail" is earned in the ordinary way: RED records
+each new case red against the current file, GREEN makes the fix (compute
+`SELF_ROOT` before the `cd` and fail toward `run` if `lib.sh` will not load;
+`--no-renames`; check both git exits; `-c core.quotePath=false`) and they go
+green. No existing assertion changes.
+
+## Diff review
+
+Fresh `feature-developer` dispatch, `diff-review` skill, 2026-10-26.
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), its declared `opus`, no
+override (GATES row of `models.conf`). Changed no file. Report as returned:
+
+    What this change does: adds scripts/selftest-needed.sh, which lists the
+    story's changed paths (committed, staged, unstaged, untracked, against the
+    merge base with origin/main or main) and answers run (exit 0) when
+    classify_stdin calls any of them harness, skip (exit 1) when none is, and
+    run when it cannot compute the diff. advance-story.md step 2 and
+    complete-story.md's GATES -> REVIEW bullet call it before the full
+    self-test; CLAUDE.md lists it.
+
+    Checked in scratch fixtures: a path with a space and one with " -x" (fine);
+    an empty changed set (classify_stdin drops the empty line, n and the
+    decision right); a $1 that does not resolve (falls back to run); set -u with
+    ${1-} (fine); the exported CLAUDE_PROJECT_DIR (reaches only git; nothing
+    sources this script); a consumer copy (reads that consumer's own paths.conf
+    through SELF_ROOT). selftest-needed: 139 passed, 0 failed.
+
+    Load assumed: one interactive run per story at GATES -> REVIEW.
+
+    Must fix:
+    1. Run from a subdirectory by a relative path, the script cannot load its
+       own library and answers skip (scripts/selftest-needed.sh:38-45, :63).
+       SELF_ROOT is computed after cd "$TOP", so a relative BASH_SOURCE is read
+       against the wrong directory; the source is unchecked and the failed
+       classify_stdin leaves harness empty -> skip. Case: cd docs && bash
+       ../scripts/selftest-needed.sh -> skip, exit 1; by absolute path -> run.
+       The suite's subdirectory cases call the script by absolute path. Fix:
+       compute SELF_ROOT before the cd; fail toward run if lib.sh will not load.
+    2. A renamed harness file counts only under its new name (:59-60). git
+       diff --name-only reports a rename's destination only. Case: git mv
+       scripts/helper.sh tools/helper.sh -> skip, exit 1. Fix: --no-renames.
+       gates.sh:991 does not need it (it reads only existing source paths).
+    3. When git diff or git ls-files fails, the answer is skip (:59-61). Both
+       silence stderr and nothing checks their exit. Case: staged
+       scripts/new.sh, then garbage in .git/index -> skip, 0 changed paths.
+       PO decision 3 says git diff failing answers run. Fix: check each exit,
+       fallback "git diff failed".
+
+    Should fix:
+    4. A harness file with a non-ASCII name is not seen (:59-60): default
+       core.quotePath=true prints a C-quoted path that matches no paths.conf
+       rule, so it classifies source. Case: untracked
+       .claude/tests/project-café.test.sh -> skip. Fix: git -c
+       core.quotePath=false on both; only -z removes quoting of tab, newline,
+       '"', '\'. gates.sh:991-992 has the same blind spot for source paths -
+       fix both or record it as known.
+    5. No test pins any of 1-4; each fix needs a RED case, earned by mutation
+       since the code exists. Four cases, one per finding, new_fixture style.
+
+    Not checked: a real nested worktree under .claude/worktrees/<name> (by
+    reading, both --show-toplevel and SELF_ROOT resolve to it). procedure.test.sh
+    not run; the command prose read right.
+
+    Model: Opus 5.5 (claude-opus-5-5), as the agent definition declares.
+
+    Verdict: fix 1, 2 and 3 first.
+
+**PO disposition.** 1-3 Must fix, 4 taken too (one flag, same lines, same
+RED); all four go back to RED as new cases (`## Regressions`, Return 1).
+`gates.sh:991-992`'s quoting blind spot is out of this story's `touches:`
+and recorded as known in `## Notes`, not fixed here. The review runs again
+on the fix before the self-test.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -841,3 +956,8 @@ branch.
   `scripts/selftest-needed.sh` is among the harness paths it counts (shown by
   `classify.sh --only harness` over the same enumeration, pasted beside the
   line)". Must be settled before GATES runs DV-1.
+- **Known, not fixed here (2026-10-26, from `## Diff review` finding 4).**
+  `gates.sh:991-992` lists changed paths with git's default
+  `core.quotePath=true`, so a non-ASCII source path prints C-quoted and
+  misclassifies in the `covers` check. Outside this story's `touches:`; a
+  candidate for its own story.
