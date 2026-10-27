@@ -83,7 +83,7 @@ stays empty.
   against main (merge-base <short>): <path>` line, from the fixture root and
   from `src/`. *Reproduces the bug:* today stdout is two lines and the first is
   the library's.
-- **AC-5** *(decision 1 - included pending the user's confirmation)* — Given a
+- **AC-5** *(decision 1 - confirmed by the user, 2026-10-27)* — Given a
   harness path named `.claude/tests/a"b.test.sh`, then `a\b`, then `a<TAB>b`,
   changed on the story branch, when `bash scripts/selftest-needed.sh` runs, then
   it answers `run` (exit 0) naming that path byte-for-byte, under the same host
@@ -443,3 +443,16 @@ name, below the table.
 - **Decision 1 confirmed by the user (2026-10-27), before RED:** "Keep AC-5
   (selftest-needed.sh takes the same -z fix) and push the HARNESS-078 PLANNED
   commit straight to main." AC-5 stays in scope as written.
+- **PO checks before RED (2026-10-27, orchestrator).** HARNESS-077 is DONE.
+  Verified against today's tree: `gates.sh:991-993` is the enumeration the
+  Contract quotes; the `sigpipe.test.sh` pins are `gates.sh:82` and `:734`,
+  both above it; `gates.test.sh:387` opens the `covers` block, which asserts
+  the "exercised only by optional gate" line once today;
+  `selftest-needed.sh:64` is the unredirected `. "$LIB"`, `:85`/`:87` the two
+  listings; `host-load.sh:32-34` the UID sentence; floors `gates 682`,
+  `selftest-needed 216`. AC-5's label updated from "pending" to "confirmed"
+  before this PLANNED commit (wording of the criterion unchanged). Criteria
+  testable as written; the gate holding the artifact is the harness self-test
+  (`gates`, `selftest-needed` suites); `required_gates` stays empty; no epic;
+  no changed signatures. Resolved model for this check: Fable 5.1
+  (`claude-fable-5-1`).
