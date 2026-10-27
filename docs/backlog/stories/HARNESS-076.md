@@ -330,3 +330,17 @@ name, below the table.
      such a row "shifts the command one field" (its round-2 diff review,
      Nice to have 1); correct that sentence when this story touches the
      header.
+- **PO checks before RED (2026-10-27, orchestrator).** HARNESS-074 is DONE;
+  `host-load` floor is 54 in both `floors.conf:47` and `selftest.test.sh:538`.
+  `scripts/host-load.sh` matches the Contract's reading: header loop sets
+  `cc` at line 68, requires `pc`/`ppc`/`cc` at 70, data row reads `$cc` at
+  76-81 with no STIME handling. The `listing` helper
+  (`host-load.test.sh:49-61`) prints STIME with `%8s`, not `ffmt`'s `%10s`.
+  The Contract asks for both `%10s` rendering and existing fixtures unchanged
+  byte for byte, which `12:07:33` cannot satisfy under `%10s` (two more
+  spaces). The width is not load-bearing - the awk splits on whitespace - so
+  RED keeps `%8s` for the one-word default and renders a two-word value as
+  the Contract's `    Oct 25` / `     Oct  5` strings; RED may amend that
+  Contract block in place with that reason. `ps -ef` on this host today:
+  0 rows with a two-word STIME; DV-2 stays with GATES. No epic. Resolved
+  model for this planning check: Fable 5.1 (`claude-fable-5-1`).
