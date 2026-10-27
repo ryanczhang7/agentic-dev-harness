@@ -4,8 +4,8 @@ title: Host-load reads a day-old Git Bash run
 slug: host-load-reads-a-day-old-git-bash-run
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-076-host-load-reads-a-day-old-git-bash-run
 depends_on: [HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -490,6 +490,55 @@ the whole suite as written. `bash scripts/gates.sh --fast`: every gate
 UNCONFIGURED, nothing failed for a config or timeout reason;
 `check-sigpipe.sh` and `check-grep-count.sh`: 0 findings over 56 files.
 
+## Diff review
+
+Fresh `feature-developer` dispatch, `diff-review` skill, 2026-10-27.
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), declared `opus`, no
+override (GATES row of `models.conf`). Changed no file. Report, condensed to
+its checks, finding and verdict:
+
+    What this change does: host_load_others records the STIME column; on a row
+    whose STIME is a month abbreviation and a one- or two-digit day it reads the
+    command one field later. 18 new assertions; floor 54 -> 72.
+    host-load: 72 passed, 0 failed (72 executed, 72 declared).
+
+    Checked in scratch fixtures against the shipped host-load.sh:
+    (a) the month test reads only the STIME field: a one-word-STIME row whose
+        command is "Jan 5 bash scripts/selftest.sh" is not shifted; a header with
+        no STIME column never shifts; Linux "Oct20" / "2024" never shift.
+    (b) stc is set only in the NR == 1 block; with no STIME column it stays 0
+        and the test is false on every row.
+    (c) STIME as the last header column (impossible with ps -ef): no crash,
+        same result as before the change.
+    (d) short rows ("... Oct 25", "... Oct", "... Oct 25 bash"): $s empty or
+        bare interpreter, not reported, no error.
+    (e) the boot-time fallback's two-word STIME on a SYSTEM row is handled the
+        same way: reported with its full command.
+    (f) a UID with a space whose second word is not a number is still skipped.
+    (g) the AC-1, AC-2 control, AC-3 positive and AC-4 assertions pin whole
+        outputs and were red on the 074 tree; the helper's two-word branch is
+        pinned byte for byte for both "Oct 25" and "Oct  5".
+    (h) the header comment matches the code for the STIME rule.
+
+    Nice to have:
+    1. The header's "Known limits" sentence (host-load.sh:32-33) says a UID
+       with a space is skipped by the all-digits test. For a truncated account
+       like "Ryan 123" the row passes that test and is read with PID 123 and the
+       command from the STIME field: not reported, rc 0 - misread, not skipped.
+       Behaviour is 074's and out of scope; only the wording is new. Fix:
+       "is skipped, or read with the wrong PID and command; either way it is
+       not reported". Comment only.
+
+    Not checked: a live day-old row (DV-2, waived).
+    Model: Opus 5.5 (claude-opus-5-5).
+
+    Verdict: Ship.
+
+**PO disposition.** `Verdict: Ship.` - GATES → REVIEW goes on. Nice to have 1
+is left as written: correcting it changes the tree, which restarts the review
+and the gate run for a comment no test reads. It is recorded in `## Notes`
+for whichever story next touches `host-load.sh`'s header.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -582,3 +631,20 @@ UNCONFIGURED, nothing failed for a config or timeout reason;
   as written. The Contract's "`k < NF` test" reads `k`, not `cc`, so nothing
   changed there; `k` follows `s`. shellcheck is not installed on this host,
   so the developer could not run it.
+- **Known, not fixed (2026-10-27, from `## Diff review` Nice to have 1).**
+  `scripts/host-load.sh:32-33` says a row whose UID holds a space is skipped
+  by the all-digits test. That holds only when the account's second word is
+  not a number: `Ryan 123` passes the test and is read with PID 123 and the
+  command from the STIME field - not reported either way, but misread, not
+  skipped. `## Out of scope` above makes the same claim. Reword when the
+  header is next touched: "is skipped, or read with the wrong PID and
+  command; either way it is not reported".
+- **Self-test at GATES → REVIEW (2026-10-27).** `bash scripts/selftest-needed.sh`
+  answered `run` (4 harness paths against origin/main, merge-base 825ac69) -
+  its first use at this step since HARNESS-075 shipped it.
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh`, detached, alone in this
+  worktree, no orphaned run found beforehand: exit 0, 1,354 s.
+
+      assertion floors: all 30 suite(s) met their declared floor (4337 assertions executed, 4160 declared).
+      30 harness suite(s) passed.
+      exit=0 duration=1354s
