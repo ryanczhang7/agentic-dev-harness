@@ -128,11 +128,26 @@ request.
   later step than the self-test is one "names ... after" line; one whose
   `allowed-tools` lacks the entry is one line naming the file and the entry.
 - **AC-5** — Given this repository on the story branch, when
-  `bash scripts/selftest-needed.sh` runs, then it answers `run` and names
-  `scripts/selftest-needed.sh` among the harness paths (the statement in
+  `bash scripts/selftest-needed.sh` runs, then it answers `run`, and
+  `scripts/selftest-needed.sh` is among the harness paths it counts, shown by
+  `classify.sh --only harness` over the same enumeration, pasted beside the
+  line (amended 2026-10-26, see `## Amendments`; the statement in
   `## Context` that behaviour here does not change, made checkable; pasted in
   DV-1, not asserted by a suite, because the answer depends on which branch
   the suite runs on).
+
+## Amendments
+
+- **AC-5, 2026-10-26, approved by the user in chat.** Was: "then it answers
+  `run` and names `scripts/selftest-needed.sh` among the harness paths". Now:
+  "then it answers `run`, and `scripts/selftest-needed.sh` is among the
+  harness paths it counts, shown by `classify.sh --only harness` over the same
+  enumeration, pasted beside the line". Why: the Contract pins the line to the
+  first three harness paths in `sort -u` order then `, +N more` (the suite
+  asserts it with `assert_eq`), and `.claude/` and `CLAUDE.md` sort before
+  `scripts/`, so on this branch the script is path 8 of 8 and the old wording
+  could never be observed. Found by GREEN, reproduced by the orchestrator
+  (`## Notes`, "Open: AC-5"). DV-1's first reading follows the amended AC.
 
 ## Contract
 
@@ -266,7 +281,9 @@ want-list is untouched.
 **DV-1 (defect put back; the story's central claim; AC-5; and the probe
 against the real tree). Owner: GATES.** On the story branch, with the GATES
 edits in the working tree, run `bash scripts/selftest-needed.sh` and paste
-the line: it **must** say `run` and name `scripts/selftest-needed.sh`. Then
+the line: it **must** say `run`, and `classify.sh --only harness` over the
+same enumeration, pasted beside it, **must** list `scripts/selftest-needed.sh`
+(AC-5 as amended). Then
 put the defect back - the one the story must never ship, a harness change
 judged `skip`:
 `bash scripts/mutate.sh scripts/selftest-needed.sh 's/"harness"/"docs"/' -- bash scripts/selftest.sh selftest-needed`
@@ -729,7 +746,8 @@ branch.
   DV-1's mutation targets the one `"harness"` literal, in the decision line
   `awk -F'\t' '$1 == "harness" { print $2 }'`; use `s/"harness"/"harnessX"/`
   per the correction above.
-- **Open: AC-5 as worded cannot be observed (2026-10-26), found by GREEN,
+- **Resolved (user approved the amendment, 2026-10-26; see `## Amendments`):
+  AC-5 as worded cannot be observed (2026-10-26), found by GREEN,
   reproduced by the orchestrator.** AC-5 (and DV-1's first reading) say the
   real-branch line "names `scripts/selftest-needed.sh` among the harness
   paths". The Contract pins the list to the first three paths in `sort -u`
