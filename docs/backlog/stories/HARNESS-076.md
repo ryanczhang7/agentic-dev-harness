@@ -4,8 +4,8 @@ title: Host-load reads a day-old Git Bash run
 slug: host-load-reads-a-day-old-git-bash-run
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-076-host-load-reads-a-day-old-git-bash-run
 depends_on: [HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/host-load.sh, .claude/tests/host-load.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh] # files this story expects to write; `plan.sh conflicts` reads it
@@ -648,3 +648,8 @@ for whichever story next touches `host-load.sh`'s header.
       assertion floors: all 30 suite(s) met their declared floor (4337 assertions executed, 4160 declared).
       30 harness suite(s) passed.
       exit=0 duration=1354s
+- **Merged as #163 (2026-10-27, `9ea1345`).** CI on the PR head: `boundaries`
+  success, its check step 2 s; `gates` success, its "Harness self-test" step
+  3m34s (`30 harness suite(s) passed.`, `host-load: 72 passed, 0 failed`),
+  far inside the job's 45-minute limit.
+  https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/40517913598
