@@ -4,8 +4,8 @@ title: The covers check sees every changed path by its real name, and selftest-n
 slug: the-covers-check-sees-every-changed-path
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-078-the-covers-check-sees-every-changed-path
 depends_on: [HARNESS-077]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/selftest-needed.sh, scripts/host-load.sh, .claude/tests/gates.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -785,6 +785,70 @@ numeric control. The structural controls are the pre-existing ASCII
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Fresh `feature-developer` dispatch, `diff-review` skill, 2026-10-27.
+Resolved model: **Opus 5.5** (`claude-opus-5-5`), declared `opus`, no
+override (GATES row of `models.conf`). Changed no file. Report, condensed to
+its checks, findings and verdict:
+
+    What this change does: the covers check and selftest-needed list changed
+    paths with git -z | tr, keep everything after classify_stdin's first tab,
+    and gates.sh doubles each \ in the name it puts into %b-printed $results;
+    selftest-needed discards the library's stdout on the real source.
+
+    Checked (scratch fixtures; escape fixtures written as files): (a) a\cb,
+    a\0101b, a\x41b, a\b, tail\, a\\b, a\nb, \, \\\, a%sb, a%b and a plain name
+    all print byte for byte through both %b sinks (:1066, :1202). (b) <TAB>lead,
+    a<TAB><TAB>b, trail<TAB>, a<TAB>b<TAB>c come back whole (gawk 5.4; POSIX
+    length/substr only). (c) selftest-needed: normal -> run rc 0; fake git
+    exiting 128 on diff -> run "git diff against main failed" rc 0; empty
+    branch -> skip rc 1. (e) newline split: gates.sh never checks the real
+    file; selftest-needed's harness rules are prefixes, so it leans to run.
+    (f) CI's ubuntu prints Linux; the SKIP is a bare printf no assert counts.
+    (g) a quotePath=false fix reddens AC-3 and all 24 AC-5 assertions on
+    Linux; keeping $2 reddens the tab cases; no doubling reddens the a\b line.
+    (h) comments match, but for finding 4. selftest-needed: 226 passed, 0 failed.
+
+    Should fix:
+    1. Other $results lines still send user-controlled text through %b
+       unescaped (gates.sh:734, 738, 762, 774, 783-820): waiver reasons, log
+       excerpts, the evidence regex. printf '%b|' 'expected /\bok\b/ then \c
+       never' prints backspaces and stops at \c, so every later result line
+       vanishes from the summary and ## Gate results. Pre-existing; same sink.
+       Fix (follow-up): build $results with real newlines, print with %s, and
+       drop the new doubling.
+    2. check-boundaries.sh:173-176 and lib.sh's untracked_gated (:1456-1458,
+       gated_stdin :1364) still read C-quoted names and $2. Case: a docs-only PR
+       editing docs/wiki/café.md -> listed "docs/caf\303\251.md" -> classified
+       source -> "1 source file(s) changed with no test changes" -> PR refused.
+       Fails closed. Out of scope by this story's ## Out of scope; follow-up.
+    3. No case drives selftest-needed's || fallback when git diff/ls-files
+       fails; it now depends on pipefail through the tr pipe. Works today (fake
+       git probe above). One gf_run case with a fake git; pre-existing gap.
+
+    Nice to have:
+    4. The newline-limit comment (gates.sh:991-994, selftest-needed.sh:30-31)
+       says the halves "name no file"; a half can name a real path
+       (src/core/thing.ts<NL>x -> src/core/thing.ts, counted as covered). The
+       conclusion holds. Reword: "neither of which is the file, and the file
+       itself is never checked".
+
+    Not checked: mawk, BWK awk, bash 3.2 itself; selftest.sh gates (relied on
+    the pasted results).
+    Model: Opus 5.5 (claude-opus-5-5).
+
+    Verdict: Ship.
+
+**PO disposition.** `Verdict: Ship.` - GATES → REVIEW goes on. 1 and 2 are
+outside this story's scope (its `## Out of scope` names other enumerations,
+and the `%b` sinks for non-path values predate it) and go to one follow-up
+story, proposed to the user at REVIEW; 2 is the more consequential - a
+false CI refusal of a docs-only PR. 3 is a pre-existing test gap for a path
+this story did not change in kind; it joins the same follow-up. 4 is a
+comment, left: changing it restarts the review. All four recorded in
+`## Notes`.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -914,3 +978,23 @@ numeric control. The structural controls are the pre-existing ASCII
   `quotePath=false` dropped, removing `-z` from `selftest-needed.sh` should
   also redden HARNESS-075/077's café cases on Windows, not only the 24
   Linux AC-5 reds.
+- **Known, not fixed (2026-10-27, from `## Diff review`), for one follow-up
+  story.** (1) `gates.sh`'s other `$results` lines - waiver reasons, log
+  excerpts at `:734`/`:762`, the evidence regex at `:738` - reach `printf '%b'`
+  unescaped, so a `\c` truncates the summary and `## Gate results`; the clean
+  fix is real newlines and `%s`, which also retires this story's doubling.
+  (2) `check-boundaries.sh:173-176` and `lib.sh`'s `untracked_gated`
+  (`:1456-1458`, `gated_stdin` `:1364`) still read C-quoted names and `$2`: a
+  docs-only PR touching `docs/wiki/café.md` is refused as an untested source
+  change. (3) No test drives `selftest-needed.sh`'s `|| fallback` on a failing
+  `git diff`/`ls-files`. (4) The newline-limit comments say the halves "name
+  no file"; a half can name a real path.
+- **Self-test at GATES → REVIEW (2026-10-27).** `bash scripts/selftest-needed.sh`
+  answered `run` (5 harness paths against origin/main, merge-base f81793b).
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh`, detached, alone in this
+  worktree (another session's test runs in `.claude/worktrees/jolly-brattain-aa87af`
+  shared the host - load, not an orphan here): exit 0, 2,249 s.
+
+      assertion floors: all 30 suite(s) met their declared floor (4395 assertions executed, 4202 declared).
+      30 harness suite(s) passed.
+      exit=0 duration=2249s
