@@ -430,9 +430,9 @@ uses the split.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-27T21:15:31Z
-    commit: 66e9627
-    tree:   dadaf0ce5c09e1abe59638f72bd154c00dcd9687
+    run:    2026-10-27T21:50:41Z
+    commit: b9fc587
+    tree:   e75ceaad660569e115f99385df4e4fd3c954a21d
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
