@@ -4,7 +4,8 @@
 #   bash scripts/selftest-needed.sh [base-ref]
 #
 #   exit 0  run   - a changed path is one `classify.sh` calls `harness`, or the
-#                   diff could not be computed (when in doubt, run)
+#                   diff could not be computed, or `lib.sh` could not be loaded
+#                   (when in doubt, run)
 #   exit 1  skip  - no changed path is `harness`; CI still runs the self-test
 #   exit 2  usage
 #
@@ -18,8 +19,11 @@
 # `gates.sh`: base = first of origin/main, main that resolves; changes against
 # `git merge-base <base> HEAD`, committed or not, plus untracked files. It is
 # duplicated rather than shared because `sigpipe.test.sh` pins `gates.sh` line
-# numbers. One deliberate difference: with no merge base, `gates.sh` falls back
-# to the base itself, and this answers `run`.
+# numbers. Deliberate differences: with no merge base, `gates.sh` falls back
+# to the base itself, and this answers `run`; a failing `git diff` or
+# `git ls-files` answers `run` rather than an empty set; a rename counts under
+# both names (`--no-renames`); and a non-ASCII name is listed unquoted
+# (`core.quotePath=false`).
 
 set -uo pipefail
 
@@ -36,13 +40,19 @@ fallback() {
   exit 0
 }
 
+# Resolved before the `cd` below: BASH_SOURCE may be relative to the caller's
+# directory (`bash ../scripts/selftest-needed.sh`).
+SELF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)" \
+  || fallback "cannot locate the harness this script belongs to"
+
 TOP="$(git rev-parse --show-toplevel 2>/dev/null)" || fallback "not a git checkout"
 [ -n "$TOP" ] || fallback "not a git checkout"
 cd "$TOP" || fallback "not a git checkout"
 
-SELF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export CLAUDE_PROJECT_DIR="$SELF_ROOT"
-. "$SELF_ROOT/.claude/hooks/lib.sh"
+LIB="$SELF_ROOT/.claude/hooks/lib.sh"
+{ [ -f "$LIB" ] && . "$LIB"; } 2>/dev/null || fallback "cannot load $LIB"
+declare -F classify_stdin >/dev/null || fallback "$LIB defines no classify_stdin"
 
 base="${1-}"
 if [ -z "$base" ]; then
@@ -56,8 +66,13 @@ mb="$(git merge-base "$base" HEAD 2>/dev/null)" && [ -n "$mb" ] \
   || fallback "no merge base with $base"
 short="$(git rev-parse --short "$mb" 2>/dev/null)"
 
-changed="$( { git diff --name-only "$mb" 2>/dev/null
-              git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)"
+# --no-renames lists both sides of a rename; quotePath=false names a non-ASCII
+# path as the filesystem does, not C-quoted.
+tracked="$(git -c core.quotePath=false diff --no-renames --name-only "$mb" 2>/dev/null)" \
+  || fallback "git diff against $base failed"
+untracked="$(git -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null)" \
+  || fallback "git ls-files failed"
+changed="$(printf '%s\n%s\n' "$tracked" "$untracked" | awk 'length' | sort -u)"
 n=0; [ -n "$changed" ] && n="$(printf '%s\n' "$changed" | awk 'END { print NR }')"
 
 harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harness" { print $2 }')"

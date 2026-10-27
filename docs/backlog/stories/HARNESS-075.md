@@ -5,7 +5,7 @@ slug: the-pre-review-self-test-runs-only-when
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-075-the-pre-review-self-test-runs-only-when
 depends_on: [HARNESS-072, HARNESS-073, HARNESS-074]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/tests/procedure.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, CLAUDE.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -1100,3 +1100,20 @@ on the fix before the self-test.
   exit/line/stderr assertions of the four cases, each actual a wrong-way
   `skip`; all 139 earlier assertions green. `scripts/`, `.claude/commands/`
   and `CLAUDE.md` untouched (`git diff --quiet HEAD`).
+- **GREEN after return 1, verified by the orchestrator (2026-10-26).**
+  Feature-developer (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`,
+  no override) changed only `scripts/selftest-needed.sh`: `SELF_ROOT`
+  resolved before the `cd`, `lib.sh` loaded through a guard that answers
+  `run`, `--no-renames` and `core.quotePath=false` on both listings, each
+  listing's exit checked with a `fallback`. Orchestrator reran: the suite
+  `174 assertions executed, 174 declared`, `1 harness suite(s) passed`; the
+  relative calls `cd docs && bash ../scripts/selftest-needed.sh` and
+  `cd scripts && bash selftest-needed.sh` both answer `run`, exit 0, on this
+  branch. Two things for the re-review to judge: (a) the `lib.sh` guard
+  (`cannot load ...` / `defines no classify_stdin`) is reached by no test -
+  defensive, toward `run`; (b) a failure inside the `classify_stdin | awk`
+  pipeline still yields an empty `harness` and so `skip` - untested and
+  unfixed, left rather than adding production code no failing test demanded.
+  The developer made two of its edits with `sed -i` (source is writable in
+  GREEN; no lock refusal was involved) and removed the `.none` backup it left;
+  `git status` shows only the script and this story.
