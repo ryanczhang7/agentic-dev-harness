@@ -4,8 +4,8 @@ title: selftest-needed answers run when its library or classifier fails
 slug: selftest-needed-answers-run-when-its-lib
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-077-selftest-needed-answers-run-when-its-lib
 depends_on: [HARNESS-075]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/commands/advance-story.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, docs/backlog/stories/HARNESS-075.md] # files this story expects to write; `plan.sh conflicts` reads it
@@ -316,8 +316,11 @@ the Contract's shape, something like
 `bash scripts/mutate.sh scripts/selftest-needed.sh 's/^( \. "\$LIB" ) >\/dev\/null || fallback/{ . "$LIB"; } 2>\/dev\/null \&\& true || fallback/' -- bash scripts/selftest.sh selftest-needed`;
 GATES writes the expression it actually ran and shows the changed line). The
 AC-1 case **must** go red on its `exits 0`, first-line and stderr assertions
-in both runs (predicted: up to 8 red, 2 runs x 4; the one-line assertion may
-stay green, since empty stdout is 0 lines and will not), and every other case
+in both runs (predicted: **12 red** - corrected in RED, 2026-10-27: the
+mutant is today's line, which exits silently, so stdout is 0 lines and the
+one-line assertion goes red too, the same 6 per run RED measured; the "up to
+8" first written here would hold only for a different mutant that drops the
+probe but keeps an unredirected `. "$LIB"`), and every other case
 - AC-2, AC-3(a), AC-3(b), all 174 of HARNESS-075 - **must** stay green. Paste
 the red lines, `mutate.sh`'s restore lines, and a green run after the restore.
 RED cannot run this: in RED the fix does not exist, and the case is red
@@ -392,6 +395,23 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One level: integration, the fixture's real copy of `scripts/selftest-needed.sh`
+run in a throwaway `make_project_fixture` repository, as every other case in
+`.claude/tests/selftest-needed.test.sh`. Four new `describe` blocks after
+HARNESS-075's Return 1, before `summary`, each run from the fixture root and
+from `src/`. Every assertion is unconditional: 42 new, 216 executed red or
+green.
+
+| Block | Fixture | Assertions | AC |
+|---|---|---|---|
+| `HARNESS-077 AC-1` | committed `scripts/x.sh`; the fixture's `lib.sh` gets `echo "$NOPE_UNSET"` as line 2 (awk rewrite of the copy) | precondition (sourcing it under `set -u` in a subshell fails) + per run: exit 0, `GF_PRE` prefix, `GF_SUF` suffix, one line, stderr non-empty, stderr contains `NOPE_UNSET` = 13 | AC-1 |
+| `HARNESS-077 AC-2` | committed `$CAFE` only | precondition (file exists), precondition (`diff --name-only main HEAD` with quotePath=false is exactly `$CAFE`, and `status --porcelain` is empty) + `expect` (exit 0, whole line by `assert_eq`, one line, empty stderr) x 2 = 10 | AC-2 |
+| `HARNESS-077 AC-3(a)` | committed `scripts/x.sh`; `rm` the fixture's `paths.conf` | precondition (file gone), precondition (`classify.sh scripts/x.sh` says `source`) + per run: exit 0, prefix, suffix, one line = 10 | AC-3(a) |
+| `HARNESS-077 AC-3(b)` | committed `scripts/x.sh`; `$WORK/fakebin/awk` = `exit 2`, first on PATH for the script's invocation only | precondition (the fake exits 2) + per run: exit 0, prefix, suffix, one line = 9 | AC-3(b) |
+
+AC-4 and AC-5 have no test here, by the story's partition (read by eye; AC-5's
+needles are `procedure.test.sh`'s).
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -411,6 +431,202 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written 2026-10-27 by `test-developer`, model **Opus 5.5**
+(`claude-opus-5-5`, the agent's own `model:`; no override visible to this
+dispatch).
+
+**Command.**
+
+    bash scripts/selftest.sh selftest-needed
+
+(direct, without the floor check: `bash .claude/tests/selftest-needed.test.sh`).
+About 50 s on this host.
+
+**RED output** (against the shipped HARNESS-075 `scripts/selftest-needed.sh`,
+unchanged; every pre-existing case green):
+
+    HARNESS-077 AC-1: a lib.sh that trips `set -u` when sourced answers run, and its error reaches stderr
+      FAIL a lib.sh with an unbound variable on line 2 [from root]: exits 0
+           expected: 0
+           actual:   1
+      FAIL a lib.sh with an unbound variable on line 2 [from root]: the first line begins `cannot compute the diff: `
+           expected: selftest-needed: run — cannot compute the diff: 
+           actual:   
+      FAIL a lib.sh with an unbound variable on line 2 [from root]: the first line ends `; defaulting to run`
+           expected: ; defaulting to run
+           actual:   
+      FAIL a lib.sh with an unbound variable on line 2 [from root]: stdout is exactly one line
+           expected: 1
+           actual:   0
+      FAIL a lib.sh with an unbound variable on line 2 [from root]: stderr is not empty
+           expected: non-empty
+           actual:   empty
+      FAIL a lib.sh with an unbound variable on line 2 [from root]: stderr names the unbound variable
+           expected to contain: NOPE_UNSET
+           actual:               
+      (the same six, [from subdir])
+
+    HARNESS-077 AC-2: a COMMITTED harness path with a non-ASCII name is seen, and named unquoted
+
+    HARNESS-077 AC-3(a): with paths.conf missing, a harness change answers run, not a misfiled skip
+      FAIL paths.conf missing [from root]: exits 0
+           expected: 0
+           actual:   1
+      FAIL paths.conf missing [from root]: the first line begins `cannot compute the diff: `
+           expected: selftest-needed: run — cannot compute the diff: 
+           actual:   selftest-needed: skip — no harness path among 2 
+      FAIL paths.conf missing [from root]: the first line ends `; defaulting to run`
+           expected: ; defaulting to run
+           actual:   self-test on the PR
+      (the same three, [from subdir])
+
+    HARNESS-077 AC-3(b): a classify pipeline that exits non-zero answers run, not skip
+      FAIL an awk that exits 2 [from root]: exits 0
+           expected: 0
+           actual:   1
+      FAIL an awk that exits 2 [from root]: the first line begins `cannot compute the diff: `
+           expected: selftest-needed: run — cannot compute the diff: 
+           actual:   selftest-needed: skip — no harness path among 0 
+      FAIL an awk that exits 2 [from root]: the first line ends `; defaulting to run`
+           expected: ; defaulting to run
+           actual:   self-test on the PR
+      (the same three, [from subdir])
+
+    selftest-needed: 192 passed, 24 failed
+    FAIL selftest-needed  did 192 units of work, below the floor of 216 in .claude/tests/floors.conf
+
+    assertion floors: 0 of 1 suite(s) met their declared floor.
+    1 of 1 harness suite(s) FAILED.
+
+**Why each is the right failure.**
+
+- AC-1: exit 1, empty stdout, empty stderr - exactly the silent exit the
+  Context reproduces (line 54's guarded source dies on `set -u`, and the
+  `2>/dev/null` swallows the message). The precondition is green, so the lib
+  really does fail to load; nothing else in the fixture differs from the
+  green `scripts/x.sh` case at the top of the suite.
+- AC-3(a): `skip ... among 2 changed path(s)` - `scripts/x.sh` and the
+  deleted `paths.conf`, both counted and misfiled `source` because
+  `classify_stdin` reads zero rules. Both preconditions are green.
+- AC-3(b): `skip ... among 0 changed path(s)` - the fake awk empties
+  `changed` on line 75 and the unguarded classify line 78 yields an empty
+  `harness`. Checked first that today's script does not crash into `run`
+  before the decision line: `lib.sh` calls no awk at source time when
+  `HOOK_INPUT` is unset (`_session_root` returns at its first `case`), so the
+  load succeeds and the script reaches the skip line.
+- The one-line companions of AC-3 (a)/(b) pass today (the skip line is one
+  line); they are paired with the red exit/prefix/suffix assertions.
+
+**Files touched.**
+
+- `.claude/tests/selftest-needed.test.sh` - additions only: helpers `gf_run`
+  (`<cwd> [VAR=value...]`, runs `env VAR=value... bash "$SN"` from `<cwd>`,
+  sets `RC`/`FIRST`/`NOUT`/`ERR` as `run_sn` does) and `gf_assert`, then the
+  four blocks in `## Test plan`.
+- `.claude/tests/floors.conf` - `selftest-needed | 174 -> 216`, history line
+  in the footer.
+- `.claude/tests/selftest.test.sh` - C-3 COUNTS row `selftest-needed 216`.
+- This story: `## Test plan`, this handoff.
+
+**What the tests pin about the script** (no exports; a CLI):
+
+- AC-1 / AC-3 (a) / (b): exit 0; first stdout line begins
+  `selftest-needed: run — cannot compute the diff: ` and ends
+  `; defaulting to run`; exactly one stdout line. AC-1 additionally: stderr
+  non-empty and containing `NOPE_UNSET` (so the load error must reach
+  stderr; the probe's stderr must not be discarded).
+- AC-2: the whole line, exactly, and empty stderr.
+- Not pinned, GREEN's choice: the reason text between prefix and suffix (the
+  Contract's `cannot load <LIB>` / `cannot classify the changed paths: ...`
+  are suggestions); the exact wording on stderr beyond the variable name;
+  stderr content in AC-3 (a)/(b); whether the other `awk` calls are guarded;
+  how the `paths.conf` path is spelled, provided it is the file
+  `classify_stdin` reads (the fixture's own, since `CLAUDE_PROJECT_DIR` is
+  `SELF_ROOT`).
+- Note for GREEN: in AC-3(a) the fixture still has a git-tracked deletion of
+  `paths.conf`; a fix that checks for the file must check the filesystem, not
+  the index. In AC-3(b) the fake awk is first on PATH for the whole script, so
+  every awk call fails, including in `lib.sh`'s probe-load only if that probe
+  ran awk (it does not today).
+
+**AC-3(b)'s reason.** Today: `skip — no harness path among 0 changed path(s)`.
+Under the Contract's fix: the probe-load passes (no awk at source time), the
+`paths.conf` check passes, lines 75/76 run their broken awk unguarded
+(`changed` empty, `n=0`), and the guarded classify line fails, so the reason
+should be `cannot classify the changed paths: classify_stdin failed`. A fix
+that guards line 75 too would give that line's reason instead; either is in
+the pinned shape.
+
+**Passed on arrival, and what earns each.**
+
+| Assertion(s) | Why green today | Earned by |
+|---|---|---|
+| AC-2 x 8 (exit, whole line, one line, empty stderr, two runs) | the flag is already on the `git diff` line | DV-2 (GATES): predicted 4 red - `exits 0` and the whole-line assertion, both runs, `actual:` `selftest-needed: skip — no harness path among 1 changed path(s) against main ...`; one-line and stderr stay green; the untracked café case stays green |
+| AC-2 two preconditions | fixture facts | they guard the case (a fixture whose commit lost the name would make the case meaningless) |
+| AC-1 precondition, AC-3(a) two, AC-3(b) one | fixture facts | paired with the red assertions in the same block |
+| AC-3 (a)/(b) one-line x 4 | the skip line is one line | paired with the red exit/prefix/suffix in the same run |
+
+**UTF-8 name on this host, committed side** (checked outside the suite, a
+scratch repo with the same name committed):
+
+    $ git -c core.quotePath=false log --name-only --format= | od -c
+    0000000   .   c   l   a   u   d   e   /   t   e   s   t   s   /   p   r
+    0000020   o   j   e   c   t   -   c   a   f 303 251   .   t   e   s   t
+    0000040   .   s   h  \n
+    $ git log --name-only --format=
+    ".claude/tests/project-caf\303\251.test.sh"
+
+So the name survives the commit (`303 251` is `é`), and without the flag git
+C-quotes it - the quoted form starts with `"`, matches no `harness` rule, and
+is the `skip` DV-2 predicts. The suite's AC-2 precondition asserts the same
+on the fixture.
+
+**Predicted counts for the deferred verifications.**
+
+| DV | Mutation | Predicted red | Must stay green |
+|---|---|---|---|
+| DV-1 | put back HARNESS-075's `{ [ -f "$LIB" ] && . "$LIB"; } 2>/dev/null \|\| fallback` | **12**, not "up to 8": AC-1's six per run (exit, prefix, suffix, one line, stderr non-empty, stderr names `NOPE_UNSET`) x 2 - exactly today's red set above, since the mutant is today's line. The one-line assertion does go red (0 lines != 1); the Deferred verifications text predicts it may stay green, which is wrong | AC-1 precondition, AC-2, AC-3 (a)/(b), all 174 earlier |
+| DV-2 | `/diff --no-renames/s/ -c core.quotePath=false//` | 4 (AC-2 exit + whole line, both runs) | untracked café case, everything else |
+
+For DV-1 to apply with one `mutate.sh` expression, GREEN should keep the
+probe-load on one line of its own that names `"$LIB"` and ends
+`|| fallback ...`, e.g. the Contract's `( . "$LIB" ) >/dev/null || fallback
+"cannot load $LIB"`, so GATES can rewrite that line back to the guarded,
+stderr-silenced direct source. Note that deleting only the probe line (leaving
+the unredirected `. "$LIB"` after it) is a different mutant: exit 1, empty
+stdout, but stderr carries the `NOPE_UNSET` message, so 8 red (exit, prefix,
+suffix, one line, x 2), not 12. GATES should write the expression it ran.
+
+**Declined.** DV-1 and DV-2 are owned by GATES and I did not run them: in RED
+the fix does not exist, so DV-1's mutant is the shipped file itself (its red is
+the RED output above), and DV-2's mutation is the only thing that earns AC-2's
+case. The counts above are predictions, not measurements.
+
+**Mechanisms checked (the brief's, probed).**
+
+- `sed -i` on the fixture's `lib.sh`: not used. The tree's portability
+  hygiene flags GNU-only `sed -i` in shipped suites, so the line is inserted
+  with an awk rewrite of the copy (the Contract allows either).
+- Fake awk: works, but only from a PATH entry without a `:`. A Windows-form
+  directory (`C:/...`) is split by PATH at the drive colon and the real awk
+  is found (measured: `rc=0`, `command -v awk` = `/usr/bin/awk`). `$WORK` is
+  `mktemp -d`'s POSIX path (`/tmp/...`), so the suite's fake is found
+  (measured: `rc=2`); the precondition guards this.
+
+**Other runs at the end of RED.**
+
+- `bash scripts/selftest.sh selftest`: `selftest: 268 passed, 0 failed`, floor
+  met (the COUNTS row edit is consistent).
+- `bash scripts/check-sigpipe.sh`: 56 files, 0 findings;
+  `bash scripts/check-grep-count.sh`: 56 files, 0 findings.
+- `bash scripts/gates.sh --fast`: every gate UNCONFIGURED (BOOTSTRAPPED=no),
+  "All required gates passed (0 ran, 5 unconfigured, 0 known)"; nothing
+  tripped by the test file.
+
+**Contract amendments.** None. One correction to `## Deferred verifications`
+DV-1's predicted count (12, see table), which is not a Contract block and not
+mine to edit; flagged to the orchestrator.
 
 ## Regressions
 
@@ -491,3 +707,15 @@ name, below the table.
   testable as written; the gate holding the artifact is the harness self-test;
   `required_gates` stays empty; no epic; no changed signatures. Resolved
   model for this check: Fable 5.1 (`claude-fable-5-1`).
+- **RED verified by the orchestrator (2026-10-27).** Test-developer
+  (resolved: Opus 5.5, `claude-opus-5-5`, declared `opus`, no override)
+  added four cases (42 assertions, 90 lines, 0 removed) to
+  `selftest-needed.test.sh`; floor 174 -> 216 in `floors.conf` and the C-3
+  table. Reran: `selftest-needed: 192 passed, 24 failed` - AC-1 12 red (exit
+  1, no stdout, no stderr: the silent exit), AC-3(a) 6 red and AC-3(b) 6 red
+  (each a `skip` where `run` is owed); AC-2 passes on arrival, owed to DV-2;
+  all 174 earlier assertions green. `scripts/` and `.claude/commands/`
+  untouched. DV-1's prediction corrected from "up to 8" to 12 on RED's
+  reasoning, checked: the mutant restores the silent exit, so the one-line
+  assertion cannot stay green. For GREEN: AC-3(a)'s `paths.conf` deletion is
+  tracked, so the check must test the file on disk, not the index.

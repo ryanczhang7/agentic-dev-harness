@@ -550,7 +550,7 @@ reporting 27
 run-lock 140
 security-audit 51
 selftest 268
-selftest-needed 174
+selftest-needed 216
 settings 70
 shipped-docs 14
 sigpipe 91
