@@ -5,7 +5,7 @@ slug: the-covers-check-sees-every-changed-path
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-078-the-covers-check-sees-every-changed-path
 depends_on: [HARNESS-077]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/gates.sh, scripts/selftest-needed.sh, scripts/host-load.sh, .claude/tests/gates.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -288,6 +288,28 @@ No code change, no test. `host-load.test.sh` does not read the header.
   `bash scripts/mutate.sh scripts/gates.sh 's/ diff -z --name-only/ diff --name-only/;s/ ls-files -z --others/ ls-files --others/' -- bash .claude/tests/gates.test.sh`
   (adjust the expression to what GREEN wrote, and say so), compare the failure
   count with RED's handoff, confirm green after the restore. **Owner: GATES.**
+
+  *Result (GATES, orchestrator, 2026-10-27, this host).* The expression as
+  written applied unchanged to GREEN's lines 995-996. Exactly the 4 AC-1/AC-2
+  assertions went red - RED's predicted count for this host - and every
+  pre-existing `covers` assertion stayed green; AC-3 printed its SKIP line;
+  restored and green:
+
+      === mutate: scripts/gates.sh (2 line(s) changed by s/ diff -z --name-only/ diff --name-only/;s/ ls-files -z --others/ ls-files --others/) ===
+        995 -     changed="$( { git -C "$ROOT" diff -z --name-only "$mb" 2>/dev/null
+        996 -                   git -C "$ROOT" ls-files -z --others --exclude-standard 2>/dev/null; } \
+        995 +     changed="$( { git -C "$ROOT" diff --name-only "$mb" 2>/dev/null
+        996 +                   git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null; } \
+      === mutate: running bash scripts/selftest.sh gates ===
+          FAIL AC-1: an UNTRACKED src/render/café.ts that only an optional gate reads FAILs, named unquoted
+          FAIL AC-1: and the run fails
+          FAIL AC-1: and the run does not claim all required gates passed
+          FAIL AC-2: a COMMITTED src/shaders/café.glsl no covers line claims WARNs, named unquoted
+          SKIP covers AC-3 (HARNESS-078 decision 3): ... not run on MINGW64_NT-10.0-26200 ...
+      gates: 852 passed, 4 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261027T202859Z.1745.bak) ===
+
+      gates: 856 passed, 0 failed
 - **DV-2 - the POSIX-only cases (AC-3, AC-5) watched failing.** These cannot
   run on this host at all (decision 3), so their RED failure is never observed
   here. At GATES, if `wsl.exe -e uname -s` prints `Linux` (WSL is present on
@@ -298,6 +320,45 @@ No code change, no test. `host-load.test.sh` does not read the header.
   the observed GREEN of those cases - which also catches a GREEN that used
   `core.quotePath=false` instead of `-z`, the one wrong fix AC-1/AC-2 cannot.
   **Owner: GATES.**
+
+  *Result (GATES, orchestrator, 2026-10-27, WSL).* Run, not waived:
+  `wsl.exe` runs Ubuntu here (`Linux 6.18.54.1-microsoft-standard-WSL2
+  x86_64`, git 2.43.0). A throwaway clone of the committed branch at
+  `4d3aef4`, clean; both mutations through that clone's `mutate.sh`, each
+  restored and verified; then both suites green. The `selftest-needed.sh`
+  expression is against GREEN's `:88`/`:90`, not the planned `:85`/`:87`.
+  `gates`: 10 red - AC-1 x3, AC-2 x1 and AC-3's three names x2 - RED's
+  Linux prediction. `selftest-needed`: 32 red - the 24 AC-5 assertions plus
+  8 from HARNESS-075/077's café cases, which now depend on `-z` because GREEN
+  dropped `core.quotePath=false` (predicted in GREEN's note). That the AC-3
+  and AC-5 names go red without `-z` is what distinguishes it from a
+  `quotePath=false` fix. Abridged to the lines that name a case (the full
+  log is the session's scratchpad `wsl-dv2.log`):
+
+      Linux 6.18.54.1-microsoft-standard-WSL2 x86_64
+      git version 2.43.0
+      4d3aef4 HARNESS-078 GREEN: the covers check and selftest-needed read paths NUL-separated, whole and unescaped
+      ##### gates.sh: -z removed
+      === mutate: scripts/gates.sh (2 line(s) changed by s/ diff -z --name-only/ diff --name-only/;s/ ls-files -z --others/ ls-files --others/) ===
+          FAIL AC-1: an UNTRACKED src/render/café.ts that only an optional gate reads FAILs, named unquoted
+          FAIL AC-2: a COMMITTED src/shaders/café.glsl no covers line claims WARNs, named unquoted
+          FAIL AC-3: an UNTRACKED src/render/a"b.ts that only an optional gate reads FAILs, named byte for byte
+          FAIL AC-3: an UNTRACKED src/render/a\b.ts that only an optional gate reads FAILs, named byte for byte
+          FAIL AC-3: an UNTRACKED src/render/a<TAB>b.ts that only an optional gate reads FAILs, named byte for byte
+      gates: 855 passed, 10 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /tmp/h78dv2.mDe10b/r/.claude/state/mutations/scripts_gates.sh.20261027T202903Z.384.bak) ===
+      ##### selftest-needed.sh: -z removed
+      === mutate: scripts/selftest-needed.sh (2 line(s) changed by s/ diff -z --no-renames/ diff --no-renames/;s/ ls-files -z --others/ ls-files --others/) ===
+          FAIL an UNTRACKED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: exits 0
+          FAIL a COMMITTED .claude/tests/project-café.test.sh answers run and names it unquoted [from root]: exits 0
+          FAIL an UNTRACKED .claude/tests/a"b.test.sh answers run and names it byte for byte [from root]: exits 0
+          FAIL a COMMITTED .claude/tests/a\b.test.sh answers run and names it byte for byte [from root]: exits 0
+          FAIL an UNTRACKED .claude/tests/a<TAB>b.test.sh answers run and names it byte for byte [from root]: exits 0
+      selftest-needed: 248 passed, 32 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /tmp/h78dv2.mDe10b/r/.claude/state/mutations/scripts_selftest-needed.sh.20261027T202926Z.19028.bak) ===
+      ##### restored, both suites
+      gates: 865 passed, 0 failed
+      selftest-needed: 280 passed, 0 failed
 
 AC-4's test fails in RED on this host against the unfixed script, so it is
 earned in RED; no mutation is owed for a test written against existing code.
@@ -726,10 +787,21 @@ numeric control. The structural controls are the pre-existing ASCII
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-27T20:41:25Z
+    commit: 4d3aef4
+    tree:   ea25a91b2a7c65d668c6ba888f2922178c6c750d
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
