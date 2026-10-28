@@ -5,7 +5,7 @@ slug: the-shipped-manifest-audit-passes-in-a-p
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GATES
 branch: story/HARNESS-080-the-shipped-manifest-audit-passes-in-a-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/harness/VERSION] # files this story expects to write; `plan.sh conflicts` reads it
@@ -350,3 +350,7 @@ were run directly by the orchestrating session, which resolved to
 the middle of a consumer refresh, as HARNESS-070 was, with the diagnosis and a
 reproduction already in hand. Success condition: DV-1 and DV-2 come out as
 stated; if either does not, the story goes back to planning with `lead-po`.
+
+**GREEN (orchestrator, 2026-10-27): a verified no-op.** No production file
+changes; the one non-test change is `.claude/harness/VERSION`, 98 -> 99.
+`git diff --stat origin/main` names only the test, the story and VERSION.
