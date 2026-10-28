@@ -4,8 +4,8 @@ title: The shipped-manifest audit passes in a project whose gates run in a subdi
 slug: the-shipped-manifest-audit-passes-in-a-p
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-080-the-shipped-manifest-audit-passes-in-a-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/harness/VERSION] # files this story expects to write; `plan.sh conflicts` reads it
@@ -371,3 +371,6 @@ changes; the one non-test change is `.claude/harness/VERSION`, 98 -> 99.
 
     assertion floors: all 30 suite(s) met their declared floor (4474 assertions executed, 4444 declared).
     30 harness suite(s) passed.
+
+**DONE (2026-10-28).** Merged as #167 (97d2efe), release 99.
+fantasy-world-builder refreshes to 99 in place of its held release-98 refresh.
