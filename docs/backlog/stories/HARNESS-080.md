@@ -4,8 +4,8 @@ title: The shipped-manifest audit passes in a project whose gates run in a subdi
 slug: the-shipped-manifest-audit-passes-in-a-p
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-080-the-shipped-manifest-audit-passes-in-a-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/harness/VERSION] # files this story expects to write; `plan.sh conflicts` reads it
@@ -309,10 +309,21 @@ No production file changes, so GREEN is a verified no-op.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-28T04:11:06Z
+    commit: 97a40f3
+    tree:   fdb018defe8f948c6925a68dc4c751184e44f85b
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -354,3 +365,9 @@ stated; if either does not, the story goes back to planning with `lead-po`.
 **GREEN (orchestrator, 2026-10-27): a verified no-op.** No production file
 changes; the one non-test change is `.claude/harness/VERSION`, 98 -> 99.
 `git diff --stat origin/main` names only the test, the story and VERSION.
+
+**Full self-test at GATES (2026-10-27, this worktree at 97a40f3,
+`SELFTEST_JOBS=4`), 1,664 s:**
+
+    assertion floors: all 30 suite(s) met their declared floor (4474 assertions executed, 4444 declared).
+    30 harness suite(s) passed.
