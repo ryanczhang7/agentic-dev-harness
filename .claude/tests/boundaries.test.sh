@@ -1981,4 +1981,389 @@ run_boundaries
 assert_not_contains "a story with no touches: key is not refused for lacking one" \
   "touches" "$out"
 
+# ---------------------------------------------------------------------------
+describe "GREEN and GATES add no suppression to source (HARNESS-081): the fixture"
+
+# Issue #132. The lock freezes tests in GREEN and GATES, and 3i reads what RED
+# puts in a manifest; nothing read what GREEN and GATES ADD to source, and the
+# cheapest way to make a lint, type or coverage gate stop complaining is a
+# one-line directive that silences the tool. Block 3j walks every GREEN and
+# GATES commit, as 3i walks RED ones, and refuses an added line that is a
+# suppression directive unless the story's ## Suppressions declares it.
+#
+# THE FIXTURE IS A SPIKE, AND THAT IS WHAT MAKES $rc MEAN SOMETHING. A feature
+# story at REVIEW needs a ## Gate results record only a real gates.sh run can
+# write, so every feature fixture in this file exits 1 whatever 3j does, and a
+# refusal's status assertion would be satisfied by 3e. A spike at REVIEW needs
+# no record, and its ## Scaffold inventory names every path the branch changes,
+# so a branch this rule does not refuse exits 0 - the premise below, checked
+# before anything relies on it. Nothing in the rule may key on the story type:
+# AC-1 is pinned on a feature story as well, by its whole line.
+
+# _src_story <phase> <inventory paths> [body] [type]   Writes the T-1 story.
+_src_story() {
+  {
+    printf -- '---\nid: T-1\ntitle: Fixture story\nslug: fixture\ntype: %s\nstatus: todo\nphase: %s\nbranch: story/T-1-fixture\n---\n\n' "${4:-spike}" "$1"
+    printf -- '## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n\n'
+    printf -- '## Scaffold inventory\n\n%s - fixture\nsrc/clean.ts - fixture\n' "$2"
+    [ -n "${3:-}" ] && printf -- '\n%s\n' "$3"
+  } > "$FIX/docs/backlog/stories/T-1.md"
+}
+# _src_branch   A fresh story/T-1-fixture cut from main.
+_src_branch() {
+  git -C "$FIX" checkout -q main 2>/dev/null
+  git -C "$FIX" branch -D story/T-1-fixture >/dev/null 2>&1
+  git -C "$FIX" checkout -q -b story/T-1-fixture 2>/dev/null
+  mkdir -p "$FIX/docs/backlog/stories"
+}
+# _short   The short form of HEAD, as check-boundaries.sh prints a commit.
+_short() { local c; c="$(git -C "$FIX" rev-parse HEAD)"; printf '%s' "${c:0:7}"; }
+
+# source_story <phase> <path> <line> [then]   C-5's helper, in the shape of
+# manifest_story: a branch whose first commit carries the story at <phase> and
+# appends <line> to <path> (creating it), and whose last moves the story to
+# REVIEW with the body on stdin appended - which is how a ## Suppressions entry
+# reaches the WORKING-TREE story the rule reads. Sets $sup_c (the short commit
+# that added <line>) and $sup_n (its line number in the file as committed).
+#   [then] = clean   a GREEN commit appending a clean line to src/clean.ts sits
+#                    in between, so the rule has a commit it must judge
+#   [then] = GATES   a GATES commit appends <line> to <path> a second time, and
+#                    sets $sup_c2 and $sup_n2 for it
+# SRC_STORY_TYPE overrides the story type (default spike).
+source_story() {
+  local phase="$1" path="$2" line="$3" then="${4:-}" t="${SRC_STORY_TYPE:-spike}" body
+  body="$(cat)"
+  _src_branch
+  mkdir -p "$(dirname "$FIX/$path")"
+  _src_story "$phase" "$path" "" "$t"
+  printf '%s\n' "$line" >> "$FIX/$path"
+  commit_all "T-1 $phase adds a line to $path"
+  sup_c="$(_short)"; sup_n="$(awk 'END { print NR }' "$FIX/$path")"
+  case "$then" in
+    clean)
+      _src_story GREEN "$path" "" "$t"
+      printf 'export const clean = 1\n' >> "$FIX/src/clean.ts"
+      commit_all "T-1 GREEN, a clean source change" ;;
+    GATES)
+      _src_story GATES "$path" "" "$t"
+      printf '%s\n' "$line" >> "$FIX/$path"
+      commit_all "T-1 GATES adds the same line again"
+      sup_c2="$(_short)"; sup_n2="$(awk 'END { print NR }' "$FIX/$path")" ;;
+  esac
+  _src_story REVIEW "$path" "$body" "$t"
+  commit_all "T-1 to review"
+}
+
+# The refusal, as C-2 states it, byte for byte, and pinned as a WHOLE line: a
+# substring needle is satisfied by a message that dropped the line number or
+# named the wrong phase in a clause the needle did not reach.
+SUP_TAIL=". GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line."
+# want_3j <commit> <PHASE> <path> <line no> <rule id> <added line, trimmed> [suffix]
+want_3j() { printf "FAIL  story T-1: commit %s (%s) added a suppression to '%s' line %s [%s]: %s%s%s" "$1" "$2" "$3" "$4" "$5" "$6" "$SUP_TAIL" "${7:-}"; }
+# want_3j_ok <n>   The rule's summary line over <n> judged commits (C-1 b).
+want_3j_ok() { printf 'ok    GREEN/GATES added no suppression (%s commit(s) judged)' "$1"; }
+# sup_fails   Every line of $out this rule printed as a refusal - the lines, not
+# a count, so a failure names them. A here-string, never a pipe.
+sup_fails() { grep -F -- 'added a suppression to' <<< "$out"; }
+# sup_nfail   How many such lines.
+sup_nfail() { grep -cF -- 'added a suppression to' <<< "$out"; }
+# sup_count <line>   How many whole lines of $out equal <line>.
+sup_count() { grep -cxF -- "$1" <<< "$out"; }
+
+AC1_LINE='// eslint-disable-next-line @typescript-eslint/no-explicit-any'
+
+# A known baseline on main: src/main.ts is one line, so a line appended to it is
+# line 2; and no T-1 story on main, so every branch's story is new in the PR
+# and 3d has no criteria to compare (an earlier describe commits one to main).
+git -C "$FIX" checkout -q main 2>/dev/null
+printf 'export const x = 1\n' > "$FIX/src/main.ts"
+git -C "$FIX" rm -q --cached docs/backlog/stories/T-1.md >/dev/null 2>&1
+rm -f "$FIX/docs/backlog/stories/T-1.md"
+commit_all "HARNESS-081 baseline: src/main.ts is one line, no T-1 on main"
+
+# The premise. PASSES ON ARRIVAL, by design: it is a claim about the fixture,
+# not about 3j, and it is what makes the `rc 0` and `rc 1` halves below say
+# something about this rule rather than about some other one.
+source_story GREEN src/main.ts 'export const y = 2' </dev/null
+run_boundaries </dev/null
+assert_eq "fixture: a spike branch whose GREEN commit adds a clean line exits 0, and nothing objects" \
+  "0|" "$rc|$(grep '^FAIL' <<< "$out")"
+
+# ---------------------------------------------------------------------------
+describe "AC-1: a suppression added in GREEN or GATES is refused, by path, line, commit and phase"
+
+for ph in GREEN GATES; do
+  source_story "$ph" src/main.ts "$AC1_LINE" </dev/null
+  run_boundaries </dev/null
+  whole_line "AC-1 ($ph): the refusal names eslint-disable, src/main.ts, line 2, the commit and $ph" \
+    "$(want_3j "$sup_c" "$ph" src/main.ts 2 eslint-disable "$AC1_LINE")"
+  assert_eq "AC-1 ($ph): it is the only refusal this rule prints" 1 "$(sup_nfail)"
+  assert_eq "AC-1 ($ph): and the run exits 1, where the same branch without the line exits 0" 1 "$rc"
+  assert_eq "AC-1 ($ph): and no summary line claims the commit was clean beside the refusal" 0 \
+    "$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+done
+
+# The rule is about the commit's phase and the path's category, never the story
+# type - the spike fixture must not be what makes it fire.
+SRC_STORY_TYPE=feature source_story GREEN src/main.ts "$AC1_LINE" </dev/null
+run_boundaries </dev/null
+whole_line "AC-1: a feature story's GREEN commit is refused by the same whole line" \
+  "$(want_3j "$sup_c" GREEN src/main.ts 2 eslint-disable "$AC1_LINE")"
+
+# ---------------------------------------------------------------------------
+describe "AC-2: every row of the needle table is refused by its rule id, in GREEN and in GATES"
+
+# C-2's table, one row per example line: <rule id>|<path>|<example added line>.
+# HARNESS-082 appends its rows HERE and inherits both the refusal below and the
+# path inventory. Paths are `source` by the real paths.conf the fixture copies;
+# the two config-file linters' rows go to a Dockerfile and a Makefile, which it
+# calls `config`, so no classification is faked.
+AC2_ROWS="$(cat <<'ROWS'
+eslint-disable|src/main.ts|// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ts-ignore|src/main.ts|// @ts-ignore
+biome-ignore|src/main.ts|// biome-ignore lint/suspicious/noExplicitAny: legacy
+noqa|src/app.py|x = eval(s)  # noqa: S307
+type-ignore|src/app.py|y = f()  # type: ignore[attr-defined]
+rust-allow|src/lib.rs|#[allow(dead_code)]
+rust-allow|src/lib.rs|#![allow(clippy::all)]
+gd-warning-ignore|src/player.gd|@warning_ignore("unused_parameter")
+coverage-ignore|src/main.ts|/* istanbul ignore next */
+coverage-ignore|src/main.ts|// c8 ignore start
+no-cover|src/app.py|def f():  # pragma: no cover
+stryker-disable|src/main.ts|// Stryker disable next-line all
+hadolint-ignore|Dockerfile|# hadolint ignore=DL3008
+shellcheck-disable|Makefile|# shellcheck disable=SC2086
+ROWS
+)"
+# The C-3 non-matching corpus, <path>|<line>. Each would be refused by a needle
+# that floated rather than anchoring on the comment opener, and each must be
+# clean. The last three are RED's (C-3 amendment): the two string-literal cases
+# C-3 names are excluded by each ERE's TAIL guard - `"` follows `noqa` - not by
+# the opener anchor, so these are the lines on which only the anchor holds.
+C3_ROWS="$(cat <<'ROWS'
+src/main.ts|// never add an eslint-disable here
+src/main.ts|const s = "# noqa";
+src/main.ts|// see rules.md: "# pragma: no cover" is refused
+src/main.ts|// Stryker restore all
+src/lib.rs|fn allow(x: u32) -> u32 { x }
+src/lib.rs|let expect = 3;
+src/main.ts|// @ts-ignored-thing
+src/app.py|    Lines ending in type: ignore are not honoured here.
+src/app.py|url = "http://x/#noqa"
+src/app.py|const s = "# noqa: S307";
+src/app.py|url = "http://x/#noqa:frag"
+src/lib.rs|msg = "#[allow(dead_code)]"
+ROWS
+)"
+# _trim <s>   <s> without leading or trailing whitespace, as the refusal quotes it.
+_trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
+
+# ONE branch, ONE run: per row a GREEN commit adding the line and then a GATES
+# commit adding it again, each recorded with the whole refusal it must draw. One
+# run rather than one per row because a check-boundaries.sh run costs about 3 s
+# on this host and the rows differ only in data; every row is still asserted by
+# its own whole line, and the exit status is pinned per case by AC-1. GATES is in
+# every row because DV-1 narrows the phase test to GREEN and needs every row's
+# GATES half to go red.
+ac2_paths="$(awk -F'|' 'NF && !seen[$2]++ { printf "%s ", $2 }' <<< "$AC2_ROWS")"
+_src_branch
+ac2_want=()
+while IFS='|' read -r rid path line; do
+  [ -z "$rid" ] && continue
+  for ph in GREEN GATES; do
+    _src_story "$ph" "$ac2_paths"
+    printf '%s\n' "$line" >> "$FIX/$path"
+    commit_all "T-1 $ph adds [$rid] to $path"
+    ac2_want+=("$rid|$ph|$(want_3j "$(_short)" "$ph" "$path" "$(awk 'END { print NR }' "$FIX/$path")" "$rid" "$(_trim "$line")")")
+  done
+done <<< "$AC2_ROWS"
+_src_story REVIEW "$ac2_paths"
+commit_all "T-1 to review"
+run_boundaries </dev/null
+for w in "${ac2_want[@]}"; do
+  rid="${w%%|*}"; w="${w#*|}"; ph="${w%%|*}"
+  whole_line "AC-2 [$rid] ($ph): the added line is refused by its whole line, naming $rid" "${w#*|}"
+done
+assert_eq "AC-2: the table branch - rc|refusals (one per added line)|summary" \
+  "1|${#ac2_want[@]}|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+
+# ---------------------------------------------------------------------------
+describe "AC-2 control: a line that only mentions a directive is clean (C-3)"
+
+# Same run shape - one GREEN commit per corpus line to a source file - and the
+# claims that make "clean" mean something: exit 0, no refusal from anywhere, and
+# the rule's own summary over every commit it judged, so a rule that judged
+# nothing cannot pass. Per row, the line is not quoted anywhere in the output.
+c3_paths="$(awk -F'|' 'NF && !seen[$1]++ { printf "%s ", $1 }' <<< "$C3_ROWS")"
+_src_branch
+c3_n=0
+while IFS='|' read -r path line; do
+  [ -z "$path" ] && continue
+  _src_story GREEN "$c3_paths"
+  printf '%s\n' "$line" >> "$FIX/$path"
+  commit_all "T-1 GREEN adds a C-3 line to $path"
+  c3_n=$((c3_n+1))
+done <<< "$C3_ROWS"
+_src_story REVIEW "$c3_paths"
+commit_all "T-1 to review"
+run_boundaries </dev/null
+while IFS='|' read -r path line; do
+  [ -z "$path" ] && continue
+  assert_eq "AC-2 control: '$line' in $path is not refused" "" \
+    "$(grep -F -- "$(_trim "$line")" <<< "$out")"
+done <<< "$C3_ROWS"
+assert_eq "AC-2 control: the corpus branch - rc|refusals|summary($c3_n)" \
+  "0||1" "$rc|$(grep '^FAIL' <<< "$out")|$(sup_count "$(want_3j_ok "$c3_n")")"
+
+describe "AC-3: other phases, and docs, harness and test paths, are not judged"
+
+# One branch: the AC-1 line added by a RED, a PLANNED, a SCAFFOLD, a REVIEW and
+# a DONE commit in turn, then one clean GREEN commit. The summary over exactly
+# ONE judged commit is the half that is red before 3j exists, and the half that
+# catches a rule judging every commit: that one would print five refusals and
+# count six.
+_src_branch
+for ph in RED PLANNED SCAFFOLD REVIEW DONE; do
+  _src_story "$ph" src/main.ts
+  printf '%s\n' "$AC1_LINE" >> "$FIX/src/main.ts"
+  commit_all "T-1 $ph adds the AC-1 line"
+done
+_src_story GREEN src/main.ts
+printf 'export const clean = 1\n' >> "$FIX/src/clean.ts"
+commit_all "T-1 GREEN, a clean source change"
+_src_story REVIEW src/main.ts
+commit_all "T-1 to review"
+run_boundaries </dev/null
+for ph in RED PLANNED SCAFFOLD REVIEW DONE; do
+  assert_eq "AC-3: the AC-1 line added in a $ph commit is not refused" "" \
+    "$(grep -F -- "($ph) added a suppression" <<< "$out")"
+done
+assert_eq "AC-3: across those phases - rc|refusals|summary(1)" \
+  "0||1" "$rc|$(sup_fails)|$(sup_count "$(want_3j_ok 1)")"
+
+# A GREEN commit adding the line to a path classify.sh calls docs, harness or
+# test is out of scope by the classifier's answer. One branch: a GREEN commit
+# per path, then one clean GREEN source commit, so the summary says the rule ran
+# and judged exactly one - a GREEN commit touching only such paths is not a
+# judged commit (C-1 b, and DV-2's "no 3j ok line" depends on it).
+_src_branch
+for path in docs/backlog/stories/T-1.md scripts/x.sh tests/a.test.ts; do
+  _src_story GREEN src/clean.ts
+  mkdir -p "$(dirname "$FIX/$path")"
+  printf '%s\n' "$AC1_LINE" >> "$FIX/$path"
+  commit_all "T-1 GREEN adds the AC-1 line to $path"
+done
+_src_story GREEN src/clean.ts
+printf 'export const clean = 1\n' >> "$FIX/src/clean.ts"
+commit_all "T-1 GREEN, a clean source change"
+_src_story REVIEW src/clean.ts
+commit_all "T-1 to review"
+run_boundaries </dev/null
+for path in docs/backlog/stories/T-1.md scripts/x.sh tests/a.test.ts; do
+  assert_eq "AC-3: the AC-1 line added to $path ($(cd "$FIX" && bash scripts/classify.sh "$path" | cut -f1)) in GREEN is not refused" "" \
+    "$(grep -F -- "'$path'" <<< "$out")"
+done
+assert_eq "AC-3: across those paths - rc|refusals|summary(1)" \
+  "0||1" "$rc|$(sup_fails)|$(sup_count "$(want_3j_ok 1)")"
+
+# ---------------------------------------------------------------------------
+describe "AC-4: removed lines and context lines are never judged"
+
+# Both files carry a directive ON MAIN, which this rule does not judge (Out of
+# scope: suppressions already on the base branch).
+git -C "$FIX" checkout -q main 2>/dev/null
+printf 'x = 1\ny = eval(s)  # noqa: S307\nz = 3\n' > "$FIX/src/app.py"
+printf '#[allow(dead_code)]\nfn a() {}\n'          > "$FIX/src/lib.rs"
+commit_all "HARNESS-081 AC-4 baseline: a noqa and an allow on main"
+_src_branch
+_src_story GREEN "src/app.py src/lib.rs"
+printf 'x = 1\nz = 3\n' > "$FIX/src/app.py"
+commit_all "T-1 GREEN removes the noqa line"
+_src_story GREEN "src/app.py src/lib.rs"
+printf '#[allow(dead_code)]\nfn a() -> u32 { 1 }\n' > "$FIX/src/lib.rs"
+commit_all "T-1 GREEN edits the line beside the allow"
+_src_story REVIEW "src/app.py src/lib.rs"
+commit_all "T-1 to review"
+run_boundaries </dev/null
+assert_eq "AC-4: a removed # noqa and an #[allow] left as context - rc|refusals" \
+  "0|" "$rc|$(sup_fails)"
+whole_line "AC-4: and the summary counts the two GREEN commits it judged" "$(want_3j_ok 2)"
+# Put main back as the describes above found it.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" rm -q --cached src/app.py src/lib.rs >/dev/null 2>&1
+rm -f "$FIX/src/app.py" "$FIX/src/lib.rs"
+commit_all "HARNESS-081 AC-4 baseline removed"
+
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+describe "AC-5: a suppression declared in ## Suppressions is accepted, and only a whole declaration"
+
+# The entry is one line carrying the path, the rule id and `approved by`, read
+# from the WORKING-TREE story after HTML comments are stripped (C-4). So the
+# branch is built once - the AC-1 commit - and each case rewrites the story in
+# the working tree only, uncommitted: an implementation reading the section
+# from HEAD rather than from $sfile fails the first case.
+source_story GREEN src/main.ts "$AC1_LINE" </dev/null
+ac5_c="$sup_c"
+# ac5 <body>   Rewrite the working-tree story at REVIEW with <body> (printf %b) and run.
+ac5() { _src_story REVIEW src/main.ts "$(printf '%b' "$1")"; run_boundaries </dev/null; }
+AC5_OK="ok    suppression [eslint-disable] in 'src/main.ts' is declared in ## Suppressions"
+
+ac5 '## Suppressions\n\n- `src/main.ts` [eslint-disable] approved by ryan: the generated client types this as any; replacing the generator is its own story.'
+assert_eq "AC-5: a declared suppression - rc|refusals" "0|" "$rc|$(sup_fails)"
+whole_line "AC-5: and the rule says the path is declared" "$AC5_OK"
+
+# Order free, case-insensitive, and the bare rule id as a word (C-4).
+ac5 '## Suppressions\n\n- Approved By ryan: eslint-disable in src/main.ts, because the generated client types this as any.'
+assert_eq "AC-5: the three in another order, other case, rule id bare - rc|refusals|declared" \
+  "0||1" "$rc|$(sup_fails)|$(sup_count "$AC5_OK")"
+
+# The controls. Each leaves the refusal in place, by its whole line - so the
+# message still says what an entry must carry - and the two partial entries say
+# which part is missing (C-4 amendment). <what>|<suffix after SUP_TAIL>|<body>
+while IFS='|' read -r what suffix entry; do
+  [ -z "$what" ] && continue
+  ac5 "$entry"
+  assert_eq "AC-5 control, $what: still refused, by the whole line - rc|refusals|line|declared" \
+    "1|1|1|0" \
+    "$rc|$(sup_nfail)|$(sup_count "$(want_3j "$ac5_c" GREEN src/main.ts 2 eslint-disable "$AC1_LINE" "$suffix")")|$(grep -cF -- 'is declared in ## Suppressions' <<< "$out")"
+done <<'ROWS'
+an entry inside an HTML comment||## Suppressions\n\n<!-- - `src/main.ts` [eslint-disable] approved by ryan: legacy -->
+an entry naming the path but not the rule id| The ## Suppressions line naming 'src/main.ts' is missing the rule id [eslint-disable].|## Suppressions\n\n- `src/main.ts` [noqa] approved by ryan: legacy
+an entry naming path and rule id without approved by| The ## Suppressions line naming 'src/main.ts' is missing 'approved by'.|## Suppressions\n\n- `src/main.ts` [eslint-disable]: legacy
+an entry for a different path||## Suppressions\n\n- `src/other.ts` [eslint-disable] approved by ryan: legacy
+a whole entry outside ## Suppressions||## Notes\n\n- `src/main.ts` [eslint-disable] approved by ryan: legacy
+ROWS
+# The working-tree edits are this describe's alone.
+git -C "$FIX" checkout -q -- . 2>/dev/null
+
+# ---------------------------------------------------------------------------
+describe "AC-6: a commit the rule could not judge is said out loud; no judged commit, nothing said"
+
+# The first commit on the branch holds the AC-1 line and no story file, so
+# `git show <c>:docs/backlog/stories/T-1.md` fails there: no phase, so no
+# verdict. 3i skips such a commit with `continue`; this rule says so (C-1 a),
+# and does not count it as clean.
+_src_branch
+printf '%s\n' "$AC1_LINE" >> "$FIX/src/main.ts"
+commit_all "T-1 work before the story file existed"
+nostory_c="$(_short)"
+_src_story REVIEW src/main.ts
+commit_all "T-1 story, at REVIEW"
+run_boundaries </dev/null
+whole_line "AC-6: the commit with no readable story file is named as not judged" \
+  "  commit $nostory_c: story file not readable at this commit; GREEN/GATES additions not judged"
+assert_eq "AC-6: and it is neither refused nor counted - rc|refusals|summary" \
+  "0||0" "$rc|$(sup_fails)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+
+# A branch with no GREEN or GATES commit at all: the rule has looked at nothing
+# and says nothing - no `ok` over zero commits, which is the vacuous pass. Every
+# commit's story file is readable, so there is no note either. PASSES ON
+# ARRIVAL: before 3j exists nothing prints these words; see the handoff for
+# what earns it.
+source_story RED src/main.ts "$AC1_LINE" </dev/null
+run_boundaries </dev/null
+assert_eq "AC-6: a branch with only RED and REVIEW commits - rc|anything from this rule" \
+  "0|" "$rc|$(grep -F -e 'GREEN/GATES' -e 'added a suppression' <<< "$out")"
+
 summary "boundaries"

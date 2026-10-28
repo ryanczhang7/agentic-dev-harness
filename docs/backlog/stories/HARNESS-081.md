@@ -4,11 +4,11 @@ title: A suppression comment added to source in GREEN or GATES is refused unless
 slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh]
+touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -100,7 +100,12 @@ keeps docs and harness paths out of it.
 
 ## Contract
 
-**Writes:** `scripts/check-boundaries.sh`, `.claude/tests/boundaries.test.sh`, `.claude/tests/floors.conf`, `.claude/harness/rules.md`, `.claude/harness/VERSION`, `.claude/skills/story-authoring/reference/sections.md`, `scripts/new-story.sh`, `.claude/tests/new-story.test.sh`
+**Writes:** `scripts/check-boundaries.sh`, `.claude/tests/boundaries.test.sh`, `.claude/tests/floors.conf`, `.claude/harness/rules.md`, `.claude/harness/VERSION`, `.claude/skills/story-authoring/reference/sections.md`, `scripts/new-story.sh`, `.claude/tests/new-story.test.sh`, `.claude/tests/selftest.test.sh`
+
+*Amended in RED: `.claude/tests/selftest.test.sh` added - it carries the
+hand-copied floor table that must move with `floors.conf` in the same commit
+(see the comment above the floors). `touches:` does not list it yet; that is
+frontmatter, the Lead PO's.*
 
 RED may amend any block below in place, with a reason; GREEN builds what the
 amended block says.
@@ -138,6 +143,24 @@ line is clean. (b) The summary line is `ok    GREEN/GATES added no suppression
 GATES commit on the branch the block prints nothing (AC-6, second half),
 because an `ok` over zero commits is the vacuous pass this repository's
 documentation exists to warn about.
+
+*Amended in RED (test-developer, 2026-10-28), two tightenings the tests pin.*
+**A judged commit** is one whose committed phase is `GREEN` or `GATES` **and**
+whose `diff-tree` names at least one path `classify` calls `source` or
+`config`; `<n>` counts those. A GREEN commit touching only docs, harness or
+test paths is not judged and is not counted - DV-2 already depends on this
+("this branch's GREEN commit touched no `source` or `config` path, [so] no 3j
+`ok` line either"), and AC-3's path case pins it (`(1 commit(s) judged)` on a
+branch with three such commits and one clean source commit). **The summary is
+printed only when `n > 0` and this block refused nothing**: an `ok ... added
+no suppression` beside a `FAIL ... added a suppression` is the "ok and FAIL in
+the same run" defect that block 2's `harness state not tracked` comment records. AC-1 and AC-2 pin
+its absence beside a refusal. A declared suppression (C-4) is not a refusal,
+so the summary may print beside it; the tests do not constrain that either way.
+The note in (a) is exactly `note "commit <7>: story file not readable at this
+commit; GREEN/GATES additions not judged"`, so the printed line is that text
+behind `note`'s two-space indent, pinned as a whole line; a not-judged commit
+is neither refused nor counted.
 
 **C-2. The needle table.** A function `suppression_needles()` in
 `check-boundaries.sh` that prints one `<rule id>|<ERE>` line per row, read
@@ -180,6 +203,41 @@ pipe from `git show` (the SIGPIPE shape `check-sigpipe.sh` and
 
     FAIL  story <sid>: commit <7> (<PHASE>) added a suppression to '<path>' line <n> [<rule id>]: <the added line, trimmed>. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.
 
+*Amended in RED (test-developer, 2026-10-28): the C-6 decision, and three
+facts the implementation must respect. No ERE changed and no row was dropped.*
+
+- **The `#`-anchor decision: keep `O` = `(^|[[:space:]])` exactly as written.**
+  Measured with gawk 5.4.1 (default, `--posix` and `--traditional` all
+  agree), reading the twelve rows from a file: every C-2 example line matches
+  its own row and no other, and every C-3 line matches no row. But the two
+  cases C-6 asked about are **not excluded by `O`**: in `const s = "# noqa";`
+  and `url = "http://x/#noqa"` the character after `noqa` is `"`, which the
+  `noqa` row's tail `([[:space:]:]|$)` already refuses, so with `O` deleted
+  from every row both lines are still clean. The only C-3 line `O` decides is
+  `// see rules.md: "# pragma: no cover" is refused` (with `O` deleted it trips
+  `no-cover`). So C-3 as written did not test the anchor it was asked about;
+  RED added three lines on which only `O` holds (C-3, amended). Measured with
+  `O` deleted from the `noqa` and `rust-allow` rows: `const s = "# noqa:
+  S307";` and `url = "http://x/#noqa:frag"` trip `noqa`, `msg =
+  "#[allow(dead_code)]"` trips `rust-allow`; with `O` present all three are
+  clean.
+- **Match the added line with its leading `+` removed.** Run against the raw
+  diff line (`+// eslint-disable-next-line ...`) the `^` alternative of `O`
+  never holds, and 11 of the 14 example lines are missed - every one whose
+  directive opens the line (measured). Only the three with code before the
+  comment (`noqa`, `type-ignore`, `no-cover`) still match.
+- **Pass the table to awk as a file or on stdin, never through `awk -v`.**
+  `-v` processes escape sequences: `gawk -v re='#!?\[(allow|expect)\('` warns
+  "escape sequence `\[' treated as plain `['" and dies with "invalid regexp:
+  unbalanced [" (measured). A table read by `getline`, from a file or a
+  here-string, keeps the backslashes.
+- **One `FAIL` per added line, not one per matching row.** No example line
+  matches two rows, and AC-2's composite assertion counts exactly one refusal
+  per added line (28 for 14 rows in GREEN and GATES), so an implementation
+  that printed one line per matching row would only differ on lines no test
+  holds; first matching row wins is the simplest reading and is what the
+  tests are consistent with.
+
 **C-3. The non-matching corpus RED must carry beside the table** (AC-2's
 control), each added by a GREEN commit to a `source` file and each required to
 be clean, with the part of the anchor that excludes it: `// never add an
@@ -193,6 +251,14 @@ are not honoured here.` (no `#`); `url = "http://x/#noqa"` (the `#` follows
 `/`). If one of these trips a row, the ERE is wrong, not the corpus: RED
 amends C-2 in place and says which case forced it. RED writes both corpora as
 one table-driven loop so that a row added by HARNESS-082 inherits both halves.
+
+*Amended in RED (test-developer, 2026-10-28): three lines added, none removed,
+because the parenthetical reasons above are wrong for two of them (see C-2's
+amendment).* `const s = "# noqa";` and `url = "http://x/#noqa"` are excluded
+by the `noqa` row's **tail** guard (`"` follows `noqa`), not by `O`. The
+corpus therefore also carries `const s = "# noqa: S307";`, `url =
+"http://x/#noqa:frag"` and `msg = "#[allow(dead_code)]"` - each clean only
+because `O` refuses a `#` that follows `"` or `/`. The corpus is 12 lines.
 
 **C-4. The escape hatch.** A new story section `## Suppressions`, owned by the
 Lead PO with the user, validated by 3j the way 3e validates a BLOCKED gate's
@@ -216,6 +282,26 @@ non-negotiables as the sentence after the "do not weaken an assertion" bullet,
 naming the check. `.claude/tests/new-story.test.sh` pins the new heading the
 way it pins the others.
 
+*Amended in RED (test-developer, 2026-10-28): the two output lines this block
+left unworded, which AC-5 needs exact, and the template comment's one ask.*
+
+- **A declared suppression** prints, once per path and rule id discharged,
+  exactly `ok    suppression [<rule id>] in '<path>' is declared in ##
+  Suppressions` (one line; it wraps here only).
+- **A partial entry** - a line of the comment-stripped `## Suppressions`
+  section that contains the refused path but not both of the other two -
+  appends one sentence to the end of the C-2 refusal, after its final `.`:
+  ` The ## Suppressions line naming '<path>' is missing <X>.` where `<X>` is
+  `the rule id [<rule id>]`, `'approved by'`, or `the rule id [<rule id>]
+  and 'approved by'` (the path cannot be missing: the line was chosen by it).
+  Where no line of the section names the path - an entry for another path, an
+  entry inside an HTML comment, an entry outside the section - the refusal is
+  the C-2 line exactly, with nothing appended. The first two `<X>` forms are
+  pinned; the third is stated so the implementation has one answer.
+- **The template's comment** asks for `approved by` in so many words; the
+  new-story suite pins that, and that the section body is one HTML comment
+  with nothing outside it.
+
 **C-5. The self-test.** New `describe` blocks in `.claude/tests/boundaries.test.sh`,
 using `story_on_branch` and a `source_story <phase> <path> <line>` helper in
 the shape of `manifest_story`: cut a branch, commit the story at `<phase>`,
@@ -227,6 +313,26 @@ table. The fixture tree's `src/main.ts` is `source` and `Dockerfile` is
 faked. `floors.conf`'s `boundaries` floor is raised in the RED commit that
 adds the assertions, to the count RED measures, with the measurement in the
 comment above it as HARNESS-062 and -079 did.
+
+*Amended in RED (test-developer, 2026-10-28): how the shape above was met, and
+two departures from it, both for a measured reason.* (1) **The fixture story
+is `type: spike`, not `story_on_branch`'s feature.** A feature story at REVIEW
+needs a `## Gate results` record that only a real `gates.sh` run can write, so
+every feature fixture in the suite exits 1 whatever 3j does, and `$rc` could
+not distinguish this rule's refusal from 3e's. A spike at REVIEW needs no
+record, and its `## Scaffold inventory` names every changed path, so a branch
+3j does not refuse exits 0 - asserted as a premise before anything relies on
+it. AC-1 is also pinned on a `feature` story by its whole line, so the rule
+cannot key on the type. (2) **The two corpora are one branch and one run
+each, not one branch per row.** A `check-boundaries.sh` run costs ~3 s on this
+host (measured: 3,070 ms on a two-commit branch, 5,895 ms on 21 commits), the
+suite already takes 11 min here, and a run per row was 48 runs, 5 min.
+Each row is still its own assertion - by its whole `FAIL` line in AC-2, by the
+absence of its text from the output in C-3 - and the exit status is pinned
+per case in AC-1 and in each AC-5 control. Every AC-2 row is added in GREEN
+**and then again in GATES**, because DV-1 needs "every GATES row of AC-2" to
+exist. `refused` is not used: its substring needle is weaker than the whole
+lines pinned here, and every rc is asserted directly.
 
 **C-6. Oracle partition.** Every criterion is **mechanical**: an exact
 message, an exit status, a table row. Nothing is to be invented or calibrated.
@@ -360,6 +466,48 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One level: **integration**, through the real `scripts/check-boundaries.sh`
+copied into `make_project_fixture`'s throwaway repository (real `paths.conf`,
+real `lib.sh`, real git history), driven by `run_boundaries`. That is where the
+contract lives - a commit walk, a classifier answer and a printed line - and
+there is no smaller unit the tests could call without pinning an internal
+function name. The template heading is pinned in `new-story.test.sh` against
+the real `scripts/new-story.sh` run into a temp root.
+
+`.claude/tests/boundaries.test.sh`, eight new describes at the end of the file
+(75 assertions):
+
+| Describe | Assertions | AC |
+|---|---|---|
+| `...(HARNESS-081): the fixture` | premise: a spike branch whose GREEN commit adds a clean line exits 0 and prints no `FAIL` | (makes every rc below mean 3j) |
+| `AC-1: ...` | GREEN and GATES each: the whole `FAIL` line (rule, path, line 2, commit, phase); exactly one refusal from this rule; rc 1; no summary `ok` beside it. Plus the same whole line on a `feature` story | AC-1 |
+| `AC-2: every row ...` | one branch, 14 rows x {GREEN, GATES} = 28 commits, one run: each commit's whole `FAIL` line (28); rc 1, 28 refusals, no summary (1) | AC-2 |
+| `AC-2 control ...` | one branch, 12 C-3 lines, one GREEN commit each, one run: each line absent from the output (12); rc 0, no `FAIL` at all, summary `(12 commit(s) judged)` (1) | AC-2 control |
+| `AC-3: ...` | phases: RED, PLANNED, SCAFFOLD, REVIEW, DONE commits each add the AC-1 line, then a clean GREEN commit: no refusal naming each phase (5); rc 0, no refusal, summary `(1 commit(s) judged)` (1). Paths: GREEN commits add the line to `docs/backlog/stories/T-1.md`, `scripts/x.sh`, `tests/a.test.ts`, then a clean GREEN source commit: no line naming each path (3); rc 0, no refusal, summary `(1 ...)` (1) | AC-3 |
+| `AC-4: ...` | a GREEN commit removing a `# noqa` line and one editing the line beside an `#[allow(dead_code)]` (both on main): rc 0, no refusal; summary `(2 commit(s) judged)` as a whole line | AC-4 |
+| `AC-5: ...` | the AC-1 branch, story rewritten in the working tree only: a whole entry -> rc 0, no refusal, the declared `ok` line; same with order/case changed and the bare rule id -> rc 0, no refusal, declared `ok`; five controls (HTML comment, no rule id, no `approved by`, other path, entry under `## Notes`) -> rc 1, one refusal, the exact whole refusal line (with the partial-entry sentence where C-4 says), no declared `ok` | AC-5 |
+| `AC-6: ...` | a commit with no story file adds the AC-1 line: the whole `note` line naming it; rc 0, no refusal, no summary. A branch with only RED and REVIEW commits: rc 0 and no line containing `GREEN/GATES` or `added a suppression` | AC-6 |
+
+`.claude/tests/new-story.test.sh` (5 assertions): `## Suppressions` added to
+the "every section the harness reads by name" list; and a new describe -
+exactly one `## Suppressions` heading line; the heading order contains
+`## Amendments|## Suppressions|## Model guidance|`; the section body is one
+HTML comment with nothing outside it; the comment says `approved by`. Covers
+C-4's template clause.
+
+Edges covered beyond the ACs, cheaply: the story type (feature as well as
+spike); the declaration read from the working tree, not HEAD (the AC-5 cases
+are uncommitted edits); a whole entry outside the section; the three C-3
+lines added because the original two string-literal cases did not exercise
+the opener anchor (C-2/C-3 amendments); line numbers on files that grow across
+commits (AC-2 appends to the same file repeatedly; each expected line number
+is read from the committed file).
+
+Out of scope and **not** pinned: stubs (HARNESS-082), `project.conf` (HARNESS-083),
+other ecosystems' directives, suppressions on main (AC-4 relies on main
+holding two and on their not being judged, which is the cheap half of that
+non-goal).
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -379,6 +527,254 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by `test-developer`, declared `opus`; this session ran as
+**claude-opus-5-5**, dispatched with no model override that I was told of.
+
+**Commands.**
+
+    bash .claude/tests/boundaries.test.sh      # the 3j describes are the last eight
+    bash .claude/tests/new-story.test.sh
+    bash scripts/selftest.sh boundaries        # the same, with the floor arithmetic
+    bash scripts/selftest.sh new-story
+
+`boundaries.test.sh` takes ~11 min on this host under load (it took 11m05s
+before this story, with 141 assertions); the new block adds 18
+`check-boundaries.sh` runs at ~3 s each. Both timings are local.
+
+**The red, verbatim (abridged only where marked).**
+
+```
+  AC-1: a suppression added in GREEN or GATES is refused, by path, line, commit and phase
+    FAIL AC-1 (GREEN): the refusal names eslint-disable, src/main.ts, line 2, the commit and GREEN
+         expected: 1
+         actual:   0
+    FAIL AC-1 (GREEN): it is the only refusal this rule prints
+         expected: 1
+         actual:   0
+    FAIL AC-1 (GREEN): and the run exits 1, where the same branch without the line exits 0
+         expected: 1
+         actual:   0
+    [the same three for GATES]
+    FAIL AC-1: a feature story's GREEN commit is refused by the same whole line
+         expected: 1
+         actual:   0
+
+  AC-2: every row of the needle table is refused by its rule id, in GREEN and in GATES
+    FAIL AC-2 [eslint-disable] (GREEN): the added line is refused by its whole line, naming eslint-disable
+         expected: 1
+         actual:   0
+    [27 more, one per row and phase, same shape]
+    FAIL AC-2: the table branch - rc|refusals (one per added line)|summary
+         expected: 1|28|0
+         actual:   0|0|0
+
+  AC-2 control: a line that only mentions a directive is clean (C-3)
+    FAIL AC-2 control: the corpus branch - rc|refusals|summary(12)
+         expected: 0||1
+         actual:   0||0
+
+  AC-3: other phases, and docs, harness and test paths, are not judged
+    FAIL AC-3: across those phases - rc|refusals|summary(1)
+         expected: 0||1
+         actual:   0||0
+    FAIL AC-3: across those paths - rc|refusals|summary(1)
+         expected: 0||1
+         actual:   0||0
+
+  AC-4: removed lines and context lines are never judged
+    FAIL AC-4: and the summary counts the two GREEN commits it judged
+         expected: 1
+         actual:   0
+
+  AC-5: a suppression declared in ## Suppressions is accepted, and only a whole declaration
+    FAIL AC-5: and the rule says the path is declared
+         expected: 1
+         actual:   0
+    FAIL AC-5: the three in another order, other case, rule id bare - rc|refusals|declared
+         expected: 0||1
+         actual:   0||0
+    FAIL AC-5 control, an entry inside an HTML comment: still refused, by the whole line - rc|refusals|line|declared
+         expected: 1|1|1|0
+         actual:   0|0|0|0
+    [the same for: no rule id; no approved by; a different path; an entry outside ## Suppressions]
+
+  AC-6: a commit the rule could not judge is said out loud; no judged commit, nothing said
+    FAIL AC-6: the commit with no readable story file is named as not judged
+         expected: 1
+         actual:   0
+
+boundaries: 168 passed, 48 failed
+
+=== boundaries ===   (bash scripts/selftest.sh boundaries)
+boundaries: 168 passed, 48 failed
+FAIL boundaries  did 168 units of work, below the floor of 216 in .claude/tests/floors.conf
+
+  a new story carries ## Suppressions, between ## Amendments and ## Model guidance (HARNESS-081, C-4)
+    FAIL the generated story has exactly one ## Suppressions heading line
+         expected: 1
+         actual:   0
+    FAIL it sits between ## Amendments and ## Model guidance, with nothing between
+         expected to contain: ## Amendments|## Suppressions|## Model guidance|
+         actual:               ## Context|## Acceptance criteria|## Contract|## Deferred verifications|## Amendments|## Model guidance|## Out of scope|...
+    FAIL its body is one HTML comment and nothing outside it
+         expected: comment|
+         actual:   none|
+    FAIL and the comment asks for 'approved by', which 3j requires on the line
+    [and "has ## Suppressions" in the heading list]
+new-story: 53 passed, 5 failed
+FAIL new-story  did 53 units of work, below the floor of 58 in .claude/tests/floors.conf
+```
+
+**Why this is the right failure.** Every one of the 48 is a 3j output that
+does not exist yet: a missing whole `FAIL` line, a missing `ok` summary, a
+missing `note`, or rc 0 where 3j's refusal is the only thing that can make it 1.
+Nothing failed on a fixture error: the premise assertion (a spike branch with a
+clean GREEN line exits 0 and prints no `FAIL`) passes, all 141 pre-existing
+assertions pass, and the identical suite passed **75 of 75** against a scratch
+3j written outside the tree to check the tests are satisfiable (see below). The
+five new-story reds are the missing template heading and nothing else.
+
+**Files touched.**
+
+- `.claude/tests/boundaries.test.sh` - eight describes before `summary`, AC-1..AC-6 (table in `## Test plan`).
+- `.claude/tests/new-story.test.sh` - `## Suppressions` in the heading list, and one describe; C-4's template clause.
+- `.claude/tests/floors.conf` - boundaries 136 -> 216, new-story 53 -> 58, measurement comment at the end.
+- `.claude/tests/selftest.test.sh` - the hand-copied floor table, the same two numbers (the selftest suite fails otherwise). Not in `touches:`; added to the Contract's `**Writes:**`.
+- this story: `## Contract` amendments (C-1 b, C-2, C-3, C-4, C-5, the Writes line), `## Test plan`, this handoff.
+
+**What the tests pin about 3j's output - exact, not suggested.** There is no
+function to import; the interface is the lines `check-boundaries.sh` prints and
+its exit status. `<7>` is the first seven characters of the full commit hash
+(the tests compute `${c:0:7}`, as 3i prints `${c%${c#???????}}`); the fixture
+story id is `T-1`.
+
+1. Refusal, one per added line that matches a row (first row wins), printed through `problem` (so `FAIL  ` and `fail=1`):
+   `FAIL  story T-1: commit <7> (<GREEN|GATES>) added a suppression to '<path>' line <n> [<rule id>]: <added line, leading and trailing whitespace trimmed, internal whitespace kept>. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.`
+   `<n>` is the new-file line number from the hunk header (line 2 for a line appended to a one-line file; the AC-2 rows append repeatedly to the same files and every expected number is read from the committed file).
+2. Partial entry suffix, appended directly after that final `.`: ` The ## Suppressions line naming '<path>' is missing the rule id [<rule id>].` or ` The ## Suppressions line naming '<path>' is missing 'approved by'.` Nothing appended when no comment-stripped line of the section names the path.
+3. Declared: `ok    suppression [<rule id>] in '<path>' is declared in ## Suppressions`, exactly once for one declared line; rc unaffected.
+4. Summary: `ok    GREEN/GATES added no suppression (<n> commit(s) judged)`, only when n > 0 **and** 3j refused nothing; `<n>` counts GREEN/GATES commits touching at least one `source`/`config` path (AC-3 paths: three docs/harness/test-only GREEN commits plus one source commit -> `1`; AC-4 -> `2`; C-3 corpus -> `12`).
+5. Not judged: the line `  commit <7>: story file not readable at this commit; GREEN/GATES additions not judged` (that is `note "commit <7>: ..."`), not a refusal, not counted.
+6. Silence: on a branch with no GREEN/GATES commit, no output line contains `GREEN/GATES` or `added a suppression`.
+7. The `## Suppressions` section is read from the working-tree story file (`$sfile`), comment-stripped, matched case-insensitively; the path by substring; the rule id as `[<id>]` or as a bare word (the order-free case writes `eslint-disable in src/main.ts`); `approved by` anywhere on the line.
+8. Template: exactly one `## Suppressions` line in a generated story, directly between `## Amendments` and `## Model guidance`, body = one HTML comment containing the words `approved by`, nothing outside it.
+
+**What the tests do NOT constrain.** The function names (`suppression_needles`
+is the Contract's, but no test calls it); how the table reaches awk, beyond
+"not `-v`" (below); whether the summary line prints beside a declared
+suppression; the third partial-entry form (`... the rule id [<id>] and
+'approved by'.`); behaviour when one line matches two rows (no test line does);
+the order of 3j's lines among themselves; anything about merge commits; how a
+binary file is handled (C-1 says it has no `+` lines); the `problem` C-1 asks
+for when a readable-phase commit's diff cannot be shown (no fixture can make
+`git show` fail on an existing commit cheaply - unpinned, say so in GATES if it
+matters).
+
+**Passed on arrival (27 of the 75), and what earns each.** All are the
+*absence* halves of a case whose *presence* half is red today, plus the
+fixture premise:
+
+| Assertion(s) | Count | Earned by |
+|---|---|---|
+| fixture premise (spike branch exits 0, no FAIL) | 1 | a claim about the fixture, not 3j; it is what makes every rc half discriminate. Its converse is shown by AC-1's rc going red today |
+| AC-1 "no summary beside the refusal" (GREEN, GATES) | 2 | m7 below: summary printed whenever n > 0 turns both red |
+| C-3 per-line "not refused" | 12 | m3 below turns the three RED-added lines red; the other nine are earned only by the ERE measurements in the controls table (no scratch mutation run per row) |
+| AC-3 per-phase "not refused" | 5 | m5 below: judge every phase turns all five red |
+| AC-3 per-path "not refused" | 3 | m6 below: judge every category turns all three red (DV-2 is the same probe on the real tree, GATES') |
+| AC-4 rc/refusals | 1 | not mutated here: a 3j reading `-` lines or context would be needed; owed only if the orchestrator wants it |
+| AC-5 declared rc/refusals | 1 | m4 below |
+| AC-6 note case rc/refusals/summary | 1 | m2 below |
+| AC-6 silence on a branch with no GREEN/GATES commit | 1 | m2 (`-gt 0` -> `-ge 0`) and m5 below |
+
+**Negative controls, measured outside the framework.** The ERE table was run
+through gawk 5.4.1 from a file (`NR == FNR` table read, `$0 ~ re[k]`), not
+through the suite, so these are claims about the C-2 EREs until GREEN's
+`suppression_needles` is measured:
+
+| Control | Threshold | Measured with C-2's EREs | Measured with the defect |
+|---|---|---|---|
+| 14 example lines, each matches exactly its own row | 14/14 | 14/14 (default, `--posix`, `--traditional`) | raw `+` line: 3/14 match |
+| 12 C-3 lines match no row | 0 matches | 0 | `O` deleted from every row: 1 (`// see rules.md: "# pragma: no cover"` -> `no-cover`); `O` deleted from `noqa` and `rust-allow`: 3 (the three RED-added lines); `[[:space:]]*` before the directive loosened to `.*`: 1 (`// never add an eslint-disable here`) |
+| `awk -v` carrying an ERE | must not be used | - | `fatal: invalid regexp: unbalanced [` |
+
+**The suite against a scratch 3j.** To check the tests are satisfiable and that
+the absence assertions discriminate, a prototype 3j was appended to a *copy* of
+`check-boundaries.sh` in the session scratch directory and swapped into a
+driver's fixture (never into this tree). 75 of 75 passed against it. Four
+mutations of that copy, one run each:
+
+    m1 phase test GREEN|GATES -> GREEN       boundaries-3j: 57 passed, 18 failed
+       (AC-1 GATES x3, every AC-2 (GATES) whole line x14, the AC-2 branch composite)
+    m2 summary guard -gt 0 -> -ge 0          boundaries-3j: 73 passed, 2 failed
+       FAIL AC-6: and it is neither refused nor counted - rc|refusals|summary
+       FAIL AC-6: a branch with only RED and REVIEW commits - rc|anything from this rule
+    m3 O dropped from the noqa and rust-allow rows   boundaries-3j: 71 passed, 4 failed
+       FAIL AC-2 control: 'const s = "# noqa: S307";' in src/app.py is not refused
+       FAIL AC-2 control: 'url = "http://x/#noqa:frag"' in src/app.py is not refused
+       FAIL AC-2 control: 'msg = "#[allow(dead_code)]"' in src/lib.rs is not refused
+       FAIL AC-2 control: the corpus branch - rc|refusals|summary(12)
+    m4 ## Suppressions read from HEAD, not the working tree   boundaries-3j: 70 passed, 5 failed
+       FAIL AC-5: a declared suppression - rc|refusals
+       FAIL AC-5: and the rule says the path is declared
+       FAIL AC-5: the three in another order, other case, rule id bare - rc|refusals|declared
+       FAIL AC-5 control, an entry naming the path but not the rule id: ...
+       FAIL AC-5 control, an entry naming path and rule id without approved by: ...
+    m5 phase test GREEN|GATES -> any phase   boundaries-3j: 68 passed, 7 failed
+       FAIL AC-3: the AC-1 line added in a RED commit is not refused
+       [the same for PLANNED, SCAFFOLD, REVIEW, DONE]
+       FAIL AC-3: across those phases - rc|refusals|summary(1)
+       FAIL AC-6: a branch with only RED and REVIEW commits - rc|anything from this rule
+    m6 category test source|config -> any category   boundaries-3j: 71 passed, 4 failed
+       FAIL AC-3: the AC-1 line added to docs/backlog/stories/T-1.md (docs) in GREEN is not refused
+       FAIL AC-3: the AC-1 line added to scripts/x.sh (harness) in GREEN is not refused
+       FAIL AC-3: the AC-1 line added to tests/a.test.ts (test) in GREEN is not refused
+       FAIL AC-3: across those paths - rc|refusals|summary(1)
+    m7 summary guard drops "and refused nothing"   boundaries-3j: 72 passed, 3 failed
+       FAIL AC-1 (GREEN): and no summary line claims the commit was clean beside the refusal
+       FAIL AC-1 (GATES): and no summary line claims the commit was clean beside the refusal
+       FAIL AC-2: the table branch - rc|refusals (one per added line)|summary
+
+These are measurements of a prototype, not of the shipped block: GREEN's 3j is
+what the gates judge, and confirming that the same assertions go red against
+*it* is DV-1's and DV-2's job.
+
+**Deferred verifications: declined.** DV-1 (narrow the phase test in the real
+3j, watch AC-1 GATES and every AC-2 GATES whole line go red) and DV-2 (run the
+real `check-boundaries.sh` on this branch, then widen its category test to
+judge `docs`) are both `Owner: GATES`, and both mutate a block that does not
+exist in RED. I cannot run either and have not. m1 above is the shape DV-1
+should reproduce: 18 reds, all GATES.
+
+**Discovered, and changes the approach.**
+
+- **Strip the leading `+` before matching** (C-2 amendment). On the raw diff
+  line 11 of 14 example rows never match, because `O`'s `^` sees the `+`.
+- **No `awk -v` for the table** (C-2 amendment). `getline` from a file or
+  here-string keeps the backslashes; `-v` does not.
+- **Skip the diff's file header, not every line beginning `+++`.** Only lines
+  after the first `@@` are added lines; a test file never adds `++...`, so this
+  is unpinned, but `/^\+\+\+/ { next }` would drop an added `++x` line.
+- **"Judged" means touched a source or config path** (C-1 b amendment), or
+  AC-3's path case and DV-2 both fail.
+- **The summary must not print beside a refusal** (C-1 b amendment); AC-1 and
+  AC-2 pin its absence.
+- **The fixture stories are spikes on purpose** (C-5 amendment); do not read
+  `type` in 3j - AC-1 pins a feature story too.
+- `classify` is per path and costs a subprocess; the AC-2 branch has 28 judged
+  commits and one run, so a 3j that spawned per *line* rather than per *file*
+  would show up as wall time in this suite before anywhere else.
+- **Earning still open, at the orchestrator's choice:** AC-4's rc/refusals
+  half (no scratch mutation reads removed or context lines), and nine of the
+  twelve C-3 per-line assertions, which rest on the ERE measurements rather
+  than on a mutation of a running 3j. Every other on-arrival pass is earned by
+  m2-m7 against the prototype - claims about the shipped block until GREEN.
+- `bash scripts/selftest.sh selftest` is green with the new floor table
+  (`selftest: 268 passed, 0 failed`); `check-sigpipe.sh` (56 files, 0
+  findings) and `check-grep-count.sh` (56 files, 0 findings) are clean;
+  `gates.sh --fast` reports every gate UNCONFIGURED, as on every harness
+  story (BOOTSTRAPPED=no), so the test gates do not judge these suites -
+  `selftest.sh` does.
 
 ## Regressions
 
