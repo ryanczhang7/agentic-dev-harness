@@ -420,6 +420,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1** (2026-10-28). The story was cut and the Contract, Deferred verifications and Out of scope written in this dispatch; no override reported.
+- RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-28), self-reported, no override. Orchestrator's own run of the two suites on 8dc17c8's tree: `boundaries: 168 passed, 48 failed`, `new-story: 53 passed, 5 failed` (575 s); every red assertion is 3j output or the `## Suppressions` heading. `touches:` gained `.claude/tests/selftest.test.sh` (its hand-copied floor table), which RED had to change.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
