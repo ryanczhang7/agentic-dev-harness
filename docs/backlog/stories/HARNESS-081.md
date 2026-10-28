@@ -5,7 +5,7 @@ slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
@@ -421,6 +421,7 @@ name, below the table.
 
 - PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1** (2026-10-28). The story was cut and the Contract, Deferred verifications and Out of scope written in this dispatch; no override reported.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-28), self-reported, no override. Orchestrator's own run of the two suites on 8dc17c8's tree: `boundaries: 168 passed, 48 failed`, `new-story: 53 passed, 5 failed` (575 s); every red assertion is 3j output or the `## Suppressions` heading. `touches:` gained `.claude/tests/selftest.test.sh` (its hand-copied floor table), which RED had to change.
+- GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-28), self-reported; no override was reported to it.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -837,3 +838,65 @@ should reproduce: 18 reds, all GATES.
 
 ## Notes
 
+**GREEN (feature-developer, claude-opus-5-5, 2026-10-28): the negative controls,
+measured against the shipped `suppression_needles` and `suppression_hits`.**
+Both functions were extracted from the real `scripts/check-boundaries.sh` and
+fed a synthetic `--unified=0` diff (header, `@@ -0,0 +1,n @@`, every line `+`).
+The handoff's table holds exactly:
+
+    gawk 5.4.1
+    == C-2 example lines through suppression_hits (line|first row|trimmed text)
+    1|eslint-disable|// eslint-disable-next-line @typescript-eslint/no-explicit-any
+    2|ts-ignore|// @ts-ignore
+    3|biome-ignore|// biome-ignore lint/suspicious/noExplicitAny: legacy
+    4|noqa|x = eval(s)  # noqa: S307
+    5|type-ignore|y = f()  # type: ignore[attr-defined]
+    6|rust-allow|#[allow(dead_code)]
+    7|rust-allow|#![allow(clippy::all)]
+    8|gd-warning-ignore|@warning_ignore("unused_parameter")
+    9|coverage-ignore|/* istanbul ignore next */
+    10|coverage-ignore|// c8 ignore start
+    11|no-cover|def f():  # pragma: no cover
+    12|stryker-disable|// Stryker disable next-line all
+    13|hadolint-ignore|# hadolint ignore=DL3008
+    14|shellcheck-disable|# shellcheck disable=SC2086
+    == every row tested against each example line: each matches exactly its own row (14/14, no line matches two)
+    == the 12 C-3 lines through suppression_hits: no output; every row against each: 0 matches
+    == the defect: raw '+' lines, leading + kept: 3/14 match some row
+
+Same numbers as RED's (14/14, 0/12, 3/14). No divergence.
+
+**Decisions GREEN made that the Contract left open.**
+
+- The `note` for an unreadable story file is printed only for a commit that
+  changed at least one `source` or `config` path. A commit with no such path has
+  nothing this rule could judge in any phase, so "additions not judged" would be
+  noise; the AC-6 commit touches `src/main.ts` and gets the note.
+- The third partial-entry form is ` ... is missing the rule id [<id>] and
+  'approved by'.` as C-4 states. With several partial lines naming the path, the
+  first one's gap is reported; any whole line anywhere in the section wins.
+- A bare rule id counts as a word when the characters either side are not
+  `[a-z0-9_-]`.
+- The table and the diff reach awk as one here-string, separated by a
+  `--8<-- diff` line (the table is read until it, the diff after it), so there
+  is no temp file and no `-v`.
+- A merge commit in `BASE..HEAD` (CI's detached merge head) lists no paths under
+  plain `diff-tree -r`, so it is neither judged nor noted.
+- **Not handled, reported:** a file renamed in a GREEN/GATES commit. The diff is
+  read per path (`git show ... -- "$f"`), and with only the new path in the
+  pathspec git cannot pair the rename, so every line of the moved file reads as
+  added: an existing suppression carried by a `git mv` is refused. That fails
+  closed (the escape hatch discharges it) and no test pins it.
+
+**GREEN runs, on the uncommitted GREEN tree.**
+
+    bash .claude/tests/boundaries.test.sh   -> boundaries: 216 passed, 0 failed
+    bash .claude/tests/new-story.test.sh    -> new-story: 58 passed, 0 failed
+    bash scripts/selftest.sh selftest       -> selftest: 268 passed, 0 failed
+    policy: 17/0, reporting: 27/0, lib: 324/0 (the suites that read rules.md / sections.md)
+    check-sigpipe: scanned 56 shell file(s), 51 with pipefail, 0 finding(s)
+    check-grep-count: scanned 56 shell file(s), 0 finding(s)
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known)
+    GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh origin/main
+      -> no 3j line at all (no FAIL, no ok, no note); the two FAILs it prints are
+         3b (phase GREEN, not REVIEW) and 3h (DVs not yet run), both expected now.

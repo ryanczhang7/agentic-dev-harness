@@ -275,6 +275,10 @@ inspect.
   to reach green. Any of these means going back to RED. The same applies to a
   gate: do not delete an `evidence` line, drop `--workspace`, or add
   `--passWithNoTests` to make a gate stop complaining.
+  Nor add a line that silences the tool: `check-boundaries.sh` (block 3j)
+  refuses a lint, type, coverage or mutation suppression that a GREEN or GATES
+  commit adds to a `source` or `config` path, unless the story's
+  `## Suppressions` names its path and rule id with `approved by <who>`.
 - **Narrowing an input domain can be correct; loosening a comparison is always a
   weakening.** In a property test the input lives in a generator, not in the
   assertion, so a fifth move exists that is none of the four above: change what
