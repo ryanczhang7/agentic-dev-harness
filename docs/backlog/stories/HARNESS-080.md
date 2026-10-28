@@ -4,8 +4,8 @@ title: The shipped-manifest audit passes in a project whose gates run in a subdi
 slug: the-shipped-manifest-audit-passes-in-a-p
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-080-the-shipped-manifest-audit-passes-in-a-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/harness/VERSION] # files this story expects to write; `plan.sh conflicts` reads it
@@ -98,19 +98,82 @@ codes). No metric.
 
 **DV-1 (defect put back, against a real line).** With the real
 `.claude/harness/project.conf` mutated through `scripts/mutate.sh` so the
-`unit` gate runs `printf ok` in cwd `docs` (a directory this repository has
-and F69 does not) with `evidence | unit | -`, `bash scripts/selftest.sh gates`
+`unit` gate runs `printf ok` in cwd `.github` (a directory this repository
+has and F69 does not; RED first chose `docs`, which F69 does have - see the
+result) with `evidence | unit | -`, `bash scripts/selftest.sh gates`
 must pass the shipped trio against the fixed suite, and the same mutation
 against the unfixed suite (origin/main at 9e4fdb7) must fail exactly the
-trio with `cwd does not exist: docs`. With cwd `src-tauri` instead (absent
+trio with `cwd does not exist: .github`. With cwd `src-tauri` instead (absent
 here), the FIXED suite must fail the trio: AC-2 against a real line.
 **Owner: RED.**
+
+Result, RED, 2026-10-27 (orchestrator). The first attempt used cwd `docs` and
+did not bite on the UNFIXED suite - `make_fixture` creates `docs/backlog/stories`,
+so F69 already has it. That was the probe's mistake, not the test's:
+
+    === mutate: .claude/harness/project.conf (2 line(s) changed by s/^gate | unit      | required | \. |$/gate | unit      | required | docs | printf ok\nevidence | unit | -/) ===
+      required_gates: a story can escalate an optional gate for itself
+    gates: 926 passed, 0 failed
+    === mutate: command exited 0; restored (verified byte-for-byte against <scratch>/base/.claude/state/mutations/.claude_harness_project.conf.20261028T034545Z.1923.bak) ===
+
+With `.github`, which this repository has and F69 does not. Unfixed suite
+(scratch detached worktree at 9e4fdb7) - the defect, on a real line:
+
+    === mutate: .claude/harness/project.conf (2 line(s) changed by s/^gate | unit      | required | \. |$/gate | unit      | required | .github | printf ok\nevidence | unit | -/) ===
+      required_gates: a story can escalate an optional gate for itself
+        FAIL AC-7: the shipped manifest's --audit still passes
+        FAIL AC-7: and exits 0
+        FAIL AC-7: with no FAIL line
+    gates: 923 passed, 3 failed
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against <scratch>/base/.claude/state/mutations/.claude_harness_project.conf.20261028T035236Z.92.bak) ===
+
+Fixed suite, this worktree - the trio passes:
+
+    === mutate: .claude/harness/project.conf (2 line(s) changed by s/^gate | unit      | required | \. |$/gate | unit      | required | .github | printf ok\nevidence | unit | -/) ===
+      required_gates: a story can escalate an optional gate for itself
+    gates: 931 passed, 0 failed
+    === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/jolly-brattain-aa87af/.claude/state/mutations/.claude_harness_project.conf.20261028T035236Z.93.bak) ===
+
+Fixed suite, cwd `src-tauri`, which this repository does not have - the trio
+still fails (AC-2 against a real line). The AC-5 pair is HARNESS-069's earlier
+audit of the real manifest in the real tree, which rightly fails too:
+
+    === mutate: .claude/harness/project.conf (2 line(s) changed by s/^gate | unit      | required | \. |$/gate | unit      | required | src-tauri | printf ok\nevidence | unit | -/) ===
+      required_gates: a story can escalate an optional gate for itself
+        FAIL AC-5: and its audit says it passed
+        FAIL AC-5: and exits 0
+        FAIL AC-7: the shipped manifest's --audit still passes
+        FAIL AC-7: and exits 0
+        FAIL AC-7: with no FAIL line
+    gates: 926 passed, 5 failed
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/jolly-brattain-aa87af/.claude/state/mutations/.claude_harness_project.conf.20261028T040105Z.38893.bak) ===
 
 **DV-2 (the consumer's own manifest).** A detached scratch worktree of this
 branch with fantasy-world-builder's `project.conf` (release 98) and an empty
 `src-tauri/` must run `bash scripts/selftest.sh gates` with `0 failed`; the
 same tree on the unfixed suite reproduces the Context's three failures.
 **Owner: RED.**
+
+Result, RED, 2026-10-27 (orchestrator). fantasy-world-builder's
+`.claude/harness/project.conf` from its `chore/harness-release-98` branch
+(last changed in 6d17c05) copied in, with an empty `src-tauri/`. Unfixed
+(scratch detached worktree at 9e4fdb7) - the Context's failure, reproduced:
+
+      required_gates: a story can escalate an optional gate for itself
+        FAIL AC-7: the shipped manifest's --audit still passes
+        FAIL AC-7: and exits 0
+        FAIL AC-7: with no FAIL line
+    gates: 920 passed, 3 failed
+    1 of 1 harness suite(s) FAILED.
+
+Fixed (scratch detached worktree at this branch, the corrected
+`gates.test.sh` copied in):
+
+      required_gates: a story can escalate an optional gate for itself
+        note: project.conf is this project's own (BOOTSTRAPPED=yes), not the template; its keep-when text is not asserted (HARNESS-070)
+    gates: 928 passed, 0 failed
 
 ## Model guidance
 
@@ -150,10 +213,56 @@ name, below the table.
 
 ## Test plan
 
+All in `.claude/tests/gates.test.sh`, HARNESS-069's shipped-manifest block,
+run by `bash scripts/selftest.sh gates`:
+
+- AC-1: `HARNESS-080 AC-1: a bootstrapped manifest whose gate runs in a
+  subdirectory of its tree audits clean in the fixture`, `... and exits 0`,
+  `... with no FAIL line` - fixture manifest `$M69/sub.conf`, source root
+  `$M69/src` holding `sub/`.
+- AC-2: `HARNESS-080 AC-2: a cwd its tree lacks still FAILs the audit in the
+  fixture` (anchored: `^FAIL gone +cwd does not exist: gone$`) and
+  `... and exits 1` - `$M69/gone.conf`, same source root, no `gone/`.
+- AC-3: HARNESS-069's trio, unchanged in name and needle, now through
+  `audit69 "$SHIP69" "$REPO_ROOT"`; DV-1 is it against a real line.
+
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
 ## Handoff: RED -> GREEN
+
+The fix and its test are both test code: `cwds69` and `audit69` in
+`.claude/tests/gates.test.sh`, as the Contract says. Command:
+`bash scripts/selftest.sh gates`.
+
+Watched to fail. The new assertions were written first with `audit69` copying
+the manifest and auditing WITHOUT calling `cwds69` - the unfixed fixture:
+
+      required_gates: a story can escalate an optional gate for itself
+        FAIL HARNESS-080 AC-1: a bootstrapped manifest whose gate runs in a subdirectory of its tree audits clean in the fixture
+             expected: 1
+             actual:   0
+        FAIL HARNESS-080 AC-1: and exits 0
+             expected: 0
+             actual:   1
+        FAIL HARNESS-080 AC-1: with no FAIL line
+             expected: 0
+             actual:   1
+    gates: 928 passed, 3 failed
+    1 of 1 harness suite(s) FAILED.
+
+The right failure: the same manifest in a bare fixture, audited by hand -
+
+    FAIL sub          cwd does not exist: sub
+    rc=1
+
+and with `sub/` created, `ok   sub          (liveness declared unassertable)`,
+`Manifest audit passed.`, rc=0. AC-2 passed on arrival, as it must: it pins
+behaviour the fix must NOT remove, and DV-1's `src-tauri` run earns it against
+a real line. With `cwds69` called: `gates: 931 passed, 0 failed`.
+
+No production file changes, so GREEN is a verified no-op.
+`check-sigpipe.sh` and `check-grep-count.sh`: 0 findings.
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
      to the Feature Developer, whose context is fresh. Must contain:
