@@ -3829,8 +3829,39 @@ else
 fi
 printf 'BOOTSTRAPPED=yes\nkeep-when | unit | x\n  keep-when|unit|y\n# keep-when | unit | z\n' > "$M69/live.conf"
 assert_eq "AC-7 control: the live-line reader counts two live lines and not the comment" 2 "$(live69 "$M69/live.conf")"
-cp "$SHIP69" "$F69/.claude/harness/project.conf"
-out="$(g69 --audit)"; rc=$?
+# HARNESS-080: a consuming project's gates may run in a subdirectory - a Tauri
+# app's src-tauri - and the audit FAILs a cwd that does not exist. F69 holds
+# only scripts/ and .claude/hooks/, so the manifest is audited in a tree that
+# is not its own. cwds69 gives F69 every configured cwd that exists in the tree
+# the manifest came from, and only those: a cwd missing there still FAILs here.
+# An absolute cwd, or one with `..`, is not created, so nothing lands outside
+# the fixture; the audit then FAILs it, which is the right answer.
+#   cwds69 <conf> <source root> <fixture>
+cwds69() {
+  local _c
+  tr -d '\r' < "$1" \
+    | awk -F'|' '{ k = $1; gsub(/^[ \t]+|[ \t]+$/, "", k) }
+                 k == "gate" { c = $4; gsub(/^[ \t]+|[ \t]+$/, "", c); if (c != "" && c != ".") print c }' \
+    | while IFS= read -r _c; do
+        case "$_c" in /*|*..*) continue ;; esac
+        if [ -d "$2/$_c" ]; then mkdir -p "$3/$_c"; fi
+      done
+}
+# audit69 <conf> <source root>   audit <conf> in F69, shaped like <source root>
+audit69() { cp "$1" "$F69/.claude/harness/project.conf"; cwds69 "$1" "$2" "$F69"; g69 --audit; }
+mkdir -p "$M69/src/sub"
+printf 'BOOTSTRAPPED=yes\ngate | sub | required | sub | printf ok\nevidence | sub | -\n' > "$M69/sub.conf"
+printf 'BOOTSTRAPPED=yes\ngate | gone | required | gone | printf ok\nevidence | gone | -\n' > "$M69/gone.conf"
+out="$(audit69 "$M69/sub.conf" "$M69/src")"; rc=$?
+assert_eq "HARNESS-080 AC-1: a bootstrapped manifest whose gate runs in a subdirectory of its tree audits clean in the fixture" 1 \
+  "$(count_line 'Manifest audit passed.' "$out")"
+assert_eq "HARNESS-080 AC-1: and exits 0" 0 "$rc"
+assert_eq "HARNESS-080 AC-1: with no FAIL line" 0 "$(count_re '^FAIL ' "$out")"
+out="$(audit69 "$M69/gone.conf" "$M69/src")"; rc=$?
+assert_eq "HARNESS-080 AC-2: a cwd its tree lacks still FAILs the audit in the fixture" 1 \
+  "$(count_re '^FAIL gone +cwd does not exist: gone$' "$out")"
+assert_eq "HARNESS-080 AC-2: and exits 1" 1 "$rc"
+out="$(audit69 "$SHIP69" "$REPO_ROOT")"; rc=$?
 assert_eq "AC-7: the shipped manifest's --audit still passes" 1 "$(count_line 'Manifest audit passed.' "$out")"
 assert_eq "AC-7: and exits 0" 0 "$rc"
 assert_eq "AC-7: with no FAIL line" 0 "$(count_re '^FAIL ' "$out")"
