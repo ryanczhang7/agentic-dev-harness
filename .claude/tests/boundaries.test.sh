@@ -2170,8 +2170,30 @@ hadolint-ignore|Dockerfile|# hadolint ignore=DL3008
 shellcheck-disable|Makefile|# shellcheck disable=SC2086
 eslint-disable|src/main.ts|foo();// eslint-disable-line
 noqa|src/app.py|x = eval(s)# noqa
+stub-throw|src/main.ts|throw new Error("not implemented")
+stub-throw|src/main.ts|throw Error('Not Implemented')
+stub-throw|src/main.ts|  throw new NotImplementedError()
+stub-throw|src/main.ts|const f = () => { throw new Error(`TODO: wire the cache`) }
+stub-throw|src/main.ts|throw new Error("unimplemented")
+stub-todo|src/lib.rs|todo!()
+stub-todo|src/lib.rs|unimplemented!("later")
+stub-todo|src/lib.rs|    Some(todo!())
+stub-todo|src/lib.rs|    _ => unreachable!(),
+stub-todo|src/lib.rs|let x = todo!();
+stub-raise|src/app.py|raise NotImplementedError
+stub-raise|src/app.py|    raise NotImplementedError("later")
+stub-gd|src/player.gd|push_error("not implemented")
+stub-gd|src/player.gd|assert(false)
+stub-gd|src/player.gd|    assert( false, "unreachable")
 ROWS
 )"
+# HARNESS-082 appended the last fifteen rows above (its C-1 table, the four stub
+# rows): every spelling the contract names - `throw` with and without `new`, a
+# custom NotImplementedError class, the message in any of its three quote
+# characters and case; `todo!`/`unimplemented!`/`unreachable!` after `(`, `=>`,
+# `=` and indentation (the widened `O`); `raise` bare and with a message; and
+# GDScript's two spellings. They are refused by HARNESS-081's wording, byte for
+# byte (C-4: the word "suppression" stays).
 # The C-3 non-matching corpus, <path>|<line>. Each would be refused by a needle
 # that floated rather than anchoring on the comment opener, and each must be
 # clean. The last three are RED's (C-3 amendment): the two string-literal cases
@@ -2190,8 +2212,27 @@ src/app.py|url = "http://x/#noqa"
 src/app.py|const s = "# noqa: S307";
 src/app.py|url = "http://x/#noqa:frag"
 src/lib.rs|msg = "#[allow(dead_code)]"
+src/main.ts|const msg = "todo!()"
+src/main.ts|const t = `unimplemented!()`
+src/lib.rs|let s = 'todo!()';
+src/lib.rs|let unimplemented = 0;
+src/lib.rs|fn todo_later()
+src/lib.rs|my_todo!(x)
+src/main.ts|} catch (e) { log(e) }
+src/main.ts|throw new Error("no such user")
+src/app.py|raise NotImplementedErrorSubclass()
+src/player.gd|assert(is_ready)
 ROWS
 )"
+# HARNESS-082 appended the last ten rows above: its C-2 corpus, one line per
+# commit - a stub inside each of the three quote characters (the `O` class
+# excludes them), `unimplemented` and `todo_` as identifiers, a macro whose name
+# merely ends in `todo`, a handler with a body on one line (no opener: the line
+# does not end in `{`), a real error message, the NotImplementedError tail guard,
+# and an assert on a real condition. C-1's accepted false positive - a COMMENT
+# quoting a stub - is deliberately absent: it is refused by design. The
+# multi-line members of C-2 are their own describe below, since this table is
+# one line per commit.
 # _trim <s>   <s> without leading or trailing whitespace, as the refusal quotes it.
 _trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
 
@@ -2211,15 +2252,15 @@ while IFS='|' read -r rid path line; do
     _src_story "$ph" "$ac2_paths"
     printf '%s\n' "$line" >> "$FIX/$path"
     commit_all "T-1 $ph adds [$rid] to $path"
-    ac2_want+=("$rid|$ph|$(want_3j "$(_short)" "$ph" "$path" "$(awk 'END { print NR }' "$FIX/$path")" "$rid" "$(_trim "$line")")")
+    ac2_want+=("$rid|$ph|$path: $(_trim "$line")|$(want_3j "$(_short)" "$ph" "$path" "$(awk 'END { print NR }' "$FIX/$path")" "$rid" "$(_trim "$line")")")
   done
 done <<< "$AC2_ROWS"
 _src_story REVIEW "$ac2_paths"
 commit_all "T-1 to review"
 run_boundaries </dev/null
 for w in "${ac2_want[@]}"; do
-  rid="${w%%|*}"; w="${w#*|}"; ph="${w%%|*}"
-  whole_line "AC-2 [$rid] ($ph): the added line is refused by its whole line, naming $rid" "${w#*|}"
+  rid="${w%%|*}"; w="${w#*|}"; ph="${w%%|*}"; w="${w#*|}"; what="${w%%|*}"
+  whole_line "AC-2 [$rid] ($ph): the added line is refused by its whole line, naming $rid - $what" "${w#*|}"
 done
 assert_eq "AC-2: the table branch - rc|refusals (one per added line)|summary" \
   "1|${#ac2_want[@]}|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
@@ -2436,5 +2477,197 @@ source_story RED src/main.ts "$AC1_LINE" </dev/null
 run_boundaries </dev/null
 assert_eq "AC-6: a branch with only RED and REVIEW commits - rc|anything from this rule" \
   "0|" "$rc|$(grep -F -e 'GREEN/GATES' -e 'added a suppression' <<< "$out")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-082 AC-1: a stub added in GREEN or GATES is refused as stub-throw, by path, line, commit and phase"
+
+# HARNESS-082 (issue #132, second cut) appends four stub rows to 3j's table and
+# one two-line matcher, `empty-handler`. Everything else - the walk, the phases,
+# the classifier, the refusal text, ## Suppressions - is HARNESS-081's and is
+# pinned above. The same spike fixture, the same whole-line refusal (C-4: the
+# word "suppression" stays). One branch: a GREEN commit appends the line to
+# src/main.ts (line 2 - main's baseline is one line) and a GATES commit appends
+# it again (line 3).
+STUB_LINE='throw new Error("not implemented")'
+source_story GREEN src/main.ts "$STUB_LINE" GATES </dev/null
+run_boundaries </dev/null
+whole_line "HARNESS-082 AC-1 (GREEN): the refusal names stub-throw, src/main.ts, line 2, the commit and GREEN" \
+  "$(want_3j "$sup_c" GREEN src/main.ts 2 stub-throw "$STUB_LINE")"
+whole_line "HARNESS-082 AC-1 (GATES): the refusal names stub-throw, src/main.ts, line 3, the commit and GATES" \
+  "$(want_3j "$sup_c2" GATES src/main.ts 3 stub-throw "$STUB_LINE")"
+assert_eq "HARNESS-082 AC-1: rc|refusals|summary - refused twice, exit 1, and nothing calls it clean" \
+  "1|2|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-082 AC-3: an empty handler added as two consecutive lines is refused as empty-handler, naming the opener"
+
+# The matcher is C-3's: the previous ADDED line is an opener, the current added
+# line is its closer, both in one hunk. The refusal names the OPENER's line
+# number and quotes the opener's trimmed text.
+#
+# Files the describes below need on main, beside src/main.ts's one-line
+# baseline: an opener left as context for a closer to be added under it (the
+# AC-3 control), three unchanged lines for a two-hunk commit, an abstract method
+# whose decorator and def predate the branch (C-3's "added lines only"), and a
+# file holding the stubs AC-5 removes. Removed again at the end of this section.
+git -C "$FIX" checkout -q main 2>/dev/null
+printf 'try {\n  f()\n} catch (e) {\n'                                       > "$FIX/src/handler.ts"
+printf 'try:\n    f()\nexcept Exception:\n'                                   > "$FIX/src/handler.py"
+printf 'const a = 1\nconst b = 2\nconst c = 3\n'                              > "$FIX/src/twohunk.ts"
+printf 'class Shape(ABC):\n    @abstractmethod\n    def area(self):\n'        > "$FIX/src/iface.py"
+printf 'fn a() -> u32 {\n    todo!()\n}\nfn b() -> u32 {\n    unimplemented!()\n}\n' > "$FIX/src/stubs.rs"
+commit_all "HARNESS-082 baseline: a context opener, a two-hunk file, a pre-existing abstract method, two stubs"
+
+# _nlines <path>   How many lines <path> holds in the fixture's working tree; 0
+# when it does not exist yet.
+_nlines() { if [ -f "$FIX/$1" ]; then awk 'END { print NR }' "$FIX/$1"; else printf 0; fi; }
+
+# <PHASE>|<path>|<opener>|<closer>, one commit per row, the two lines appended
+# consecutively. Every opener and closer spelling C-3 pins: `} catch (e) {`, a
+# bare `catch {`, a typed binding, Java's `catch (Exception e) {`, indentation;
+# a closer that is a lone `}`, an indented `}` and `} finally {`; `except`
+# bare, with a class, with `as`, and a closer of `pass`, `...` and
+# `pass  # why`. GATES is in two rows, one per opener kind.
+EH_ROWS="$(cat <<'ROWS'
+GREEN|src/main.ts|} catch (e) {|}
+GREEN|src/app.py|except Exception:|    pass
+GATES|src/main.ts|  } catch (e) {|  }
+GATES|src/app.py|except Exception:|    pass
+GREEN|src/main.ts|catch (e) {|} finally {
+GREEN|src/main.ts|catch {|}
+GREEN|src/main.ts|} catch (e: unknown) {|}
+GREEN|src/main.ts|    catch (Exception e) {|    }
+GREEN|src/app.py|except:|    ...
+GREEN|src/app.py|    except Foo as e:|        pass  # swallowed on purpose
+ROWS
+)"
+eh_paths="src/main.ts src/app.py src/iface.py src/base.py"
+_src_branch
+eh_want=()
+while IFS='|' read -r ph path opener closer; do
+  [ -z "$ph" ] && continue
+  _src_story "$ph" "$eh_paths"
+  eh_ln=$(( $(_nlines "$path") + 1 ))
+  printf '%s\n%s\n' "$opener" "$closer" >> "$FIX/$path"
+  commit_all "T-1 $ph adds an empty handler to $path"
+  eh_want+=("$ph, '$(_trim "$opener")' then '$(_trim "$closer")' in $path|$(want_3j "$(_short)" "$ph" "$path" "$eh_ln" empty-handler "$(_trim "$opener")")")
+done <<< "$EH_ROWS"
+
+# C-3's "added lines only", the positive half: a raise added under a decorator
+# and def that are already on main is not the abstract-method idiom as far as
+# the diff can see, and is refused as stub-raise.
+_src_story GREEN "$eh_paths"
+eh_ln=$(( $(_nlines src/iface.py) + 1 ))
+printf '        raise NotImplementedError\n' >> "$FIX/src/iface.py"
+commit_all "T-1 GREEN adds a raise under a decorator that is context"
+eh_want+=("stub-raise under a decorator and def that are context|$(want_3j "$(_short)" GREEN src/iface.py "$eh_ln" stub-raise 'raise NotImplementedError')")
+# The exclusion needs the DECORATOR, not only the def: a raise under an added
+# def with no decorator, and under an added `@staticmethod`, are both refused.
+_src_story GREEN "$eh_paths"
+printf 'class Base:\n    def f(self):\n        raise NotImplementedError\n' >> "$FIX/src/base.py"
+commit_all "T-1 GREEN adds a raise under an undecorated def"
+eh_want+=("stub-raise under an added def with no decorator|$(want_3j "$(_short)" GREEN src/base.py 3 stub-raise 'raise NotImplementedError')")
+_src_story GREEN "$eh_paths"
+printf '    @staticmethod\n    def g():\n        raise NotImplementedError\n' >> "$FIX/src/base.py"
+commit_all "T-1 GREEN adds a raise under an added @staticmethod"
+eh_want+=("stub-raise under an added @staticmethod and def|$(want_3j "$(_short)" GREEN src/base.py 6 stub-raise 'raise NotImplementedError')")
+_src_story REVIEW "$eh_paths"
+commit_all "T-1 to review"
+run_boundaries </dev/null
+for w in "${eh_want[@]}"; do
+  whole_line "HARNESS-082 AC-3: ${w%%|*} - refused by its whole line" "${w#*|}"
+done
+assert_eq "HARNESS-082 AC-3: the handler branch - rc|refusals (one per handler or raise)|summary" \
+  "1|${#eh_want[@]}|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-082 AC-2/AC-3 controls: a handler that pre-existed, has a body or spans hunks, and an abstract method, are clean"
+
+# One branch of GREEN commits, each one C-2 or C-3 says is NOT refused, and the
+# claims that make "clean" mean something: exit 0, no FAIL from anywhere, and
+# the rule's summary over every commit it judged - a rule that judged nothing
+# cannot pass. <what>|<path>|<lines appended in one commit, \n-separated>:
+#   - a closer added under an opener that is CONTEXT (AC-3's control), brace
+#     and colon;
+#   - `except ValueError:` then a statement then `pass` (C-2: the `pass` is the
+#     third added line, not the second);
+#   - `@abstractmethod` / `def` / `raise NotImplementedError`, all three added
+#     (C-3's exclusion), and its `@abc.abstractmethod` / `async def` spelling.
+EHC_ROWS="$(cat <<'ROWS'
+a brace closer added under a context opener|src/handler.ts|}
+a colon closer added under a context opener|src/handler.py|    pass
+an except whose next added line is a statement|src/app.py|except ValueError:\n    retries += 1\n    pass
+an abstract method, all three lines added|src/shapes.py|class Shape(ABC):\n    @abstractmethod\n    def area(self):\n        raise NotImplementedError
+an abc.abstractmethod on an async def, all three lines added|src/shapes.py|    @abc.abstractmethod\n    async def load(self):\n        raise NotImplementedError("subclass")
+ROWS
+)"
+ehc_paths="src/handler.ts src/handler.py src/app.py src/shapes.py src/twohunk.ts"
+_src_branch
+ehc_n=0
+while IFS='|' read -r what path lines; do
+  [ -z "$what" ] && continue
+  _src_story GREEN "$ehc_paths"
+  printf '%b\n' "$lines" >> "$FIX/$path"
+  commit_all "T-1 GREEN: $what"
+  ehc_n=$((ehc_n+1))
+done <<< "$EHC_ROWS"
+# Two hunks in ONE commit: the opener added above three unchanged lines, the
+# closer below them. Only a hunk header clears the window (C-3), and here one
+# sits between the two added lines.
+_src_story GREEN "$ehc_paths"
+printf '} catch (e) {\nconst a = 1\nconst b = 2\nconst c = 3\n}\n' > "$FIX/src/twohunk.ts"
+commit_all "T-1 GREEN: an opener and a closer in two hunks"
+ehc_n=$((ehc_n+1))
+_src_story REVIEW "$ehc_paths"
+commit_all "T-1 to review"
+run_boundaries </dev/null
+while IFS='|' read -r what path lines; do
+  [ -z "$what" ] && continue
+  assert_eq "HARNESS-082 control: $what ($path) is not refused" "" \
+    "$(grep -F -- "'$path' line" <<< "$out")"
+done <<< "$EHC_ROWS"
+assert_eq "HARNESS-082 control: an opener and a closer in two hunks of one commit are not refused" "" \
+  "$(grep -F -- "'src/twohunk.ts' line" <<< "$out")"
+assert_eq "HARNESS-082 controls: the branch - rc|FAIL lines|summary($ehc_n)" \
+  "0||1" "$rc|$(grep '^FAIL' <<< "$out")|$(sup_count "$(want_3j_ok "$ehc_n")")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-082 AC-4: a stub declared in ## Suppressions is accepted by HARNESS-081's hatch"
+
+# Only that a new row discharges through the existing mechanism; the hatch's
+# parsing is HARNESS-081's AC-5 and is not re-tested here. A here-string, not a
+# pipe: source_story sets $sup_c in THIS shell.
+source_story GREEN src/main.ts "$STUB_LINE" \
+  <<< $'## Suppressions\n\n- `src/main.ts` [stub-throw] approved by ryan: feature-flagged, the test asserts it throws'
+run_boundaries </dev/null
+assert_eq "HARNESS-082 AC-4: the declared stub-throw - rc|refusals" "0|" "$rc|$(sup_fails)"
+whole_line "HARNESS-082 AC-4: and the rule says the stub is declared" \
+  "ok    suppression [stub-throw] in 'src/main.ts' is declared in ## Suppressions"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-082 AC-5: a stub removed is never judged, and the commit is still counted"
+
+# src/stubs.rs holds a todo!() and an unimplemented!() on main. One GREEN
+# commit deletes the todo!() line outright; a second replaces the
+# unimplemented!() with a value. Both are judged commits; neither adds a stub.
+_src_branch
+_src_story GREEN src/stubs.rs
+printf 'fn a() -> u32 {\n}\nfn b() -> u32 {\n    unimplemented!()\n}\n' > "$FIX/src/stubs.rs"
+commit_all "T-1 GREEN removes the todo!() line"
+_src_story GREEN src/stubs.rs
+printf 'fn a() -> u32 {\n}\nfn b() -> u32 {\n    2\n}\n' > "$FIX/src/stubs.rs"
+commit_all "T-1 GREEN replaces the unimplemented!() with a value"
+_src_story REVIEW src/stubs.rs
+commit_all "T-1 to review"
+run_boundaries </dev/null
+assert_eq "HARNESS-082 AC-5: a removed todo!() and a replaced unimplemented!() - rc|refusals" \
+  "0|" "$rc|$(sup_fails)"
+whole_line "HARNESS-082 AC-5: and the summary counts both GREEN commits as judged" "$(want_3j_ok 2)"
+
+# Put main back as the describes above found it.
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" rm -q --cached src/handler.ts src/handler.py src/twohunk.ts src/iface.py src/stubs.rs >/dev/null 2>&1
+rm -f "$FIX/src/handler.ts" "$FIX/src/handler.py" "$FIX/src/twohunk.ts" "$FIX/src/iface.py" "$FIX/src/stubs.rs"
+commit_all "HARNESS-082 baseline removed"
 
 summary "boundaries"

@@ -4,8 +4,8 @@ title: A stub added to source in GREEN or GATES is refused unless the story decl
 slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -196,10 +196,24 @@ the script, never the functions.
 **DV-1 (defect put back; central claim; AC-3). Owner: GATES.** With GREEN in
 the tree, `bash scripts/mutate.sh scripts/check-boundaries.sh '<expr>' --
 bash scripts/selftest.sh boundaries`, where `<expr>` removes the adjacency
-requirement from the `empty-handler` matcher (so an opener anywhere earlier in
-the file arms it). AC-3's control - closer added under a context opener -
-**must** go red, and nothing else. Paste the red, the restore, and a green
-run. RED cannot run this; the matcher does not exist yet.
+requirement from the `empty-handler` matcher, so that an opener stays armed
+across later added lines (the window is not cleared by an added line that is
+not a closer). The control of
+`describe "HARNESS-082 AC-2/AC-3 controls: ..."` named
+`an except whose next added line is a statement` **must** go red, and so must
+that branch's `rc|FAIL lines|summary` assertion; no positive assertion may
+go red. Paste the red, the restore, and a green run. RED cannot run this; the
+matcher does not exist yet.
+
+*Corrected in RED (2026-10-29).* The first cut said AC-3's context-opener
+control would go red. It cannot: 3j reads `git show --unified=0`
+(`scripts/check-boundaries.sh:807`, frozen by C-4), so a context line never
+reaches the awk, and no adjacency rule can see the opener that control
+leaves on main. The test-developer reported this from a scratch 3j; the
+orchestrator confirmed it independently from the shipped reading at line
+807, not by re-running that scratch. The context-opener control stays in the
+suite and is earned by what it pins (only added lines are read), which
+HARNESS-081's AC-4 already earned for the same reading.
 
 **DV-2 (the rule against a real line; needle rule). Owner: GATES.** The
 table's own rows are EREs, not stubs - `(todo|unimplemented|unreachable)!\(`
@@ -259,6 +273,7 @@ name, below the table.
 
 - PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1** (2026-10-28). The story was cut and the Contract, Deferred verifications and Out of scope written in this dispatch; no override reported.
 - PLANNED → RED refinement - `lead-po` (the orchestrating session), resolved **claude-fable-5-1** (2026-10-29): C-1's anchor and `stub-throw` widened, C-3 pinned line by line, C-7 and DV-2 rewritten against the shipped 3j.
+- RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29), as the agent reported; no override.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -292,10 +307,254 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One level: integration, through the script. Every test builds a real
+two-branch fixture repository (HARNESS-081's spike fixture at REVIEW, so a
+branch 3j does not refuse exits 0) and runs `bash scripts/check-boundaries.sh
+main` in it; the suite never calls `suppression_needles` / `suppression_hits`
+directly (C-7). Every refusal is pinned as a WHOLE output line (`whole_line`,
+`grep -cxF`), every clean branch by `rc 0`, no `FAIL` line, and 3j's summary
+over the exact number of commits it judged.
+
+| Test (describe / loop) | Level | AC |
+|---|---|---|
+| `AC2_ROWS` +15 rows, refused by whole line in GREEN and GATES (HARNESS-081's AC-2 loop) | integration | AC-2 |
+| `C3_ROWS` +10 lines, each not quoted in the output; branch rc 0, no FAIL, summary over 22 | integration | AC-2 control |
+| `HARNESS-082 AC-1` - one branch, GREEN then GATES commit of `throw new Error("not implemented")` | integration | AC-1 |
+| `HARNESS-082 AC-3` - `EH_ROWS`, 10 empty handlers (2 at GATES), plus 3 `stub-raise` pins of the exclusion's edges | integration | AC-3, AC-2 (exclusion edges) |
+| `HARNESS-082 AC-2/AC-3 controls` - closer under a context opener (brace, colon), `except`/statement/`pass`, the two `@abstractmethod` spellings, a two-hunk commit | integration | AC-3 control, AC-2 control |
+| `HARNESS-082 AC-4` - the AC-1 line declared `[stub-throw] approved by` | integration | AC-4 |
+| `HARNESS-082 AC-5` - a removed `todo!()`, a replaced `unimplemented!()` | integration | AC-5 |
 
 ## Handoff: RED -> GREEN
+
+Written by `test-developer`, running as **claude-opus-5-5** (no override in
+the dispatch), 2026-10-29.
+
+**Command:** `bash .claude/tests/boundaries.test.sh` (what `bash
+scripts/selftest.sh boundaries` runs). Local, this host: 9m40s for the file.
+There is no subset switch in the suite or in `selftest.sh` (its argument
+selects a suite, not a describe); for iteration I ran a scratch copy holding
+lines 1-109 (helpers, fixture) plus the HARNESS-081/082 section, which is
+self-contained from its "known baseline on main" commit onward - 163
+assertions, about 4 minutes. That scratch file is not in the tree.
+
+**Failure output, full file, against the shipped `check-boundaries.sh`
+(HARNESS-081's 3j, no stub rows):**
+
+```
+boundaries: 255 passed, 49 failed        (rc 1; 304 executed)
+
+    FAIL AC-2 [stub-throw] (GREEN): the added line is refused by its whole line, naming stub-throw - src/main.ts: throw new Error("not implemented")
+    ... one FAIL per new AC2_ROWS row and phase: 30 lines, the 15 rows below x GREEN/GATES
+    FAIL AC-2: the table branch - rc|refusals (one per added line)|summary
+         expected: 1|62|0
+         actual:   1|32|0
+    FAIL HARNESS-082 AC-1 (GREEN): the refusal names stub-throw, src/main.ts, line 2, the commit and GREEN
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082 AC-1 (GATES): the refusal names stub-throw, src/main.ts, line 3, the commit and GATES
+    FAIL HARNESS-082 AC-1: rc|refusals|summary - refused twice, exit 1, and nothing calls it clean
+         expected: 1|2|0
+         actual:   0|0|1
+    FAIL HARNESS-082 AC-3: GREEN, '} catch (e) {' then '}' in src/main.ts - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, 'except Exception:' then 'pass' in src/app.py - refused by its whole line
+    FAIL HARNESS-082 AC-3: GATES, '} catch (e) {' then '}' in src/main.ts - refused by its whole line
+    FAIL HARNESS-082 AC-3: GATES, 'except Exception:' then 'pass' in src/app.py - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, 'catch (e) {' then '} finally {' in src/main.ts - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, 'catch {' then '}' in src/main.ts - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, '} catch (e: unknown) {' then '}' in src/main.ts - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, 'catch (Exception e) {' then '}' in src/main.ts - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, 'except:' then '...' in src/app.py - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, 'except Foo as e:' then 'pass  # swallowed on purpose' in src/app.py - refused by its whole line
+    FAIL HARNESS-082 AC-3: stub-raise under a decorator and def that are context - refused by its whole line
+    FAIL HARNESS-082 AC-3: stub-raise under an added def with no decorator - refused by its whole line
+    FAIL HARNESS-082 AC-3: stub-raise under an added @staticmethod and def - refused by its whole line
+    FAIL HARNESS-082 AC-3: the handler branch - rc|refusals (one per handler or raise)|summary
+         expected: 1|13|0
+         actual:   0|0|1
+    FAIL HARNESS-082 AC-4: and the rule says the stub is declared
+         expected: 1
+         actual:   0
+```
+
+**Why it is the right failure.** Every red is an assertion about 3j's
+output: a whole refusal line counted 0 where it must be 1, or a branch's
+`rc|refusals|summary` reading `0|0|1` (exit 0, nothing refused, 3j calling
+the branch clean) where it must be `1|N|0`. No fixture errors, no bash
+errors: the same file run against a scratch 3j with the rows and matcher
+(below) is `163 passed, 0 failed` for the section. The 49 reds are exactly the
+48 new positive assertions plus HARNESS-081's AC-2 branch count, which moves
+because the table it counts grew. Nothing outside the 3j section changed
+state: the other 203 assertions pass as before.
+
+`bash scripts/gates.sh --fast`: `All required gates passed (0 ran, 5
+unconfigured, 0 known)` - every gate on this repository is UNCONFIGURED
+(BOOTSTRAPPED=no), so it judges nothing; it is not a pass. `check-sigpipe.sh`
+and `check-grep-count.sh` tree-wide: 0 findings.
+
+**Files touched (RED):**
+
+- `.claude/tests/boundaries.test.sh` - 15 rows appended to `AC2_ROWS`, 10
+  to `C3_ROWS` (each block marked as HARNESS-082's), the AC-2 loop's
+  assertion name now carries `<path>: <line>` so a failing row says which
+  line (names only; the assertion is unchanged), and five new describes before
+  `summary`. The section commits five files to the fixture's `main` and removes
+  them at its end, leaving main as it found it.
+- `.claude/tests/floors.conf` - `boundaries` 236 -> 304, measured line in the
+  comment block.
+- `.claude/tests/selftest.test.sh` - its hand-copied floor table, 236 -> 304.
+- this story - `## Test plan`, this section.
+
+**One line per test:**
+
+- `AC2_ROWS` (AC-2), each refused in GREEN and in GATES by its whole line:
+  `stub-throw` - `throw new Error("not implemented")`, `throw Error('Not Implemented')`,
+  `  throw new NotImplementedError()`, ``const f = () => { throw new Error(`TODO: wire the cache`) }``,
+  `throw new Error("unimplemented")`; `stub-todo` - `todo!()`, `unimplemented!("later")`,
+  `    Some(todo!())`, `    _ => unreachable!(),`, `let x = todo!();`; `stub-raise` -
+  `raise NotImplementedError`, `    raise NotImplementedError("later")`; `stub-gd` -
+  `push_error("not implemented")`, `assert(false)`, `    assert( false, "unreachable")`.
+  Paths: `src/main.ts`, `src/lib.rs`, `src/app.py`, `src/player.gd` - all
+  `source` by `classify.sh` (checked).
+- `C3_ROWS` (AC-2 control), each NOT quoted anywhere in the output, branch
+  `rc 0`, no FAIL, summary over 22 commits: `const msg = "todo!()"`,
+  ``const t = `unimplemented!()` ``, `let s = 'todo!()';`, `let unimplemented = 0;`,
+  `fn todo_later()`, `my_todo!(x)`, `} catch (e) { log(e) }`,
+  `throw new Error("no such user")`, `raise NotImplementedErrorSubclass()`,
+  `assert(is_ready)`. No comment quoting a stub (C-1's accepted false positive).
+- `HARNESS-082 AC-1` (AC-1): the GREEN commit's whole line at line 2, the GATES
+  commit's at line 3, and `rc|refusals|summary` = `1|2|0`.
+- `HARNESS-082 AC-3` (AC-3): ten `<opener>`/`<closer>` pairs appended as two
+  consecutive lines in one commit, each refused by
+  `want_3j <c> <PHASE> <path> <OPENER's line> empty-handler '<opener, trimmed>'`;
+  plus three `stub-raise` pins (C-3 edges of the exclusion): a raise added
+  under a decorator and def that are context on main (`src/iface.py` line 4),
+  a raise under an added `def` with no decorator (`src/base.py` line 3), a
+  raise under an added `@staticmethod`/`def` (`src/base.py` line 6); branch
+  `rc|refusals|summary` = `1|13|0`.
+- `HARNESS-082 AC-2/AC-3 controls` (AC-3 control, AC-2 control): five commits
+  each NOT refused (`'<path>' line` absent from the output) - `}` added under a
+  context `} catch (e) {`; `    pass` under a context `except Exception:`;
+  `except ValueError:`/`    retries += 1`/`    pass`; `@abstractmethod`/`def
+  area(self):`/`raise NotImplementedError` all added; `@abc.abstractmethod`/
+  `async def load(self):`/`raise NotImplementedError("subclass")` all added -
+  and one two-hunk commit (`} catch (e) {` at the top, `}` at the bottom, three
+  unchanged lines between); branch `rc|FAIL lines|summary(6)` = `0||1`.
+- `HARNESS-082 AC-4` (AC-4): the AC-1 line with
+  `` - `src/main.ts` [stub-throw] approved by ryan: feature-flagged, the test asserts it throws ``
+  - `rc|refusals` = `0|`, and the whole line
+  `ok    suppression [stub-throw] in 'src/main.ts' is declared in ## Suppressions`.
+- `HARNESS-082 AC-5` (AC-5): `src/stubs.rs` on main holds `todo!()` and
+  `unimplemented!()`; one GREEN commit deletes the `todo!()` line, a second
+  replaces `unimplemented!()` with `2`; `rc|refusals` = `0|` and the whole line
+  `ok    GREEN/GATES added no suppression (2 commit(s) judged)`.
+
+**Export shape the suite pins (stated as fact):**
+
+- Rule ids, exactly: `stub-throw`, `stub-todo`, `stub-raise`, `stub-gd`,
+  `empty-handler`. Each appears in the refusal as `[<id>]`.
+- The refusal is HARNESS-081's, byte for byte (C-4): `FAIL  story T-1: commit
+  <c7> (<PHASE>) added a suppression to '<path>' line <n> [<id>]: <text>.
+  GREEN and GATES may not silence a tool to reach green; if this one is
+  needed, declare it in ## Suppressions - one line carrying the path, the rule
+  id and 'approved by <who>', with the reason - and say why in that line.`
+- `suppression_hits` output keeps `<line no>|<rule id>|<text, trimmed>`; for
+  `empty-handler`, `<line no>` is the **opener's** line number in the file as
+  committed and `<text>` is the **opener's** text with leading and trailing
+  whitespace removed (e.g. `} catch (e) {`, `catch (Exception e) {`,
+  `except Foo as e:`). One emission per handler: each EH row draws exactly one
+  refusal (the `1|13|0` count).
+- A table row hit on a line is one refusal; the AC-2 count (`62`) is one per
+  added line, so no stub line may also emit `empty-handler`.
+- The `@abstractmethod` exclusion: suppressed when the two preceding ADDED
+  lines in the same hunk are `^[[:space:]]*(async[[:space:]]+)?def[[:space:]]`
+  then (above it) `^[[:space:]]*@(abc\.)?abstractmethod`; not suppressed when the
+  decorator is context, absent, or `@staticmethod`.
+- A hunk header clears the window (two-hunk control); a non-closer added line
+  between opener and closer disarms it (`except`/statement/`pass` control).
+
+**Not constrained** (implementer's choice): the awk's internal state names; a
+flag versus a lookback for the exclusion; where in the table the four rows go
+(they match lines no HARNESS-081 row does, so order among the rows is free);
+whether the opener/closer EREs live in the awk or in the needle stream;
+whether the `diff --git` line also clears the window (one file per
+`git show` call); what happens to a docstring between `def` and `raise` (the
+contract says n-1/n-2 exactly; the suite does not pin a docstring case either
+way); whether `except (A, B):  # noqa` is reported as `noqa`, `empty-handler`
+or both (not tested - C-3's precedence covers it, but no AC needs it).
+
+**Controls that pass on arrival, and what earns each.** In RED the module
+"exists" (HARNESS-081's 3j), so these ran and passed; they pass because 3j
+has no stub rows yet, which says nothing. Each was earned outside the tree by
+a scratch candidate - a copy of `scripts/check-boundaries.sh` with C-1's four
+rows and a C-3 matcher in `suppression_hits`, copied into the fixture over the
+shipped script (never into the tree) - first unmutated, then with one
+mutation each. Section run (163 assertions), local:
+
+| Control | Expected (shipped 3j) | Candidate | Mutation that earns it | Measured under the mutation |
+|---|---|---|---|---|
+| C3 corpus, 10 lines | pass | pass | `O` loses the quote exclusion (`[^A-Za-z0-9_]`) | 3 red: the three quoted-stub lines + corpus branch count |
+| `except`/statement/`pass` | pass | pass | opener not disarmed by a non-closer added line (`pk = ""` -> `pk = pk`) | 2 red: that control + branch count |
+| two-hunk commit | pass | pass | `@@` does not clear the window | 2 red: that control + branch count |
+| `@abstractmethod`, both spellings | pass | pass | exclusion deleted | 3 red: both + branch count |
+| (positive) raise under undecorated def / `@staticmethod` | red | pass | exclusion keyed on `def` only, decorator ignored | 3 red: both + AC-3 branch count |
+| closer under a context opener (brace, colon) | pass | pass | none of the above: see "DV-1" below | - |
+| AC-4 rc and refusals, AC-5 both | pass | pass | AC-5: reading `-` lines (not run in RED); AC-4: the `ok` line half is red today | - |
+
+```
+candidate (unmutated)        boundaries: 163 passed, 0 failed
+m4  O without quotes         FAIL AC-2 control: 'const msg = "todo!()"' in src/main.ts is not refused
+                             FAIL AC-2 control: 'const t = `unimplemented!()`' in src/main.ts is not refused
+                             FAIL AC-2 control: 'let s = 'todo!()';' in src/lib.rs is not refused
+                             FAIL AC-2 control: the corpus branch - rc|refusals|summary(22)
+                             boundaries: 159 passed, 4 failed
+m1a no disarm                FAIL HARNESS-082 control: an except whose next added line is a statement (src/app.py) is not refused
+                             FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+                             boundaries: 161 passed, 2 failed
+m1b @@ keeps window          FAIL HARNESS-082 control: an opener and a closer in two hunks of one commit are not refused
+                             FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+                             boundaries: 161 passed, 2 failed
+m2  exclusion deleted        FAIL HARNESS-082 control: an abstract method, all three lines added (src/shapes.py) is not refused
+                             FAIL HARNESS-082 control: an abc.abstractmethod on an async def, all three lines added (src/shapes.py) is not refused
+                             FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+                             boundaries: 160 passed, 3 failed
+m2b exclusion on def only    FAIL HARNESS-082 AC-3: stub-raise under an added def with no decorator - refused by its whole line
+                             FAIL HARNESS-082 AC-3: stub-raise under an added @staticmethod and def - refused by its whole line
+                             FAIL HARNESS-082 AC-3: the handler branch - rc|refusals (one per handler or raise)|summary
+                             boundaries: 160 passed, 3 failed
+```
+
+These were measured against MY candidate, not the shipped module: they are
+claims about the suite's discrimination until GREEN's 3j is in and the same
+mutations are rerun against it. The candidate's diff is not a suggestion of
+how to write the matcher.
+
+**DV-1 and DV-2: not runnable in RED, not claimed.** Both need GREEN's 3j in
+the tree. **DV-1 as written will not see what it expects**, and this is a
+finding for the orchestrator, not a change I have made: it says removing the
+adjacency requirement makes "AC-3's control - closer added under a context
+opener - go red, and nothing else". 3j reads `git show --unified=0`, so a
+context line is never in the input: under the candidate with adjacency
+removed (m1a) the context-opener control stayed GREEN, and the control that
+went red was C-2's `except ValueError:`/`retries += 1`/`pass`. The
+context-opener control can only be killed by an implementation that sees
+context (a wider `--unified`, or reading the file), which C-4 freezes. Proposed
+reading for DV-1: "the `except`/statement/`pass` control and the controls
+branch count go red, and nothing else" - for the PO to decide; DV-1 is not a
+Contract block and I have not edited it.
+
+**Contract amendments:** none. Every C-1 ERE was exercised unchanged by the
+candidate against every row and corpus line, under gawk 5.4.1 (local). CI's
+mawk 1.3.4 was NOT available here; GREEN should note that the `O` class holds
+both quote kinds and a backtick inside a single-quoted shell string.
+
+**Floor:** `boundaries` 236 -> 304 (`floors.conf` and `selftest.test.sh`'s
+copy). Measured: `boundaries: 255 passed, 49 failed` - 304 executed, local,
+9m40s. The suite sits below its floor (255 < 304) until GREEN lands.
+
+**For GREEN:** C-6 also asks for `VERSION` 101 in GREEN. DV-2 obliges you to
+quote C-1's four example lines and C-3's two openers verbatim in 3j's block
+comment, one per line.
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
      to the Feature Developer, whose context is fresh. Must contain:
