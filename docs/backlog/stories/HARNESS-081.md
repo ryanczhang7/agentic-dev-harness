@@ -1421,6 +1421,51 @@ entry carrying the path, the rule id and `approved by` discharges the
 refusal, so no criterion changes. C-9's tokenizing is amended (return 2), and
 both fixes are taken in this story.
 
+Round 3 (2026-10-29): a fresh `feature-developer` on the GATES row (planned
+`opus`, resolved **claude-opus-5-5**, self-reported, no override), against
+`git diff db13956..HEAD` at e157fa6. The report is condensed in wording only.
+
+**Checked and sound:**
+- The A-1 controls hold after the trim. The extracted shipped function ran
+  under gawk 5.4.1 and mawk 1.3.4 20240123 (the mawk run used a symlink and
+  printed its version line); the 23 rows were identical across the two.
+  - Refused: `(src/other.ts) ... same as src/main.ts`, `src/other.ts,
+    src/main.ts:`, `src/main.ts).` and `'src/main.ts.bak',`.
+  - Declared: `"src/main.ts",`, `('src/main.ts'),` and `'src/main.ts:'`.
+- The trim can never remove a `/`, so the first-path-token rule sees the
+  same tokens it saw before the change.
+- The bracketed and bare rule-id tests read the whole line, not the tokens.
+  This corrects GREEN return 2's note, which said they used the tokens.
+- `'\''` delivers `/^[,;:()'"]+|[,;:()'"]+$/` to both awks.
+- The new tests pin whole lines with `rc`, and the `$ac5_path` reset is
+  correct.
+
+**Should fix**
+1. A path that itself starts or ends with `,;:()'"`, such as `bin/run(old)`
+   or `lib/(x)`, can never be declared, because the trim eats its last
+   character. Return 1 had the same gap, and no path of this shape appears
+   in the stacks this harness targets; Next.js `(.)photo` paths declare.
+   Fix: compare the untrimmed token too.
+2. Trimming `"`, `(`, `)`, `;` and `:` has no test. Only `'` and `,` are
+   pinned, so narrowing the class to `[,']` would leave all 236 assertions
+   green (a reading of the code, not a mutation run). Fix: one declared case,
+   `("src/main.ts");`.
+
+**Nice to have**
+
+3. `src/main.ts:2` no longer declares the file. This follows C-9 as amended,
+   and it refuses rather than accepts.
+4. `lib/noqa.py` names the rule as a bare word inside its own path. This is
+   older than the delta. `app/[id]/x.tsx` turns bare-id matching off.
+
+Verdict: Ship.
+
+**PO decision.** None of the four lets through anything that should be
+refused; each one either refuses wrongly or leaves a gap in the tests. They
+join round 1's deferred findings 2, 3, 7, 8 and 9, 3i's matching hole, and
+round 2's globbing note in the follow-up story, which is to be planned after
+this story merges.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
