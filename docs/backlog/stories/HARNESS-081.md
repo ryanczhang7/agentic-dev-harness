@@ -5,7 +5,7 @@ slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
@@ -392,6 +392,16 @@ may every other block; GREEN builds what the amended block says.
   - The two A-1 example lines must be refused, and the C-3 corpus must stay
     clean.
 - **What declares a path and a rule (C-4).**
+  - *Amended by the PO, return 2 (2026-10-29), from diff review round 2
+    finding 1; this supersedes the delimiter list in the next sentence.* A
+    token is split on whitespace and backticks only. `,;:()` and the quote
+    marks `'` and `"` are then **trimmed from each end** of the token, never
+    split inside it. So `app/(auth)/page.tsx` and `lib/(shared)/util.py`
+    survive whole, and `(src/main.ts)`, `src/main.ts,` and `'src/main.ts'` (as
+    the FAIL line prints it) still declare `src/main.ts`. *Reason:* splitting
+    on `()` made a Next.js route-group path impossible to declare, a
+    regression from round 1's code, which the orchestrator reproduced. The
+    quote marks are round 2's finding 2, on the same line.
   - The path counts only as a **whole token**: delimited by the line's start
     or end, whitespace, a backtick, or one of `,;:()`. It must also be the
     first token on the line that contains a `/`, or appear when no earlier
@@ -1205,6 +1215,22 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
   token rule, with the reason) and Model guidance. `scripts/check-boundaries.sh`
   is untouched (`git status` shows it unmodified).
 
+### Return 2: GATES → RED (2026-10-29), from diff review round 2
+
+- **Which test, and what was wrong.** The AC-5 cases had no path containing
+  `(`, `)` or quote marks. So return 1's tokenizer, which splits on `()`,
+  passed every test while it made a route-group path, such as
+  `app/(auth)/page.tsx`, impossible to declare. A quoted path, the form the
+  FAIL line prints, could not be declared either.
+- **How it was found.** Diff review round 2. The orchestrator reproduced it
+  with `lib/(shared)/util.py`, `noqa` and `'lib/x.py'`, and the output is
+  pasted under `## Diff review`.
+- **What it asserts now.** AC-5 declared cases with a route-group path, both
+  backticked and bare, and with a single-quoted path. C-9, as amended in
+  return 2, says how those are tokenized.
+- **Earned by:** watching each new case fail against today's
+  `suppression_declared`. It is a real red, because the behaviour is absent.
+
 ## Diff review
 
 Round 1 (2026-10-28), a fresh `feature-developer` on the GATES row (planned
@@ -1244,6 +1270,64 @@ Verdict: fix 1 first.
     FAIL  story HARNESS-081: commit 562830f (GATES) added a suppression to '.mcp.json.example' line 9 [eslint-disable]: // eslint-disable-next-l[...]
 
 Confirmed. The fix contradicts AC-3's REVIEW clause, so it waits on the user.
+
+Round 2 (2026-10-29), a fresh `feature-developer` on the GATES row (planned
+`opus`, resolved **claude-opus-5-5**, self-reported, no override), against
+`git diff 46114ea..HEAD` and the whole of 3j at db13956. Report, condensed
+only in wording:
+
+**Checked and sound:**
+- The parent arm, case by case:
+  - no commit is judged twice;
+  - an unreadable own story still gets the note;
+  - a root commit or a parentless story is not judged, and `"$c^"` is no
+    `set -u` hazard;
+  - REVIEW → DONE is not judged;
+  - a story-only REVIEW-after-GATES commit is neither judged nor counted;
+  - `RED, after GATES` is judged correctly.
+- The widened anchor: 16/16 and 0/12 under gawk 5.4.1 and mawk 1.3.4. The
+  realistic `a, # noqa`, `],# type: ignore` and `}#[allow(...)]` are true
+  positives. The only new false positives are contrived string literals, and
+  JSON cannot carry `#`.
+- CRLF: `[[:space:]]` includes `\r`, and `.gitattributes` pins `*.md eol=lf`.
+- The tests: whole lines with `rc` paired, and the fourth AC-5 control
+  discriminates.
+
+**Must fix**
+1. **A path containing `(` or `)` can never be declared.** The return-1
+   split on `[[:space:]`,;:()]+` breaks `app/(auth)/page.tsx` into pieces, so
+   no token equals the path. That is a Next.js route group, and its escape
+   hatch is shut. Measured in a clone: the declaration was ignored and no
+   suffix was printed. Round-1 code declared it, so return 1 regressed it.
+   Fix: split on whitespace and backticks, then trim `,;:()` from token ends.
+   This goes back to RED for one AC-5 case.
+
+**Should fix**
+
+2. **A path in quotes does not declare.** `'src/main.ts'` is how the FAIL
+   line itself prints the path, so an author who copies it gets nothing. Fix:
+   trim `'` and `"` from token ends too, in the same change.
+
+Not made worse: deferred findings 2, 3, 7, 8 and 9, and 3i's hole. One
+addition for the follow-up story: the unquoted `for f in $(...)` also globs,
+so `app/[id]/page.tsx` can expand to `app/i/page.tsx`.
+
+Verdict: fix 1 first.
+
+**Orchestrator's reproduction of round 2 findings 1 and 2.** These are
+different paths and a different rule from the reviewer's: the shipped
+`suppression_declared`, extracted from `check-boundaries.sh` at db13956 and
+fed one entry line, with rule `noqa`:
+
+    - `lib/(shared)/util.py` [noqa] approved by sam: vendored      path=lib/(shared)/util.py   -> []
+    - lib/(shared)/util.py [noqa] approved by sam: vendored        path=lib/(shared)/util.py   -> []
+    - 'lib/x.py' [noqa] approved by sam: copied from the FAIL line path=lib/x.py               -> []
+    - `lib/x.py` [noqa] approved by sam: control                   path=lib/x.py               -> [declared]
+
+Confirmed. This is a regression against AC-5's existing promise, that an
+entry carrying the path, the rule id and `approved by` discharges the
+refusal, so no criterion changes. C-9's tokenizing is amended (return 2), and
+both fixes are taken in this story.
 
 ## Gate results
 
