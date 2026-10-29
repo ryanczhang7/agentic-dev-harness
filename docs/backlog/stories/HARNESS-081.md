@@ -5,7 +5,7 @@ slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
@@ -497,6 +497,17 @@ same 18. Restored and verified; `mutate.sh --check` clean after.
 boundaries: 198 passed, 18 failed
 === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261028T23554[...].bak) ===
 ```
+
+**After Return 2 (GATES, 2026-10-29, orchestrator, tree at 5a66660).**
+Return 2 changed only `suppression_declared`, the tokenizer of a
+`## Suppressions` line. `git diff b9a664b 5a66660 -- scripts` is 11 lines in
+that function and its comment. Neither DV-1 nor DV-1b mutates or depends on
+it, so their b9a664b results below stand for this tree and were not re-run.
+DV-2's first half was re-run, because it reads the whole of 3j over the real
+branch:
+
+    == DV-2 first half on 5a66660
+    (3j printed nothing)
 
 **Re-run after Return 1 (GATES, 2026-10-29, orchestrator, tree at b9a664b).**
 The walk changed in GREEN (return 1), so DV-1 and DV-2's first half were run
@@ -1414,9 +1425,9 @@ both fixes are taken in this story.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-29T02:33:57Z
-    commit: b9a664b
-    tree:   e791599d441aa85125578d0588348ef15b62c5c9
+    run:    2026-10-29T04:16:17Z
+    commit: 5a66660
+    tree:   ce392bcd71f8b0e81ced3c9945fd3fe503b72c77
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
