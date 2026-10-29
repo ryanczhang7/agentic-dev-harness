@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -82,10 +82,27 @@ identifier character or a quote (double, single or backtick) - so `foo(todo!())`
 
 | rule id | ERE (after `O`, where shown) | example added line |
 |---|---|---|
-| `stub-throw` | `` Othrow[[:space:]]+(new[[:space:]]+)?(NotImplementedError[[:space:]]*\(|Error[[:space:]]*\([[:space:]]*["'`][[:space:]]*([Nn]ot[[:space:]]*[Ii]mplemented|TODO|[Uu]nimplemented)) `` | `throw new Error("not implemented")` |
+| `stub-throw` | `` Othrow[[:space:]]+(new[[:space:]]+)?(NotImplementedError[[:space:]]*\(|Error[[:space:]]*\([[:space:]]*["'`][^"'`]*([Nn]ot[[:space:]]*([Yy]et[[:space:]]*)?[Ii]mplemented|NOT[[:space:]]*IMPLEMENTED|TODO|[Uu]nimplemented)) `` | `throw new Error("not implemented")` |
 | `stub-todo` | `O(todo\|unimplemented\|unreachable)!\(` | `todo!()` and `unimplemented!("later")` |
 | `stub-raise` | `Oraise[[:space:]]+NotImplementedError([[:space:](]\|$)` | `raise NotImplementedError` |
-| `stub-gd` | `O(push_error\|assert)\([[:space:]]*(false\|"not implemented")` | `push_error("not implemented")` |
+| `stub-gd` | `O(push_error\|assert)\([[:space:]]*(false([^A-Za-z0-9_]\|$)\|"[Nn]ot[[:space:]]+implemented)` | `push_error("not implemented")` |
+| `empty-handler` | `Ocatch([[:space:]]*\([^)]*\))?[[:space:]]*[{][[:space:]]*[}]` | `} catch (e) {}` |
+| `empty-handler` | `^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(pass\|\.\.\.)[[:space:]]*(#.*)?$` | `except: pass` |
+
+*Amended on the return to RED from GATES (2026-10-29, diff review round 1,
+findings 2-4; approved by the user, "Fix 1, 2, 3, 5" and "Add rows here").*
+`stub-throw` was `["'`][[:space:]]*(...)`, which missed TypeScript's own
+quick-fix stub `throw new Error("Method not implemented.")`, and
+`'not yet implemented'` and `"NOT IMPLEMENTED"`; the message may now carry a
+prefix inside the quotes and a `yet`. `stub-gd` was `(false|"not implemented")`,
+with no tail guard, so `assert(false_positives == 0)` was refused, and
+`push_error("Not implemented")` was missed. The two `empty-handler` rows are
+the **one-line** empty handler, which the C-3 window cannot see because its
+opener must end in `{` or `:`; they carry the same rule id as the window, so
+one `## Suppressions` line declares either shape. A one-line handler with a
+body (`} catch (e) { log(e) }`, `except KeyError: retry()`) matches neither.
+C-5's "RED may tighten, never widen" is overridden for these rows by that
+approval.
 
 The `stub-throw` row takes `throw Error(` without `new`, a `TypeError`-free
 spelling (a custom `NotImplementedError(` class, any message), and
@@ -108,7 +125,9 @@ but `O` is not: the `t` follows `"`); `let unimplemented = 0;`;
 followed by `    retries += 1` and then `    pass` (the `pass` is the third
 line, not the second); `throw new Error("no such user")`;
 `raise NotImplementedErrorSubclass()` (the tail guard); the `@abstractmethod`
-case of C-3.
+case of C-3; and, from the return to RED, `assert(false_positives == 0)`,
+`assert(falseCount === 0);`, `except KeyError: retry()` and
+`throw new Error("could not open the file")`.
 
 **C-3. The two-line matcher, `empty-handler`.** Not a table row:
 `suppression_hits`' awk keeps a one-line window over the **added** lines of
@@ -144,7 +163,15 @@ previous added line is an **opener** and the current added line is its
 - **Precedence:** a line is tested against the table rows first (first row
   wins, as HARNESS-081 pins) and then as an opener/closer; a `pass` or `}`
   that also matched a row is already reported and is not reported twice.
-  In practice no row matches those lines.
+  In practice no row matches those lines. **An opener is armed whether or
+  not its line hit a row** - only the *closer* test is skipped on a hit. So
+  `except:  # noqa: E722` / `    pass` prints both `noqa` and
+  `empty-handler`, each at the opener's line, and declaring `[noqa]` does not
+  declare the empty handler. *(Amended on the return to RED from GATES,
+  2026-10-29, diff review round 1 finding 1: GREEN armed an opener only on a
+  line that hit no row, so one approved lint suppression silently approved
+  the empty handler it sat on. This states what the precedence bullet
+  already implied; the AC text is unchanged.)*
 
 **The `@abstractmethod` exclusion** is the same window, two lines deep: a
 `stub-raise` hit on added line *n* is suppressed when added line *n-1*
@@ -679,6 +706,218 @@ comment, one per line.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### Return 1 - from GATES, after diff review round 1 (2026-10-29)
+
+**What was wrong.** No test was wrong; the suite was *missing* cases, so
+GREEN passed with four real gaps the review found and the orchestrator
+reproduced (`## Diff review`, round 1, with the reproduction):
+
+1. an opener on a line that also hits a row (`except:  # noqa: E722` /
+   `pass`) was never armed, so no `empty-handler` - nothing in the suite
+   puts a directive on an opener;
+2. `stub-throw` missed `throw new Error("Method not implemented.")`
+   (TypeScript's quick fix), `'not yet implemented'`, `"NOT IMPLEMENTED"`;
+3. `stub-gd` refused `assert(false_positives == 0)` and missed
+   `push_error("Not implemented")`;
+4. a one-line empty handler (`} catch (e) {}`, `except: pass`) was not seen.
+
+The user approved fixing 1-3 and adding rows for 4 in this story; finding 5
+(a comment) is GREEN's; finding 6 goes to the follow-up list. C-1, C-2 and
+C-3 are amended in place, each marked. The acceptance criteria are not
+changed: every new row is AC-2's "every row of C-1's table", and finding 1 is
+C-3's precedence bullet.
+
+**What RED adds.** Positive rows for 2, 3 and 4 in `AC2_ROWS`; corpus lines
+from C-2's amendment in `C3_ROWS`; a finding-1 case wherever the
+empty-handler describe can count it (two refusals at the opener's line,
+`noqa` and `empty-handler`). The floor rises to the measured count.
+
+**What earns it.** Each new positive row and the finding-1 case are red
+against the shipped GREEN (the code they need does not exist), which is an
+ordinary RED; the output is pasted below by the test-developer. Corpus lines
+that pass on arrival are earned by GREEN mutating the row or rule they pin.
+
+#### Return 1, RED - test-developer (resolved claude-opus-5-5, no override)
+
+**Files touched:** `.claude/tests/boundaries.test.sh` (additions only; no
+existing assertion edited or reordered), `.claude/tests/floors.conf`
+(`boundaries` 304 -> 328, with a comment entry), `.claude/tests/selftest.test.sh`
+(its copy of the floor, 304 -> 328), and this section. No source file.
+
+**How the rows were checked before they went in.** Not with the shipped
+`suppression_needles` - that is the OLD table. The six C-1 EREs were copied
+from the amended story text (markdown `\|` unescaped, `O` expanded to
+`` (^|[^A-Za-z0-9_"'`]) ``) into a file and applied with `awk` dynamic regexes,
+first row wins, after HARNESS-081's twelve rows from the shipped table; and the
+two C-3 opener EREs the same way. gawk 5 only (mawk is not on this host).
+Result: every new `AC2_ROWS` line hits exactly the rule id it is listed under
+and no HARNESS-081 row first; every new `C3_ROWS` line hits nothing;
+`except:  # noqa: E722` hits `noqa` and is a colon opener;
+`} /* istanbul ignore next */ catch (e) {` hits `coverage-ignore` and is a
+brace opener.
+
+**New assertions, and the finding each covers** (all marked "HARNESS-082's
+return 1" in the file):
+
+| # | where | assertion | finding | on arrival |
+|---|---|---|---|---|
+| 1-6 | AC-2 table | `[stub-throw]` refused by whole line, GREEN and GATES: `throw new Error("Method not implemented.");`, `throw new Error('not yet implemented')`, `throw new Error("NOT IMPLEMENTED")` | 2 | red |
+| 7-8 | AC-2 table | `[stub-gd]` `push_error("Not implemented")`, GREEN and GATES | 3 | red |
+| 9-16 | AC-2 table | `[empty-handler]` one-line: `} catch (e) {}`, `} catch {}`, `except: pass`, `    except Exception: ...  # swallowed`, GREEN and GATES | 4 | red |
+| 17 | C-2 corpus | `assert(false_positives == 0)` not refused | 3 | red (refused today) |
+| 18 | C-2 corpus | `assert(falseCount === 0);` not refused | 3 | red (refused today: shipped `stub-gd` has no tail guard) |
+| 19 | C-2 corpus | `except KeyError: retry()` not refused | 4 (control) | **passes** |
+| 20 | C-2 corpus | `throw new Error("could not open the file")` not refused | 2 (control) | **passes** |
+| 21 | AC-3 describe | `except:  # noqa: E722` / `    pass`: `[noqa]` at the opener's line, quoting the opener | 1 | **passes** |
+| 22 | AC-3 describe | same commit: `[empty-handler]` at the opener's line, quoting the same text | 1 | red |
+| 23 | AC-3 describe | `} /* istanbul ignore next */ catch (e) {` / `}`: `[coverage-ignore]` at the opener's line | 1 | **passes** |
+| 24 | AC-3 describe | same commit: `[empty-handler]` at the opener's line | 1 | red |
+
+Existing branch counts that now go red because the data grew (unedited): AC-2's
+table branch (78 refusals expected, 62 today), the C-2 corpus branch (exit 0
+and no FAIL; today two corpus lines are refused), and AC-3's handler branch
+(17 refusals expected, 15 today).
+
+**Deviation from the brief, for the orchestrator.** The brief asked for a brace
+case `} catch (e) { // eslint-disable-line no-empty` / `}` refused as both
+`[eslint-disable]` and `[empty-handler]`. Under C-3 as written that line is
+**not an opener** - the brace opener ERE ends `[{][[:space:]]*$`, and this line
+ends in `no-empty` (checked with awk: brace=0). Pinning it as `empty-handler`
+would widen C-3 past its text, which is an amendment, not a test; pinning it as
+NOT refused would assert a gap the review may want closed. So it is in
+neither direction. The brace half of finding 1 is pinned instead with a
+directive that leaves the line ending in `{`: `} /* istanbul ignore next */
+catch (e) {` (`coverage-ignore`). If the trailing-directive brace form should
+be an opener, that is a C-3 decision for the PO, and a later RED adds the row.
+
+**The red, against the shipped GREEN** (release 101, f6c6447's 3j):
+`bash .claude/tests/boundaries.test.sh`, local, 22m02s, rc 1. The summary line
+and every FAIL line (the `expected/actual` detail lines elided except for the
+three counts); no bash error anywhere in the output:
+
+```
+    FAIL AC-2 [stub-throw] (GREEN): the added line is refused by its whole line, naming stub-throw - src/main.ts: throw new Error("Method not implemented.");
+    FAIL AC-2 [stub-throw] (GATES): the added line is refused by its whole line, naming stub-throw - src/main.ts: throw new Error("Method not implemented.");
+    FAIL AC-2 [stub-throw] (GREEN): the added line is refused by its whole line, naming stub-throw - src/main.ts: throw new Error('not yet implemented')
+    FAIL AC-2 [stub-throw] (GATES): the added line is refused by its whole line, naming stub-throw - src/main.ts: throw new Error('not yet implemented')
+    FAIL AC-2 [stub-throw] (GREEN): the added line is refused by its whole line, naming stub-throw - src/main.ts: throw new Error("NOT IMPLEMENTED")
+    FAIL AC-2 [stub-throw] (GATES): the added line is refused by its whole line, naming stub-throw - src/main.ts: throw new Error("NOT IMPLEMENTED")
+    FAIL AC-2 [stub-gd] (GREEN): the added line is refused by its whole line, naming stub-gd - src/player.gd: push_error("Not implemented")
+    FAIL AC-2 [stub-gd] (GATES): the added line is refused by its whole line, naming stub-gd - src/player.gd: push_error("Not implemented")
+    FAIL AC-2 [empty-handler] (GREEN): the added line is refused by its whole line, naming empty-handler - src/main.ts: } catch (e) {}
+    FAIL AC-2 [empty-handler] (GATES): the added line is refused by its whole line, naming empty-handler - src/main.ts: } catch (e) {}
+    FAIL AC-2 [empty-handler] (GREEN): the added line is refused by its whole line, naming empty-handler - src/main.ts: } catch {}
+    FAIL AC-2 [empty-handler] (GATES): the added line is refused by its whole line, naming empty-handler - src/main.ts: } catch {}
+    FAIL AC-2 [empty-handler] (GREEN): the added line is refused by its whole line, naming empty-handler - src/app.py: except: pass
+    FAIL AC-2 [empty-handler] (GATES): the added line is refused by its whole line, naming empty-handler - src/app.py: except: pass
+    FAIL AC-2 [empty-handler] (GREEN): the added line is refused by its whole line, naming empty-handler - src/app.py: except Exception: ...  # swallowed
+    FAIL AC-2 [empty-handler] (GATES): the added line is refused by its whole line, naming empty-handler - src/app.py: except Exception: ...  # swallowed
+    FAIL AC-2: the table branch - rc|refusals (one per added line)|summary
+         expected: 1|78|0
+         actual:   1|62|0
+    FAIL AC-2 control: 'assert(false_positives == 0)' in src/player.gd is not refused
+    FAIL AC-2 control: 'assert(falseCount === 0);' in src/main.ts is not refused
+    FAIL AC-2 control: the corpus branch - rc|refusals|summary(26)
+    FAIL HARNESS-082 AC-3: GREEN, 'except:  # noqa: E722' then 'pass' in src/app.py, AND empty-handler at the opener although it hit [noqa] - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, '} /* istanbul ignore next */ catch (e) {' then '}' in src/main.ts, AND empty-handler at the opener although it hit [coverage-ignore] - refused by its whole line
+    FAIL HARNESS-082 AC-3: the handler branch - rc|refusals (one per handler or raise)|summary
+         expected: 1|17|0
+         actual:   1|15|0
+
+boundaries: 305 passed, 23 failed
+```
+
+The two corpus FAILs' `actual` is the shipped refusal, e.g. `... added a
+suppression to 'src/player.gd' line 2 [stub-gd]: assert(false_positives == 0).
+...` - refused by the untailed `stub-gd`, which is finding 3 itself.
+
+**Controls that pass on arrival, and the mutation that earns each** (GREEN or
+GATES runs them against the shipped fix, through `scripts/mutate.sh`, against
+`bash .claude/tests/boundaries.test.sh` or a subset holding the describe; the
+exact sed text is GREEN's to write against its own lines - these name the
+behaviour to break and what must go red):
+
+| # | control | expected on arrival | measured | mutation that earns it | must go red |
+|---|---|---|---|---|---|
+| 19 | `except KeyError: retry()` clean | not refused | not refused (and awk: no row hits) | widen the one-line `except` row's body from `(pass\|\.\.\.)` to `.*` | this corpus line, and the corpus branch count |
+| 20 | `throw new Error("could not open the file")` clean | not refused | not refused (awk: no row hits) | drop `([Yy]et[[:space:]]*)?[Ii]mplemented` from `stub-throw`'s `[Nn]ot` alternative, leaving `[Nn]ot` | this corpus line, and the corpus branch count |
+| 21 | `[noqa]` at the opener of `except:  # noqa: E722` / `pass` | refused, line = opener | refused, whole line matched | make a row hit on an opener line NOT print (e.g. guard the row's `printf` with "not an opener") - the wrong way to fix finding 1 | #21 and #23, and the handler branch count |
+| 23 | `[coverage-ignore]` at the opener of `} /* istanbul ignore next */ catch (e) {` / `}` | refused, line = opener | refused, whole line matched | the same mutation as #21 | as #21 |
+
+And the "defect put back" for finding 1 itself (#22, #24): restore
+`if (hit) pk = ""` as the only arming path, i.e. arm the opener only on a line
+that hit no row - #22, #24 and the handler branch count go red. That is the
+shipped GREEN as of f6c6447, so the red above is that mutation's output today.
+
+**Floor:** `boundaries` 304 -> 328 (+24: 16 table, 4 corpus, 4 finding-1),
+in `floors.conf` and in `selftest.test.sh`'s copy. Measured executed count
+328 = 305 + 23. Until GREEN lands the suite sits below its floor (305 < 328) -
+expected in RED.
+
+## Diff review
+
+### Round 1 (2026-10-29, on f6c6447) - fresh `feature-developer`, resolved **claude-opus-5-5**, no override
+
+Method: both functions eval'd out of the shipped script and run on hand-built
+diffs under gawk 5.4.1 and mawk 1.3.4 20240123; identical output under both.
+Checked and correct: multiple hunks, opener followed by opener, CRLF diffs,
+`\ No newline` marker, `-` lines before `+` lines, the `%c`-built quote.
+
+**Must fix**
+
+1. *An opener that also matches a table row is never armed.* `if (hit) pk = ""
+   else { ... }` tests openers only on lines that hit no row, so
+   `except:  # noqa: E722` / `pass` reports only `noqa`; once `[noqa]` is
+   declared, the empty catch-all passes. C-3 says only a *closer* that hit a
+   row is not reported twice. Fix: arm the opener regardless of `hit`; needs a
+   RED control first.
+2. *`stub-throw` misses TypeScript's own quick-fix stub*
+   `throw new Error("Method not implemented.")` (typescript.js
+   `Method_not_implemented`), and `'not yet implemented'`, `"NOT IMPLEMENTED"`.
+   Fix: allow a message prefix inside the quotes; a C-1 change, PO decision.
+
+**Should fix**
+
+3. *`stub-gd` has no tail guard*: `assert(false_positives == 0)` and
+   `assert(falseCount === 0)` are refused; `push_error("Not implemented")` is
+   missed. Fix: `(false([^A-Za-z0-9_]|$)|"[Nn]ot implemented")` plus a corpus
+   line.
+4. *A one-line empty handler is not an opener*: `} catch (e) {}`,
+   `} catch {}`, `except: pass`, `except Exception: pass` print nothing, and
+   (unverified, no Prettier here) Prettier prints an empty catch on one line.
+   PO question: a table row each, or Out of scope.
+
+**Nice to have**
+
+5. The comment above `suppression_hits` says any non-added line clears the
+   window; `-` and `\` lines do not (the code is right, C-3 agrees).
+6. `except(ValueError):`, `except* ValueError:` missed; an abstract method
+   with a docstring between `def` and `raise` is refused (as AC-2 specifies).
+
+Verdict: fix 1 and 2 first.
+
+**Orchestrator's reproduction (different inputs, not the reviewer's code):**
+
+```
+--- F1: opener carrying a directive
+3|noqa|except Exception:  # noqa: BLE001
+--- F2: TS quick-fix stub and variants          (all three lines: nothing)
+--- F3: stub-gd tail
+1|stub-gd|assert(false_alarm_count == 0)
+3|stub-gd|assert(false)
+--- F4: one-line empty handlers
+3|empty-handler|} catch (err) {
+```
+
+Inputs: F1 `try:` / `    f()` / `except Exception:  # noqa: BLE001` /
+`    pass`; F2 `throw new Error("Method not implemented.");`,
+`throw new Error('Not yet implemented')`, `throw new Error("no such user")`;
+F3 `assert(false_alarm_count == 0)`, `push_error("Not implemented")`,
+`assert(false)`; F4 `} catch (err) {}`, `except KeyError: pass`,
+`} catch (err) {` / `}`. All four findings reproduce: F1 has no
+`empty-handler`, F2 prints nothing for the two stubs, F3 refuses the
+identifier and misses the capital N, F4 sees only the two-line form.
 
 ## Gate results
 

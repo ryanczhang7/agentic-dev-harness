@@ -2185,8 +2185,23 @@ stub-raise|src/app.py|    raise NotImplementedError("later")
 stub-gd|src/player.gd|push_error("not implemented")
 stub-gd|src/player.gd|assert(false)
 stub-gd|src/player.gd|    assert( false, "unreachable")
+stub-throw|src/main.ts|throw new Error("Method not implemented.");
+stub-throw|src/main.ts|throw new Error('not yet implemented')
+stub-throw|src/main.ts|throw new Error("NOT IMPLEMENTED")
+stub-gd|src/player.gd|push_error("Not implemented")
+empty-handler|src/main.ts|} catch (e) {}
+empty-handler|src/main.ts|} catch {}
+empty-handler|src/app.py|except: pass
+empty-handler|src/app.py|    except Exception: ...  # swallowed
 ROWS
 )"
+# HARNESS-082's return 1 (diff review round 1, findings 2-4) appended the last
+# eight rows above, from the amended C-1: TypeScript's quick-fix stub (a prefix
+# inside the quotes), `not yet implemented` in single quotes, the upper-case
+# spelling; GDScript's capital-N push_error; and the ONE-LINE empty handler in
+# its two shapes - a brace pair with nothing between, and `except ...:` with
+# `pass` or `...` and an optional comment - refused under the same rule id as
+# C-3's two-line window.
 # HARNESS-082 appended the last fifteen rows above (its C-1 table, the four stub
 # rows): every spelling the contract names - `throw` with and without `new`, a
 # custom NotImplementedError class, the message in any of its three quote
@@ -2222,8 +2237,18 @@ src/main.ts|} catch (e) { log(e) }
 src/main.ts|throw new Error("no such user")
 src/app.py|raise NotImplementedErrorSubclass()
 src/player.gd|assert(is_ready)
+src/player.gd|assert(false_positives == 0)
+src/main.ts|assert(falseCount === 0);
+src/app.py|except KeyError: retry()
+src/main.ts|throw new Error("could not open the file")
 ROWS
 )"
+# HARNESS-082's return 1 (diff review round 1, findings 2-4) appended the last
+# four rows above, from the amended C-2: `false` as the start of an identifier
+# (stub-gd's tail guard), in both case conventions; a one-line except WITH a
+# body (not the one-line empty-handler row); and a message that contains `not`
+# but is not a stub (the widened stub-throw prefix must still need the word
+# `implemented`).
 # HARNESS-082 appended the last ten rows above: its C-2 corpus, one line per
 # commit - a stub inside each of the three quote characters (the `O` class
 # excludes them), `unimplemented` and `todo_` as identifiers, a macro whose name
@@ -2552,6 +2577,29 @@ while IFS='|' read -r ph path opener closer; do
   commit_all "T-1 $ph adds an empty handler to $path"
   eh_want+=("$ph, '$(_trim "$opener")' then '$(_trim "$closer")' in $path|$(want_3j "$(_short)" "$ph" "$path" "$eh_ln" empty-handler "$(_trim "$opener")")")
 done <<< "$EH_ROWS"
+
+# HARNESS-082's return 1 (diff review round 1, finding 1; C-3's amended
+# Precedence bullet). An opener whose line ALSO hits a table row is still armed:
+# only the closer test is skipped on a hit. So one commit adding the opener and
+# its closer draws TWO refusals, both at the opener's line - the row's and
+# `empty-handler` - and declaring the row's id does not declare the handler.
+# Two entries per commit, so the branch count below counts both. Colon: `noqa`
+# on a bare except. Brace: `coverage-ignore` inside a `} ... catch (e) {` line
+# that still ENDS in `{` - C-3's brace opener must end in `{`, so a directive
+# trailing the brace (`{ // eslint-disable-line`) is not an opener and is not
+# this case.
+while IFS='|' read -r ph path rid opener closer; do
+  [ -z "$ph" ] && continue
+  _src_story "$ph" "$eh_paths"
+  eh_ln=$(( $(_nlines "$path") + 1 ))
+  printf '%s\n%s\n' "$opener" "$closer" >> "$FIX/$path"
+  commit_all "T-1 $ph adds an empty handler whose opener carries [$rid] to $path"
+  eh_want+=("$ph, '$(_trim "$opener")' then '$(_trim "$closer")' in $path, the row's own refusal [$rid] at the opener|$(want_3j "$(_short)" "$ph" "$path" "$eh_ln" "$rid" "$(_trim "$opener")")")
+  eh_want+=("$ph, '$(_trim "$opener")' then '$(_trim "$closer")' in $path, AND empty-handler at the opener although it hit [$rid]|$(want_3j "$(_short)" "$ph" "$path" "$eh_ln" empty-handler "$(_trim "$opener")")")
+done <<'ROWS'
+GREEN|src/app.py|noqa|except:  # noqa: E722|    pass
+GREEN|src/main.ts|coverage-ignore|} /* istanbul ignore next */ catch (e) {|}
+ROWS
 
 # C-3's "added lines only", the positive half: a raise added under a decorator
 # and def that are already on main is not the abstract-method idiom as far as
