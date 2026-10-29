@@ -5,7 +5,7 @@ slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
@@ -486,6 +486,49 @@ same 18. Restored and verified; `mutate.sh --check` clean after.
     FAIL AC-2: the table branch - rc|refusals (one per added line)|summary
 boundaries: 198 passed, 18 failed
 === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261028T23554[...].bak) ===
+```
+
+**Re-run after Return 1 (GATES, 2026-10-29, orchestrator, tree at b9a664b).**
+The walk changed in GREEN (return 1), so DV-1 and DV-2's first half were run
+again on the shipped code. The earlier results stay below for history.
+
+- **DV-1**, with the own-phase arm narrowed to GREEN: **19 red**, all of them
+  GATES cases. That is AC-1's three, plus the GATES whole line of all 16 AC-2
+  rows, including the two A-1 rows.
+  - The AC-2 table composite stays green this time. Its GATES commits are
+    still judged, through the new parent arm, as `GATES, after GATES`. So the
+    count holds while every whole line goes red, which is the claim this
+    mutation pins.
+- **DV-1b, A-1's defect put back**: the parent-phase arm never matches.
+  Exactly the four AC-1 (a) assertions went red, and the other 226 stayed
+  green.
+- **DV-2's first half**: 3j printed nothing on this branch.
+- Every restore was verified, and `mutate.sh --check` came back clean.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/^    GREEN|GATES) ;;$/    GREEN) ;;/) ===
+  795 -     GREEN|GATES) ;;
+  795 +     GREEN) ;;
+    FAIL AC-1 (GATES): the refusal names eslint-disable, src/main.ts, line 2, the commit and GATES
+    FAIL AC-1 (GATES): it is the only refusal this rule prints
+    FAIL AC-1 (GATES): and the run exits 1, where the same branch without the line exits 0
+    FAIL AC-2 [<each of the 16 rows>] (GATES): the added line is refused by its whole line, naming <row>
+boundaries: 211 passed, 19 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .../scripts_check-boundaries.sh.20261029T020428Z.1088.bak) ===
+
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/case "\$sup_pph" in GREEN|GATES) ph_at=/case "$sup_pph" in NONE) ph_at=/) ===
+  800 -        case "$sup_pph" in GREEN|GATES) ph_at="$ph_at, after $sup_pph" ;; *) continue ;; esac ;;
+  800 +        case "$sup_pph" in NONE) ph_at="$ph_at, after $sup_pph" ;; *) continue ;; esac ;;
+    FAIL AC-1 (REVIEW after GATES): a line committed by the step that sets REVIEW is refused, naming 'REVIEW, after GATES'
+    FAIL AC-1 (REVIEW after GATES): rc|refusals|summary - refused once, and nothing calls it clean
+    FAIL AC-1 (REVIEW after GREEN): a line committed by the step that sets REVIEW is refused, naming 'REVIEW, after GREEN'
+    FAIL AC-1 (REVIEW after GREEN): rc|refusals|summary - refused once, and nothing calls it clean
+boundaries: 226 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .../scripts_check-boundaries.sh.20261029T022109Z.24817.bak) ===
+
+##### DV-2 first half (re-run on b9a664b)
+(3j printed nothing)
+mutate: no stranded mutation; nothing of a previous run is in the tree.
 ```
 
 **DV-2 result (GATES, 2026-10-28, orchestrator, tree at 33f25eb).** First
@@ -1206,9 +1249,9 @@ Confirmed. The fix contradicts AC-3's REVIEW clause, so it waits on the user.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-29T00:06:16Z
-    commit: 33f25eb
-    tree:   4090b4141a202e80f1c113c72334a9ffa7a91e78
+    run:    2026-10-29T02:33:57Z
+    commit: b9a664b
+    tree:   e791599d441aa85125578d0588348ef15b62c5c9
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
