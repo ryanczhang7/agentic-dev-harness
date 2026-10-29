@@ -4,8 +4,8 @@ title: A suppression comment added to source in GREEN or GATES is refused unless
 slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
@@ -1742,3 +1742,16 @@ the suite ran; this paragraph was added after it finished.
     check-grep-count: scanned 56 shell file(s), 0 finding(s)
     gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).
     mutate.sh --check: no stranded mutation
+
+- Full self-test at GATES → REVIEW (2026-10-29, tree at eaf38c0): `selftest-needed: run — 9 harness path(s) changed against origin/main`; `SELFTEST_JOBS=4 bash scripts/selftest.sh` exited 0 in 3,406 s, last line `30 harness suite(s) passed.`
+- **Follow-up story to plan after merge** (PO, 2026-10-29). The 3j findings below were deferred by the user's "Amend, fix 1/4/5/6" or rated non-blocking. The new story must re-check each one against the shipped code before RED.
+  - Round 1, finding 2: `diff-tree -z`, because paths with spaces, non-ASCII names or glob characters (`app/[id]/x.tsx`) are word-split, C-quoted or globbed.
+  - Round 1, finding 3: renames, handled with `git show -M` per commit.
+  - Round 1, finding 7: merge-conflict resolutions, noted via `--cc`.
+  - Round 1, finding 8: read the phase before calling `classify`.
+  - Round 1, finding 9: report every matching row, not only the first.
+  - 3i's matching hole: RED work committed after GREEN is set.
+  - Round 3, finding 1: compare the untrimmed token as well.
+  - Round 3, finding 2: pin the `"();:` trim.
+  - Round 3, finding 3: `path:line` entries.
+  - Round 3, finding 4: a bare rule id inside the path.
