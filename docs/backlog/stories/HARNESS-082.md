@@ -72,61 +72,122 @@ RED may amend any block in place, with a reason; GREEN builds what the
 amended block says. Blocks of HARNESS-081's contract that this story relies
 on are cited, not copied; where this story needs one changed it says so.
 
-**C-1. Rows appended to `suppression_needles()`** (HARNESS-081 C-2; `O` is
-`(^|[[:space:]])`):
+**C-1. Rows appended to `suppression_needles()`** (HARNESS-081 C-2). The
+anchor for a stub is not HARNESS-081's comment-opener class: a stub is an
+expression, so it follows `(`, `=`, `>`, `,`, `|` as readily as whitespace.
+`O` for every row below is `` (^|[^A-Za-z0-9_"'`]) `` - anything but an
+identifier character or a quote (double, single or backtick) - so `foo(todo!())`, `_ => todo!()` and
+`x = todo!();` are caught, `const msg = "todo!()"` and `my_todo!(` are not.
+(Refined at PLANNED → RED from `(^|[[:space:]])`; see Notes, PO decision 2.)
 
-| rule id | ERE | example added line |
+| rule id | ERE (after `O`, where shown) | example added line |
 |---|---|---|
-| `stub-throw` | `throw[[:space:]]+new[[:space:]]+Error\([[:space:]]*["'`](not[[:space:]]+implemented\|TODO\|unimplemented)` | `throw new Error("not implemented")` |
+| `stub-throw` | `` Othrow[[:space:]]+(new[[:space:]]+)?(NotImplementedError[[:space:]]*\(|Error[[:space:]]*\([[:space:]]*["'`][[:space:]]*([Nn]ot[[:space:]]*[Ii]mplemented|TODO|[Uu]nimplemented)) `` | `throw new Error("not implemented")` |
 | `stub-todo` | `O(todo\|unimplemented\|unreachable)!\(` | `todo!()` and `unimplemented!("later")` |
 | `stub-raise` | `Oraise[[:space:]]+NotImplementedError([[:space:](]\|$)` | `raise NotImplementedError` |
 | `stub-gd` | `O(push_error\|assert)\([[:space:]]*(false\|"not implemented")` | `push_error("not implemented")` |
 
-`unreachable!()` is in the `stub-todo` row because it is the same panic with
-a different name on it, and the case where it is right (an exhaustive match
-the compiler cannot prove) is one `## Suppressions` line. The `stub-raise`
-row has one legitimate use, the abstract method, and that is AC-2's control:
-C-3 says how it is excluded.
+The `stub-throw` row takes `throw Error(` without `new`, a `TypeError`-free
+spelling (a custom `NotImplementedError(` class, any message), and
+`Not implemented` / `NotImplemented` in any case, because those are the
+spellings a project actually writes and a row that misses the common one is
+not a rule. `unreachable!()` is in the `stub-todo` row because it is the same
+panic with a different name on it, and the case where it is right (an
+exhaustive match the compiler cannot prove) is one `## Suppressions` line.
+The `stub-raise` row has one legitimate use, the abstract method, and that is
+AC-2's control: C-3 says how it is excluded.
+
+**Known false positives, accepted, not controlled:** a *comment* quoting a
+stub (`// TODO: replace the todo!() below`, `# raise NotImplementedError was
+here`) is refused, because the rows read a line, not a token stream, and a
+`## Suppressions` line clears it. No corpus line may assert the opposite.
 
 **C-2. The non-matching corpus:** `const msg = "todo!()"` (the `(` is there,
 but `O` is not: the `t` follows `"`); `let unimplemented = 0;`;
-`fn todo_later()`; `} catch (e) { log(e) }`; `except ValueError:` followed by
-`    retries += 1` and then `    pass` (the `pass` is the third line, not the
-second); the `@abstractmethod` case of C-3.
+`fn todo_later()`; `my_todo!(x)`; `} catch (e) { log(e) }`; `except ValueError:`
+followed by `    retries += 1` and then `    pass` (the `pass` is the third
+line, not the second); `throw new Error("no such user")`;
+`raise NotImplementedErrorSubclass()` (the tail guard); the `@abstractmethod`
+case of C-3.
 
-**C-3. The two-line matcher, `empty-handler`.** Not a table row: 3j's
-per-file awk keeps the previous added line and its line number, and refuses
-when the previous added line matches an **opener** and the current added line
-is a **closer**, both from the same file, with nothing but whitespace (or a
-lone `{` on the opener's line) between. Openers: `O(catch\|except)\b[^{:]*(\{|:)[[:space:]]*$`
-(a `catch (e) {`, `catch {`, `except:`, `except Foo as e:`). Closers:
-`^[[:space:]]*\}[[:space:]]*$` after a `{`-opener, `^[[:space:]]*pass[[:space:]]*(#.*)?$`
-after a `:`-opener. Two consecutive **added** lines means the diff's `+` lines
-are adjacent with no hunk header between them; an opener added with the
-closer as context is pre-existing shape and is not refused (AC-3's control),
-and so is `catch (e) { log(e) }` on one line. The refusal names the opener's
-line and the rule id `empty-handler`. The `@abstractmethod` exclusion:
-when the previous added line matches `O@(abc\.)?abstractmethod`, a following
-`def` line's `stub-raise` on the line after that is not refused - a
-three-line window, decorator / def / raise, and the only context-sensitive
-rule in the block. RED may propose a narrower spelling; it may not drop the
-exclusion, because an abstract base class is the one idiom in which the
-needle is the correct implementation.
+**C-3. The two-line matcher, `empty-handler`.** Not a table row:
+`suppression_hits`' awk keeps a one-line window over the **added** lines of
+the file it is reading - the previous `+` line's text and line number - and
+emits `<opener line no>|empty-handler|<opener text, trimmed>` when the
+previous added line is an **opener** and the current added line is its
+**closer**. Exact pins:
+
+- **Brace opener:** `Ocatch([[:space:]]*\([^)]*\))?[[:space:]]*\{[[:space:]]*$`
+  - `} catch (e) {`, `catch {`, `catch (e: unknown) {`, `catch (Exception e) {`.
+  **Brace closer:** `^[[:space:]]*\}` - a line that *begins* with `}` after
+  whitespace, whatever follows it, because `} finally {` directly under a
+  `catch (e) {` is the same empty handler as a lone `}`.
+- **Colon opener:** `^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(#.*)?$`
+  - `except:`, `except Foo as e:`, `except (A, B):  # noqa`.
+  **Colon closer:** `^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$`.
+- **Allman braces** (`catch (e)` / `{` / `}`): an opener whose line does not
+  end in `{` is **not** an opener. A `.catch(() => {` / `})` promise handler
+  is likewise not matched - both are out of scope here, and a row for either
+  is a later story's. The parenthetical "a lone `{`" in the first cut of this
+  block is withdrawn; two consecutive added lines means exactly two.
+- **Adjacency** is in the diff, not the file: the two `+` lines follow one
+  another in one hunk. Only a hunk header (`@@`) or the end of the diff
+  clears the window; a `-` line never sits between two `+` lines, because
+  `--unified=0` prints a hunk's `-` lines before its `+` lines, so two added
+  lines that replace two removed ones are still adjacent `+` lines. An
+  opener that is context (not added) is never in the window, so a closer
+  added under it is not refused (AC-3's control), and `catch (e) { log(e) }`
+  on one line matches no opener.
+- **The refusal** names the opener's line number and quotes the opener's
+  trimmed text; its rule id is `empty-handler`; it is declared like any row,
+  `path [empty-handler] approved by`.
+- **Precedence:** a line is tested against the table rows first (first row
+  wins, as HARNESS-081 pins) and then as an opener/closer; a `pass` or `}`
+  that also matched a row is already reported and is not reported twice.
+  In practice no row matches those lines.
+
+**The `@abstractmethod` exclusion** is the same window, two lines deep: a
+`stub-raise` hit on added line *n* is suppressed when added line *n-1*
+matches `^[[:space:]]*(async[[:space:]]+)?def[[:space:]]` and added line
+*n-2* matches `^[[:space:]]*@(abc\.)?abstractmethod`, all three adjacent `+`
+lines in one hunk. **Added lines only**, as everything in 3j: a `raise
+NotImplementedError` that replaces a `pass` under a pre-existing decorator is
+refused, because the decorator is not in the diff, and is declared in one
+line. RED may propose a narrower spelling; it may not drop the exclusion,
+because an abstract base class is the one idiom in which the needle is the
+correct implementation.
 
 **C-4. What does not change.** 3j's walk, phase test, category test,
-`--unified=0` reading, refusal text and `## Suppressions` matching are
-HARNESS-081's and this story does not edit those lines; `plan.sh conflicts`
-will call this story and HARNESS-083 a `CONFLICT` on `check-boundaries.sh`,
-which is correct - they run one after the other, and both after HARNESS-081.
+`--unified=0` reading, `## Suppressions` matching and the **refusal text**
+are HARNESS-081's and this story does not edit those lines. The refusal for a
+stub therefore reads `added a suppression to '<path>' line <n> [stub-todo]:
+<line>. GREEN and GATES may not silence a tool...` - the word *suppression*
+stays, byte for byte, so `want_3j` in the suite pins every row the same way
+(PO decision 1 in Notes; rewording the message is a later story's, with
+every pinned line in the suite moving with it). `plan.sh conflicts` calls
+this story and HARNESS-083 a `CONFLICT` on `check-boundaries.sh`, which is
+correct - they run one after the other, and both after HARNESS-081.
 
 **C-5. Oracle partition.** All **mechanical**. The rows and ids in C-1 are
-**settled**; RED may tighten an ERE and must not drop a row or the
-`abstractmethod` exclusion.
+**settled**; RED may tighten an ERE and must not drop a row, a corpus line
+or the `abstractmethod` exclusion. No criterion has a measured number.
 
-**C-6. Self-test and floor.** New rows go into HARNESS-081's table-driven
-loops in `boundaries.test.sh` (positive and negative); AC-3 gets its own
-`describe` because its fixture adds two lines. `floors.conf`'s `boundaries`
-floor rises in RED to the measured count. `VERSION` bumps in GREEN.
+**C-6. Self-test and floor.** New positive rows go into `AC2_ROWS` and new
+corpus lines into `C3_ROWS` in `boundaries.test.sh` (the table-driven loops
+HARNESS-081 left for exactly this); AC-3 and the `@abstractmethod` control
+get their own `describe` blocks because their fixtures add two or three
+lines in one commit, which `source_story`'s one-line shape cannot. AC-4 and
+AC-5 reuse `source_story`. `floors.conf`'s `boundaries` floor rises in RED
+to the measured count, with the measured line pasted in the comment as every
+raise before it. `VERSION` bumps to 101 in GREEN.
+
+**C-7. Callers of what changes.** No exported name or signature changes.
+`suppression_needles` gains rows; `suppression_hits` gains state inside its
+awk and keeps its output shape `<line no>|<rule id>|<text>`; both are called
+only at `scripts/check-boundaries.sh:772` and `:812`, and nothing else in the
+tree names them (`grep -rn suppression_ --include=*.sh --include=*.md`,
+checked 2026-10-29: the only other mention is this story). The suite drives
+the script, never the functions.
 
 **Test-only dependencies:** none.
 
@@ -141,15 +202,22 @@ the file arms it). AC-3's control - closer added under a context opener -
 run. RED cannot run this; the matcher does not exist yet.
 
 **DV-2 (the rule against a real line; needle rule). Owner: GATES.** The
-real line is `scripts/check-boundaries.sh` itself after GREEN: it contains
-every stub spelling inside the table, on `harness`-classified lines. Run
-`GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh origin/main`
-on this branch and paste that 3j prints no `FAIL`. Then, with `mutate.sh`
-widening 3j's category test to include `harness`, the same command **must**
-refuse the real table lines by path and line - and the paste shows **which
-rule id** fired on them, which is also a check that the ERE for `stub-throw`
-does not match the table's own quoting of it in a way that names the wrong
-row. Restore, re-run, paste.
+table's own rows are EREs, not stubs - `(todo|unimplemented|unreachable)!\(`
+does not match itself - so the real lines are the **example lines GREEN
+quotes in 3j's block comment** when it documents the new rows (it must quote
+each of C-1's four examples and C-3's two openers verbatim, one per line, so
+that this probe has a real line per rule). They are added by this story's
+GREEN commit to `scripts/check-boundaries.sh`, a `harness` path, which 3j's
+category test skips. Run `GITHUB_HEAD_REF= PR_HEAD_SHA= bash
+scripts/check-boundaries.sh origin/main` on this branch and paste that 3j
+prints no `FAIL`. Then, with `mutate.sh` widening the category test at
+`case "$(classify "$f")" in source|config)` to `source|config|harness`, the
+same command **must** refuse each quoted example by path and line, and the
+paste shows **which rule id** fired on each - the check that `stub-throw`'s
+ERE, which quotes `Error(` and a quote character, names its own row and not
+another. Restore (`mutate.sh` verifies it), re-run, paste the clean run.
+An example line the widened rule does *not* refuse is a row that cannot see
+the spelling it documents, and is a defect, not a WAIVED.
 
 ## Amendments
 
@@ -190,6 +258,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1** (2026-10-28). The story was cut and the Contract, Deferred verifications and Out of scope written in this dispatch; no override reported.
+- PLANNED → RED refinement - `lead-po` (the orchestrating session), resolved **claude-fable-5-1** (2026-10-29): C-1's anchor and `stub-throw` widened, C-3 pinned line by line, C-7 and DV-2 rewritten against the shipped 3j.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -205,6 +274,8 @@ name, below the table.
   not try; it makes the line visible.
 - **`TODO` and `FIXME` comments**, `console.log`, `debugger`, `dbg!()`,
   `print(` - noise, not weakening; a linter's job.
+- **Allman-brace handlers** (`catch (e)` / `{` / `}`) and **promise handlers**
+  (`.catch(() => {` / `})`) - three-line and call-shaped; C-3 says why.
 - **Handlers that swallow with a comment** (`catch (e) { /* ignore */ }`) -
   the comment is a body, and the matcher stops at "nothing but whitespace".
   Widening to "a body that is only a comment" is a decision for the user, not
@@ -303,4 +374,26 @@ name, below the table.
      named here. -->
 
 ## Notes
+
+**PO decisions at PLANNED → RED (2026-10-29):**
+
+1. **The refusal keeps HARNESS-081's wording**, "added a suppression to",
+   for a stub and an empty handler. A stub is not a suppression in the plain
+   sense, but AC-1 asks for HARNESS-081's `FAIL` shape and C-4 freezes that
+   text; rewording it means moving every `want_3j` line in the suite and is a
+   story of its own. The user can overrule this before GREEN.
+2. **The stub anchor is wider than the comment anchor.** HARNESS-081 anchors a
+   directive on its comment opener; a stub is an expression and sits after
+   `(`, `=>`, `=`, `,`. `O` became "anything but an identifier character or a
+   quote", which keeps the string-literal control clean and catches
+   `foo(todo!())`. The cost is a comment that quotes a stub, accepted in C-1.
+3. **DV-2 as first cut could not run**: the table rows are EREs and do not
+   match themselves, and the only lines this story adds to a non-`harness`
+   path are fixtures the suite writes. It now reads the example lines GREEN
+   quotes in the block comment, which obliges GREEN to quote them.
+4. **Gate:** every gate in `project.conf` is unconfigured on this repository
+   (`gates.sh --list`), as for every HARNESS story; the artifact is judged by
+   `bash scripts/selftest.sh boundaries`, which CI's `gates` job runs, so it
+   is required in the sense that matters. `required_gates` stays empty.
+5. `epic:` is empty; there is no done-when to check against.
 
