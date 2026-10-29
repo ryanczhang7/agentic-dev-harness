@@ -688,6 +688,37 @@ fi
 # only with a C-3-style control showing the string and URL cases stay clean.
 # The rows are data: a new directive is a new row and nothing else.
 #
+# The stub-* rows are a different kind: a stub stands in for an implementation,
+# and the claim it breaks is "full coverage of the behaviour the story claims",
+# not "the tests are frozen". A stub is an expression, not a comment, so it sits
+# after `(`, `=`, `>`, `,` or `|` as readily as after whitespace, and its anchor
+# is anything but an identifier character or a quote (double, single or
+# backtick), spelled out in every stub row - so `foo(todo!())` and
+# `_ => todo!()` are caught, and `"todo!()"` and `my_todo!(` are not. The rows read a line, not a token stream, so a COMMENT
+# quoting a stub is refused too; that false positive is accepted, and one
+# ## Suppressions line clears it. One example line each, verbatim, so a probe
+# that widens the category test below has a real line per rule:
+#   throw new Error("not implemented")
+#   todo!()
+#   unimplemented!("later")
+#   raise NotImplementedError
+#   push_error("not implemented")
+# `raise NotImplementedError` has one legitimate use, the abstract method, and
+# suppression_hits drops a stub-raise hit whose two previous ADDED lines in the
+# same hunk are a `def` and, above it, `@abstractmethod` or `@abc.abstractmethod`.
+# A decorator that is context is not in the diff, so it does not excuse the raise.
+#
+# empty-handler is not a row, because a row reads one line and an empty handler
+# is two: an opener, and its closer as the very next ADDED line in the same hunk.
+# suppression_hits keeps that window itself - see below. The two opener shapes:
+#   } catch (e) {
+#   except Exception:
+# A brace opener must end in `{` and its closer begin with `}`, so `} finally {`
+# closes it too; a colon opener's closer is a lone `pass` or `...`. Allman braces
+# and `.catch(() => {` are not openers, and `catch (e) { log(e) }` has a body.
+# Under --unified=0 an opener that is context never reaches the awk, so a closer
+# added under an existing handler is not refused.
+#
 # The table reaches awk in its input stream, never through `awk -v`: -v
 # processes escapes, and gawk turns `\[` into `[` and dies on the bracket.
 suppression_needles() {
@@ -704,6 +735,10 @@ no-cover|(^|[[:space:];,)}])#[[:space:]]*pragma:[[:space:]]*no[[:space:]]+(cover
 stryker-disable|(^|[[:space:];,)}])(//|/\*|#)[[:space:]]*Stryker[[:space:]]+disable([[:space:]]|$|\*/)
 hadolint-ignore|^[[:space:]]*#[[:space:]]*hadolint[[:space:]]+ignore=
 shellcheck-disable|^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable=
+stub-throw|(^|[^A-Za-z0-9_"'`])throw[[:space:]]+(new[[:space:]]+)?(NotImplementedError[[:space:]]*\(|Error[[:space:]]*\([[:space:]]*["'`][[:space:]]*([Nn]ot[[:space:]]*[Ii]mplemented|TODO|[Uu]nimplemented))
+stub-todo|(^|[^A-Za-z0-9_"'`])(todo|unimplemented|unreachable)!\(
+stub-raise|(^|[^A-Za-z0-9_"'`])raise[[:space:]]+NotImplementedError([[:space:](]|$)
+stub-gd|(^|[^A-Za-z0-9_"'`])(push_error|assert)\([[:space:]]*(false|"not implemented")
 NEEDLES
 }
 
@@ -713,24 +748,53 @@ NEEDLES
 # first `@@` are hunk lines, so the `+++` header is skipped as a header and an
 # added line that happens to begin `++` is still read. The leading `+` is removed
 # before matching, or the `^` of every opener anchor would see it.
+#
+# It also keeps a window over the ADDED lines: the previous one's text (p1), the
+# one before it (p2), and, when p1 was a handler opener, its kind (pk), line
+# number and trimmed text. A hunk header or a `diff --git` line clears all of
+# it, and so does any line that is not added; an added line that is not the
+# armed opener's closer disarms it. So an opener whose very next added line is
+# its closer prints `<opener line no>|empty-handler|<opener, trimmed>`, once.
+# A line that matched a row is reported by its row and is neither an opener nor
+# a closer. A stub-raise hit is dropped when p1 is a `def` and p2 an
+# `@abstractmethod` - three adjacent added lines, nothing looser. The opener
+# anchor is the stub rows' anchor; its single quote is built from `%c` because
+# this program sits inside a single-quoted shell string.
 suppression_hits() {
   awk '
+    BEGIN {
+      O = "(^|[^A-Za-z0-9_\"" sprintf("%c", 39) "`])"
+      bo = O "catch([[:space:]]*\\([^)]*\\))?[[:space:]]*[{][[:space:]]*$"
+    }
+    function clear() { p1 = ""; p2 = ""; pk = "" }
     !d && $0 == "--8<-- diff" { d = 1; next }
     !d { i = index($0, "|"); if (i) { n++; id[n] = substr($0, 1, i - 1); re[n] = substr($0, i + 1) }; next }
-    /^diff --git / { inh = 0; next }
-    /^@@ / { h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/[^0-9].*$/, "", h); ln = h + 0; inh = 1; next }
+    /^diff --git / { inh = 0; clear(); next }
+    /^@@ / { h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/[^0-9].*$/, "", h); ln = h + 0; inh = 1; clear(); next }
     !inh { next }
     /^\+/ {
-      s = substr($0, 2)
+      s = substr($0, 2); hit = 0
       for (k = 1; k <= n; k++) if (s ~ re[k]) {
+        hit = 1
+        if (id[k] == "stub-raise" && p1 ~ /^[[:space:]]*(async[[:space:]]+)?def[[:space:]]/ && p2 ~ /^[[:space:]]*@(abc\.)?abstractmethod/) break
         t = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
         printf "%d|%s|%s\n", ln, id[k], t
         break
       }
+      if (hit) pk = ""
+      else {
+        if (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/)
+          printf "%d|empty-handler|%s\n", pln, pt
+        pk = ""
+        if (s ~ bo) pk = "brace"
+        else if (s ~ /^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(#.*)?$/) pk = "colon"
+        if (pk != "") { pln = ln; pt = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", pt) }
+      }
+      p2 = p1; p1 = s
       ln++; next
     }
     /^-/ || /^\\/ { next }
-    { ln++ }
+    { clear(); ln++ }
   '
 }
 

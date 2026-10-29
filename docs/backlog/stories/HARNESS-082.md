@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -231,7 +231,29 @@ paste shows **which rule id** fired on each - the check that `stub-throw`'s
 ERE, which quotes `Error(` and a quote character, names its own row and not
 another. Restore (`mutate.sh` verifies it), re-run, paste the clean run.
 An example line the widened rule does *not* refuse is a row that cannot see
-the spelling it documents, and is a defect, not a WAIVED.
+the spelling it documents, and is a defect, not a WAIVED. Expect also one
+`stub-todo` on the prose line quoting `foo(todo!())` (C-1's accepted comment
+false positive).
+
+*Corrected in GREEN (2026-10-29): the two opener examples cannot fire, and
+`empty-handler` gets its own real line.* An opener alone is never a hit, and
+a closer must begin with `}`, `pass` or `...`, which no `#` comment line can
+(`s ~ /^[[:space:]]*[}]/` in `suppression_hits`), so the quoted
+`} catch (e) {` and `except Exception:` lines are documentation, not probes.
+The feature-developer reported this; the orchestrator confirmed it from the
+closer patterns in the shipped awk. The part above therefore covers the four
+`stub-*` rows only. **DV-2b (`empty-handler` against a real line). Owner:
+GATES.** The tree's real handler is
+`.claude/skills/security-audit/validate-findings.cjs:322-324`, a
+`} catch (error) {` with a one-line body. 3j judges commits, so this probe
+feeds `suppression_hits` directly: extract the function from
+`scripts/check-boundaries.sh`, give it the table, a `--8<-- diff` line and the
+real file as one all-added hunk (`@@ -0,0 +1,N @@` and every line prefixed
+`+`). Unmutated it **must** print no `empty-handler` line (both of the file's
+catches have bodies). Under `bash scripts/mutate.sh
+.claude/skills/security-audit/validate-findings.cjs '323d' -- <that command>`
+it **must** print exactly `322|empty-handler|} catch (error) {` and no other
+`empty-handler` line. Paste both and the restore.
 
 ## Amendments
 
@@ -274,6 +296,7 @@ name, below the table.
 - PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1** (2026-10-28). The story was cut and the Contract, Deferred verifications and Out of scope written in this dispatch; no override reported.
 - PLANNED → RED refinement - `lead-po` (the orchestrating session), resolved **claude-fable-5-1** (2026-10-29): C-1's anchor and `stub-throw` widened, C-3 pinned line by line, C-7 and DV-2 rewritten against the shipped 3j.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29), as the agent reported; no override.
+- GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29), as the agent reported; no override.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -655,4 +678,90 @@ comment, one per line.
    `bash scripts/selftest.sh boundaries`, which CI's `gates` job runs, so it
    is required in the sense that matters. `required_gates` stays empty.
 5. `epic:` is empty; there is no done-when to check against.
+
+**GREEN (feature-developer, claude-opus-5-5, no override; 2026-10-29).**
+
+Full run: `boundaries: 304 passed, 0 failed`, rc 0. The four rows are C-1's
+EREs unchanged. The `empty-handler` window lives in `suppression_hits`' awk
+(state `p1`, `p2`, `pk`, `pln`, `pt`); the brace opener is C-3's ERE with
+`\{` spelled `[{]` and the closer `^[[:space:]]*[}]` (same language, no brace
+escape for mawk to read as an interval); the opener anchor `O` is built in
+`BEGIN` with `sprintf("%c", 39)` for the single quote, because the program is
+a single-quoted shell string. Choices the handoff left open: a line that hit a
+row is neither an opener nor a closer (it disarms the window); `diff --git`
+and any non-`+`/`-`/`\` line clear the window as `@@` does; `-` lines do not.
+
+mawk: CI's `mawk 1.3.4 20240123` was available through WSL. The two functions,
+extracted from this tree and run under mawk and gawk 5.4.1 over one diff
+holding every AC2/C3/EH line of the handoff, printed byte-identical output.
+The suite itself ran under gawk only (Git Bash).
+
+**Controls confirmed against the shipped 3j** (scratch subset of the suite:
+lines 1-109 plus 1984-2673, 163 assertions, `163 passed, 0 failed`
+unmutated; each mutation through `scripts/mutate.sh`, restored and verified):
+
+| Row | Mutation (sed on `scripts/check-boundaries.sh`) | RED's number | Measured |
+|---|---|---|---|
+| m4 | `s/A-Za-z0-9_"[^]]*\]/A-Za-z0-9_]/g` (the four stub rows lose the quote exclusion) | 159/4 | 159/4, the same four |
+| m1a | `s/^        pk = ""$/        if (0) pk = ""/` (no disarm) | 161/2 | 161/2, the same two |
+| m1b | `/^    \/\^@@ \//s/ clear();//` (`@@` keeps the window) | 161/2 | 161/2, the same two |
+| m2 | `/id\[k\] == "stub-raise"/d` (exclusion deleted) | 160/3 | 160/3, the same three |
+| m2b | `s/ \&\& p2 ~ \/[^/]*\///` (exclusion on `def` only) | 160/3 | 160/3, the same three |
+| AC-5 | `s#^    /^[\\][+]/ {$#    /^[-+]/ {#` (`-` lines read as added) | not run in RED | 159/4: AC-5's two and HARNESS-081's AC-4 two |
+
+```
+m4   FAIL AC-2 control: 'const msg = "todo!()"' in src/main.ts is not refused
+     FAIL AC-2 control: 'const t = `unimplemented!()`' in src/main.ts is not refused
+     FAIL AC-2 control: 'let s = 'todo!()';' in src/lib.rs is not refused
+     FAIL AC-2 control: the corpus branch - rc|refusals|summary(22)
+     boundaries: 159 passed, 4 failed
+m1a  FAIL HARNESS-082 control: an except whose next added line is a statement (src/app.py) is not refused
+     FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+     boundaries: 161 passed, 2 failed
+m1b  FAIL HARNESS-082 control: an opener and a closer in two hunks of one commit are not refused
+     FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+     boundaries: 161 passed, 2 failed
+m2   FAIL HARNESS-082 control: an abstract method, all three lines added (src/shapes.py) is not refused
+     FAIL HARNESS-082 control: an abc.abstractmethod on an async def, all three lines added (src/shapes.py) is not refused
+     FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+     boundaries: 160 passed, 3 failed
+m2b  FAIL HARNESS-082 AC-3: stub-raise under an added def with no decorator - refused by its whole line
+     FAIL HARNESS-082 AC-3: stub-raise under an added @staticmethod and def - refused by its whole line
+     FAIL HARNESS-082 AC-3: the handler branch - rc|refusals (one per handler or raise)|summary
+     boundaries: 160 passed, 3 failed
+AC-5 FAIL AC-4: a removed # noqa and an #[allow] left as context - rc|refusals
+     FAIL AC-4: and the summary counts the two GREEN commits it judged
+     FAIL HARNESS-082 AC-5: a removed todo!() and a replaced unimplemented!() - rc|refusals
+     FAIL HARNESS-082 AC-5: and the summary counts both GREEN commits as judged
+     boundaries: 159 passed, 4 failed
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+m1a is the same mutation DV-1 describes, run here against the subset only as
+the handoff's control row; DV-1's run under `selftest.sh boundaries` is still
+GATES'. The context-opener control has no mutation in this shape, as the
+handoff says: `--unified=0` never delivers the context opener.
+
+**For GATES - DV-2 cannot see `empty-handler` from a comment line.** The six
+example lines are quoted one per line in 3j's block comment. Run over that
+comment as added lines (the two functions, extracted, in a scratch harness;
+not DV-2 itself), the four stub examples fire their own rows, and the two
+opener examples fire nothing:
+
+```
+46|stub-throw|#   throw new Error("not implemented")
+47|stub-todo|#   todo!()
+48|stub-todo|#   unimplemented!("later")
+49|stub-raise|#   raise NotImplementedError
+50|stub-gd|#   push_error("not implemented")
+```
+
+An opener alone is not a hit, and a closer must *begin* with `}` or `pass`,
+which no `#` comment line does, so no comment can carry an `empty-handler`
+pair. DV-2's "an example line the widened rule does not refuse is a defect"
+will therefore read two lines as defects that are the rule working as C-3
+pins it. That is a DV-2 wording question for the PO, not a matcher change;
+the empty-handler half is already pinned by AC-3's ten fixture pairs. Also
+expect one extra `stub-todo` refusal under DV-2's widening, on the prose line
+quoting `foo(todo!())` (C-1's accepted comment false positive).
 
