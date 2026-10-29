@@ -878,6 +878,46 @@ should reproduce: 18 reds, all GATES.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Round 1 (2026-10-28), a fresh `feature-developer` on the GATES row (planned
+`opus`, resolved **claude-opus-5-5**, self-reported, no override), against
+`git diff origin/main...HEAD` at 037b732. Report, condensed only in wording:
+
+**Checked beyond the diff:**
+- Hunk parsing: a `+c` header with no `,d`, a `+c,0` hunk, an added `++x` line, `\ No newline`, and several hunks all gave correct line numbers.
+- mawk 1.3.4 (CI's awk): the three new functions gave 14/14 rows, 0/12 C-3 lines and the same `suppression_declared` results.
+- No SIGPIPE shape; no 3j output on a branch no story claims; the merge-head skip.
+- The negative assertions are paired with rc, no-FAIL and summary composites.
+
+**Must fix**
+1. **Work done in GATES is never judged when committed by the documented GATES → REVIEW step** (`check-boundaries.sh:767-768`). advance-story steps 3-4 set REVIEW and then commit, so a GATES fix still uncommitted then lands in a `phase: REVIEW` commit and 3j skips it. Fix: judge a commit when the committed phase at `c` **or at its first parent** is GREEN or GATES. This contradicts AC-3's literal REVIEW clause, so it needs an `## Amendments` entry. 3i has the same hole for RED work committed after GREEN is set.
+
+**Should fix**
+
+2. A source path with a space or a non-ASCII name is word-split or C-quoted, read as an empty diff, and counted as judged and clean. Fix: `diff-tree -z`; 3i shares the defect.
+3. A file moved in GREEN or GATES is refused as an added suppression, because a single-path `git show` cannot pair the rename. Fix: one `git show -M` per commit over the paths on both sides.
+4. `suppression_declared` matches the path and the bare rule id as substrings anywhere on the line. So `src/b.ts [noqa] approved by X: same as src/a.ts` declares `src/a.ts`, and `lib/src/a.ts.bak` declares `src/a.ts`. Fix: the path only as a whole token; the bare rule id only before the first `:`.
+5. The anchor `(^|[[:space:]])` misses `foo();// eslint-disable-line` and `x = eval(s)# noqa`, both of which the tools honour. The comment and C-2 claim the anchor "costs no true positive". Fix: correct the claim, and optionally widen the anchor for the `//` and `/*` rows to `(^|[[:space:];,)}])`.
+6. No test pins the line number of anything but a hunk's first added line; deleting `ln++` would go unnoticed (read, not mutated). Fix: one assertion, earned by `mutate.sh` against `ln++`.
+
+**Nice to have**
+
+7. A suppression added while resolving a merge conflict is invisible: a merge commit lists no paths under plain `diff-tree`. Fix: note a merge that `--cc` shows touching source or config.
+8. `classify` runs on every path of every commit before the phase is read. Fix: read the phase first, as 3i does.
+9. Only the first matching row is reported per line, so declaring one discharges a second directive on the same line.
+
+Verdict: fix 1 first.
+
+**Orchestrator's reproduction of finding 1** (different file and rule from the reviewer's case; a throwaway clone of this branch at 037b732). `.mcp.json.example`, which classifies `source`, got `// eslint-disable-next-line no-console` appended. The story was set to `phase: REVIEW` and both were committed together:
+
+    == documented order (REVIEW commit):
+    (3j printed nothing)
+    == control (GATES commit):
+    FAIL  story HARNESS-081: commit 562830f (GATES) added a suppression to '.mcp.json.example' line 9 [eslint-disable]: // eslint-disable-next-l[...]
+
+Confirmed. The fix contradicts AC-3's REVIEW clause, so it waits on the user.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
