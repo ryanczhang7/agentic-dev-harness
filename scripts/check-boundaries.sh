@@ -738,9 +738,11 @@ suppression_hits() {
 # ## Suppressions section. Prints `declared` when one line carries the path, the
 # rule id and `approved by`, all case-insensitive; otherwise what the first line
 # naming the path is missing; otherwise nothing. A line names the path only as a
-# whole token - split on whitespace, a backtick and `,;:()` - that comes before
-# any other token holding a `/`, so `src/a.ts.bak` and `src/b.ts ... same as
-# src/a.ts` name neither `src/a.ts`; the partial-entry answer uses the same rule.
+# whole token - split on whitespace and backticks, then `,;:()'"` trimmed from
+# each end of the token and never from inside it, so `app/(auth)/page.tsx`,
+# `'src/a.ts'` and `(src/a.ts)` all count - that comes before any other token
+# holding a `/`, so `src/a.ts.bak` and `src/b.ts ... same as src/a.ts` name
+# neither `src/a.ts`; the partial-entry answer uses the same rule.
 # The rule id counts as `[id]` anywhere, and as a bare word only on a line that
 # brackets no id, so `[noqa] ... not eslint-disable` declares only noqa. ARGV,
 # not -v, for the same reason as the table.
@@ -748,8 +750,9 @@ suppression_declared() {
   awk 'BEGIN { p = tolower(ARGV[1]); r = tolower(ARGV[2]); ARGV[1] = ""; ARGV[2] = "" }
     {
       l = tolower($0)
-      nt = split(l, tok, /[[:space:]`,;:()]+/); named = 0
+      nt = split(l, tok, /[[:space:]`]+/); named = 0
       for (j = 1; j <= nt; j++) {
+        gsub(/^[,;:()'\''"]+|[,;:()'\''"]+$/, "", tok[j])
         if (tok[j] == p) { named = 1; break }
         if (index(tok[j], "/")) break
       }

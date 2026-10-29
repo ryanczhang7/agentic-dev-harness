@@ -5,7 +5,7 @@ slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
@@ -666,6 +666,7 @@ name, below the table.
 - RED (return 1) - test-developer, planned opus, resolved claude-opus-5-5 (2026-10-28), self-reported; no override was reported to it.
 - GREEN (return 1) - feature-developer, planned opus, resolved claude-opus-5-5 (2026-10-28), self-reported; no override was reported to it.
 - RED (return 2) - test-developer, planned opus, resolved claude-opus-5-5 (2026-10-29), self-reported; no override was reported to it.
+- GREEN (return 2) - feature-developer, planned opus, resolved claude-opus-5-5 (2026-10-29), self-reported; no override was reported to it.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -1627,3 +1628,61 @@ third partial-entry form and C-9's Dockerfile example.
 The suite ran against the finished code; one comment in 3j (the known-miss
 list) was re-wrapped onto three lines while it ran, with no code change, and
 `bash -n`, sigpipe and grep-count were re-run after it.
+
+**GREEN, return 2 (feature-developer, claude-opus-5-5, 2026-10-29): the
+tokenizer in `suppression_declared`, and the AC-5 lines re-measured against the
+shipped function.** One change in `scripts/check-boundaries.sh`: the line is
+split on ``[[:space:]`]+`` only, and each token then has `,;:()'"` trimmed from
+both ends (`gsub(/^[,;:()'"]+|[,;:()'"]+$/, "", tok[j])`, the `'` written as
+`'\''` inside the single-quoted program), never from inside it. The
+first-path-token rule, the bracketed-id rule, `approved by` and the suffix are
+unchanged and key on the same trimmed tokens. The comment above the function
+says so.
+
+Method: the function was extracted from the real file with
+`sed -n '/^suppression_declared() {$/,/^}$/p'` and `eval`ed, then fed each
+AC-5 entry line as the comment-stripped section. It ran under Git Bash's gawk,
+and under WSL with a `PATH` directory whose `awk` is a symlink to `/usr/bin/mawk`
+(WSL's own `awk` is gawk; the first attempt without the symlink printed
+`GNU Awk 5.2.1` and is discarded). A byte copy of the shipped file
+(`cmp` identical) was used on the WSL side, log on /mnt/c. The two outputs are
+identical below their version line (`diff` empty). Rows 4 and 5 (double quotes,
+parenthesised) are not in the suite; the HTML-comment and outside-section
+controls are decided by `section`/`strip_comments` before this function and are
+not rows here.
+
+    awk: GNU Awk 5.4.1, API 4.1, PMA Avon 8-g1, (GNU MPFR 4.2.2, GNU MP 6.3.0)
+    src/main.ts            [eslint-disable] declared                           <- - `src/main.ts` [eslint-disable] approved by ryan: the generated client types this as any; replacing the generator is its own story.
+    src/main.ts            [eslint-disable] declared                           <- - Approved By ryan: eslint-disable in src/main.ts, because the generated client types this as any.
+    src/main.ts            [eslint-disable] declared                           <- - 'src/main.ts' [eslint-disable] approved by ryan: copied from the refusal
+    src/main.ts            [eslint-disable] declared                           <- - "src/main.ts" [eslint-disable] approved by ryan: double quotes (C-9, unpinned)
+    src/main.ts            [eslint-disable] declared                           <- - (src/main.ts) [eslint-disable] approved by ryan: parenthesised
+    src/main.ts            [eslint-disable] the rule id [eslint-disable]       <- - `src/main.ts` [noqa] approved by ryan: legacy
+    src/main.ts            [eslint-disable] 'approved by'                      <- - `src/main.ts` [eslint-disable]: legacy
+    src/main.ts            [eslint-disable] <nothing>                          <- - `src/other.ts` [eslint-disable] approved by ryan: legacy
+    src/main.ts            [eslint-disable] <nothing>                          <- - src/other.ts [noqa] approved by ryan: same as src/main.ts
+    src/main.ts            [eslint-disable] <nothing>                          <- - src/other.ts [eslint-disable] approved by ryan: same as src/main.ts
+    src/main.ts            [eslint-disable] <nothing>                          <- - `src/main.ts.bak` [eslint-disable] approved by ryan: legacy
+    src/main.ts            [eslint-disable] the rule id [eslint-disable]       <- - src/main.ts [noqa] approved by ryan: not eslint-disable
+    app/(auth)/page.tsx    [eslint-disable] declared                           <- - `app/(auth)/page.tsx` [eslint-disable] approved by ryan: route group
+    app/(auth)/page.tsx    [eslint-disable] declared                           <- - app/(auth)/page.tsx [eslint-disable] approved by ryan: route group
+    awk: mawk 1.3.4 20240123      <- the mawk run's version line; its 14 rows are identical
+
+Against the handoff's candidate table: every row agrees (the three new entries
+declared, `src/other.ts ... same as src/main.ts` and `src/main.ts.bak` give
+nothing, `(src/main.ts)` declared). The A-1 controls keep their pinned
+outcomes, including both suffixes. `"src/main.ts"` in double quotes is
+declared, as C-9 says, under both awks. No divergence.
+
+**Decision.** Trimming is per token and repeated (`+`), so `('src/main.ts'),`
+also names the path; a `.` is not trimmed, so `src/main.ts.` does not. Neither
+is pinned.
+
+**GREEN (return 2) runs, on the uncommitted tree.** No file was edited while
+the suite ran; this paragraph was added after it finished.
+
+    bash .claude/tests/boundaries.test.sh   -> boundaries: 236 passed, 0 failed   (17m23s, rc 0)
+    check-sigpipe: scanned 56 shell file(s), 51 with pipefail, 0 finding(s)
+    check-grep-count: scanned 56 shell file(s), 0 finding(s)
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).
+    mutate.sh --check: no stranded mutation
