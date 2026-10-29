@@ -2346,7 +2346,9 @@ describe "AC-5: a suppression declared in ## Suppressions is accepted, and only 
 source_story GREEN src/main.ts "$AC1_LINE" </dev/null
 ac5_c="$sup_c"
 # ac5 <body>   Rewrite the working-tree story at REVIEW with <body> (printf %b) and run.
-ac5() { _src_story REVIEW src/main.ts "$(printf '%b' "$1")"; run_boundaries </dev/null; }
+# ac5_path is the inventory path, src/main.ts unless a case below moves it.
+ac5_path=src/main.ts
+ac5() { _src_story REVIEW "$ac5_path" "$(printf '%b' "$1")"; run_boundaries </dev/null; }
 AC5_OK="ok    suppression [eslint-disable] in 'src/main.ts' is declared in ## Suppressions"
 
 ac5 '## Suppressions\n\n- `src/main.ts` [eslint-disable] approved by ryan: the generated client types this as any; replacing the generator is its own story.'
@@ -2357,6 +2359,12 @@ whole_line "AC-5: and the rule says the path is declared" "$AC5_OK"
 ac5 '## Suppressions\n\n- Approved By ryan: eslint-disable in src/main.ts, because the generated client types this as any.'
 assert_eq "AC-5: the three in another order, other case, rule id bare - rc|refusals|declared" \
   "0||1" "$rc|$(sup_fails)|$(sup_count "$AC5_OK")"
+
+# Return 2 (C-9 as amended, round 2 finding 2): the path in single quotes, the
+# way the FAIL line itself prints it, so an author who copies it is declared.
+ac5 "## Suppressions\n\n- 'src/main.ts' [eslint-disable] approved by ryan: copied from the refusal"
+assert_eq "AC-5: a path in single quotes, as the refusal prints it - rc|refusals" "0|" "$rc|$(sup_fails)"
+whole_line "AC-5: and the quoted path is declared" "$AC5_OK"
 
 # The controls. Each leaves the refusal in place, by its whole line - so the
 # message still says what an entry must carry - and the partial entries say
@@ -2382,6 +2390,22 @@ an entry for src/main.ts.bak (A-1)||## Suppressions\n\n- `src/main.ts.bak` [esli
 another id bracketed, the right one only bare (A-1)| The ## Suppressions line naming 'src/main.ts' is missing the rule id [eslint-disable].|## Suppressions\n\n- src/main.ts [noqa] approved by ryan: not eslint-disable
 ROWS
 # The working-tree edits are this describe's alone.
+git -C "$FIX" checkout -q -- . 2>/dev/null
+
+# Return 2 (C-9 as amended, round 2 finding 1): a Next.js route-group path.
+# Its parentheses are part of the path, so a tokenizer that splits on them
+# makes it undeclarable - backticked or bare. Its own branch: a GREEN commit
+# adds the AC-1 line to it, then each case rewrites the working-tree story.
+ac5_path='app/(auth)/page.tsx'
+source_story GREEN "$ac5_path" "$AC1_LINE" </dev/null
+AC5_RG="ok    suppression [eslint-disable] in 'app/(auth)/page.tsx' is declared in ## Suppressions"
+ac5 '## Suppressions\n\n- `app/(auth)/page.tsx` [eslint-disable] approved by ryan: route group'
+assert_eq "AC-5: a route-group path, backticked - rc|refusals" "0|" "$rc|$(sup_fails)"
+whole_line "AC-5: and the backticked route-group path is declared" "$AC5_RG"
+ac5 '## Suppressions\n\n- app/(auth)/page.tsx [eslint-disable] approved by ryan: route group'
+assert_eq "AC-5: a route-group path, bare - rc|refusals" "0|" "$rc|$(sup_fails)"
+whole_line "AC-5: and the bare route-group path is declared" "$AC5_RG"
+ac5_path=src/main.ts
 git -C "$FIX" checkout -q -- . 2>/dev/null
 
 # ---------------------------------------------------------------------------

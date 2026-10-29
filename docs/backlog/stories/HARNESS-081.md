@@ -665,6 +665,7 @@ name, below the table.
 - GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-28), self-reported; no override was reported to it.
 - RED (return 1) - test-developer, planned opus, resolved claude-opus-5-5 (2026-10-28), self-reported; no override was reported to it.
 - GREEN (return 1) - feature-developer, planned opus, resolved claude-opus-5-5 (2026-10-28), self-reported; no override was reported to it.
+- RED (return 2) - test-developer, planned opus, resolved claude-opus-5-5 (2026-10-29), self-reported; no override was reported to it.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -1119,6 +1120,52 @@ Return 1.
 The C-3 corpus is untouched (12 lines) and stayed clean in the red run
 (`AC-2 control` describe: no FAIL). GREEN's widened anchor must keep it so.
 
+### Return 2 addendum (RED from GATES, diff review round 2; test-developer, 2026-10-29)
+
+**Command:** `bash .claude/tests/boundaries.test.sh` (14m03s locally on this
+host). Floor: `boundaries 236` in `floors.conf` and in `selftest.test.sh`'s
+copied table. `bash scripts/selftest.sh selftest` reports 268 passed, 0 failed.
+The verbatim red is under `## Regressions`, `### Return 2`. In summary:
+`boundaries: 230 passed, 6 failed`, and the 6 are the new assertions.
+
+**Added cases (AC-5 describe, each 2 assertions, rc|refusals = `0|` and one whole line):**
+
+- `- 'src/main.ts' [eslint-disable] approved by ryan: copied from the refusal`.
+  This runs on the existing src/main.ts branch, after the order-free case. It
+  pins `ok    suppression [eslint-disable] in 'src/main.ts' is declared in ## Suppressions`.
+- ``- `app/(auth)/page.tsx` [eslint-disable] approved by ryan: route group``
+  and the same line bare. These run on a new branch built by
+  `source_story GREEN 'app/(auth)/page.tsx' "$AC1_LINE"`, placed after the
+  control table. They pin `ok    suppression [eslint-disable] in 'app/(auth)/page.tsx' is declared in ## Suppressions`.
+
+`ac5` now takes the inventory path from `$ac5_path`. It defaults to
+`src/main.ts`, is set to the route-group path for the two new cases, and is
+reset afterwards. Every pre-existing case therefore runs exactly as before.
+
+**Checked outside the suite, scratch only, not source.** I fed the entries to
+today's `suppression_declared` and to a candidate built to amended C-9: split
+on `[[:space:]`]+`, then trim `,;:()'"` from both ends of each token.
+
+    entry                                                       today   candidate
+    - `app/(auth)/page.tsx` [eslint-disable] approved by ...    []      declared
+    - app/(auth)/page.tsx [eslint-disable] approved by ...      []      declared
+    - 'src/main.ts' [eslint-disable] approved by ...            []      declared
+    - src/other.ts [eslint-disable] ... same as src/main.ts     []      []
+    - `src/main.ts.bak` [eslint-disable] ...                    []      []
+    - (src/main.ts) [eslint-disable] ...                        declared declared
+
+The candidate keeps the A-1 controls in place. It is evidence that the needles
+can be reached, not a design. GREEN must confirm both under the shipped code.
+
+**Not constrained:** how the trim is coded, and whether a double-quoted path
+(`"src/main.ts"`) declares. C-9 says it does, but no case pins it. Also not
+pinned: paths with `[` `]`, or with glob characters. Round 2 notes that
+`for f in $(...)` globs, and that is deferred.
+
+**Passed on arrival:** none. All six new assertions are red.
+**Negative controls:** none new. The four A-1 controls keep their outcomes in
+the red run.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -1230,6 +1277,39 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
   return 2, says how those are tokenized.
 - **Earned by:** watching each new case fail against today's
   `suppression_declared`. It is a real red, because the behaviour is absent.
+  The run was `bash .claude/tests/boundaries.test.sh` on cb352c0's
+  `check-boundaries.sh` plus the new cases (test-developer, local, 14m03s).
+  The 6 reds are exactly the new assertions, and all 230 pre-existing ones
+  pass:
+
+```
+  AC-5: a suppression declared in ## Suppressions is accepted, and only a whole declaration
+    FAIL AC-5: a path in single quotes, as the refusal prints it - rc|refusals
+         expected: 0|
+         actual:   1|FAIL  story T-1: commit d882602 (GREEN) added a suppression to 'src/main.ts' line 2 [eslint-disable]: // eslint-disable-next-line @typescript-eslint/no-explicit-any. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.
+    FAIL AC-5: and the quoted path is declared
+         expected: 1
+         actual:   0
+    FAIL AC-5: a route-group path, backticked - rc|refusals
+         expected: 0|
+         actual:   1|FAIL  story T-1: commit 12369a7 (GREEN) added a suppression to 'app/(auth)/page.tsx' line 1 [eslint-disable]: // eslint-disable-next-line @typescript-eslint/no-explicit-any. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.
+    FAIL AC-5: and the backticked route-group path is declared
+         expected: 1
+         actual:   0
+    FAIL AC-5: a route-group path, bare - rc|refusals
+         expected: 0|
+         actual:   1|FAIL  story T-1: commit 12369a7 (GREEN) added a suppression to 'app/(auth)/page.tsx' line 1 [eslint-disable]: // eslint-disable-next-line @typescript-eslint/no-explicit-any. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.
+    FAIL AC-5: and the bare route-group path is declared
+         expected: 1
+         actual:   0
+
+boundaries: 230 passed, 6 failed
+```
+
+  Each red is the right red. The path is judged, because the refusal names
+  `'app/(auth)/page.tsx'`. Without a suffix, no line was read as naming the
+  path, which is the tokenizer's fault, not the fixture's. `classify.sh` says
+  `source` for `app/(auth)/page.tsx`.
 
 ## Diff review
 
