@@ -2629,6 +2629,82 @@ assert_eq "HARNESS-082 AC-3: the handler branch - rc|refusals (one per handler o
   "1|${#eh_want[@]}|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
 
 # ---------------------------------------------------------------------------
+describe "HARNESS-082's return 2: a directive on a closer or on a one-line handler does not approve the empty handler, and a two-catch line is refused once"
+
+# HARNESS-082's return 2 (diff review round 2, finding 1 and nice-to-have 2;
+# C-3's Precedence bullet, amended clauses (a), (b), (c)). Return 1 closed the
+# hole on the OPENER line; these are the other two lines of a handler. A branch
+# of its own, so every count above is unchanged and the one below is exact.
+#   (a) a directive on the CLOSER: the row's refusal stays at the closer's line,
+#       quoting the closer, and empty-handler is printed at the OPENER's line,
+#       quoting the opener - two refusals per commit;
+#   (b) a directive on a ONE-LINE handler: the winning row's refusal and then
+#       empty-handler, both at that line, both quoting it - two per commit, and
+#       the directive's first ("after the winning row's");
+#   (c) `} catch (A e) {} catch (B e) {` over `}`: the line reports
+#       empty-handler through the one-line row AND is armed as an opener; it is
+#       refused as empty-handler exactly ONCE. One commit, one refusal.
+_src_branch
+r2_want=()
+# (a) <path>|<rule id>|<opener>|<closer>, one GREEN commit each.
+while IFS='|' read -r path rid opener closer; do
+  [ -z "$path" ] && continue
+  _src_story GREEN "$eh_paths"
+  r2_op=$(( $(_nlines "$path") + 1 ))
+  printf '%s\n%s\n' "$opener" "$closer" >> "$FIX/$path"
+  commit_all "T-1 GREEN adds an empty handler whose closer carries [$rid] to $path"
+  r2_want+=("(a) '$(_trim "$opener")' then '$(_trim "$closer")' in $path, the row's own refusal [$rid] at the closer|$(want_3j "$(_short)" GREEN "$path" "$((r2_op + 1))" "$rid" "$(_trim "$closer")")")
+  r2_want+=("(a) '$(_trim "$opener")' then '$(_trim "$closer")' in $path, AND empty-handler at the opener although the closer hit [$rid]|$(want_3j "$(_short)" GREEN "$path" "$r2_op" empty-handler "$(_trim "$opener")")")
+done <<'ROWS'
+src/main.ts|eslint-disable|catch (err) {|} // eslint-disable-line
+src/app.py|noqa|except ValueError:|    pass  # noqa: SIM105
+ROWS
+# (b) <path>|<rule id>|<one-line handler>, one GREEN commit each. The ordering
+# pair is kept to assert "after the winning row's".
+r2_order=()
+while IFS='|' read -r path rid line; do
+  [ -z "$path" ] && continue
+  _src_story GREEN "$eh_paths"
+  r2_ln=$(( $(_nlines "$path") + 1 ))
+  printf '%s\n' "$line" >> "$FIX/$path"
+  commit_all "T-1 GREEN adds a one-line empty handler carrying [$rid] to $path"
+  r2_dir="$(want_3j "$(_short)" GREEN "$path" "$r2_ln" "$rid" "$(_trim "$line")")"
+  r2_eh="$(want_3j "$(_short)" GREEN "$path" "$r2_ln" empty-handler "$(_trim "$line")")"
+  r2_want+=("(b) '$(_trim "$line")' in $path, the row's own refusal [$rid]|$r2_dir")
+  r2_want+=("(b) '$(_trim "$line")' in $path, AND empty-handler at the same line although it hit [$rid]|$r2_eh")
+  r2_order+=("'$(_trim "$line")' in $path: [$rid]|$r2_dir|$r2_eh")
+done <<'ROWS'
+src/main.ts|eslint-disable|} catch {} // eslint-disable-line no-empty
+src/app.py|noqa|except OSError: ...  # noqa: S112
+ROWS
+# (c) the two-catch line over its closer.
+_src_story GREEN "$eh_paths"
+r2_ln=$(( $(_nlines src/main.ts) + 1 ))
+printf '%s\n%s\n' '} catch (IOException e) {} catch (Exception e) {' '}' >> "$FIX/src/main.ts"
+commit_all "T-1 GREEN adds a two-catch line whose second catch is opened and closed"
+r2_c="$(want_3j "$(_short)" GREEN src/main.ts "$r2_ln" empty-handler '} catch (IOException e) {} catch (Exception e) {')"
+_src_story REVIEW "$eh_paths"
+commit_all "T-1 to review"
+run_boundaries </dev/null
+for w in "${r2_want[@]}"; do
+  whole_line "HARNESS-082's return 2: ${w%%|*} - refused by its whole line" "${w#*|}"
+done
+# _r2_at <line>   The number of the first line of $out that equals <line>
+# exactly; empty when none. ENVIRON, not -v, so no escape is interpreted.
+_r2_at() { R2W="$1" awk '$0 == ENVIRON["R2W"] { print NR; exit }' <<< "$out"; }
+for w in "${r2_order[@]}"; do
+  what="${w%%|*}"; w="${w#*|}"; r2_d="$(_r2_at "${w%%|*}")"; r2_e="$(_r2_at "${w#*|}")"
+  if [ -n "$r2_d" ] && [ -n "$r2_e" ] && [ "$r2_d" -lt "$r2_e" ]; then r2_got=before
+  else r2_got="directive at line ${r2_d:-<none>}, empty-handler at line ${r2_e:-<none>}"; fi
+  assert_eq "HARNESS-082's return 2 (b): $what - the row's refusal is printed, then empty-handler after it" \
+    before "$r2_got"
+done
+assert_eq "HARNESS-082's return 2 (c): '} catch (IOException e) {} catch (Exception e) {' then '}' is refused as empty-handler exactly once, by its whole line" \
+  1 "$(sup_count "$r2_c")"
+assert_eq "HARNESS-082's return 2: the branch - rc|refusals (two per (a) and (b) commit, one for (c))|summary" \
+  "1|$(( ${#r2_want[@]} + 1 ))|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+
+# ---------------------------------------------------------------------------
 describe "HARNESS-082 AC-2/AC-3 controls: a handler that pre-existed, has a body or spans hunks, and an abstract method, are clean"
 
 # One branch of GREEN commits, each one C-2 or C-3 says is NOT refused, and the

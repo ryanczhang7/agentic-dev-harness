@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -172,6 +172,24 @@ previous added line is an **opener** and the current added line is its
   line that hit no row, so one approved lint suppression silently approved
   the empty handler it sat on. This states what the precedence bullet
   already implied; the AC text is unchanged.)*
+  **The same holds for every line of a handler** *(amended on the second
+  return to RED, 2026-10-29, diff review round 2 finding 1, under the user's
+  round-1 approval of closing this hole; supersedes "only the closer test is
+  skipped on a hit" and "a `pass` or `}` that also matched a row is already
+  reported and is not reported twice")*. "In practice no row matches those
+  lines" was false: `pass  # noqa: S110` and `} // eslint-disable-line` are
+  real closers, and `} catch {} // eslint-disable-line no-empty` is the
+  standard deliberate empty catch. So:
+  (a) the **closer** test runs whether or not the closer's line hit a row -
+  the row's refusal stays at the closer's line, and `empty-handler` is
+  printed at the opener's;
+  (b) a line whose winning row is **not** `empty-handler` is still tested
+  against the two one-line `empty-handler` rows, and a match prints a second
+  line, `<n>|empty-handler|<line, trimmed>`, after the winning row's;
+  (c) **no duplicate**: a line that already reported `empty-handler` through
+  a one-line row and is also armed as an opener (`} catch (A e) {} catch (B
+  e) {` over `}`) does not get a second `empty-handler` from the window.
+  The AC text is unchanged.
 
 **The `@abstractmethod` exclusion** is the same window, two lines deep: a
 `stub-raise` hit on added line *n* is suppressed when added line *n-1*
@@ -1107,6 +1125,181 @@ The full `bash scripts/gates.sh` run is not done here. It records a stamp
 against the commit, so it belongs after the GREEN commit, and the
 orchestrator does the committing.
 
+### Return 2 - from GATES, after diff review round 2 (2026-10-29)
+
+**What was wrong.** Again no test was wrong; the suite was missing cases.
+Return 1 closed "an approved directive approves the empty handler" for the
+**opener** line only. Round 2 found it open on the two other lines of a
+handler, and the orchestrator reproduced it on different inputs
+(`## Diff review`, round 2): a directive on a **one-line** handler
+(`} catch {} // eslint-disable-line no-empty` reports only
+`eslint-disable`), and a directive on a **closer** (`except ValueError:` /
+`pass  # noqa: SIM105` reports only `noqa`). Plus a duplicate: a two-catch
+line `} catch (A e) {} catch (B e) {` / `}` prints `empty-handler` twice at
+the same line. C-3's Precedence bullet is amended in place, (a)-(c); the
+acceptance criteria are unchanged.
+
+**What RED adds.** For (a): a directive on a closer, both brace and colon
+(`catch (err) {` / `} // eslint-disable-line`, `except ValueError:` /
+`    pass  # noqa: SIM105`) - the directive's refusal at the closer's line
+AND `empty-handler` at the opener's. For (b): a directive on a one-line
+handler, both kinds (`} catch {} // eslint-disable-line no-empty`,
+`except OSError: ...  # noqa: S112`) - the directive's refusal AND
+`empty-handler`, both at that line. For (c): `} catch (IOException e) {}
+catch (Exception e) {` / `}` - exactly ONE `empty-handler` refusal for that
+line. Each assertion by whole line, and a branch count. The floor rises to
+the measured count.
+
+**What earns it.** Every (a) and (b) assertion and the (c) count are red
+against 02e4b15, where the code does not exist; the test-developer pastes
+that output below.
+
+#### Return 2, RED - test-developer (resolved claude-opus-5-5, no override)
+
+**Files touched:** `.claude/tests/boundaries.test.sh` (one new describe,
+inserted between the AC-3 empty-handler describe and the AC-2/AC-3 controls
+describe; no existing assertion edited or reordered), `.claude/tests/floors.conf`
+(`boundaries` 328 -> 340, with a comment entry), `.claude/tests/selftest.test.sh`
+(its copy of the floor, 328 -> 340), and this block. No source file.
+
+**Why a describe of its own.** A branch of its own (`_src_branch`, cut from
+the same main the AC-3 describe uses, so `src/main.ts` is one line and
+`src/app.py` is absent) keeps every existing branch count where it was; none
+of the existing fixtures holds a closer or a one-line handler that also hits a
+row, so (a)-(c) move no existing count (checked against the AC-2 table, the
+corpus, `EH_ROWS` and return 1's rows). The new branch's count is exact: 9
+refusals, two per (a) and (b) commit and one for (c).
+
+**New assertions, and the clause each covers** (all marked "HARNESS-082's
+return 2" in the file; every one GREEN, one commit each):
+
+| # | assertion | clause | on arrival |
+|---|---|---|---|
+| 1 | `catch (err) {` / `} // eslint-disable-line` in src/main.ts: `[eslint-disable]` at the closer's line (3), quoting `} // eslint-disable-line` | (a) control | **passes** |
+| 2 | same commit: `[empty-handler]` at the opener's line (2), quoting `catch (err) {` | (a) | red |
+| 3 | `except ValueError:` / `    pass  # noqa: SIM105` in src/app.py: `[noqa]` at the closer's line (2), quoting `pass  # noqa: SIM105` | (a) control | **passes** |
+| 4 | same commit: `[empty-handler]` at the opener's line (1), quoting `except ValueError:` | (a) | red |
+| 5 | `} catch {} // eslint-disable-line no-empty` in src/main.ts: `[eslint-disable]` at its line, quoting it | (b) control | **passes** |
+| 6 | same commit: `[empty-handler]` at the same line, quoting it | (b) | red |
+| 7 | `except OSError: ...  # noqa: S112` in src/app.py: `[noqa]` at its line, quoting it | (b) control | **passes** |
+| 8 | same commit: `[empty-handler]` at the same line, quoting it | (b) | red |
+| 9 | #5's line: the `[eslint-disable]` refusal comes before the `[empty-handler]` one in the output ("after the winning row's") | (b) | red (no empty-handler) |
+| 10 | #7's line: the same order for `[noqa]` | (b) | red (no empty-handler) |
+| 11 | `} catch (IOException e) {} catch (Exception e) {` / `}` in src/main.ts: the empty-handler whole line occurs exactly once (`sup_count` = 1) | (c) | red (2 today) |
+| 12 | the branch: `rc|refusals|summary` = `1|9|0` | (a)-(c) | red (`1|6|0`) |
+
+Every refusal is pinned by its whole line through `want_3j` (`grep -cxF`),
+the order by the line number of the first output line *equal* to each
+(`awk` on `ENVIRON`, no pipe, no escape processing). Commits are listed
+newest first by `rev-list`, so ordering is only asserted within one line of
+one commit, which is what (b) states.
+
+**The red, against the shipped 02e4b15** (release 101):
+`bash .claude/tests/boundaries.test.sh`, local, 24m08s, rc 1. The summary
+line and the new describe verbatim; no other FAIL in the run, and no bash
+error anywhere in the output:
+
+```
+  HARNESS-082's return 2: a directive on a closer or on a one-line handler does not approve the empty handler, and a two-catch line is refused once
+    FAIL HARNESS-082's return 2: (a) 'catch (err) {' then '} // eslint-disable-line' in src/main.ts, AND empty-handler at the opener although the closer hit [eslint-disable] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2: (a) 'except ValueError:' then 'pass  # noqa: SIM105' in src/app.py, AND empty-handler at the opener although the closer hit [noqa] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2: (b) '} catch {} // eslint-disable-line no-empty' in src/main.ts, AND empty-handler at the same line although it hit [eslint-disable] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2: (b) 'except OSError: ...  # noqa: S112' in src/app.py, AND empty-handler at the same line although it hit [noqa] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2 (b): '} catch {} // eslint-disable-line no-empty' in src/main.ts: [eslint-disable] - the row's refusal is printed, then empty-handler after it
+         expected: before
+         actual:   directive at line 12, empty-handler at line <none>
+    FAIL HARNESS-082's return 2 (b): 'except OSError: ...  # noqa: S112' in src/app.py: [noqa] - the row's refusal is printed, then empty-handler after it
+         expected: before
+         actual:   directive at line 11, empty-handler at line <none>
+    FAIL HARNESS-082's return 2 (c): '} catch (IOException e) {} catch (Exception e) {' then '}' is refused as empty-handler exactly once, by its whole line
+         expected: 1
+         actual:   2
+    FAIL HARNESS-082's return 2: the branch - rc|refusals (two per (a) and (b) commit, one for (c))|summary
+         expected: 1|9|0
+         actual:   1|6|0
+
+boundaries: 332 passed, 8 failed
+```
+
+(The `line 12` / `line 11` in #9 and #10 are positions in that branch's
+`check-boundaries.sh` output, the same in the full run and the subset; the
+assertion compares two positions in one output.)
+
+**Controls that pass on arrival (#1, #3, #5, #7), and the mutation that
+earns them - run now, in RED, against the shipped code.** These assert the
+directive's own refusal, which 02e4b15 already prints; the risk they guard
+is a GREEN that fixes (a)/(b) by *replacing* the directive's refusal with
+`empty-handler` instead of adding to it. The mutation stops the table's
+`printf` for the two directive ids, so the row's refusal disappears:
+
+    $ bash scripts/mutate.sh scripts/check-boundaries.sh \
+        's/printf "%d|%s|%s.n", ln, id\[k\], t/if (id[k] != "eslint-disable" \&\& id[k] != "noqa") &/' \
+        -- bash <scratchpad>/sub3.test.sh
+    ...
+      HARNESS-082's return 2: a directive on a closer or on a one-line handler does not approve the empty handler, and a two-catch line is refused once
+        FAIL HARNESS-082's return 2: (a) 'catch (err) {' then '} // eslint-disable-line' in src/main.ts, the row's own refusal [eslint-disable] at the closer - refused by its whole line
+             expected: 1
+             actual:   0
+        FAIL HARNESS-082's return 2: (a) 'except ValueError:' then 'pass  # noqa: SIM105' in src/app.py, the row's own refusal [noqa] at the closer - refused by its whole line
+             expected: 1
+             actual:   0
+        FAIL HARNESS-082's return 2: (b) '} catch {} // eslint-disable-line no-empty' in src/main.ts, the row's own refusal [eslint-disable] - refused by its whole line
+             expected: 1
+             actual:   0
+        FAIL HARNESS-082's return 2: (b) 'except OSError: ...  # noqa: S112' in src/app.py, the row's own refusal [noqa] - refused by its whole line
+             expected: 1
+             actual:   0
+        ... (#2, #4, #6, #8-#12 red as in the unmutated run; branch actual 1|2|0)
+    boundaries: 149 passed, 50 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T202812Z.38853.bak) ===
+
+`sub3.test.sh` is lines 1-109 of the edited suite plus its whole 3j section
+(from the HARNESS-081 fixture describe to the end), with an absolute
+`_lib.sh` path; it lives in the session scratchpad, never in the tree. The
+other 42 reds in that run are the existing 3j rows the mutation also
+silenced. `mutate.sh --check` was clean afterwards.
+
+| # | control | expected on arrival | measured (02e4b15) | mutation | went red |
+|---|---|---|---|---|---|
+| 1 | `[eslint-disable]` at closer line 3 | refused, whole line | refused, count 1 | above | yes (0) |
+| 3 | `[noqa]` at closer line 2 | refused, whole line | refused, count 1 | above | yes (0) |
+| 5 | `[eslint-disable]` at the one-line handler | refused, whole line | refused, count 1 | above | yes (0) |
+| 7 | `[noqa]` at the one-line handler | refused, whole line | refused, count 1 | above | yes (0) |
+
+GREEN should re-run the same mutation (adjusted to its own `printf` line if
+it moves) against the shipped fix and confirm #1, #3, #5, #7 still go red -
+that is the "replaced, not added" mutation once the fix exists. The "defect
+put back" for the story's central claim here is GREEN's: restore `!hit &&`
+on the closer test (a) and drop the one-line re-test (b) - #2, #4, #6, #8-#10
+and the branch count go red; and for (c), remove the duplicate guard - #11
+goes red (2) and the branch count reads 10.
+
+**`gates.sh --fast`:** rc 0, `All required gates passed (0 ran, 5
+unconfigured, 0 known)` - this repository's project.conf is not bootstrapped,
+so it judges nothing here; the suite above is the evidence.
+
+**Floor:** `boundaries` 328 -> 340 (+12), in `floors.conf` and in
+`selftest.test.sh`'s copy. Measured executed count 340 = 332 + 8. Until GREEN
+lands the suite sits below its floor (332 < 340) - expected in RED.
+
+**One observation for GREEN, not a contract change.** (c)'s rule as written
+("a line that already reported `empty-handler` through a one-line row ... does
+not get a second from the window") is per *line*. Under (b), a line whose
+winning row is a directive can also report `empty-handler` through the
+one-line re-test; if that line is armed as an opener too (it must end in
+`{`, e.g. `} catch {} /* eslint-disable-line */ catch (e) {` over `}`), (c)
+applies to it as well - one `empty-handler`, not two. Not pinned (contrived),
+but the dedup flag should be set by the one-line match whichever path
+reported it.
+
 ## Diff review
 
 ### Round 1 (2026-10-29, on f6c6447) - fresh `feature-developer`, resolved **claude-opus-5-5**, no override
@@ -1170,6 +1363,71 @@ F3 `assert(false_alarm_count == 0)`, `push_error("Not implemented")`,
 `} catch (err) {` / `}`. All four findings reproduce: F1 has no
 `empty-handler`, F2 prints nothing for the two stubs, F3 refuses the
 identifier and misses the capital N, F4 sees only the two-line form.
+
+### Round 2 (2026-10-29, on 02e4b15) - fresh `feature-developer`, resolved **claude-opus-5-5**, no override
+
+Method: both shipped functions over a 41-line all-added input under gawk
+5.4.1 and mawk 1.3.4 20240123, byte-identical; a 200,000-character line per
+ERE matched nothing in 0.97 s (gawk) / 0.11 s (mawk) - no backtracking.
+Round 1's fixes checked correct: the armed opener on a row hit; closer and
+opener on one line (`} catch (f) {` between two others) reported at both;
+the `stub-throw` prefix (`"Method not implemented."`, `"NOT  IMPLEMENTED"`,
+`` `Unimplemented opcode ${op}` `` refused; `"could not open the file"`,
+`"This is not important"` clean); the `stub-gd` tail guard; the one-line
+rows (`prefetch {}`, `dispatch() {}` clean). Judged right against C-1's
+intent, not findings: `"feature not implemented for this region"` refused
+(Out of scope: declared in one line); `const s = "} catch (e) {}"` refused
+(the accepted line-not-token false positive); `x.catch(function (e) {})`
+refused (a true positive).
+
+**Must fix**
+
+1. *A directive on a one-line handler, or on a closer, still approves the
+   empty handler.* First row wins and the directive rows come first, so
+   `except: pass  # noqa`, `} catch (e) {} // eslint-disable-line no-empty`,
+   `except Exception:` / `pass  # noqa: S110`, and `} catch (e) {` /
+   `}  // eslint-disable-line` print only the directive. C-3's "in practice
+   no row matches those lines" is false. Fix: test the one-line
+   `empty-handler` rows when another row won, and test the closer whatever
+   the hit was; C-3's precedence wording changes, then RED.
+
+**Nice to have**
+
+2. *Two catches on one line print `empty-handler` twice*:
+   `} catch (A e) {} catch (B e) {` / `}` gives two identical refusals at the
+   same line. Harmless (both empty, one declaration clears both) but noisy.
+3. *`stub-throw`'s prefix stops at any quote*, so
+   `"can't do that: not implemented"` and `'Method "foo" not implemented'`
+   are missed; `[Nn]ot` has no left boundary (`"knot implemented"`, contrived).
+4. *`stub-gd` is narrower than `stub-throw`*: `push_error("NOT IMPLEMENTED")`,
+   `push_error("not yet implemented")` missed.
+
+Verdict: fix 1 first.
+
+**Orchestrator's reproduction (different inputs):**
+
+```
+--- one-line handler with a directive
+1|eslint-disable|} catch {} // eslint-disable-line no-empty
+2|noqa|except OSError: ...  # noqa: S112
+--- closer with a directive
+2|noqa|pass  # noqa: SIM105
+4|eslint-disable|} // eslint-disable-line
+--- multi-catch on one line
+1|empty-handler|} catch (IOException e) {} catch (Exception e) {
+1|empty-handler|} catch (IOException e) {} catch (Exception e) {
+```
+
+Inputs: `} catch {} // eslint-disable-line no-empty`,
+`except OSError: ...  # noqa: S112`; `except ValueError:` /
+`    pass  # noqa: SIM105`, `catch (err) {` / `} // eslint-disable-line`;
+`} catch (IOException e) {} catch (Exception e) {` / `}`. Findings 1 and 2
+reproduce. **Decision (PO, 2026-10-29):** finding 1 is the hole the user
+approved closing in round 1, on lines that fix did not reach, so it is fixed
+here under that approval - C-3's precedence bullet amended in place, (a)-(c),
+and a second return to RED; finding 2 is folded into the same fix as (c).
+Findings 3 and 4 change C-1's settled EREs again and go to the follow-up
+list.
 
 ## Gate results
 
@@ -1334,6 +1592,9 @@ quoting `foo(todo!())` (C-1's accepted comment false positive).
 - An Allman-brace or promise `.catch(() => {})` empty handler, and a brace
   opener with a trailing directive (`} catch (e) { // eslint-disable-line`),
   are not seen (C-3, Out of scope).
+- Diff review round 2, findings 3 and 4: `stub-throw`'s message prefix stops
+  at any quote character (`"can't do that: not implemented"` missed), and
+  `stub-gd` lacks `stub-throw`'s `NOT IMPLEMENTED` / `not yet implemented`.
 - HARNESS-081's parent-phase arm judges a RED commit whose parent was GATES,
   labelled `RED, after GATES` (seen in DV-2's re-run); it was meant for the
   GATES -> REVIEW step only.
