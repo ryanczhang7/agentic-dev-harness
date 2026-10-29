@@ -653,4 +653,186 @@ if [ "$red_manifest_checked" -gt 0 ] && [ "$red_manifest_problem" -eq 0 ]; then
   ok "RED touched only test dependencies ($red_manifest_checked manifest change(s))"
 fi
 
+# --- 3j. GREEN and GATES add no suppression -----------------------------------
+#
+# The lock freezes tests in GREEN and GATES, and 3i reads what RED puts in a
+# manifest. Nothing read what GREEN and GATES ADD to source, and GATES is the
+# phase whose job is making a lint, type or coverage failure go away - the
+# cheapest way to do which is one line that silences the tool. rules.md forbids
+# that in prose, and prose does not fail a build. So this walks every commit, as
+# 3i does, reads the phase the story was committed at alongside it, and refuses
+# an ADDED line of a `source` or `config` path that is a suppression directive,
+# unless the working-tree story's ## Suppressions declares it.
+#
+# Which paths count is classify's answer, never a regex here: docs, harness and
+# test paths are out by category, so a project that reclassifies a path moves it
+# in or out of this rule with no change to this block.
+#
+# suppression_needles   One `<rule id>|<ERE>` row per directive. Every ERE is
+# anchored on the comment opener, and the directive is the first thing after it,
+# so a comment that MENTIONS a directive is not one. The opener must begin the
+# line or follow whitespace or one of `;,)}` - `(^|[[:space:];,)}])`, spelled
+# out in every row - so `foo();// eslint-disable-line` and `x = eval(s)# noqa`
+# are caught. hadolint and shellcheck honour only a whole-line comment, so their
+# rows anchor to the start of the line instead.
+#
+# The anchor is a trade, not a free lunch. It keeps a `#` or `//` that follows a
+# quote or a `/` from counting, which is what keeps `"# noqa: S307"` and
+# `http://x/#noqa:frag` clean - and the same rule misses a real directive glued
+# to those characters or to a word. Known misses, each honoured by its tool:
+# after a closing quote (`s = "a"# noqa`), after an identifier or a digit
+# (`x=1# noqa`, `foo// eslint-disable-line`), after `]`
+# (`a[0]// eslint-disable-line`), and after `(` or `{`
+# (`fn f(#[allow(unused)] x: u32)`, `{// eslint-disable-line`). A miss is a
+# directive this rule does not see, not one it waves through; widen the class
+# only with a C-3-style control showing the string and URL cases stay clean.
+# The rows are data: a new directive is a new row and nothing else.
+#
+# The table reaches awk in its input stream, never through `awk -v`: -v
+# processes escapes, and gawk turns `\[` into `[` and dies on the bracket.
+suppression_needles() {
+  cat <<'NEEDLES'
+eslint-disable|(^|[[:space:];,)}])(//|/\*)[[:space:]]*eslint-disable([[:space:]]|-next-line|-line|$|\*/)
+ts-ignore|(^|[[:space:];,)}])//[[:space:]]*@ts-(ignore|nocheck|expect-error)([^A-Za-z-]|$)
+biome-ignore|(^|[[:space:];,)}])(//|/\*)[[:space:]]*biome-ignore[[:space:]]
+noqa|(^|[[:space:];,)}])#[[:space:]]*noqa([[:space:]:]|$)
+type-ignore|(^|[[:space:];,)}])#[[:space:]]*type:[[:space:]]*ignore([[:space:][]|$)
+rust-allow|(^|[[:space:];,)}])#!?\[(allow|expect)\(
+gd-warning-ignore|(^|[[:space:];,)}])@warning_ignore\(
+coverage-ignore|(^|[[:space:];,)}])(//|/\*)[[:space:]]*(istanbul|c8|v8)[[:space:]]+ignore([[:space:]]|$|\*/)
+no-cover|(^|[[:space:];,)}])#[[:space:]]*pragma:[[:space:]]*no[[:space:]]+(cover|branch)([^A-Za-z]|$)
+stryker-disable|(^|[[:space:];,)}])(//|/\*|#)[[:space:]]*Stryker[[:space:]]+disable([[:space:]]|$|\*/)
+hadolint-ignore|^[[:space:]]*#[[:space:]]*hadolint[[:space:]]+ignore=
+shellcheck-disable|^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable=
+NEEDLES
+}
+
+# suppression_hits   stdin: the needle table, a `--8<-- diff` line, then one
+# file's `git show --unified=0` diff. Prints `<line no>|<rule id>|<line, trimmed>`
+# per ADDED line that matches a row (the first row wins). Only lines after the
+# first `@@` are hunk lines, so the `+++` header is skipped as a header and an
+# added line that happens to begin `++` is still read. The leading `+` is removed
+# before matching, or the `^` of every opener anchor would see it.
+suppression_hits() {
+  awk '
+    !d && $0 == "--8<-- diff" { d = 1; next }
+    !d { i = index($0, "|"); if (i) { n++; id[n] = substr($0, 1, i - 1); re[n] = substr($0, i + 1) }; next }
+    /^diff --git / { inh = 0; next }
+    /^@@ / { h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/[^0-9].*$/, "", h); ln = h + 0; inh = 1; next }
+    !inh { next }
+    /^\+/ {
+      s = substr($0, 2)
+      for (k = 1; k <= n; k++) if (s ~ re[k]) {
+        t = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+        printf "%d|%s|%s\n", ln, id[k], t
+        break
+      }
+      ln++; next
+    }
+    /^-/ || /^\\/ { next }
+    { ln++ }
+  '
+}
+
+# suppression_declared <path> <rule id>   stdin: the comment-stripped
+# ## Suppressions section. Prints `declared` when one line carries the path, the
+# rule id and `approved by`, all case-insensitive; otherwise what the first line
+# naming the path is missing; otherwise nothing. A line names the path only as a
+# whole token - split on whitespace and backticks, then `,;:()'"` trimmed from
+# each end of the token and never from inside it, so `app/(auth)/page.tsx`,
+# `'src/a.ts'` and `(src/a.ts)` all count - that comes before any other token
+# holding a `/`, so `src/a.ts.bak` and `src/b.ts ... same as src/a.ts` name
+# neither `src/a.ts`; the partial-entry answer uses the same rule.
+# The rule id counts as `[id]` anywhere, and as a bare word only on a line that
+# brackets no id, so `[noqa] ... not eslint-disable` declares only noqa. ARGV,
+# not -v, for the same reason as the table.
+suppression_declared() {
+  awk 'BEGIN { p = tolower(ARGV[1]); r = tolower(ARGV[2]); ARGV[1] = ""; ARGV[2] = "" }
+    {
+      l = tolower($0)
+      nt = split(l, tok, /[[:space:]`]+/); named = 0
+      for (j = 1; j <= nt; j++) {
+        gsub(/^[,;:()'\''"]+|[,;:()'\''"]+$/, "", tok[j])
+        if (tok[j] == p) { named = 1; break }
+        if (index(tok[j], "/")) break
+      }
+      if (!named) next
+      hr = index(l, "[" r "]") > 0
+      if (!hr && l !~ /\[[a-z-]+\]/) { x = l; while ((i = index(x, r)) > 0) {
+        b = (i == 1) ? "" : substr(x, i - 1, 1); a = substr(x, i + length(r), 1)
+        if (b !~ /[a-z0-9_-]/ && a !~ /[a-z0-9_-]/) { hr = 1; break }
+        x = substr(x, i + length(r)) } }
+      ha = index(l, "approved by") > 0
+      if (hr && ha) { print "declared"; found = 1; exit }
+      if (miss == "") miss = (!hr && !ha) ? "the rule id [" r "] and '\''approved by'\''" : (!hr ? "the rule id [" r "]" : "'\''approved by'\''")
+    }
+    END { if (!found && miss != "") print miss }' "$1" "$2"
+}
+
+sup_table="$(suppression_needles)"
+sup_decl="$(section "$sfile" "Suppressions" | strip_comments)"
+sup_judged=0
+sup_refused=0
+sup_declared_seen=""
+for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
+  c7="${c%${c#???????}}"
+  # The source and config paths this commit changed; a commit with none has
+  # nothing this rule could judge, in any phase.
+  sup_paths=""
+  for f in $(git diff-tree --no-commit-id --name-only -r "$c" 2>/dev/null); do
+    case "$(classify "$f")" in source|config) sup_paths="$sup_paths $f" ;; esac
+  done
+  [ -n "$sup_paths" ] || continue
+  # 3i skips a commit whose story file it cannot read. This one says so: a
+  # commit the rule could not judge is never silently counted as clean.
+  if ! sup_story="$(git show "$c:$sfile" 2>/dev/null)"; then
+    note "commit $c7: story file not readable at this commit; GREEN/GATES additions not judged"
+    continue
+  fi
+  ph_at="$(frontmatter_value - phase <<< "$sup_story")"; ph_at="${ph_at//[[:space:]]/}"
+  # The documented GATES -> REVIEW step sets the phase and only then commits, so
+  # work done in GATES can land in a commit whose own story says REVIEW. Its
+  # first parent's committed phase says which phase the work was done in. A root
+  # commit, or a parent with no story file, has no parent phase.
+  case "$ph_at" in
+    GREEN|GATES) ;;
+    *) sup_pph=""
+       if sup_pstory="$(git show "$c^:$sfile" 2>/dev/null)"; then
+         sup_pph="$(frontmatter_value - phase <<< "$sup_pstory")"; sup_pph="${sup_pph//[[:space:]]/}"
+       fi
+       case "$sup_pph" in GREEN|GATES) ph_at="$ph_at, after $sup_pph" ;; *) continue ;; esac ;;
+  esac
+  sup_judged=$((sup_judged+1))
+  for f in $sup_paths; do
+    if ! sup_diff="$(git show --format= --unified=0 "$c" -- "$f" 2>/dev/null)"; then
+      sup_refused=1
+      problem "story $sid: commit $c7 ($ph_at) changed '$f', and its diff could not be read, so nothing can say the lines it added are not suppressions."
+      continue
+    fi
+    sup_hits="$(suppression_hits <<< "$sup_table"$'\n'"--8<-- diff"$'\n'"$sup_diff")"
+    [ -n "$sup_hits" ] || continue
+    while IFS='|' read -r sup_n sup_rid sup_text; do
+      [ -n "$sup_n" ] || continue
+      sup_state="$(suppression_declared "$f" "$sup_rid" <<< "$sup_decl")"
+      if [ "$sup_state" = declared ]; then
+        case "$sup_declared_seen" in
+          *"|$sup_rid $f|"*) ;;
+          *) sup_declared_seen="$sup_declared_seen|$sup_rid $f|"
+             ok "suppression [$sup_rid] in '$f' is declared in ## Suppressions" ;;
+        esac
+        continue
+      fi
+      sup_refused=1
+      sup_more=""
+      [ -n "$sup_state" ] && sup_more=" The ## Suppressions line naming '$f' is missing $sup_state."
+      problem "story $sid: commit $c7 ($ph_at) added a suppression to '$f' line $sup_n [$sup_rid]: $sup_text. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.$sup_more"
+    done <<< "$sup_hits"
+  done
+done
+# Only over commits it actually judged, and only when it refused nothing: an ok
+# over zero commits is the vacuous pass, and an ok beside a FAIL is two answers.
+if [ "$sup_judged" -gt 0 ] && [ "$sup_refused" -eq 0 ]; then
+  ok "GREEN/GATES added no suppression ($sup_judged commit(s) judged)"
+fi
+
 exit $fail
