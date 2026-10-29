@@ -5,7 +5,7 @@ slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
@@ -182,9 +182,16 @@ of the **comment opener** of the language it belongs to: the opener is at the
 start of the line or after whitespace (so a `#` or `//` inside a string
 literal or a quoted phrase is not an opener), and the directive is the first
 thing after it (so a comment that *mentions* a directive in prose is not one).
-That is the only position in which the tool honours the directive, so the
-anchor costs no true positive. `O` below stands for `(^|[[:space:]])` and is
-spelled out in the code. Rows, with the example line AC-2 adds for each:
+*Corrected in GREEN, return 1, per C-9:* the anchor is a trade, not free. The
+opener may also follow `;`, `,`, `)` or `}`, so `foo();// eslint-disable-line`
+and `x = eval(s)# noqa` are caught; a directive glued to a closing quote, a
+word or digit, `]`, `(` or `{` is still missed although its tool honours it
+(`s = "a"# noqa`, `x=1# noqa`, `foo// eslint-disable-line`,
+`a[0]// eslint-disable-line`, `fn f(#[allow(unused)] x: u32)`,
+`{// eslint-disable-line` - measured, all six missed), because the same
+characters are what keep the C-3 string and URL cases clean. `O` below stands
+for `(^|[[:space:];,)}])` and is spelled out in the code (it was
+`(^|[[:space:]])` before A-1). Rows, with the example line AC-2 adds for each:
 
 | rule id | ERE (awk/grep -E dialect, no `{n}` intervals) | example added line |
 |---|---|---|
@@ -604,6 +611,7 @@ name, below the table.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-28), self-reported, no override. Orchestrator's own run of the two suites on 8dc17c8's tree: `boundaries: 168 passed, 48 failed`, `new-story: 53 passed, 5 failed` (575 s); every red assertion is 3j output or the `## Suppressions` heading. `touches:` gained `.claude/tests/selftest.test.sh` (its hand-copied floor table), which RED had to change.
 - GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-28), self-reported; no override was reported to it.
 - RED (return 1) - test-developer, planned opus, resolved claude-opus-5-5 (2026-10-28), self-reported; no override was reported to it.
+- GREEN (return 1) - feature-developer, planned opus, resolved claude-opus-5-5 (2026-10-28), self-reported; no override was reported to it.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -1302,3 +1310,113 @@ Same numbers as RED's (14/14, 0/12, 3/14). No divergence.
     GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh origin/main
       -> no 3j line at all (no FAIL, no ok, no note); the two FAILs it prints are
          3b (phase GREEN, not REVIEW) and 3h (DVs not yet run), both expected now.
+
+**GREEN, return 1 (feature-developer, claude-opus-5-5, 2026-10-28): A-1's
+findings 1, 4 and 5 in 3j, and the controls re-measured against the shipped
+functions.** `suppression_needles`, `suppression_hits` and
+`suppression_declared` were extracted from the real `scripts/check-boundaries.sh`
+by `awk '/^name\(\) \{/,/^}$/'` and `eval`ed; the hits ran over a synthetic
+`--unified=0` diff (`@@ -0,0 +1,28 @@`, every line `+`). The same script ran
+twice: under Git Bash's gawk, and under WSL with `awk` exported as a function
+calling `mawk` (its `awk -W version` line printed `mawk 1.3.4 20240123`, so the
+override held inside the functions). The two outputs are identical line for
+line; the gawk run:
+
+    awk: GNU Awk 5.4.1
+    == example lines: line -> rows it matches (want its own row only)
+    eslint-disable       eslint-disable         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ts-ignore            ts-ignore              // @ts-ignore
+    biome-ignore         biome-ignore           // biome-ignore lint/suspicious/noExplicitAny: legacy
+    noqa                 noqa                   x = eval(s)  # noqa: S307
+    type-ignore          type-ignore            y = f()  # type: ignore[attr-defined]
+    rust-allow           rust-allow             #[allow(dead_code)]
+    rust-allow           rust-allow             #![allow(clippy::all)]
+    gd-warning-ignore    gd-warning-ignore      @warning_ignore("unused_parameter")
+    coverage-ignore      coverage-ignore        /* istanbul ignore next */
+    coverage-ignore      coverage-ignore        // c8 ignore start
+    no-cover             no-cover               def f():  # pragma: no cover
+    stryker-disable      stryker-disable        // Stryker disable next-line all
+    hadolint-ignore      hadolint-ignore        # hadolint ignore=DL3008
+    shellcheck-disable   shellcheck-disable     # shellcheck disable=SC2086
+    eslint-disable       eslint-disable         foo();// eslint-disable-line
+    noqa                 noqa                   x = eval(s)# noqa
+       own-row-only: 16/16
+    == C-3 lines: rows matched (want -)
+    -                      // never add an eslint-disable here
+    -                      const s = "# noqa";
+    -                      // see rules.md: "# pragma: no cover" is refused
+    -                      // Stryker restore all
+    -                      fn allow(x: u32) -> u32 { x }
+    -                      let expect = 3;
+    -                      // @ts-ignored-thing
+    -                          Lines ending in type: ignore are not honoured here.
+    -                      url = "http://x/#noqa"
+    -                      const s = "# noqa: S307";
+    -                      url = "http://x/#noqa:frag"
+    -                      msg = "#[allow(dead_code)]"
+       C-3 lines matching any row: 0/12
+    == through suppression_hits (synthetic diff, all lines added)
+    [abridged here: 16 lines, `1|eslint-disable|...` to `16|noqa|x = eval(s)# noqa`, each naming its own row; nothing for lines 17-28, the C-3 corpus]
+    == suppression_declared src/main.ts eslint-disable (AC-5 lines)
+    declared     <- - `src/main.ts` [eslint-disable] approved by ryan: the generated client types this as any; replacing the generator is its own story.
+    declared     <- - Approved By ryan: eslint-disable in src/main.ts, because the generated client types this as any.
+    the rule id [eslint-disable] <- - `src/main.ts` [noqa] approved by ryan: legacy
+    'approved by' <- - `src/main.ts` [eslint-disable]: legacy
+                 <- - `src/other.ts` [eslint-disable] approved by ryan: legacy
+                 <- - src/other.ts [noqa] approved by ryan: same as src/main.ts
+                 <- - src/other.ts [eslint-disable] approved by ryan: same as src/main.ts
+                 <- - `src/main.ts.bak` [eslint-disable] approved by ryan: legacy
+    the rule id [eslint-disable] <- - src/main.ts [noqa] approved by ryan: not eslint-disable
+    the rule id [eslint-disable] <- - `src/main.ts` approved by nobody, no id here
+    the rule id [eslint-disable] and 'approved by' <- - `src/main.ts` legacy
+       (C-9 example) Dockerfile hadolint-ignore:
+    declared     <- - Dockerfile [hadolint-ignore] approved by X: see docs/a.md
+    == the named misses (comment and C-2), every row against each
+    - (missed)       s = "a"# noqa
+    - (missed)       x=1# noqa
+    - (missed)       foo// eslint-disable-line
+    - (missed)       a[0]// eslint-disable-line
+    - (missed)       fn f(#[allow(unused)] x: u32)
+    - (missed)       {// eslint-disable-line
+
+Against the handoff: 14/14 became 16/16 with A-1's two lines, each matching
+only its own row; 0/12 C-3 lines match, as RED measured; the eight AC-5 lines
+the suite holds give the outcome it pins (two declared, two with the pinned
+suffix, four with none) and the A-1 fourth row gives the pinned
+`the rule id [eslint-disable]` suffix. No divergence from RED's numbers. The
+last three `suppression_declared` lines are not in the suite; they show the
+third partial-entry form and C-9's Dockerfile example.
+
+**Decisions GREEN (return 1) made that C-9 left open.**
+
+- **Path tokens.** The line is lower-cased and split on
+  ``[[:space:]`,;:()]+``; the path is named when a token equals it before any
+  token containing `/` has been seen. Brackets are not delimiters, so
+  `[noqa]` is a token without a `/` and does not stop the scan. A path that
+  itself contains a delimiter (a space, `:`, `,`, `(`...) can never be named;
+  no such path can reach this block today either, because the walk word-splits
+  `diff-tree` output (finding 2, out of scope).
+- **"Brackets an id"** is `\[[a-z-]+\]` anywhere on the lower-cased line, the
+  rule-id alphabet C-2 fixes. A Markdown link text like `[see](x)` on an entry
+  line therefore counts as a bracketed id and turns bare-word matching off for
+  that line; that fails closed.
+- **Parent phase.** Read only when the commit's own phase is not GREEN or
+  GATES, with `git show "$c^:$sfile"` into a variable and `frontmatter_value`,
+  as the own phase is. A failing `git show` (root commit, no story file at the
+  parent) leaves it empty, so the commit is not judged. An own story file with
+  no `phase:` line and a GATES parent would print `(, after GATES)`; no case
+  makes that reachable through `phase.sh`, and it is left as is.
+- **The unreadable-diff `problem`** inherits the composed phase label, so a
+  REVIEW commit after GATES reads `(REVIEW, after GATES)` there too.
+
+**GREEN (return 1) runs, on the uncommitted tree.**
+
+    bash .claude/tests/boundaries.test.sh   -> boundaries: 230 passed, 0 failed
+    check-sigpipe: scanned 56 shell file(s), 51 with pipefail, 0 finding(s)
+    check-grep-count: scanned 56 shell file(s), 0 finding(s)
+    gates.sh --fast: All required gates passed (0 ran, 5 unconfigured, 0 known).
+    mutate.sh --check: no stranded mutation
+
+The suite ran against the finished code; one comment in 3j (the known-miss
+list) was re-wrapped onto three lines while it ran, with no code change, and
+`bash -n`, sigpipe and grep-count were re-run after it.

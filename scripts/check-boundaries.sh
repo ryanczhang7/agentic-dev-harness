@@ -669,27 +669,39 @@ fi
 # in or out of this rule with no change to this block.
 #
 # suppression_needles   One `<rule id>|<ERE>` row per directive. Every ERE is
-# anchored on the comment opener: the opener begins the line or follows
-# whitespace, so a `#` or `//` inside a string is not one, and the directive is
-# the first thing after it, so a comment that MENTIONS a directive is not one -
-# which is the only position in which the tool honours it, so the anchor costs
-# no true positive. `(^|[[:space:]])` is spelled out in every row. The rows are
-# data: a new directive is a new row and nothing else.
+# anchored on the comment opener, and the directive is the first thing after it,
+# so a comment that MENTIONS a directive is not one. The opener must begin the
+# line or follow whitespace or one of `;,)}` - `(^|[[:space:];,)}])`, spelled
+# out in every row - so `foo();// eslint-disable-line` and `x = eval(s)# noqa`
+# are caught. hadolint and shellcheck honour only a whole-line comment, so their
+# rows anchor to the start of the line instead.
+#
+# The anchor is a trade, not a free lunch. It keeps a `#` or `//` that follows a
+# quote or a `/` from counting, which is what keeps `"# noqa: S307"` and
+# `http://x/#noqa:frag` clean - and the same rule misses a real directive glued
+# to those characters or to a word. Known misses, each honoured by its tool:
+# after a closing quote (`s = "a"# noqa`), after an identifier or a digit
+# (`x=1# noqa`, `foo// eslint-disable-line`), after `]`
+# (`a[0]// eslint-disable-line`), and after `(` or `{`
+# (`fn f(#[allow(unused)] x: u32)`, `{// eslint-disable-line`). A miss is a
+# directive this rule does not see, not one it waves through; widen the class
+# only with a C-3-style control showing the string and URL cases stay clean.
+# The rows are data: a new directive is a new row and nothing else.
 #
 # The table reaches awk in its input stream, never through `awk -v`: -v
 # processes escapes, and gawk turns `\[` into `[` and dies on the bracket.
 suppression_needles() {
   cat <<'NEEDLES'
-eslint-disable|(^|[[:space:]])(//|/\*)[[:space:]]*eslint-disable([[:space:]]|-next-line|-line|$|\*/)
-ts-ignore|(^|[[:space:]])//[[:space:]]*@ts-(ignore|nocheck|expect-error)([^A-Za-z-]|$)
-biome-ignore|(^|[[:space:]])(//|/\*)[[:space:]]*biome-ignore[[:space:]]
-noqa|(^|[[:space:]])#[[:space:]]*noqa([[:space:]:]|$)
-type-ignore|(^|[[:space:]])#[[:space:]]*type:[[:space:]]*ignore([[:space:][]|$)
-rust-allow|(^|[[:space:]])#!?\[(allow|expect)\(
-gd-warning-ignore|(^|[[:space:]])@warning_ignore\(
-coverage-ignore|(^|[[:space:]])(//|/\*)[[:space:]]*(istanbul|c8|v8)[[:space:]]+ignore([[:space:]]|$|\*/)
-no-cover|(^|[[:space:]])#[[:space:]]*pragma:[[:space:]]*no[[:space:]]+(cover|branch)([^A-Za-z]|$)
-stryker-disable|(^|[[:space:]])(//|/\*|#)[[:space:]]*Stryker[[:space:]]+disable([[:space:]]|$|\*/)
+eslint-disable|(^|[[:space:];,)}])(//|/\*)[[:space:]]*eslint-disable([[:space:]]|-next-line|-line|$|\*/)
+ts-ignore|(^|[[:space:];,)}])//[[:space:]]*@ts-(ignore|nocheck|expect-error)([^A-Za-z-]|$)
+biome-ignore|(^|[[:space:];,)}])(//|/\*)[[:space:]]*biome-ignore[[:space:]]
+noqa|(^|[[:space:];,)}])#[[:space:]]*noqa([[:space:]:]|$)
+type-ignore|(^|[[:space:];,)}])#[[:space:]]*type:[[:space:]]*ignore([[:space:][]|$)
+rust-allow|(^|[[:space:];,)}])#!?\[(allow|expect)\(
+gd-warning-ignore|(^|[[:space:];,)}])@warning_ignore\(
+coverage-ignore|(^|[[:space:];,)}])(//|/\*)[[:space:]]*(istanbul|c8|v8)[[:space:]]+ignore([[:space:]]|$|\*/)
+no-cover|(^|[[:space:];,)}])#[[:space:]]*pragma:[[:space:]]*no[[:space:]]+(cover|branch)([^A-Za-z]|$)
+stryker-disable|(^|[[:space:];,)}])(//|/\*|#)[[:space:]]*Stryker[[:space:]]+disable([[:space:]]|$|\*/)
 hadolint-ignore|^[[:space:]]*#[[:space:]]*hadolint[[:space:]]+ignore=
 shellcheck-disable|^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable=
 NEEDLES
@@ -723,17 +735,27 @@ suppression_hits() {
 }
 
 # suppression_declared <path> <rule id>   stdin: the comment-stripped
-# ## Suppressions section. Prints `declared` when one line carries the path (by
-# substring), the rule id (as `[id]` or a bare word) and `approved by`, all
-# case-insensitive; otherwise what the first line naming the path is missing;
-# otherwise nothing. ARGV, not -v, for the same reason as the table.
+# ## Suppressions section. Prints `declared` when one line carries the path, the
+# rule id and `approved by`, all case-insensitive; otherwise what the first line
+# naming the path is missing; otherwise nothing. A line names the path only as a
+# whole token - split on whitespace, a backtick and `,;:()` - that comes before
+# any other token holding a `/`, so `src/a.ts.bak` and `src/b.ts ... same as
+# src/a.ts` name neither `src/a.ts`; the partial-entry answer uses the same rule.
+# The rule id counts as `[id]` anywhere, and as a bare word only on a line that
+# brackets no id, so `[noqa] ... not eslint-disable` declares only noqa. ARGV,
+# not -v, for the same reason as the table.
 suppression_declared() {
   awk 'BEGIN { p = tolower(ARGV[1]); r = tolower(ARGV[2]); ARGV[1] = ""; ARGV[2] = "" }
     {
       l = tolower($0)
-      if (!index(l, p)) next
+      nt = split(l, tok, /[[:space:]`,;:()]+/); named = 0
+      for (j = 1; j <= nt; j++) {
+        if (tok[j] == p) { named = 1; break }
+        if (index(tok[j], "/")) break
+      }
+      if (!named) next
       hr = index(l, "[" r "]") > 0
-      if (!hr) { x = l; while ((i = index(x, r)) > 0) {
+      if (!hr && l !~ /\[[a-z-]+\]/) { x = l; while ((i = index(x, r)) > 0) {
         b = (i == 1) ? "" : substr(x, i - 1, 1); a = substr(x, i + length(r), 1)
         if (b !~ /[a-z0-9_-]/ && a !~ /[a-z0-9_-]/) { hr = 1; break }
         x = substr(x, i + length(r)) } }
@@ -765,7 +787,18 @@ for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
     continue
   fi
   ph_at="$(frontmatter_value - phase <<< "$sup_story")"; ph_at="${ph_at//[[:space:]]/}"
-  case "$ph_at" in GREEN|GATES) ;; *) continue ;; esac
+  # The documented GATES -> REVIEW step sets the phase and only then commits, so
+  # work done in GATES can land in a commit whose own story says REVIEW. Its
+  # first parent's committed phase says which phase the work was done in. A root
+  # commit, or a parent with no story file, has no parent phase.
+  case "$ph_at" in
+    GREEN|GATES) ;;
+    *) sup_pph=""
+       if sup_pstory="$(git show "$c^:$sfile" 2>/dev/null)"; then
+         sup_pph="$(frontmatter_value - phase <<< "$sup_pstory")"; sup_pph="${sup_pph//[[:space:]]/}"
+       fi
+       case "$sup_pph" in GREEN|GATES) ph_at="$ph_at, after $sup_pph" ;; *) continue ;; esac ;;
+  esac
   sup_judged=$((sup_judged+1))
   for f in $sup_paths; do
     if ! sup_diff="$(git show --format= --unified=0 "$c" -- "$f" 2>/dev/null)"; then
