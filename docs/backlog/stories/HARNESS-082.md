@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -215,6 +215,25 @@ orchestrator confirmed it independently from the shipped reading at line
 suite and is earned by what it pins (only added lines are read), which
 HARNESS-081's AC-4 already earned for the same reading.
 
+**DV-1 result (GATES, 2026-10-29, on 31a3195).** Run against the 3j subset
+of the frozen suite (`boundaries.test.sh` lines 1-109 plus its whole 3j
+section, verbatim but for an absolute `_lib.sh` path; 163 assertions), the
+narrowest command holding the assertion. Exactly the two named assertions
+went red, nothing else; restored and green.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by /^        pk = ""$/d) ===
+  788 -         pk = ""
+    FAIL HARNESS-082 control: an except whose next added line is a statement (src/app.py) is not refused
+         actual:   FAIL  story T-1: commit 2debb48 (GREEN) added a suppression to 'src/app.py' line 2 [empty-handler]: retries += 1. GREEN and GATES may not silence a tool ...
+    FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+boundaries: 161 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T141011Z.1033.bak) ===
+##### the same subset, restored
+boundaries: 163 passed, 0 failed
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
 **DV-2 (the rule against a real line; needle rule). Owner: GATES.** The
 table's own rows are EREs, not stubs - `(todo|unimplemented|unreachable)!\(`
 does not match itself - so the real lines are the **example lines GREEN
@@ -254,6 +273,45 @@ catches have bodies). Under `bash scripts/mutate.sh
 .claude/skills/security-audit/validate-findings.cjs '323d' -- <that command>`
 it **must** print exactly `322|empty-handler|} catch (error) {` and no other
 `empty-handler` line. Paste both and the restore.
+
+**DV-2 and DV-2b result (GATES, 2026-10-29, on 31a3195).** Every quoted
+example fired its own row (`stub-throw` at 701 names `stub-throw`); the two
+extra `stub-todo` lines, 696 and 697, are prose quoting `todo!()` - C-1's
+accepted comment false positive. Refusal tails elided.
+
+```
+##### DV-2 first half: the branch as it stands
+(3j printed nothing matching)
+##### DV-2 second half: category test widened to harness
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/in source|config) sup_paths=/in source|config|harness) sup_paths=/) ===
+  847 -     case "$(classify "$f")" in source|config) sup_paths="$sup_paths $f" ;; esac
+  847 +     case "$(classify "$f")" in source|config|harness) sup_paths="$sup_paths $f" ;; esac
+FAIL  story HARNESS-082: commit 31a3195 (GREEN) added a suppression to 'scripts/check-boundaries.sh' line 696 [stub-todo]: # backtick), spelled out in every stub row - so `foo(todo!())` and. [refusal tail elided]
+FAIL  story HARNESS-082: commit 31a3195 (GREEN) added a suppression to 'scripts/check-boundaries.sh' line 697 [stub-todo]: # `_ => todo!()` are caught, and `"todo!()"` and `my_todo!(` are not. The rows read a line, not a token stream, so a COMMENT. [refusal tail elided]
+FAIL  story HARNESS-082: commit 31a3195 (GREEN) added a suppression to 'scripts/check-boundaries.sh' line 701 [stub-throw]: #   throw new Error("not implemented"). [refusal tail elided]
+FAIL  story HARNESS-082: commit 31a3195 (GREEN) added a suppression to 'scripts/check-boundaries.sh' line 702 [stub-todo]: #   todo!(). [refusal tail elided]
+FAIL  story HARNESS-082: commit 31a3195 (GREEN) added a suppression to 'scripts/check-boundaries.sh' line 703 [stub-todo]: #   unimplemented!("later"). [refusal tail elided]
+FAIL  story HARNESS-082: commit 31a3195 (GREEN) added a suppression to 'scripts/check-boundaries.sh' line 704 [stub-raise]: #   raise NotImplementedError. [refusal tail elided]
+FAIL  story HARNESS-082: commit 31a3195 (GREEN) added a suppression to 'scripts/check-boundaries.sh' line 705 [stub-gd]: #   push_error("not implemented"). [refusal tail elided]
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T142128Z.21280.bak) ===
+##### DV-2 restored
+(3j printed no refusal)
+##### DV-2b unmutated
+all hits over .claude/skills/security-audit/validate-findings.cjs (773 lines): 0
+(no empty-handler line)
+##### DV-2b with line 323 (the catch body) deleted
+=== mutate: .claude/skills/security-audit/validate-findings.cjs (1 line(s) changed by 323d) ===
+  323 -           errors.push(`${p}.pattern: invalid regular expression`);
+all hits over .claude/skills/security-audit/validate-findings.cjs (772 lines): 1
+322|empty-handler|} catch (error) {
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_security-audit_validate-findings.cjs.20261029T142245Z.23642.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+DV-2b's driver (scratch, not in the tree) evals `suppression_needles` and
+`suppression_hits` straight out of `scripts/check-boundaries.sh` as shipped,
+builds `diff --git` / `+++` / `@@ -0,0 +1,N @@` and the file with every line
+prefixed `+`, and greps the output for `|empty-handler|`.
 
 ## Amendments
 
@@ -624,10 +682,21 @@ comment, one per line.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-29T14:23:15Z
+    commit: 31a3195
+    tree:   81ce29f69a312037e435ec57f6fee885df4682b2
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
