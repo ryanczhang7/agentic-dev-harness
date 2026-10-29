@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -382,6 +382,9 @@ name, below the table.
 - PLANNED → RED refinement - `lead-po` (the orchestrating session), resolved **claude-fable-5-1** (2026-10-29): C-1's anchor and `stub-throw` widened, C-3 pinned line by line, C-7 and DV-2 rewritten against the shipped 3j.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29), as the agent reported; no override.
 - GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29), as the agent reported; no override.
+- GATES diff review round 1 - fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
+- RED (return 1) - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
+- GREEN (return 1) - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -854,6 +857,196 @@ shipped GREEN as of f6c6447, so the red above is that mutation's output today.
 in `floors.conf` and in `selftest.test.sh`'s copy. Measured executed count
 328 = 305 + 23. Until GREEN lands the suite sits below its floor (305 < 328) -
 expected in RED.
+
+#### Return 1, GREEN - feature-developer (resolved claude-opus-5-5, no override)
+
+**What changed, all in block 3j of `scripts/check-boundaries.sh`.** No test
+file touched (`git diff --quiet HEAD -- .claude/tests` exits 0). `VERSION`
+stays `101 (2026-10-29)`.
+
+- `suppression_needles()`: the `stub-throw` and `stub-gd` rows replaced by
+  C-1's amended EREs, and the two `empty-handler` rows appended after
+  `stub-gd`, copied from C-1 with markdown's `\|` unescaped and `O` expanded.
+- `suppression_hits()`: the `if (hit) pk = "" else { ... }` is gone. The closer
+  test is now `if (!hit && (...closer...)) printf ... empty-handler`; then, for
+  every added line, `pk = ""` and the opener tests run unconditionally (C-3
+  Precedence, amended). The `stub-raise` `@abstractmethod` exclusion is
+  untouched (it still sets `hit` and breaks without printing).
+- Review finding 5: the comment above `suppression_hits` now says a context
+  line (and a hunk header or `diff --git` line) clears the window, and a `-`
+  line or a `\ No newline` marker does not; and it states that a row hit is
+  still tested as an opener.
+- 3j's block comment: `#   } catch (e) {}` added to the verbatim example list,
+  one line, after `#   push_error("not implemented")`; a paragraph on the
+  widened `stub-throw` message and `stub-gd`'s tail guard; the empty-handler
+  paragraph now says the one-line shape is two rows under the same id.
+  **For DV-2's widened rerun:** the new prose lines quote
+  `throw new Error("Method not implemented.")` and `} catch (e) {}` in
+  backticks, so expect `stub-throw` and `empty-handler` refusals on those prose
+  lines too - the same accepted comment false positive as the `todo!()` prose.
+
+**Subset is still a verbatim slice.** `sub2.test.sh` (scratch, 847 lines) is
+`HEAD:.claude/tests/boundaries.test.sh` lines 1-109 plus 1984-2721 (the whole
+3j section, from the HARNESS-081 fixture `describe` to `summary`), with line 9
+replaced by the absolute `_lib.sh` path:
+
+```
+$ { git show HEAD:.claude/tests/boundaries.test.sh | sed -n '1,109p'; git show HEAD:.claude/tests/boundaries.test.sh | sed -n '1984,2721p'; } | sed '9s#.*#. /d/agentic-dev-harness/.claude/tests/_lib.sh#' > sub2.expected; diff sub2.expected sub2.test.sh && echo IDENTICAL
+IDENTICAL: sub2 == HEAD boundaries.test.sh 1-109 + 1984-2721, line 9 _lib path absolute
+$ bash sub2.test.sh      # unmutated, against this GREEN
+boundaries: 187 passed, 0 failed
+```
+
+**Controls earned.** Each through `bash scripts/mutate.sh
+scripts/check-boundaries.sh '<expr>' -- bash sub2.test.sh`, output filtered to
+the mutate lines, FAILs and the summary (`actual:` detail lines kept where the
+suite printed them). Every expression was first dry-run on a scratch copy and
+changes exactly one line.
+
+Control #19 (`except KeyError: retry()` clean). The one-line `except` row's
+body widened to `.*`. #19 and the corpus branch count go red, as the RED table
+predicted. It also turns the bare colon openers (`except Exception:`,
+`except ValueError:`) into row hits, because `.*` matches the empty tail, so
+the AC-3 colon cases and the statement control go red too. That is a wider
+mutation than one control, and it is the one the table named.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 752s/(pass|.*$/.*/) ===
+  752 - empty-handler|^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$
+  752 + empty-handler|^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*.*
+    FAIL AC-2 control: 'except KeyError: retry()' in src/app.py is not refused
+         actual:   FAIL  story T-1: commit a475962 (GREEN) added a suppression to 'src/app.py' line 6 [empty-handler]: except KeyError: retry(). GREEN and GATES may not silence a tool ...
+    FAIL AC-2 control: the corpus branch - rc|refusals|summary(26)
+    FAIL HARNESS-082 AC-3: GREEN, 'except Exception:' then 'pass' in src/app.py - refused by its whole line
+    FAIL HARNESS-082 AC-3: GATES, 'except Exception:' then 'pass' in src/app.py - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, 'except:' then '...' in src/app.py - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, 'except Foo as e:' then 'pass  # swallowed on purpose' in src/app.py - refused by its whole line
+    FAIL HARNESS-082 AC-3: the handler branch - rc|refusals (one per handler or raise)|summary
+    FAIL HARNESS-082 control: an except whose next added line is a statement (src/app.py) is not refused
+         actual:   FAIL  story T-1: commit bbeb41f (GREEN) added a suppression to 'src/app.py' line 1 [empty-handler]: except ValueError:. GREEN and GATES may not silence a tool ...
+    FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+boundaries: 178 passed, 9 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T174822Z.1618.bak) ===
+```
+
+Control #20 (`throw new Error("could not open the file")` clean).
+`stub-throw`'s implemented alternative cut to `[Nn]ot`. Exactly #20 and the
+corpus branch count go red.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 747s/\[Nn\]ot\[\[:space:\]\]\*(\[Yy\]et\[\[:space:\]\]\*)?\[Ii\]mplemented/[Nn]ot/) ===
+  747 - stub-throw|(^|[^A-Za-z0-9_"'`])throw[[:space:]]+(new[[:space:]]+)?(NotImplementedError[[:space:]]*\(|Error[[:space:]]*\([[:space:]]*["'`][^"'`]*([Nn]ot[[:space:]]*([Yy]et[[:space:]]*)?[Ii]mplemented|NOT[[:space:]]*IMPLEMENTED|TODO|[Uu]nimplemented))
+  747 + stub-throw|(^|[^A-Za-z0-9_"'`])throw[[:space:]]+(new[[:space:]]+)?(NotImplementedError[[:space:]]*\(|Error[[:space:]]*\([[:space:]]*["'`][^"'`]*([Nn]ot|NOT[[:space:]]*IMPLEMENTED|TODO|[Uu]nimplemented))
+    FAIL AC-2 control: 'throw new Error("could not open the file")' in src/main.ts is not refused
+         actual:   FAIL  story T-1: commit 4657696 (GREEN) added a suppression to 'src/main.ts' line 12 [stub-throw]: throw new Error("could not open the file"). GREEN and GATES may not silence a tool ...
+    FAIL AC-2 control: the corpus branch - rc|refusals|summary(26)
+boundaries: 185 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T175326Z.13092.bak) ===
+```
+
+Controls #21 and #23 (the row's own refusal at an opener). A row hit no longer
+prints when its line is a brace or colon opener (the wrong fix for finding 1).
+Exactly #21, #23 and the handler branch count go red.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 796s@printf "%d|%s|%s@if (s !~ bo \&\& s !~ /^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(#.*)?$/) printf "%d|%s|%s@) ===
+  796 -         printf "%d|%s|%s\n", ln, id[k], t
+  796 +         if (s !~ bo && s !~ /^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(#.*)?$/) printf "%d|%s|%s\n", ln, id[k], t
+    FAIL HARNESS-082 AC-3: GREEN, 'except:  # noqa: E722' then 'pass' in src/app.py, the row's own refusal [noqa] at the opener - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, '} /* istanbul ignore next */ catch (e) {' then '}' in src/main.ts, the row's own refusal [coverage-ignore] at the opener - refused by its whole line
+    FAIL HARNESS-082 AC-3: the handler branch - rc|refusals (one per handler or raise)|summary
+boundaries: 184 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T175943Z.25554.bak) ===
+```
+
+Finding 1 put back (#22, #24). An opener is armed only on a line that hit no
+row, which is f6c6447's behaviour. Exactly #22, #24 and the handler branch count
+go red.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by /^      if (s ~ bo) pk = "brace"$/s/if (s ~ bo)/if (hit) ; else if (s ~ bo)/) ===
+  802 -       if (s ~ bo) pk = "brace"
+  802 +       if (hit) ; else if (s ~ bo) pk = "brace"
+    FAIL HARNESS-082 AC-3: GREEN, 'except:  # noqa: E722' then 'pass' in src/app.py, AND empty-handler at the opener although it hit [noqa] - refused by its whole line
+    FAIL HARNESS-082 AC-3: GREEN, '} /* istanbul ignore next */ catch (e) {' then '}' in src/main.ts, AND empty-handler at the opener although it hit [coverage-ignore] - refused by its whole line
+    FAIL HARNESS-082 AC-3: the handler branch - rc|refusals (one per handler or raise)|summary
+boundaries: 184 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T180705Z.38201.bak) ===
+##### restored
+check-boundaries.sh identical to the GREEN copy
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**Measured against RED's controls table:** all four "expected on arrival" values
+hold on the shipped module. #19 and #20 are not refused, and no row hits them
+(the driver below prints `(none)`). #21 and #23 are refused at the opener's line
+by their own row. No divergence, except that mutation #19 reaches further than
+the table's "must go red" column says, for the reason given above.
+
+**mawk vs gawk.** `suppression_needles` and `suppression_hits` were eval'd out
+of a copy of this GREEN's script. A driver fed them 31 cases, each as one
+all-added hunk: every new `AC2_ROWS` line, every C-2 corpus line (old and
+amended), the finding-1 pairs, and the orchestrator's F1-F4 inputs. It ran once
+under gawk on Git Bash and once under WSL with `awk` symlinked to
+`/usr/bin/mawk`. The outputs are identical:
+
+```
+/tmp/mawkbin/awk
+mawk 1.3.4 20240123
+GNU Awk 5.4.1, API 4.1, PMA Avon 8-g1, (GNU MPFR 4.2.2, GNU MP 6.3.0)
+gawk and mawk output IDENTICAL (31 cases, 34 result lines)
+```
+
+The output (identical under both), one `=== case` line then its hits:
+
+```
+=== ts quickfix          1|stub-throw|throw new Error("Method not implemented.");
+=== not yet              1|stub-throw|throw new Error('not yet implemented')
+=== NOT IMPL             1|stub-throw|throw new Error("NOT IMPLEMENTED")
+=== orig throw           1|stub-throw|throw new Error("not implemented")
+=== Not yet cap          1|stub-throw|throw new Error('Not yet implemented')
+=== pe cap               1|stub-gd|push_error("Not implemented")
+=== pe lower             1|stub-gd|push_error("not implemented")
+=== assert false         1|stub-gd|assert(false)
+=== catch one-line       1|empty-handler|} catch (e) {}
+=== catch bare one-line  1|empty-handler|} catch {}
+=== except pass          1|empty-handler|except: pass
+=== except dots          1|empty-handler|except Exception: ...  # swallowed
+=== except KeyError pass 1|empty-handler|except KeyError: pass
+=== C corpus msg / C let / C fn / C my_todo / C catch body / C except 3 lines /
+    C no such user / C subclass / C abstract / C false_positives / C falseCount /
+    C retry / C could not                        (none), each
+=== F1 noqa              1|noqa|except:  # noqa: E722
+                         1|empty-handler|except:  # noqa: E722
+=== F1 istanbul          1|coverage-ignore|} /* istanbul ignore next */ catch (e) {
+                         1|empty-handler|} /* istanbul ignore next */ catch (e) {
+=== F1 orch              3|noqa|except Exception:  # noqa: BLE001
+                         3|empty-handler|except Exception:  # noqa: BLE001
+=== two-line brace       1|empty-handler|} catch (err) {
+=== finally closer       1|empty-handler|} catch (e) {
+```
+
+(Two columns here for length; the raw output is one line per row.)
+
+**Full suite and checks, on this GREEN's working tree (uncommitted):**
+
+```
+$ bash .claude/tests/boundaries.test.sh        # local, 1136 s, no FAIL line anywhere
+boundaries: 328 passed, 0 failed
+rc=0
+$ bash scripts/gates.sh --fast
+All required gates passed (0 ran, 5 unconfigured, 0 known).    # not recorded: partial run
+$ bash scripts/check-sigpipe.sh
+check-sigpipe: scanned 56 shell file(s), 51 with pipefail, 0 finding(s)
+$ bash scripts/check-grep-count.sh
+check-grep-count: scanned 56 shell file(s), 0 finding(s)
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+The full `bash scripts/gates.sh` run is not done here. It records a stamp
+against the commit, so it belongs after the GREEN commit, and the
+orchestrator does the committing.
 
 ## Diff review
 

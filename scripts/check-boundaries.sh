@@ -703,14 +703,23 @@ fi
 #   unimplemented!("later")
 #   raise NotImplementedError
 #   push_error("not implemented")
+#   } catch (e) {}
+# stub-throw lets the message carry a prefix inside the quotes, so TypeScript's
+# own quick fix, `throw new Error("Method not implemented.")`, is caught, and so
+# are `not yet implemented` and `NOT IMPLEMENTED`; `"could not open the file"`
+# is not. stub-gd's `false` must end the identifier, so `assert(false_positives
+# == 0)` is clean.
 # `raise NotImplementedError` has one legitimate use, the abstract method, and
 # suppression_hits drops a stub-raise hit whose two previous ADDED lines in the
 # same hunk are a `def` and, above it, `@abstractmethod` or `@abc.abstractmethod`.
 # A decorator that is context is not in the diff, so it does not excuse the raise.
 #
-# empty-handler is not a row, because a row reads one line and an empty handler
-# is two: an opener, and its closer as the very next ADDED line in the same hunk.
-# suppression_hits keeps that window itself - see below. The two opener shapes:
+# An empty handler is usually two lines: an opener, and its closer as the very
+# next ADDED line in the same hunk. A row reads one line, so that shape is not a
+# row; suppression_hits keeps that window itself - see below. The two empty-handler
+# rows are the ONE-line shape the window cannot see, `} catch (e) {}` and
+# `except: pass`, under the same rule id, so one ## Suppressions line declares
+# either; a one-line handler with a body matches neither. The two opener shapes:
 #   } catch (e) {
 #   except Exception:
 # A brace opener must end in `{` and its closer begin with `}`, so `} finally {`
@@ -735,10 +744,12 @@ no-cover|(^|[[:space:];,)}])#[[:space:]]*pragma:[[:space:]]*no[[:space:]]+(cover
 stryker-disable|(^|[[:space:];,)}])(//|/\*|#)[[:space:]]*Stryker[[:space:]]+disable([[:space:]]|$|\*/)
 hadolint-ignore|^[[:space:]]*#[[:space:]]*hadolint[[:space:]]+ignore=
 shellcheck-disable|^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable=
-stub-throw|(^|[^A-Za-z0-9_"'`])throw[[:space:]]+(new[[:space:]]+)?(NotImplementedError[[:space:]]*\(|Error[[:space:]]*\([[:space:]]*["'`][[:space:]]*([Nn]ot[[:space:]]*[Ii]mplemented|TODO|[Uu]nimplemented))
+stub-throw|(^|[^A-Za-z0-9_"'`])throw[[:space:]]+(new[[:space:]]+)?(NotImplementedError[[:space:]]*\(|Error[[:space:]]*\([[:space:]]*["'`][^"'`]*([Nn]ot[[:space:]]*([Yy]et[[:space:]]*)?[Ii]mplemented|NOT[[:space:]]*IMPLEMENTED|TODO|[Uu]nimplemented))
 stub-todo|(^|[^A-Za-z0-9_"'`])(todo|unimplemented|unreachable)!\(
 stub-raise|(^|[^A-Za-z0-9_"'`])raise[[:space:]]+NotImplementedError([[:space:](]|$)
-stub-gd|(^|[^A-Za-z0-9_"'`])(push_error|assert)\([[:space:]]*(false|"not implemented")
+stub-gd|(^|[^A-Za-z0-9_"'`])(push_error|assert)\([[:space:]]*(false([^A-Za-z0-9_]|$)|"[Nn]ot[[:space:]]+implemented)
+empty-handler|(^|[^A-Za-z0-9_"'`])catch([[:space:]]*\([^)]*\))?[[:space:]]*[{][[:space:]]*[}]
+empty-handler|^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$
 NEEDLES
 }
 
@@ -752,11 +763,15 @@ NEEDLES
 # It also keeps a window over the ADDED lines: the previous one's text (p1), the
 # one before it (p2), and, when p1 was a handler opener, its kind (pk), line
 # number and trimmed text. A hunk header or a `diff --git` line clears all of
-# it, and so does any line that is not added; an added line that is not the
-# armed opener's closer disarms it. So an opener whose very next added line is
-# its closer prints `<opener line no>|empty-handler|<opener, trimmed>`, once.
-# A line that matched a row is reported by its row and is neither an opener nor
-# a closer. A stub-raise hit is dropped when p1 is a `def` and p2 an
+# it, and so does a context line; a `-` line or a `\ No newline` marker does
+# not, because neither sits between two added lines of one hunk. An added line
+# that is not the armed opener's closer disarms it. So an opener whose very
+# next added line is its closer prints `<opener line no>|empty-handler|<opener,
+# trimmed>`, once. A line that matched a row is reported by its row and is not
+# tested as a closer, so it is not reported twice - but it is still tested as an
+# opener, so `except:  # noqa: E722` over `pass` prints both `noqa` and
+# `empty-handler`, and declaring one does not declare the other. A stub-raise
+# hit is dropped when p1 is a `def` and p2 an
 # `@abstractmethod` - three adjacent added lines, nothing looser. The opener
 # anchor is the stub rows' anchor; its single quote is built from `%c` because
 # this program sits inside a single-quoted shell string.
@@ -781,15 +796,12 @@ suppression_hits() {
         printf "%d|%s|%s\n", ln, id[k], t
         break
       }
-      if (hit) pk = ""
-      else {
-        if (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/)
-          printf "%d|empty-handler|%s\n", pln, pt
-        pk = ""
-        if (s ~ bo) pk = "brace"
-        else if (s ~ /^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(#.*)?$/) pk = "colon"
-        if (pk != "") { pln = ln; pt = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", pt) }
-      }
+      if (!hit && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
+        printf "%d|empty-handler|%s\n", pln, pt
+      pk = ""
+      if (s ~ bo) pk = "brace"
+      else if (s ~ /^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(#.*)?$/) pk = "colon"
+      if (pk != "") { pln = ln; pt = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", pt) }
       p2 = p1; p1 = s
       ln++; next
     }
