@@ -5,7 +5,7 @@ slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
@@ -60,7 +60,11 @@ keeps docs and harness paths out of it.
   runs, then it exits non-zero and prints one `FAIL` line that names the rule
   id `eslint-disable`, the path, the line number in the committed file, the
   short commit, and the phase `GREEN`. The same commit with the story at
-  `phase: GATES` is refused the same way, naming `GATES`.
+  `phase: GATES` is refused the same way, naming `GATES`. The same line added
+  by a commit at `phase: REVIEW` whose first parent's committed story is at
+  `GATES` is refused the same way, naming `REVIEW, after GATES`. A GREEN
+  commit appending three lines whose third is the needle is refused naming
+  the third line's number. *(Both sentences added by A-1.)*
 - **AC-2** — Given one GREEN commit per row of the needle table in the
   Contract (C-2), each adding that row's example line to a `source` file (and,
   for the Dockerfile and Makefile rows, to a file `classify.sh` calls
@@ -71,8 +75,12 @@ keeps docs and harness paths out of it.
   `Stryker restore` line, `# type: ignore` inside a docstring's prose with no
   `#` opener, `allow` as an identifier (`fn allow(x)`) - is **not** refused:
   no `FAIL` line from this rule, and the rule's `ok` line is printed.
+  `foo();// eslint-disable-line` and `x = eval(s)# noqa` are refused too.
+  *(Added by A-1.)*
 - **AC-3** — Given the AC-1 line added by a commit whose committed story is at
-  `phase: RED`, `PLANNED`, `SCAFFOLD`, `REVIEW` or `DONE`, or added by a GREEN
+  `phase: RED`, `PLANNED`, `SCAFFOLD`, `REVIEW` or `DONE` and whose first
+  parent's committed story is not at `GREEN` or `GATES` *(qualifier added by
+  A-1)*, or added by a GREEN
   commit to a path `classify.sh` calls `docs`, `harness` or `test`
   (`docs/backlog/stories/T-1.md`, `scripts/x.sh`, `tests/a.test.ts`), when
   `check-boundaries.sh` runs, then this rule prints no `FAIL` line for it.
@@ -89,7 +97,11 @@ keeps docs and harness paths out of it.
   entry inside an HTML comment, an entry naming the path but not the rule id,
   one naming both but without `approved by`, and one for a *different* path
   each leave the refusal in place, and the refusal says what the entry must
-  carry.
+  carry. So do an entry naming the path only after another path
+  (`- src/other.ts [noqa] approved by ryan: same as src/main.ts`), an entry
+  for `src/main.ts.bak`, and an entry that brackets another rule id and names
+  the right one only bare (`- src/main.ts [noqa] approved by ryan: not
+  eslint-disable`). *(Added by A-1.)*
 - **AC-6** — Given a branch where a GREEN commit's committed story file cannot
   be read (`git show <c>:docs/backlog/stories/<id>.md` fails because the file
   is absent at that commit), when `check-boundaries.sh` runs, then it prints a
@@ -349,6 +361,47 @@ release number (100) in GREEN, as every harness change must (3a-bis).
 `strip_comments`, `has_content`, `classify` and `problem/ok/note` are used as
 they are. No caller list is owed.
 
+**C-9. A-1's changes (PO, 2026-10-28; these supersede C-1, C-2 and C-4
+where they differ).** RED may amend this block in place with a reason, as it
+may every other block; GREEN builds what the amended block says.
+
+- **Which commits are judged (C-1).** A commit is judged when its own
+  committed phase is `GREEN` or `GATES`, **or** its first parent's committed
+  phase is. The parent's phase is read the same way:
+  `git show "$c^:$sfile"`, or nothing when the parent has no story file.
+  - The FAIL line's phase field is the commit's own phase when that is
+    GREEN or GATES. Otherwise it is `<own>, after <parent's>`, so the
+    documented case prints `(REVIEW, after GATES)`.
+  - The not-judged `note` still keys on the commit's own story file.
+  - A root commit (no `$c^`) has no parent phase.
+- **The anchor (C-2).**
+  - `O` becomes `(^|[[:space:];,)}])` in every row except `hadolint-ignore`
+    and `shellcheck-disable`, which stay anchored to the start of the line.
+  - The sentence "the anchor costs no true positive", and the code comment
+    that says the same, are replaced with what is true. The anchor trades
+    away a directive glued to an identifier or a string (`x=1;"# noqa"` is
+    not caught) to keep the C-3 string and URL cases clean, and every known
+    miss is named.
+  - The two A-1 example lines must be refused, and the C-3 corpus must stay
+    clean.
+- **What declares a path and a rule (C-4).**
+  - The path counts only as a **whole token**: delimited by the line's start
+    or end, whitespace, a backtick, or one of `,;:()`. It must also be the
+    first token on the line that contains a `/`, or appear when no earlier
+    token contains one. So `src/main.ts.bak` and a path named after another
+    path do not declare it, while `Dockerfile [hadolint-ignore] approved by
+    X: see docs/a.md` does.
+  - The rule id counts as `[<id>]` anywhere. It counts as a bare word only on
+    a line that brackets **no** id. So `[noqa] ... not eslint-disable` does
+    not declare `eslint-disable`, and the frozen order-free form
+    `Approved By ryan: eslint-disable in src/main.ts, because ...` still
+    does.
+  - `approved by` and case-insensitivity are unchanged.
+- **The line number (C-1).** Unchanged in behaviour. The A-1 AC-1 case pins
+  it for a line that is not first in its hunk, and the new assertion is
+  earned by a `mutate.sh` run that deletes `ln++` (the law for a test written
+  against existing code).
+
 **Test-only dependencies:** none. bash, awk, git, coreutils.
 
 ## Deferred verifications
@@ -468,6 +521,44 @@ anchors on the comment opener as C-2 says and not on the start of the line.
      wrong, record the ORCHESTRATOR'S OWN reproduction of it - different
      inputs, not the subagent's code. That claim is also what an agent says
      when it wants to stop failing. -->
+
+**A-1 (2026-10-28, approved by the user, "Amend, fix 1/4/5/6"; from diff
+review round 1, findings 1, 4, 5 and 6; finding 1 reproduced by the
+orchestrator on different inputs, pasted under `## Diff review`).** The other
+five findings (2, 3, 7, 8, 9) and 3i's matching hole go to a follow-up story;
+nothing here covers them.
+
+- **AC-1** said the line is refused in a GREEN commit and in a GATES commit.
+  It now also says: (a) the same line added by a commit whose committed story
+  is at `phase: REVIEW`, and whose **first parent's** committed story is at
+  `GATES` (or `GREEN`), is refused the same way. Its FAIL line names the phase
+  as `REVIEW, after GATES`. That commit is the documented GATES → REVIEW step,
+  which sets the phase and only then commits. (b) A GREEN commit appending
+  three lines whose third is the needle is refused naming the third line's
+  number, not the hunk's first. *Why:* (a) work done in GATES and committed by
+  the documented step was never judged; (b) only the first added line of a
+  hunk had a pinned number.
+- **AC-2** listed the C-2 example lines. It now also requires
+  `foo();// eslint-disable-line` (`eslint-disable`) and
+  `x = eval(s)# noqa` (`noqa`) to be refused. These are directives the tools
+  honour with no space before the comment opener. The C-3 corpus must stay
+  clean. *Why:* finding 5; C-2's claim that the anchor "costs no true
+  positive" was false.
+- **AC-3** said a commit at `RED`, `PLANNED`, `SCAFFOLD`, `REVIEW` or `DONE`
+  is not refused. It now says so only when the commit's first parent is also
+  not at `GREEN` or `GATES`. *Why:* AC-1 (a).
+- **AC-5** said an entry naming the path, the rule id and `approved by`
+  discharges the refusal. It adds three controls that must leave the refusal
+  in place:
+  - an entry `- src/other.ts [noqa] approved by ryan: same as src/main.ts`,
+    where the path appears only after another path;
+  - an entry for `src/main.ts.bak`;
+  - an entry `- src/main.ts [noqa] approved by ryan: not eslint-disable`,
+    where the right rule id appears only bare while another id is bracketed.
+
+  The existing AC-5 cases keep their outcome, including the order-free bare
+  form `Approved By ryan: eslint-disable in src/main.ts`. *Why:* finding 4:
+  one approval could cover a file or a rule it does not name.
 
 ## Suppressions
 
@@ -877,6 +968,24 @@ should reproduce: 18 reds, all GATES.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### Return 1: GATES → RED (2026-10-28), from diff review round 1
+
+- **Which tests, and what was wrong.**
+  - The AC-3 phase cases asserted that a REVIEW commit is never judged. That
+    is the hole in finding 1: the documented GATES → REVIEW commit can carry
+    GATES work.
+  - No test pinned the number of a hunk's non-first added line (finding 6).
+  - No test covered a directive with no space before its opener (finding 5).
+  - No test covered a `## Suppressions` entry that names the path or the
+    rule id in the wrong place (finding 4).
+- **How it was found.** A fresh `feature-developer` diff review at
+  GATES → REVIEW. Finding 1 was reproduced by the orchestrator in a clone,
+  with output under `## Diff review`. The user approved A-1.
+- **What they assert now.** The A-1 criteria and C-9. The source changes for
+  findings 1, 4 and 5 follow in GREEN. Finding 6's assertion passes against
+  today's code and is earned by a mutation of `ln++` (output to follow
+  below).
 
 ## Diff review
 
