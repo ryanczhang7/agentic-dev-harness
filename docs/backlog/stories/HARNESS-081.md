@@ -5,7 +5,7 @@ slug: a-suppression-comment-added-to-source-in
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-081-a-suppression-comment-added-to-source-in
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/rules.md, .claude/harness/VERSION, .claude/skills/story-authoring/reference/sections.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/tests/selftest.test.sh]
@@ -380,6 +380,81 @@ the only thing changed being the classifier's answer being ignored. Paste
 both runs and the restore. That is the probe the law owes a rule over the
 tree: it shows the exclusion of docs and harness is the classifier's doing and
 not the needles' silence, on lines nobody wrote for the fixture.
+
+**DV-1 result (GATES, 2026-10-28, orchestrator, tree at 33f25eb).** The
+phase test in the real 3j narrowed from GREEN-or-GATES to GREEN only, against
+the boundaries suite alone (612 s). Exactly the predicted 18 went red - AC-1's
+three GATES assertions, every AC-2 row's GATES whole line, and the AC-2 table
+composite - and the other 198 stayed green; RED's prototype m1 predicted the
+same 18. Restored and verified; `mutate.sh --check` clean after.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/case "\$ph_at" in GREEN|GATES) ;;/case "$ph_at" in GREEN) ;;/) ===
+=== mutate: running bash .claude/tests/boundaries.test.sh ===
+    FAIL AC-1 (GATES): the refusal names eslint-disable, src/main.ts, line 2, the commit and GATES
+    FAIL AC-1 (GATES): it is the only refusal this rule prints
+    FAIL AC-1 (GATES): and the run exits 1, where the same branch without the line exits 0
+    FAIL AC-2 [eslint-disable] (GATES): the added line is refused by its whole line, naming eslint-disable
+    FAIL AC-2 [ts-ignore] (GATES): the added line is refused by its whole line, naming ts-ignore
+    FAIL AC-2 [biome-ignore] (GATES): the added line is refused by its whole line, naming biome-ignore
+    FAIL AC-2 [noqa] (GATES): the added line is refused by its whole line, naming noqa
+    FAIL AC-2 [type-ignore] (GATES): the added line is refused by its whole line, naming type-ignore
+    FAIL AC-2 [rust-allow] (GATES): the added line is refused by its whole line, naming rust-allow
+    FAIL AC-2 [rust-allow] (GATES): the added line is refused by its whole line, naming rust-allow
+    FAIL AC-2 [gd-warning-ignore] (GATES): the added line is refused by its whole line, naming gd-warning-ignore
+    FAIL AC-2 [coverage-ignore] (GATES): the added line is refused by its whole line, naming coverage-ignore
+    FAIL AC-2 [coverage-ignore] (GATES): the added line is refused by its whole line, naming coverage-ignore
+    FAIL AC-2 [no-cover] (GATES): the added line is refused by its whole line, naming no-cover
+    FAIL AC-2 [stryker-disable] (GATES): the added line is refused by its whole line, naming stryker-disable
+    FAIL AC-2 [hadolint-ignore] (GATES): the added line is refused by its whole line, naming hadolint-ignore
+    FAIL AC-2 [shellcheck-disable] (GATES): the added line is refused by its whole line, naming shellcheck-disable
+    FAIL AC-2: the table branch - rc|refusals (one per added line)|summary
+boundaries: 198 passed, 18 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261028T23554[...].bak) ===
+```
+
+**DV-2 result (GATES, 2026-10-28, orchestrator, tree at 33f25eb).** First
+half, unmutated: `GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh
+origin/main` printed no 3j line at all - no `FAIL ... added a suppression`, no
+`GREEN/GATES added no suppression` summary - and its rc=1 came only from 3b
+(phase GATES, not REVIEW) and 3h (this very block, then without a result):
+
+```
+ok    story files validated
+ok    harness state not tracked
+ok    source changes accompanied by test changes (0 source, 0 test)
+FAIL  story HARNESS-081 is in phase 'GATES'; a PR should be opened from REVIEW or DONE
+ok    branch matches the story's frontmatter
+ok    acceptance criteria unchanged since origin/main
+ok    ## Handoff is filled in
+ok    ## Deferred verifications names the phase that owns each entry
+FAIL  story HARNESS-081: ## Deferred verifications has no result and no waiver. [...]
+rc=1
+```
+
+Second half, the category test widened to judge `docs` through `mutate.sh`:
+the same command refused this story file by path and line, under the real
+rule, on lines GREEN's `## Notes` added (the controls measurement table) -
+three refusals, naming `noqa`, `type-ignore` and `no-cover`. The only change
+was the classifier's answer being ignored. Restored and verified:
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/in source|config) sup_paths=/in source|config|docs) sup_paths=/) ===
+  758 -     case "$(classify "$f")" in source|config) sup_paths="$sup_paths $f" ;; esac
+  758 +     case "$(classify "$f")" in source|config|docs) sup_paths="$sup_paths $f" ;; esac
+=== mutate: running env GITHUB_HEAD_REF= PR_HEAD_SHA= bash scripts/check-boundaries.sh origin/main ===
+[the same eight lines as above, then:]
+FAIL  story HARNESS-081: commit 33f25eb (GREEN) added a suppression to 'docs/backlog/stories/HARNESS-081.md' line 852 [noqa]: 4|noqa|x = eval(s)  # noqa: S307. GREEN and GATES may not silence a tool to reach green; [...]
+FAIL  story HARNESS-081: commit 33f25eb (GREEN) added a suppression to 'docs/backlog/stories/HARNESS-081.md' line 853 [type-ignore]: 5|type-ignore|y = f()  # type: ignore[attr-defined]. [...]
+FAIL  story HARNESS-081: commit 33f25eb (GREEN) added a suppression to 'docs/backlog/stories/HARNESS-081.md' line 859 [no-cover]: 11|no-cover|def f():  # pragma: no cover. [...]
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261028T235451Z.3990.bak) ===
+  758:     case "$(classify "$f")" in source|config) sup_paths="$sup_paths $f" ;; esac
+rc=1
+```
+
+So docs are excluded by `classify`'s answer and not by the needles' silence.
+The three refused lines sit in a `|`-delimited table, which shows the ERE
+anchors on the comment opener as C-2 says and not on the start of the line.
 
 ## Amendments
 
@@ -805,10 +880,21 @@ should reproduce: 18 reds, all GATES.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-29T00:06:16Z
+    commit: 33f25eb
+    tree:   4090b4141a202e80f1c113c72334a9ffa7a91e78
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
