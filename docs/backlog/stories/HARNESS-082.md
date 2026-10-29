@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -339,6 +339,65 @@ DV-2b's driver (scratch, not in the tree) evals `suppression_needles` and
 `suppression_hits` straight out of `scripts/check-boundaries.sh` as shipped,
 builds `diff --git` / `+++` / `@@ -0,0 +1,N @@` and the file with every line
 prefixed `+`, and greps the output for `|empty-handler|`.
+
+**DV-1, DV-2 and DV-2b re-run (GATES after return 1, 2026-10-29, on
+2fc8ba9).** The tree changed, so all three ran again. DV-1 against the
+regenerated subset (`sub2.test.sh`, confirmed a verbatim slice of the
+committed suite by `diff`, 187 assertions): exactly the same two assertions
+red, restored and green.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by /^      pk = ""$/d) ===
+  801 -       pk = ""
+    FAIL HARNESS-082 control: an except whose next added line is a statement (src/app.py) is not refused
+    FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+boundaries: 185 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T185750Z.141457.bak) ===
+##### the same subset, restored
+boundaries: 187 passed, 0 failed
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+DV-2: unmutated, 3j printed nothing. Widened to `harness`, every quoted
+example fired its own row, the new `} catch (e) {}` example (line 706) as
+`empty-handler`; the rest are prose or test-table lines quoting a stub or a
+directive (C-1's accepted false positive). Restored, no refusal. DV-2b:
+unchanged, `322|empty-handler|} catch (error) {` only under the mutation.
+
+```
+##### DV-2 second half: category test widened to harness
+  859 +     case "$(classify "$f")" in source|config|harness) sup_paths="$sup_paths $f" ;; esac
+FAIL  ... commit 2fc8ba9 (GREEN) ... 'scripts/check-boundaries.sh' line 706 [empty-handler]: #   } catch (e) {}
+FAIL  ... commit 2fc8ba9 (GREEN) ... 'scripts/check-boundaries.sh' line 720 [empty-handler]: # rows are the ONE-line shape the window cannot see, `} catch (e) {}` and
+FAIL  ... commit 2fc8ba9 (GREEN) ... 'scripts/check-boundaries.sh' line 772 [noqa]: # opener, so `except:  # noqa: E722` over `pass` prints both `noqa` and
+FAIL  ... commit 8bf26af (RED, after GATES) ... '.claude/tests/boundaries.test.sh' lines 2188-2193, 2589, 2600, 2601 [stub-throw x3, stub-gd, empty-handler x2, eslint-disable, noqa, coverage-ignore]: the return-1 test table rows
+FAIL  ... commit 31a3195 (GREEN) ... 'scripts/check-boundaries.sh' line 701 [stub-throw]: #   throw new Error("not implemented")
+FAIL  ... commit 31a3195 (GREEN) ... line 702 [stub-todo]: #   todo!()
+FAIL  ... commit 31a3195 (GREEN) ... line 703 [stub-todo]: #   unimplemented!("later")
+FAIL  ... commit 31a3195 (GREEN) ... line 704 [stub-raise]: #   raise NotImplementedError
+FAIL  ... commit 31a3195 (GREEN) ... line 705 [stub-gd]: #   push_error("not implemented")
+FAIL  ... commit 31a3195 (GREEN) ... lines 696, 697 [stub-todo]: prose quoting todo!()
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T191556Z.191363.bak) ===
+##### DV-2 restored
+(3j printed no refusal)
+##### DV-2b unmutated
+all hits over .claude/skills/security-audit/validate-findings.cjs (773 lines): 0
+(no empty-handler line)
+##### DV-2b with line 323 (the catch body) deleted
+all hits over .claude/skills/security-audit/validate-findings.cjs (772 lines): 1
+322|empty-handler|} catch (error) {
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_security-audit_validate-findings.cjs.20261029T191817Z.197215.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+(Lines condensed from the raw log at the scratchpad's `dv2-082r1.log`;
+the refusal tails are elided.) The widened run also judged the RED-return
+commit 8bf26af, labelled `RED, after GATES`: HARNESS-081's parent-phase arm
+judges any commit whose first parent was GATES, which includes a return to
+RED, not only the GATES -> REVIEW step it was written for. No refusal changes
+under the real category test - the lock keeps source and config out of a RED
+commit - but the label and the judged count are wrong. Follow-up list, not
+this story (C-4 freezes the walk).
 
 ## Amendments
 
@@ -1116,9 +1175,9 @@ identifier and misses the capital N, F4 sees only the two-line form.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-29T14:23:15Z
-    commit: 31a3195
-    tree:   81ce29f69a312037e435ec57f6fee885df4682b2
+    run:    2026-10-29T19:19:06Z
+    commit: 2fc8ba9
+    tree:   064a7c6e8eb8ccaaad7ed28fb2ae2b6d931a71df
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1266,3 +1325,15 @@ the empty-handler half is already pinned by AC-3's ten fixture pairs. Also
 expect one extra `stub-todo` refusal under DV-2's widening, on the prose line
 quoting `foo(todo!())` (C-1's accepted comment false positive).
 
+
+**Follow-up list (not this story; for the story that follows HARNESS-081's list):**
+
+- Diff review round 1, finding 6: `except(ValueError):` and `except* ValueError:`
+  are not colon openers; an abstract method with a docstring between `def` and
+  `raise` is refused (AC-2 as specified).
+- An Allman-brace or promise `.catch(() => {})` empty handler, and a brace
+  opener with a trailing directive (`} catch (e) { // eslint-disable-line`),
+  are not seen (C-3, Out of scope).
+- HARNESS-081's parent-phase arm judges a RED commit whose parent was GATES,
+  labelled `RED, after GATES` (seen in DV-2's re-run); it was meant for the
+  GATES -> REVIEW step only.
