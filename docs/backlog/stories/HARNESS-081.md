@@ -397,6 +397,21 @@ may every other block; GREEN builds what the amended block says.
     `Approved By ryan: eslint-disable in src/main.ts, because ...` still
     does.
   - `approved by` and case-insensitivity are unchanged.
+  - *Amended in RED, return 1 (test-developer, 2026-10-28).* **The
+    partial-entry suffix keys on the same token rule.** C-4 picks the line a
+    suffix is about as one that "contains the refused path", which is the
+    substring reading this block replaces. A line that does not name the path
+    by the whole-token rule above does not name it for the suffix either, and
+    gets none - the refusal is the C-2 line exactly. *Reason:* otherwise
+    `- src/other.ts [noqa] approved by ryan: same as src/main.ts` would print
+    "the ## Suppressions line naming 'src/main.ts' is missing the rule id",
+    telling the author to add a rule id to a line this block says can never
+    declare `src/main.ts`, and `src/main.ts.bak`'s entry would have no gap to
+    name at all. So the four A-1 controls pin: path-after-another-path (with
+    `[noqa]` and with `[eslint-disable]`) and `src/main.ts.bak` - no suffix;
+    `- src/main.ts [noqa] approved by ryan: not eslint-disable` - ` The ##
+    Suppressions line naming 'src/main.ts' is missing the rule id
+    [eslint-disable].`
 - **The line number (C-1).** Unchanged in behaviour. The A-1 AC-1 case pins
   it for a line that is not first in its hunk, and the new assertion is
   earned by a `mutate.sh` run that deletes `ln++` (the law for a test written
@@ -588,6 +603,7 @@ name, below the table.
 - PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1** (2026-10-28). The story was cut and the Contract, Deferred verifications and Out of scope written in this dispatch; no override reported.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-28), self-reported, no override. Orchestrator's own run of the two suites on 8dc17c8's tree: `boundaries: 168 passed, 48 failed`, `new-story: 53 passed, 5 failed` (575 s); every red assertion is 3j output or the `## Suppressions` heading. `touches:` gained `.claude/tests/selftest.test.sh` (its hand-copied floor table), which RED had to change.
 - GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-28), self-reported; no override was reported to it.
+- RED (return 1) - test-developer, planned opus, resolved claude-opus-5-5 (2026-10-28), self-reported; no override was reported to it.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -670,6 +686,15 @@ lines added because the original two string-literal cases did not exercise
 the opener anchor (C-2/C-3 amendments); line numbers on files that grow across
 commits (AC-2 appends to the same file repeatedly; each expected line number
 is read from the committed file).
+
+**Return 1 (A-1), +14 assertions in the same describes** (boundaries 216 -> 230):
+
+| Describe | Assertions | AC |
+|---|---|---|
+| `AC-1: ...` | parent at GATES, then at GREEN: a story-only commit at that phase, then one commit setting REVIEW and appending the AC-1 line -> its whole `FAIL` line with phase `REVIEW, after <parent>`; rc 1, one refusal, no summary (4). A GREEN commit appending three lines, `// @ts-ignore` third -> the whole line naming line 4; one refusal (2) | AC-1 (a), (b) |
+| `AC-2: every row ...` | two rows appended to the table, so +4 whole lines (GREEN, GATES): `foo();// eslint-disable-line` [eslint-disable], `x = eval(s)# noqa` [noqa]. The branch count assertion now expects 32 | AC-2 |
+| `AC-3: ...` | unchanged; its REVIEW commit's parent is SCAFFOLD, so it still means what amended AC-3 says (comment in the file) | AC-3 |
+| `AC-5: ...` | four controls appended: path after another path with `[noqa]` and with `[eslint-disable]`, `src/main.ts.bak`, `[noqa]` bracketed with the right id bare (4) | AC-5 |
 
 Out of scope and **not** pinned: stubs (HARNESS-082), `project.conf` (HARNESS-083),
 other ecosystems' directives, suppressions on main (AC-4 relies on main
@@ -944,6 +969,95 @@ should reproduce: 18 reds, all GATES.
   story (BOOTSTRAPPED=no), so the test gates do not judge these suites -
   `selftest.sh` does.
 
+### Return 1 addendum (RED from GATES, A-1; test-developer, 2026-10-28)
+
+**Command:** `bash .claude/tests/boundaries.test.sh` (~11 min on this host,
+local). Only that file changed among the suites; `floors.conf` and
+`selftest.test.sh`'s copied table now say `boundaries 230`.
+
+**Red run, on 5f76df2's source (GREEN's 3j) with the new tests:**
+
+    AC-1: a suppression added in GREEN or GATES is refused, by path, line, commit and phase
+      FAIL AC-1 (REVIEW after GATES): a line committed by the step that sets REVIEW is refused, naming 'REVIEW, after GATES'
+           expected: 1
+           actual:   0
+      FAIL AC-1 (REVIEW after GATES): rc|refusals|summary - refused once, and nothing calls it clean
+           expected: 1|1|0
+           actual:   0|0|0
+      FAIL AC-1 (REVIEW after GREEN): a line committed by the step that sets REVIEW is refused, naming 'REVIEW, after GREEN'
+           expected: 1
+           actual:   0
+      FAIL AC-1 (REVIEW after GREEN): rc|refusals|summary - refused once, and nothing calls it clean
+           expected: 1|1|0
+           actual:   0|0|0
+    AC-2: every row of the needle table is refused by its rule id, in GREEN and in GATES
+      FAIL AC-2 [eslint-disable] (GREEN): the added line is refused by its whole line, naming eslint-disable
+      FAIL AC-2 [eslint-disable] (GATES): the added line is refused by its whole line, naming eslint-disable
+      FAIL AC-2 [noqa] (GREEN): the added line is refused by its whole line, naming noqa
+      FAIL AC-2 [noqa] (GATES): the added line is refused by its whole line, naming noqa
+           (each: expected: 1  actual: 0)
+      FAIL AC-2: the table branch - rc|refusals (one per added line)|summary
+           expected: 1|32|0
+           actual:   1|28|0
+    AC-5: a suppression declared in ## Suppressions is accepted, and only a whole declaration
+      FAIL AC-5 control, the path only after another path (A-1): still refused, by the whole line - rc|refusals|line|declared
+           expected: 1|1|1|0
+           actual:   1|1|0|0
+      FAIL AC-5 control, the path only after another path, right rule id (A-1): still refused, by the whole line - rc|refusals|line|declared
+           expected: 1|1|1|0
+           actual:   0|0|0|1
+      FAIL AC-5 control, an entry for src/main.ts.bak (A-1): still refused, by the whole line - rc|refusals|line|declared
+           expected: 1|1|1|0
+           actual:   0|0|0|1
+      FAIL AC-5 control, another id bracketed, the right one only bare (A-1): still refused, by the whole line - rc|refusals|line|declared
+           expected: 1|1|1|0
+           actual:   0|0|0|1
+    boundaries: 217 passed, 13 failed
+
+**Why each is the right failure.**
+
+- REVIEW after GATES/GREEN: `0|0|0` - 3j skipped the commit on its own phase
+  (finding 1, reproduced). Not a fixture fault: rc 0 means nothing else
+  objected either.
+- AC-2's two rows: no refusal at all - the anchor is `[[:space:]]` only
+  (finding 5). The count assertion is pre-existing; it reads `${#ac2_want[@]}`,
+  so it moved to 32 with the rows, and 28 is today's 3j.
+- AC-5: three of the four are **discharged** today (`0|0|0|1`: rc 0, the
+  declared `ok`) - the substring path match and the bare id beside a bracketed
+  one (finding 4). The first (`[noqa]` after `src/other.ts`) is refused today,
+  but with the wrong suffix: today's 3j reads the line as naming `src/main.ts`
+  and appends "is missing the rule id"; C-9 (amended) says no suffix. That one
+  row alone could not catch finding 4, because `[noqa]` does not match the
+  refused rule anyway - which is why the `[eslint-disable]` variant is there:
+  it is the same AC-5 control ("an entry naming the path only after another
+  path") with the one id that would discharge it, and today it does.
+- Every pre-existing assertion is green (217 = 216 old minus AC-2's count +
+  the 2 on-arrival new ones).
+
+**Exact lines pinned (whole lines, via `want_3j`/`SUP_TAIL`):**
+
+- `FAIL  story T-1: commit <c7> (REVIEW, after GATES) added a suppression to 'src/main.ts' line 2 [eslint-disable]: // eslint-disable-next-line @typescript-eslint/no-explicit-any. GREEN and GATES may not silence ...` - and the same with `(REVIEW, after GREEN)`. `<c7>` is the REVIEW commit.
+- `FAIL  story T-1: commit <c7> (GREEN) added a suppression to 'src/main.ts' line 4 [ts-ignore]: // @ts-ignore. GREEN and GATES ...`
+- `... [eslint-disable]: foo();// eslint-disable-line. GREEN and GATES ...` and `... 'src/app.py' line <n> [noqa]: x = eval(s)# noqa. GREEN and GATES ...`, in GREEN and in GATES.
+- AC-5: the C-2 line with no suffix for the two path-after-path rows and the
+  `.bak` row; with ` The ## Suppressions line naming 'src/main.ts' is missing the rule id [eslint-disable].` for `- src/main.ts [noqa] approved by ryan: not eslint-disable`.
+
+**Not constrained:** how the parent's phase is read (C-9 says `git show
+"$c^:$sfile"`, but only the output is pinned); a root commit's behaviour; a
+merge commit's parent choice; the anchor for `/*`-only rows beyond the two
+example lines; how the token rule is coded; what a REVIEW commit whose parent
+is RED prints (AC-3's existing case pins that it is clean only alongside
+other phases). The `note` for an unreadable story is unchanged and still pinned
+by AC-6.
+
+**Passed on arrival:** the two third-line-number assertions. Earned by
+`mutate.sh` deleting `ln++` for an added line - output in `## Regressions`,
+Return 1.
+
+**Negative controls:** none new with a threshold; every case is mechanical.
+The C-3 corpus is untouched (12 lines) and stayed clean in the red run
+(`AC-2 control` describe: no FAIL). GREEN's widened anchor must keep it so.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -986,6 +1100,59 @@ should reproduce: 18 reds, all GATES.
   findings 1, 4 and 5 follow in GREEN. Finding 6's assertion passes against
   today's code and is earned by a mutation of `ln++` (output to follow
   below).
+- **The red, on 5f76df2's source with the new tests** (test-developer, local
+  run, 2026-10-28; `bash .claude/tests/boundaries.test.sh`). 13 reds: the 12
+  new A-1 assertions for findings 1, 4 and 5, plus AC-2's table-branch count,
+  which reads the row count and now expects 32. Full output is in the handoff's
+  Return 1 addendum; the totals and the finding-1 lines:
+
+```
+FAIL AC-1 (REVIEW after GATES): a line committed by the step that sets REVIEW is refused, naming 'REVIEW, after GATES'
+     expected: 1
+     actual:   0
+FAIL AC-1 (REVIEW after GATES): rc|refusals|summary - refused once, and nothing calls it clean
+     expected: 1|1|0
+     actual:   0|0|0
+FAIL AC-1 (REVIEW after GREEN): a line committed by the step that sets REVIEW is refused, naming 'REVIEW, after GREEN'
+FAIL AC-1 (REVIEW after GREEN): rc|refusals|summary - refused once, and nothing calls it clean
+FAIL AC-2 [eslint-disable] (GREEN) / (GATES), FAIL AC-2 [noqa] (GREEN) / (GATES)
+FAIL AC-2: the table branch - rc|refusals (one per added line)|summary
+     expected: 1|32|0
+     actual:   1|28|0
+FAIL AC-5 control x4 (the A-1 rows)
+boundaries: 217 passed, 13 failed
+```
+
+- **The probe that earns finding 6's assertion** (passes on arrival). One
+  mutation, deleting the `ln++` that advances the counter past an added line
+  in `suppression_hits`, one run of the suite holding it, restore verified by
+  `mutate.sh`. The run differs from the red run above by exactly one assertion,
+  the line-number whole line (217/13 -> 216/14). The sibling "one refusal"
+  assertion stays green, as it should: the count does not depend on the number.
+
+```
+$ bash scripts/mutate.sh scripts/check-boundaries.sh 's/^      ln++; next$/      next/' -- bash .claude/tests/boundaries.test.sh
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/^      ln++; next$/      next/) ===
+  718 -       ln++; next
+  718 +       next
+=== mutate: running bash .claude/tests/boundaries.test.sh ===
+...
+    FAIL AC-1: the third of three lines added in one hunk is refused by ITS line number, 4, not the hunk's first
+         expected: 1
+         actual:   0
+...
+boundaries: 216 passed, 14 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261029T010421Z.1404.bak) ===
+  718:       ln++; next
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+- **What else changed.** Nothing outside the test file, the floors (boundaries
+  216 -> 230 in `floors.conf` and `selftest.test.sh`), and this story's Test
+  plan, Handoff, C-9 (one sub-bullet: the partial-entry suffix uses the same
+  token rule, with the reason) and Model guidance. `scripts/check-boundaries.sh`
+  is untouched (`git status` shows it unmodified).
 
 ## Diff review
 

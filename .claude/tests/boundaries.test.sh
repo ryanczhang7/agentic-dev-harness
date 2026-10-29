@@ -2110,6 +2110,39 @@ run_boundaries </dev/null
 whole_line "AC-1: a feature story's GREEN commit is refused by the same whole line" \
   "$(want_3j "$sup_c" GREEN src/main.ts 2 eslint-disable "$AC1_LINE")"
 
+# A-1 (a), diff review finding 1. The documented GATES -> REVIEW step sets the
+# phase and only THEN commits, so a fix still uncommitted at that moment lands in
+# a commit whose own story says REVIEW. Judged by its first parent's phase
+# (C-9), and the FAIL line says both: `(REVIEW, after GATES)`. The branch: a
+# story-only commit at <parent phase> (no source path, so not itself a judged
+# commit), then ONE commit that sets REVIEW and appends the AC-1 line.
+for pph in GATES GREEN; do
+  _src_branch
+  _src_story "$pph" src/main.ts
+  commit_all "T-1 to $pph"
+  _src_story REVIEW src/main.ts
+  printf '%s\n' "$AC1_LINE" >> "$FIX/src/main.ts"
+  commit_all "T-1 to review, with the $pph work still uncommitted"
+  rev_c="$(_short)"
+  run_boundaries </dev/null
+  whole_line "AC-1 (REVIEW after $pph): a line committed by the step that sets REVIEW is refused, naming 'REVIEW, after $pph'" \
+    "$(want_3j "$rev_c" "REVIEW, after $pph" src/main.ts 2 eslint-disable "$AC1_LINE")"
+  assert_eq "AC-1 (REVIEW after $pph): rc|refusals|summary - refused once, and nothing calls it clean" \
+    "1|1|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+done
+
+# A-1 (b), diff review finding 6. Every case above adds ONE line, so it is the
+# first of its hunk and its number is the hunk header's: a counter that never
+# advances would pass them all. Three lines appended in one GREEN commit, the
+# needle third: src/main.ts is one line on main, so the needle is line 4. PASSES
+# ON ARRIVAL (the counter is right today); earned by a mutate.sh run deleting the
+# `ln++` for an added line, in ## Regressions, Return 1.
+source_story GREEN src/main.ts $'export const a = 1\nexport const b = 2\n// @ts-ignore' </dev/null
+run_boundaries </dev/null
+whole_line "AC-1: the third of three lines added in one hunk is refused by ITS line number, 4, not the hunk's first" \
+  "$(want_3j "$sup_c" GREEN src/main.ts 4 ts-ignore '// @ts-ignore')"
+assert_eq "AC-1: three lines in one hunk - the two clean ones are not refused (refusals)" 1 "$(sup_nfail)"
+
 # ---------------------------------------------------------------------------
 describe "AC-2: every row of the needle table is refused by its rule id, in GREEN and in GATES"
 
@@ -2118,6 +2151,8 @@ describe "AC-2: every row of the needle table is refused by its rule id, in GREE
 # path inventory. Paths are `source` by the real paths.conf the fixture copies;
 # the two config-file linters' rows go to a Dockerfile and a Makefile, which it
 # calls `config`, so no classification is faked.
+# The last two rows are A-1's (finding 5): directives the tools honour with no
+# space before the opener, which an anchor of whitespace alone missed.
 AC2_ROWS="$(cat <<'ROWS'
 eslint-disable|src/main.ts|// eslint-disable-next-line @typescript-eslint/no-explicit-any
 ts-ignore|src/main.ts|// @ts-ignore
@@ -2133,6 +2168,8 @@ no-cover|src/app.py|def f():  # pragma: no cover
 stryker-disable|src/main.ts|// Stryker disable next-line all
 hadolint-ignore|Dockerfile|# hadolint ignore=DL3008
 shellcheck-disable|Makefile|# shellcheck disable=SC2086
+eslint-disable|src/main.ts|foo();// eslint-disable-line
+noqa|src/app.py|x = eval(s)# noqa
 ROWS
 )"
 # The C-3 non-matching corpus, <path>|<line>. Each would be refused by a needle
@@ -2221,7 +2258,10 @@ describe "AC-3: other phases, and docs, harness and test paths, are not judged"
 # a DONE commit in turn, then one clean GREEN commit. The summary over exactly
 # ONE judged commit is the half that is red before 3j exists, and the half that
 # catches a rule judging every commit: that one would print five refusals and
-# count six.
+# count six. A-1 (finding 1) judges a commit by its FIRST PARENT's phase too,
+# so this case is meaningful only because no commit here has a GREEN or GATES
+# parent: REVIEW's parent is SCAFFOLD, DONE's is REVIEW, and the one commit
+# whose parent IS GREEN - the final "to review" - changes only the story.
 _src_branch
 for ph in RED PLANNED SCAFFOLD REVIEW DONE; do
   _src_story "$ph" src/main.ts
@@ -2319,8 +2359,11 @@ assert_eq "AC-5: the three in another order, other case, rule id bare - rc|refus
   "0||1" "$rc|$(sup_fails)|$(sup_count "$AC5_OK")"
 
 # The controls. Each leaves the refusal in place, by its whole line - so the
-# message still says what an entry must carry - and the two partial entries say
-# which part is missing (C-4 amendment). <what>|<suffix after SUP_TAIL>|<body>
+# message still says what an entry must carry - and the partial entries say
+# which part is missing (C-4 amendment). The four A-1 rows (finding 4): a line
+# names a path only as a whole token that is its first path-like token, and a
+# bare rule id counts only where no id is bracketed (C-9); a line that does
+# not name the path gets no suffix. <what>|<suffix after SUP_TAIL>|<body>
 while IFS='|' read -r what suffix entry; do
   [ -z "$what" ] && continue
   ac5 "$entry"
@@ -2333,6 +2376,10 @@ an entry naming the path but not the rule id| The ## Suppressions line naming 's
 an entry naming path and rule id without approved by| The ## Suppressions line naming 'src/main.ts' is missing 'approved by'.|## Suppressions\n\n- `src/main.ts` [eslint-disable]: legacy
 an entry for a different path||## Suppressions\n\n- `src/other.ts` [eslint-disable] approved by ryan: legacy
 a whole entry outside ## Suppressions||## Notes\n\n- `src/main.ts` [eslint-disable] approved by ryan: legacy
+the path only after another path (A-1)||## Suppressions\n\n- src/other.ts [noqa] approved by ryan: same as src/main.ts
+the path only after another path, right rule id (A-1)||## Suppressions\n\n- src/other.ts [eslint-disable] approved by ryan: same as src/main.ts
+an entry for src/main.ts.bak (A-1)||## Suppressions\n\n- `src/main.ts.bak` [eslint-disable] approved by ryan: legacy
+another id bracketed, the right one only bare (A-1)| The ## Suppressions line naming 'src/main.ts' is missing the rule id [eslint-disable].|## Suppressions\n\n- src/main.ts [noqa] approved by ryan: not eslint-disable
 ROWS
 # The working-tree edits are this describe's alone.
 git -C "$FIX" checkout -q -- . 2>/dev/null
