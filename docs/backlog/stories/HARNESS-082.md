@@ -4,8 +4,8 @@ title: A stub added to source in GREEN or GATES is refused unless the story decl
 slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
