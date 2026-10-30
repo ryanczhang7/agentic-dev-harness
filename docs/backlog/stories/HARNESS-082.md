@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -416,6 +416,54 @@ RED, not only the GATES -> REVIEW step it was written for. No refusal changes
 under the real category test - the lock keeps source and config out of a RED
 commit - but the label and the judged count are wrong. Follow-up list, not
 this story (C-4 freezes the walk).
+
+**DV-1, DV-2 and DV-2b re-run (GATES after return 2, 2026-10-30, on
+db248cf).** DV-1 against `sub3.test.sh` (confirmed a verbatim slice of the
+committed suite by `diff`, 199 assertions): the same two assertions red,
+restored and green. DV-2: the widened run now also shows clause (b) on a real
+line - line 776 of 3j's comment quotes `} catch {} // eslint-disable-line
+no-empty` and draws `eslint-disable` **then** `empty-handler`. DV-2b
+unchanged.
+
+```
+##### DV-1 (re-run on db248cf)
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by /^      pk = ""$/d) ===
+  811 -       pk = ""
+    FAIL HARNESS-082 control: an except whose next added line is a statement (src/app.py) is not refused
+    FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+boundaries: 197 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T053324Z.471.bak) ===
+##### the same subset, restored
+boundaries: 199 passed, 0 failed
+##### DV-2 first half: the branch as it stands
+(3j printed nothing matching)
+##### DV-2 second half: category test widened to harness (lines on scripts/check-boundaries.sh only)
+  869 +     case "$(classify "$f")" in source|config|harness) sup_paths="$sup_paths $f" ;; esac
+db248cf (GREEN) line 772 [noqa]: # `except:  # noqa: E722` over `pass` prints both `noqa` and `empty-handler` at
+db248cf (GREEN) line 773 [noqa]: # the opener's line, and `pass  # noqa: SIM105` under `except ValueError:` prints
+db248cf (GREEN) line 776 [eslint-disable]: # so `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
+db248cf (GREEN) line 776 [empty-handler]: # so `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
+db248cf (GREEN) line 780 [empty-handler]: # `} catch (A e) {} catch (B e) {` over `}` is refused once. A stub-raise
+2fc8ba9 (GREEN) line 706 [empty-handler]: #   } catch (e) {}
+2fc8ba9 (GREEN) line 720 [empty-handler]: # rows are the ONE-line shape the window cannot see, `} catch (e) {}` and
+31a3195 (GREEN) line 701 [stub-throw]: #   throw new Error("not implemented")
+31a3195 (GREEN) line 702 [stub-todo]: #   todo!()
+31a3195 (GREEN) line 703 [stub-todo]: #   unimplemented!("later")
+31a3195 (GREEN) line 704 [stub-raise]: #   raise NotImplementedError
+31a3195 (GREEN) line 705 [stub-gd]: #   push_error("not implemented")
+  (and the prose lines 696, 697 [stub-todo] and 2fc8ba9's 772 [noqa], as before)
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T054600Z.2603.bak) ===
+##### DV-2 restored
+(3j printed no refusal)
+##### DV-2b unmutated
+all hits over .claude/skills/security-audit/validate-findings.cjs (773 lines): 0
+(no empty-handler line)
+##### DV-2b with line 323 (the catch body) deleted
+all hits over .claude/skills/security-audit/validate-findings.cjs (772 lines): 1
+322|empty-handler|} catch (error) {
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_security-audit_validate-findings.cjs.20261030T054758Z.5350.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 ## Amendments
 
@@ -1637,9 +1685,9 @@ list.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-29T19:19:06Z
-    commit: 2fc8ba9
-    tree:   064a7c6e8eb8ccaaad7ed28fb2ae2b6d931a71df
+    run:    2026-10-30T05:48:20Z
+    commit: db248cf
+    tree:   7417d200e7b04af5a3f0506847ec7d92fa3096be
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
