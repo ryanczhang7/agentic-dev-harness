@@ -93,10 +93,34 @@ amended block says.
 when `"$f"` is `.claude/harness/project.conf` (by **path**, not by category -
 it is `harness`, and 3j's category test stays as HARNESS-081 wrote it), the
 before and after texts come from `git show "$c^:$f"` and `git show "$c:$f"`
-as 3i reads a manifest, and `project_conf_loosenings()` compares them. One
-`problem` per finding, in the HARNESS-081 shape with rule id `gate-loosened`:
+as 3i reads a manifest, and `project_conf_loosenings()` compares them.
 
-    FAIL  story <sid>: commit <7> (<PHASE>) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: <gate id>: <what> (<before> -> <after>). A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason.
+*Pinned at PLANNED -> RED (2026-10-30) against the shipped 3j:* today the
+walk builds `sup_paths` from `classify` = `source|config` only and
+`continue`s a commit with none, **before** it reads the phase, so a commit
+touching only `project.conf` is never reached. GREEN adds the path to
+`sup_paths` by an exact-path test **beside** the `classify` case line (that
+line is left byte-for-byte, because HARNESS-082's DV-2 mutates it), and the
+per-path loop sends `project.conf` to `project_conf_loosenings` instead of
+`suppression_hits`. Consequences pinned: a GREEN/GATES commit that touches
+only `project.conf` is a **judged** commit (counted in 3j's `ok ... (N
+commit(s) judged)` line - AC-7); a commit whose story is not readable gets
+3j's existing `note`; the parent-phase arm (`REVIEW, after GATES`) applies
+as it does to source. A merge commit has no `--name-only` paths and is
+skipped, as today. RED checks that no existing assertion counting judged
+commits moves because of this (no existing GREEN/GATES fixture commit
+touches `project.conf` is the expectation; if one does, say so).
+
+One `problem` per finding, rule id `gate-loosened`, exactly:
+
+    FAIL  story <sid>: commit <7> (<PHASE>) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: <finding>. A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason.
+
+followed, as HARNESS-081's refusal is, by ` The ## Suppressions line naming
+'.claude/harness/project.conf' is missing <...>.` when a partial entry names
+the path. `<finding>` is `<id>: <what>` with the exact `<what>` per C-2. A
+declared finding prints HARNESS-081's `ok    suppression [gate-loosened] in
+'.claude/harness/project.conf' is declared in ## Suppressions`, once per
+path and id as today.
 
 **C-2. `project_conf_loosenings <before-file> <after-file>`**, one awk, prints
 one line per finding, `<gate id>\t<what>\t<before>\t<after>`. It parses only
@@ -120,6 +144,38 @@ are compared as numbers; `80.0 -> 80` is not a lowering. A missing
 `project.conf` on the before side (the commit created it) produces no
 findings.
 
+*Pinned at PLANNED -> RED (2026-10-30):*
+
+- **Parsing**, as `gates.sh` does (lines 170-200): skip blank lines and
+  lines whose trimmed text starts `#`; strip a trailing CR; a line without
+  `|` is skipped (`BOOTSTRAPPED=...`); `kind` = field 1 and `id` = field 2,
+  each trimmed; the value is **the rest from field 3**, `|`s kept, trimmed
+  (a regex may contain `|`). For `gate` lines, severity = field 3 and the
+  command = the rest from field 5. `discovery`'s field 2 is a discovery id,
+  not a gate id; its `<id>` in a finding is that discovery id.
+- **The `<what>` strings, exactly** (`<id>:` precedes each):
+  `evidence line removed`; `floor line removed`;
+  `covers line removed <glob>` (one per glob gone); `discovery line removed`;
+  `floor lowered <before> -> <after>`; `required -> optional`;
+  `gate removed`; `threshold lowered <flag> <before> -> <after>` (flag as
+  written, e.g. `--cov-fail-under`); `slow added on required gate`,
+  `ondemand added on required gate`, `waiver added on required gate`.
+- **A gate removed reports only `gate removed`** for that id - its evidence,
+  floor and covers lines go with it and are not reported again.
+- **Several lines of one kind for one gate** (evidence, floor): the gate
+  "has" that kind if any line of it exists; `floor` compares the first line
+  on each side. A `-` evidence line counts as no evidence.
+- **Threshold flags**: the flag name is the matched spelling up to the
+  `[ =]` (`--fail-under-lines`, `--cov-fail-under`,
+  `--coverage.thresholds.lines`, `--min-coverage`, `--threshold`), the number
+  `[0-9]+(\.[0-9]+)?`; compare the first occurrence of each flag name on
+  each side; one finding per flag name lowered.
+- **Order** of findings: the after-file's gate order is not meaningful;
+  findings print in the order of the **before** file's lines, so the output
+  is deterministic.
+- **Severity**: a gate is "required" on a side when that side's `gate`
+  line's field 3 trimmed is exactly `required`.
+
 **C-3. What the escape hatch names.** The entry's path is
 `.claude/harness/project.conf` and the rule id is `gate-loosened`, so one
 declared line covers every loosening in that file in the PR - deliberate: a
@@ -140,6 +196,13 @@ declared in `## Suppressions`, never done quietly. `VERSION` bumps in GREEN.
 `boundaries.test.sh` in the shape of `manifest_story`, and one `describe`
 per AC. The finding table in C-2 is tested one row per case with its control
 on the same fixture. Floor raised in RED.
+
+**C-7. Callers of what changes.** No exported name or signature changes.
+`suppression_declared` is reused as is; the 3j loop body gains the
+`project.conf` branch; `project_conf_loosenings` is new and called only from
+3j. `grep -rn "sup_paths\|suppression_declared" --include=*.sh` (checked
+2026-10-30) finds them only in `scripts/check-boundaries.sh`. The suite
+drives the script, never the functions.
 
 **Test-only dependencies:** none.
 
@@ -207,6 +270,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1** (2026-10-28). The story was cut and the Contract, Deferred verifications and Out of scope written in this dispatch; no override reported.
+- PLANNED -> RED refinement - `lead-po` (the orchestrating session), resolved **claude-opus-5-5** (2026-10-30): C-1 pinned against the shipped 3j walk and message, C-2's parsing and `<what>` strings, C-7 added.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -324,4 +388,19 @@ name, below the table.
      named here. -->
 
 ## Notes
+
+**PO decisions at PLANNED -> RED (2026-10-30):**
+
+1. **Stack-config thresholds stay out of scope**, as the user accepted when
+   HARNESS-081..083 were planned ("Accept, push", 2026-10-28). Out of scope
+   lists them; a follow-up story per format if wanted.
+2. **The `<what>` strings carry no parentheses** (`floor lowered 40 -> 12`)
+   so AC-2's and AC-4's quoted text appears in the refusal verbatim; C-1's
+   first cut had `(<before> -> <after>)`.
+3. **Gate:** every gate is unconfigured on this repository; the artifact is
+   judged by `bash scripts/selftest.sh boundaries`, which CI runs.
+   `required_gates` stays empty. `epic:` is empty: no done-when to check.
+4. **Lessons carried from HARNESS-082** into the RED brief: a refusal is
+   pinned by its whole line including any partial-entry suffix, and one
+   commit carrying two findings expects both.
 
