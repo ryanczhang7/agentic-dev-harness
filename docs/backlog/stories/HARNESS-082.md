@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -1965,6 +1965,55 @@ Unmutated subset, same file, after the restore (`mutate.sh --check` clean):
 ```
 boundaries: 218 passed, 0 failed
 ```
+
+#### Return 4, GREEN - orchestrator (2026-10-30)
+
+GREEN is the source already committed at 2cf0fb1; no dispatch (nothing to
+write). The four mutations the return-3 GREEN could not run, against
+`sub5.test.sh` (lines 1-109 + the whole 3j section of the corrected suite),
+each through `mutate.sh` and restored byte-for-byte:
+
+```
+##### M1 defect put back: the first matching row wins
+  809 +         if (id[k] == "empty-handler") eh = 1; break
+    FAIL return 2 (b): both one-line handlers' empty-handler whole lines, both order checks, the branch count
+    FAIL return 3: all four stub-side whole lines, all four order checks, the branch count
+    FAIL return 3 AC-4: refused as stub-raise by its whole line; only [no-cover] declared - rc|refusals
+boundaries: 202 passed, 16 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T140425Z.27743.bak) ===
+##### M2 control: the four directive ids are not printed
+  807 +         if (id[k] != "no-cover" && id[k] != "eslint-disable" && id[k] != "coverage-ignore" && id[k] != "noqa") printf "%d|%s|%s\n", ln, id[k], t
+    FAIL return 3: all four directive-side whole lines, all four order checks
+    FAIL return 3: an @abstractmethod raise carrying '# pragma: no cover' is refused as no-cover exactly once; the abstract-method commit draws exactly one refusal; the branch
+    FAIL return 3 AC-4: the declared [no-cover] is accepted
+    (and every HARNESS-081 assertion on those four ids)
+boundaries: 154 passed, 64 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T143903Z.1437.bak) ===
+##### M3 control: the abstract-method exclusion disabled
+  806 +         if (id[k] == "stub-raiseX" && p1 ~ ...abstractmethod/) continue
+    FAIL return 3: an @abstractmethod raise carrying '# pragma: no cover' is not refused as stub-raise (whole lines)
+    FAIL return 3: the abstract-method commit draws exactly one refusal in all; the branch count
+    FAIL HARNESS-082 control: an abstract method, all three lines added; an abc.abstractmethod on an async def; the controls branch
+boundaries: 212 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T142007Z.53478.bak) ===
+##### M4 the exclusion as a break, not a continue
+  806 +         if (id[k] == "stub-raise" && p1 ~ ...abstractmethod/) break
+boundaries: 218 passed, 0 failed
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T142614Z.64068.bak) ===
+##### unmutated
+boundaries: 218 passed, 0 failed
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+(FAIL lines condensed by the orchestrator; raw logs in the scratchpad,
+`green082r3-muts.log` and `green082r3-m2.log`.) M4 survives, as the
+return-3 test-developer predicted: the rows after `stub-raise` are `stub-gd`
+and the two `empty-handler` rows, and no `raise NotImplementedError` line
+can also match those, so a `break` there drops nothing reachable. The
+`continue` is the contract's rule, not a tested behaviour. A first M2
+attempt wrote `\\n` into the sed replacement, which put a literal newline
+into the awk program and broke it (160 red); it is discarded, and the run
+above uses `&` to keep the matched text.
 
 ## Diff review
 
