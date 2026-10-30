@@ -767,10 +767,17 @@ NEEDLES
 # not, because neither sits between two added lines of one hunk. An added line
 # that is not the armed opener's closer disarms it. So an opener whose very
 # next added line is its closer prints `<opener line no>|empty-handler|<opener,
-# trimmed>`, once. A line that matched a row is reported by its row and is not
-# tested as a closer, so it is not reported twice - but it is still tested as an
-# opener, so `except:  # noqa: E722` over `pass` prints both `noqa` and
-# `empty-handler`, and declaring one does not declare the other. A stub-raise
+# trimmed>`, once. A row hit on any line of a handler does not stand in for the
+# handler. The line is still tested as an opener and as a closer, so
+# `except:  # noqa: E722` over `pass` prints both `noqa` and `empty-handler` at
+# the opener's line, and `pass  # noqa: SIM105` under `except ValueError:` prints
+# `noqa` at its own line and `empty-handler` at the opener's. A line whose
+# winning row is not empty-handler is tested against the empty-handler rows too,
+# so `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
+# `empty-handler`, both at that line; declaring one does not declare the other.
+# A line that reported empty-handler through a row, by either path, gets no
+# second one from the window when it is also an opener, so
+# `} catch (A e) {} catch (B e) {` over `}` is refused once. A stub-raise
 # hit is dropped when p1 is a `def` and p2 an
 # `@abstractmethod` - three adjacent added lines, nothing looser. The opener
 # anchor is the stub rows' anchor; its single quote is built from `%c` because
@@ -788,20 +795,23 @@ suppression_hits() {
     /^@@ / { h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/[^0-9].*$/, "", h); ln = h + 0; inh = 1; clear(); next }
     !inh { next }
     /^\+/ {
-      s = substr($0, 2); hit = 0
+      s = substr($0, 2); eh = 0
       for (k = 1; k <= n; k++) if (s ~ re[k]) {
-        hit = 1
         if (id[k] == "stub-raise" && p1 ~ /^[[:space:]]*(async[[:space:]]+)?def[[:space:]]/ && p2 ~ /^[[:space:]]*@(abc\.)?abstractmethod/) break
         t = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
         printf "%d|%s|%s\n", ln, id[k], t
+        if (id[k] == "empty-handler") eh = 1
+        else for (j = k + 1; j <= n; j++) if (id[j] == "empty-handler" && s ~ re[j]) {
+          printf "%d|empty-handler|%s\n", ln, t; eh = 1; break
+        }
         break
       }
-      if (!hit && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
+      if (!peh && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
         printf "%d|empty-handler|%s\n", pln, pt
       pk = ""
       if (s ~ bo) pk = "brace"
       else if (s ~ /^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(#.*)?$/) pk = "colon"
-      if (pk != "") { pln = ln; pt = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", pt) }
+      if (pk != "") { pln = ln; peh = eh; pt = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", pt) }
       p2 = p1; p1 = s
       ln++; next
     }

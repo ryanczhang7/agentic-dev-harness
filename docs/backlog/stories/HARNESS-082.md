@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -462,6 +462,9 @@ name, below the table.
 - GATES diff review round 1 - fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
 - RED (return 1) - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
 - GREEN (return 1) - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
+- GATES diff review round 2 - fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
+- RED (return 2) - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
+- GREEN (return 2) - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-30); no override.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -1299,6 +1302,207 @@ one-line re-test; if that line is armed as an opener too (it must end in
 applies to it as well - one `empty-handler`, not two. Not pinned (contrived),
 but the dedup flag should be set by the one-line match whichever path
 reported it.
+
+#### Return 2, GREEN - feature-developer (resolved claude-opus-5-5, no override)
+
+**Files touched:** `scripts/check-boundaries.sh` only - the `/^\+/` action of
+`suppression_hits()` and the comment above it. No row, no ERE, no output
+shape, no other block changed; VERSION stays `101 (2026-10-29)`. No test file.
+
+**What changed, clause by clause.**
+
+- (a) The `hit` variable is gone; the closer test is
+  `if (!peh && (pk == "brace" && ... || pk == "colon" && ...))`, so it runs
+  whatever the closer's own line hit.
+- (b) After the winning row's `printf`, a winning row whose `id[k]` is not
+  `empty-handler` is followed by a scan of the rows after it
+  (`for (j = k + 1; ...) if (id[j] == "empty-handler" && s ~ re[j])`) - the
+  rows as data, no ERE duplicated; rows before `k` are known not to match,
+  because the first row wins. A match prints `<n>|empty-handler|<trimmed>`
+  after the winning row's line.
+- (c) `eh` is set when the line reported `empty-handler` by either path (the
+  winning row, or (b)'s re-test); arming an opener copies it into `peh`, and
+  the closer test requires `!peh`. The test-developer's case
+  `} catch {} /* eslint-disable-line */ catch (e) {` over `}` gives
+  `eslint-disable` + one `empty-handler` (below).
+- The `@abstractmethod` `break` comes before the `printf`, as before, so a
+  dropped `stub-raise` prints nothing and is not re-tested.
+
+**Subset.** `sub3.test.sh` (session scratchpad) checked first: `diff` against
+lines 1-109 + 1984-2797 of the committed `.claude/tests/boundaries.test.sh`
+shows only line 9 (`_lib.sh` absolute path) differing - a verbatim slice.
+Against the fix: `boundaries: 199 passed, 0 failed`, rc 0.
+
+**Controls confirmed (#1, #3, #5, #7), "replaced, not added" mutation - RED's
+expression, unchanged, against the shipped fix:**
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/printf "%d|%s|%s.n", ln, id\[k\], t/if (id[k] != "eslint-disable" \&\& id[k] != "noqa") &/) ===
+  802 -         printf "%d|%s|%s\n", ln, id[k], t
+  802 +         if (id[k] != "eslint-disable" && id[k] != "noqa") printf "%d|%s|%s\n", ln, id[k], t
+  HARNESS-082's return 2: a directive on a closer or on a one-line handler does not approve the empty handler, and a two-catch line is refused once
+    FAIL HARNESS-082's return 2: (a) 'catch (err) {' then '} // eslint-disable-line' in src/main.ts, the row's own refusal [eslint-disable] at the closer - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2: (a) 'except ValueError:' then 'pass  # noqa: SIM105' in src/app.py, the row's own refusal [noqa] at the closer - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2: (b) '} catch {} // eslint-disable-line no-empty' in src/main.ts, the row's own refusal [eslint-disable] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2: (b) 'except OSError: ...  # noqa: S112' in src/app.py, the row's own refusal [noqa] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2 (b): '} catch {} // eslint-disable-line no-empty' in src/main.ts: [eslint-disable] - the row's refusal is printed, then empty-handler after it
+         expected: before
+         actual:   directive at line <none>, empty-handler at line 11
+    FAIL HARNESS-082's return 2 (b): 'except OSError: ...  # noqa: S112' in src/app.py: [noqa] - the row's refusal is printed, then empty-handler after it
+         expected: before
+         actual:   directive at line <none>, empty-handler at line 10
+    FAIL HARNESS-082's return 2: the branch - rc|refusals (two per (a) and (b) commit, one for (c))|summary
+         expected: 1|9|0
+         actual:   1|5|0
+boundaries: 154 passed, 45 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T042752Z.1546.bak) ===
+```
+
+All four controls go red (0), as in RED. Divergence from RED, benign and
+expected: RED's run was 149/50, this is 154/45. In both, 38 reds sit outside
+this describe (the existing 3j rows the mutation also silences); inside it RED
+had 12 (the 4 controls + the 8 already red), and here 7: the 4 controls, #9 and
+#10 (now red because the *directive* line is missing, where in RED the
+`empty-handler` line was), and the branch (`1|5|0`). #2, #4, #6, #8 and #11
+stay green under this mutation, which is right: it removes only the directive
+refusal, and the `empty-handler` lines are printed by other `printf`s.
+
+**Defect put back, (a): `!hit &&` restored on the closer test.** `hit` no
+longer exists, so the mutation uses its exact equivalent after the loop,
+`k > n` (the loop breaks at `k <= n` on a hit and ends at `n + 1` otherwise):
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/if (!peh && (pk/if (!peh \&\& k > n \&\& (pk/) ===
+  809 -       if (!peh && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
+  809 +       if (!peh && k > n && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
+    FAIL HARNESS-082's return 2: (a) 'catch (err) {' then '} // eslint-disable-line' in src/main.ts, AND empty-handler at the opener although the closer hit [eslint-disable] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2: (a) 'except ValueError:' then 'pass  # noqa: SIM105' in src/app.py, AND empty-handler at the opener although the closer hit [noqa] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2: the branch - rc|refusals (two per (a) and (b) commit, one for (c))|summary
+         expected: 1|9|0
+         actual:   1|7|0
+boundaries: 196 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T043339Z.11819.bak) ===
+  809:       if (!peh && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
+```
+
+Exactly #2, #4 and the branch count; nothing outside the describe.
+
+**Defect put back, (b): the one-line re-test dropped.**
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/else for (j = k + 1/else if (0) for (j = k + 1/) ===
+  804 -         else for (j = k + 1; j <= n; j++) if (id[j] == "empty-handler" && s ~ re[j]) {
+  804 +         else if (0) for (j = k + 1; j <= n; j++) if (id[j] == "empty-handler" && s ~ re[j]) {
+    FAIL HARNESS-082's return 2: (b) '} catch {} // eslint-disable-line no-empty' in src/main.ts, AND empty-handler at the same line although it hit [eslint-disable] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2: (b) 'except OSError: ...  # noqa: S112' in src/app.py, AND empty-handler at the same line although it hit [noqa] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 2 (b): '} catch {} // eslint-disable-line no-empty' in src/main.ts: [eslint-disable] - the row's refusal is printed, then empty-handler after it
+         expected: before
+         actual:   directive at line 11, empty-handler at line <none>
+    FAIL HARNESS-082's return 2 (b): 'except OSError: ...  # noqa: S112' in src/app.py: [noqa] - the row's refusal is printed, then empty-handler after it
+         expected: before
+         actual:   directive at line 10, empty-handler at line <none>
+    FAIL HARNESS-082's return 2: the branch - rc|refusals (two per (a) and (b) commit, one for (c))|summary
+         expected: 1|9|0
+         actual:   1|7|0
+boundaries: 194 passed, 5 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T043927Z.21925.bak) ===
+  804:         else for (j = k + 1; j <= n; j++) if (id[j] == "empty-handler" && s ~ re[j]) {
+```
+
+Exactly #6, #8, #9, #10 and the branch count.
+
+**Defect put back, (c): the duplicate guard dropped.**
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/if (!peh && (pk/if ((pk/) ===
+  809 -       if (!peh && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
+  809 +       if ((pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
+    FAIL HARNESS-082's return 2 (c): '} catch (IOException e) {} catch (Exception e) {' then '}' is refused as empty-handler exactly once, by its whole line
+         expected: 1
+         actual:   2
+    FAIL HARNESS-082's return 2: the branch - rc|refusals (two per (a) and (b) commit, one for (c))|summary
+         expected: 1|9|0
+         actual:   1|10|0
+boundaries: 197 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T044515Z.32019.bak) ===
+  809:       if (!peh && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
+```
+
+Exactly #11 (2) and the branch count (10), as RED predicted.
+`bash scripts/mutate.sh --check` afterwards: `mutate: no stranded mutation;
+nothing of a previous run is in the tree.`
+
+**gawk / mawk.** `suppression_needles` and `suppression_hits` extracted from
+the fix and run over one 23-hunk diff: the five return-2 inputs, the
+test-developer's `/* eslint-disable-line */ catch (e) {` case, return 1's
+`except:  # noqa: E722` / `pass`, the `@abstractmethod` triple, `} catch (e) {`
+/ `} finally {`, a body (`} catch (e) { log(e) }`), the one-line rows
+(`except: pass`, `prefetch {}`, `dispatch() {}`), and the orchestrator's
+round-1 F1 and F4 inputs plus `} catch {}` / `except Exception: pass` /
+`} catch (f) {` over `}`. gawk 5.4.1 (Git Bash) and mawk 1.3.4 20240123 (WSL,
+`awk` symlinked to `/usr/bin/mawk`, `readlink -f` confirmed) - `cmp`
+byte-identical, 23 lines each:
+
+```
+2|eslint-disable|} // eslint-disable-line
+1|empty-handler|catch (err) {
+2|noqa|pass  # noqa: SIM105
+1|empty-handler|except ValueError:
+1|eslint-disable|} catch {} // eslint-disable-line no-empty
+1|empty-handler|} catch {} // eslint-disable-line no-empty
+1|noqa|except OSError: ...  # noqa: S112
+1|empty-handler|except OSError: ...  # noqa: S112
+1|empty-handler|} catch (IOException e) {} catch (Exception e) {
+1|eslint-disable|} catch {} /* eslint-disable-line */ catch (e) {
+1|empty-handler|} catch {} /* eslint-disable-line */ catch (e) {
+1|noqa|except:  # noqa: E722
+1|empty-handler|except:  # noqa: E722
+2|empty-handler|} catch (e) {
+1|empty-handler|except: pass
+3|noqa|except Exception:  # noqa: BLE001
+3|empty-handler|except Exception:  # noqa: BLE001
+1|empty-handler|} catch (err) {}
+2|empty-handler|except KeyError: pass
+3|empty-handler|} catch (err) {
+1|empty-handler|} catch {}
+2|empty-handler|except Exception: pass
+3|empty-handler|} catch (f) {
+```
+
+The abstract method, the handler with a body, `prefetch {}` and
+`dispatch() {}` print nothing, under both.
+
+**Finish.** `bash .claude/tests/boundaries.test.sh`, full, local, after the
+mutations were restored:
+
+```
+boundaries: 340 passed, 0 failed
+rc=0
+```
+
+No FAIL line and no `syntax error` / `command not found` / `unbound variable`
+anywhere in the output; 340 equals the floor. `bash scripts/gates.sh --fast`:
+rc 0, `All required gates passed (0 ran, 5 unconfigured, 0 known)` (project.conf
+not bootstrapped, as in RED). `bash scripts/check-sigpipe.sh`: `scanned 56 shell
+file(s), 51 with pipefail, 0 finding(s)`, rc 0. `bash scripts/check-grep-count.sh`:
+`scanned 56 shell file(s), 0 finding(s)`, rc 0. `bash scripts/mutate.sh --check`:
+clean. Not committed; the full `gates.sh` run is GATES'.
 
 ## Diff review
 
