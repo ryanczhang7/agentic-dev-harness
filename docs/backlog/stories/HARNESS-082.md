@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -190,6 +190,25 @@ previous added line is an **opener** and the current added line is its
   a one-line row and is also armed as an opener (`} catch (A e) {} catch (B
   e) {` over `}`) does not get a second `empty-handler` from the window.
   The AC text is unchanged.
+  **Every rule a line matches is reported** *(amended on the third return
+  to RED, 2026-10-30, diff review round 3 finding 1; approved by the user,
+  "Report every rule"; supersedes (b) and HARNESS-081's "the first row
+  wins")*. A directive on a stub line hid the stub exactly as it hid an
+  empty handler: `raise NotImplementedError  # pragma: no cover` reported
+  only `no-cover`. So `suppression_hits` prints **one line per distinct
+  rule id** an added line matches, in table order, each
+  `<n>|<rule id>|<line, trimmed>`; two rows sharing an id (today only
+  `empty-handler`) print that id once. The `@abstractmethod` exclusion drops
+  only the `stub-raise` id and nothing else on the line - so it skips that
+  row and goes on testing the rest (a `continue`, not the `break` it was
+  when the first row won). *(The first cut of this paragraph also named
+  `rust-allow` as a two-row id; it is one row. Corrected in RED on the
+  test-developer's report, checked against the table.)* (a) and (c) stand:
+  the closer test runs whatever the closer's line matched, and a line that
+  printed `empty-handler` through a row is not printed again by the window.
+  The 3j loop is unchanged - it already judges and declares each hit by its
+  own id - so `raise NotImplementedError  # pragma: no cover` needs both
+  `[no-cover]` and `[stub-raise]` declared to pass.
 
 **The `@abstractmethod` exclusion** is the same window, two lines deep: a
 `stub-raise` hit on added line *n* is suppressed when added line *n-1*
@@ -212,6 +231,11 @@ stays, byte for byte, so `want_3j` in the suite pins every row the same way
 every pinned line in the suite moving with it). `plan.sh conflicts` calls
 this story and HARNESS-083 a `CONFLICT` on `check-boundaries.sh`, which is
 correct - they run one after the other, and both after HARNESS-081.
+*(Amended on the third return to RED, 2026-10-30, approved by the user:
+HARNESS-081's "the first row wins" in `suppression_hits` is replaced by "one
+line per distinct rule id the line matches" - C-3's Precedence bullet has
+the rule. That was HARNESS-081's own follow-up, round 1 finding 9. Nothing
+else in this list moves.)*
 
 **C-5. Oracle partition.** All **mechanical**. The rows and ids in C-1 are
 **settled**; RED may tighten an ERE and must not drop a row, a corpus line
@@ -1552,6 +1576,235 @@ file(s), 51 with pipefail, 0 finding(s)`, rc 0. `bash scripts/check-grep-count.s
 `scanned 56 shell file(s), 0 finding(s)`, rc 0. `bash scripts/mutate.sh --check`:
 clean. Not committed; the full `gates.sh` run is GATES'.
 
+### Return 3 - from GATES, after diff review round 3 (2026-10-30)
+
+**What was wrong.** Again no test was wrong; the suite was missing cases.
+Each line was reported under the first rule it matched, and the directive
+rows come first, so a directive on a **stub** line hid the stub:
+`raise NotImplementedError  # pragma: no cover` reported only `no-cover`, and
+declaring `[no-cover]` passed the stub. Round 2 had patched the same shape
+for `empty-handler` alone. The orchestrator reproduced it on different
+inputs (`## Diff review`, round 3). The user chose the general fix: report
+every distinct rule a line matches (C-3 Precedence and C-4, amended in
+place). The acceptance criteria are unchanged.
+
+**What RED adds.** One GREEN commit per stub row carrying a directive, each
+expecting two whole-line refusals at that line, the directive's then the
+stub's, in table order: `raise NotImplementedError  # pragma: no cover`
+(`no-cover`, `stub-raise`), `let x = todo!(); // eslint-disable-line`
+(`eslint-disable`, `stub-todo`), `throw new Error("not implemented") //
+istanbul ignore next` (`coverage-ignore`, `stub-throw`),
+`push_error("not implemented") # noqa` (`noqa`, `stub-gd`). ("Two rows of
+one id print it once" has no reachable case in today's table - the two
+`empty-handler` rows are a brace and an `except` shape no line can be both,
+and `rust-allow` is one row - so it is a design rule GREEN keeps, not an
+assertion.) The `@abstractmethod` exclusion drops only `stub-raise`:
+`@abstractmethod` / `def f(self):` / `raise NotImplementedError  # pragma:
+no cover` gives exactly one refusal, `no-cover`. And the AC-4 shape for the
+new behaviour: the `no-cover` + `stub-raise` line with only `[no-cover]`
+declared is still refused for `stub-raise`. Branch counts exact; floor to
+the measured count.
+
+**What earns it.** Every new two-refusal assertion and the AC-4 refusal are
+red against ff2bcd2 (first row wins); the abstract-method one-refusal count
+passes on arrival and is a control GREEN earns by mutation.
+
+#### Return 3, RED - test-developer (resolved claude-opus-5-5, no override)
+
+**Files touched:** `.claude/tests/boundaries.test.sh` (one new describe,
+"HARNESS-082's return 3", inserted between return 2's describe and the
+AC-2/AC-3 controls describe; no existing assertion edited or reordered),
+`.claude/tests/floors.conf` (`boundaries` 340 -> 359, with a comment entry),
+`.claude/tests/selftest.test.sh` (its copy of the floor, 340 -> 359), and this
+block. No source file.
+
+**Which rows each line matches, checked, not assumed.** `suppression_needles`
+was eval'd out of `scripts/check-boundaries.sh` at ff2bcd2 and every one of
+its 18 rows tested against each fixture line, under the default awk and
+gawk. Each line matches exactly two rows and no third:
+
+    raise NotImplementedError  # pragma: no cover                => 9:no-cover 15:stub-raise
+    let x = todo!(); // eslint-disable-line                      => 1:eslint-disable 14:stub-todo
+    throw new Error("not implemented") // istanbul ignore next   => 8:coverage-ignore 13:stub-throw
+    push_error("not implemented") # noqa                         => 4:noqa 16:stub-gd
+        @abstractmethod                                          =>
+        def f(self):                                             =>
+            raise NotImplementedError  # pragma: no cover        => 9:no-cover 15:stub-raise
+
+The same check over every fixture line already in the suite (`AC2_ROWS`,
+`C3_ROWS`, `EH_ROWS`, return 1's and return 2's rows; 93 lines) finds only two
+lines that match more than one distinct id, `} catch {} //
+eslint-disable-line no-empty` and `except OSError: ...  # noqa: S112`
+(directive + `empty-handler`), which return 2's (b) already expects to print
+twice. So "report every rule" moves **no existing count**, and the new
+branch's count is exact.
+
+**New assertions, and the clause each covers** (C-3 Precedence, "Every rule a
+line matches is reported", and C-4 as amended; one branch via `_src_branch`,
+GREEN commits, except #17-#19 on `source_story`'s own branch):
+
+| # | assertion | on arrival |
+|---|---|---|
+| 1 | `raise NotImplementedError  # pragma: no cover` (src/app.py, line 1): `[no-cover]` whole line | **passes** (control) |
+| 2 | same commit: `[stub-raise]` whole line at the same line | red |
+| 3 | `let x = todo!(); // eslint-disable-line` (src/lib.rs): `[eslint-disable]` whole line | **passes** (control) |
+| 4 | same commit: `[stub-todo]` whole line | red |
+| 5 | `throw new Error("not implemented") // istanbul ignore next` (src/main.ts, line 2): `[coverage-ignore]` whole line | **passes** (control) |
+| 6 | same commit: `[stub-throw]` whole line | red |
+| 7 | `push_error("not implemented") # noqa` (src/player.gd): `[noqa]` whole line | **passes** (control) |
+| 8 | same commit: `[stub-gd]` whole line | red |
+| 9-12 | per line above: the directive's refusal comes before the stub's in the output (table order), by the position of the first output line *equal* to each (`_r2_at`, return 2's helper) | red (no stub line) |
+| 13 | `    @abstractmethod` / `    def f(self):` / `        raise NotImplementedError  # pragma: no cover` added to src/app.py in one commit: the `[stub-raise]` whole line at the raise's line occurs 0 times | **passes** (control) |
+| 14 | same commit: the `[no-cover]` whole line at the raise's line occurs exactly once | **passes** (control) |
+| 15 | same commit: exactly one refusal line names that commit (`commit <c> (GREEN) added a suppression to`) | **passes** (control) |
+| 16 | the branch: `rc|refusals|summary` = `1|9|0` | red (`1|5|0`) |
+| 17 | AC-4 shape, `source_story GREEN src/app.py 'raise NotImplementedError  # pragma: no cover'` with only `` - `src/app.py` [no-cover] approved by ryan: coverage tool cannot reach it `` declared: `ok    suppression [no-cover] in 'src/app.py' is declared in ## Suppressions` whole line | **passes** (control) |
+| 18 | same: `[stub-raise]` whole line at `$sup_n` | red |
+| 19 | same: `rc|refusals` = `1|1` | red (`0|0`) |
+
+Every refusal is pinned by its whole line (`want_3j` through `whole_line` /
+`sup_count`, i.e. `grep -cxF`); counts are exact.
+
+**The red, against the shipped ff2bcd2** (release 101):
+`bash .claude/tests/boundaries.test.sh`, local, 13m53s (833 s), rc 1. The
+summary line and the new describe verbatim; no other FAIL in the run and no
+bash error anywhere in the output. The subset run (below) printed this
+describe byte-identically:
+
+```
+  HARNESS-082's return 3: a directive on a stub line does not approve the stub - every rule a line matches is reported
+    FAIL HARNESS-082's return 3: 'raise NotImplementedError  # pragma: no cover' in src/app.py, AND the stub's refusal [stub-raise] at the same line although it hit [no-cover] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 3: 'let x = todo!(); // eslint-disable-line' in src/lib.rs, AND the stub's refusal [stub-todo] at the same line although it hit [eslint-disable] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 3: 'throw new Error("not implemented") // istanbul ignore next' in src/main.ts, AND the stub's refusal [stub-throw] at the same line although it hit [coverage-ignore] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 3: 'push_error("not implemented") # noqa' in src/player.gd, AND the stub's refusal [stub-gd] at the same line although it hit [noqa] - refused by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 3: 'raise NotImplementedError  # pragma: no cover' in src/app.py: [no-cover] then [stub-raise] - the directive's refusal is printed, then the stub's after it (table order)
+         expected: before
+         actual:   directive at line 13, stub at line <none>
+    FAIL HARNESS-082's return 3: 'let x = todo!(); // eslint-disable-line' in src/lib.rs: [eslint-disable] then [stub-todo] - the directive's refusal is printed, then the stub's after it (table order)
+         expected: before
+         actual:   directive at line 12, stub at line <none>
+    FAIL HARNESS-082's return 3: 'throw new Error("not implemented") // istanbul ignore next' in src/main.ts: [coverage-ignore] then [stub-throw] - the directive's refusal is printed, then the stub's after it (table order)
+         expected: before
+         actual:   directive at line 11, stub at line <none>
+    FAIL HARNESS-082's return 3: 'push_error("not implemented") # noqa' in src/player.gd: [noqa] then [stub-gd] - the directive's refusal is printed, then the stub's after it (table order)
+         expected: before
+         actual:   directive at line 10, stub at line <none>
+    FAIL HARNESS-082's return 3: the branch - rc|refusals (two per directive-on-stub commit, one for the abstract method)|summary
+         expected: 1|9|0
+         actual:   1|5|0
+    FAIL HARNESS-082's return 3 AC-4: declaring [no-cover] does not declare the stub - refused as stub-raise by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-082's return 3 AC-4: only [no-cover] declared - rc|refusals
+         expected: 1|1
+         actual:   0|0
+
+boundaries: 348 passed, 11 failed
+```
+
+**Controls that pass on arrival (#1, #3, #5, #7, #13, #14, #15, #17), and the
+mutation that earns them.** The risk #1-#7 and #17 guard is a GREEN that
+*replaces* the directive's refusal with the stub's rather than adding to it;
+#14/#15 guard an exclusion that drops the whole line rather than only the
+`stub-raise` id. Run now, in RED, against the shipped code: stop the table's
+`printf` for the four directive ids.
+
+    $ bash scripts/mutate.sh scripts/check-boundaries.sh \
+        's/printf "%d|%s|%s.n", ln, id\[k\], t/if (id[k] != "no-cover" \&\& id[k] != "eslint-disable" \&\& id[k] != "coverage-ignore" \&\& id[k] != "noqa") &/' \
+        -- bash <scratchpad>/sub4.test.sh
+    ...
+        FAIL HARNESS-082's return 3: 'raise NotImplementedError  # pragma: no cover' in src/app.py, the directive's refusal [no-cover] - refused by its whole line
+             expected: 1
+             actual:   0
+        FAIL HARNESS-082's return 3: 'let x = todo!(); // eslint-disable-line' in src/lib.rs, the directive's refusal [eslint-disable] - refused by its whole line
+             expected: 1
+             actual:   0
+        FAIL HARNESS-082's return 3: 'throw new Error("not implemented") // istanbul ignore next' in src/main.ts, the directive's refusal [coverage-ignore] - refused by its whole line
+             expected: 1
+             actual:   0
+        FAIL HARNESS-082's return 3: 'push_error("not implemented") # noqa' in src/player.gd, the directive's refusal [noqa] - refused by its whole line
+             expected: 1
+             actual:   0
+        FAIL HARNESS-082's return 3: an @abstractmethod raise carrying '# pragma: no cover' is refused as no-cover exactly once, at the raise's line (whole lines)
+             expected: 1
+             actual:   0
+        FAIL HARNESS-082's return 3: the abstract-method commit draws exactly one refusal in all
+             expected: 1
+             actual:   0
+        FAIL HARNESS-082's return 3: the branch - rc|refusals (two per directive-on-stub commit, one for the abstract method)|summary
+             expected: 1|9|0
+             actual:   0|0|1
+        FAIL HARNESS-082's return 3 AC-4: the declared [no-cover] is accepted
+             expected: 1
+             actual:   0
+        ... (#2, #4, #6, #8-#12, #18, #19 red as in the unmutated run)
+    boundaries: 148 passed, 70 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T065446Z.36547.bak) ===
+
+`sub4.test.sh` is lines 1-109 of the edited suite plus its whole 3j section
+(from the HARNESS-081 fixture describe to the end), with an absolute
+`_lib.sh` path; it lives in the session scratchpad, never in the tree. The
+other reds in that run are the existing 3j rows the mutation also silenced.
+`mutate.sh --check` was clean afterwards.
+
+| # | control | expected on arrival | measured (ff2bcd2) | mutation | went red |
+|---|---|---|---|---|---|
+| 1 | `[no-cover]` whole line | 1 | 1 | directive `printf` stopped (above) | yes (0) |
+| 3 | `[eslint-disable]` whole line | 1 | 1 | same | yes (0) |
+| 5 | `[coverage-ignore]` whole line | 1 | 1 | same | yes (0) |
+| 7 | `[noqa]` whole line | 1 | 1 | same | yes (0) |
+| 13 | abstract method: `[stub-raise]` whole lines | 0 | 0 | **not earnable in RED** - see below | - |
+| 14 | abstract method: `[no-cover]` whole lines | 1 | 1 | same as #1 | yes (0) |
+| 15 | abstract-method commit: refusal lines | 1 | 1 | same as #1 | yes (0) |
+| 17 | AC-4: the `[no-cover]` declared ok line | 1 | 1 | same as #1 | yes (0) |
+
+**#13 I could not earn, and say so.** At ff2bcd2 the raise line stops at its
+first row, `no-cover`, so the `@abstractmethod` exclusion is never reached for
+it, and no mutation of the shipped code can make `[stub-raise]` appear there
+without first building the fix. GREEN earns #13 (and re-earns #15) against its
+own code by disabling the exclusion, e.g. on today's line
+`s/id\[k\] == "stub-raise" \&\& p1/id[k] == "stub-raiseX" \&\& p1/`, adjusted
+to wherever the test moves: #13 must read 1, #15 must read 2, and the branch
+count `1|10|0`. GREEN should also re-run the directive-`printf` mutation above
+on its shipped fix, adjusted to its own `printf` line, and confirm #1, #3, #5,
+#7, #14, #15, #17 still go red - the "replaced, not added" check once the fix
+exists. The "defect put back" for the central claim is GREEN's: restore "first
+row wins" (a `break` after the first printed id) and #2, #4, #6, #8-#12, #16,
+#18, #19 go red.
+
+**For GREEN:** today's exclusion is `if (id[k] == "stub-raise" && <p1 def> &&
+<p2 decorator>) break`. Under "report every rule" a `break` there would also
+drop every row after `stub-raise` (`stub-gd`, the two `empty-handler` rows) for
+that line; the contract says the exclusion drops only the `stub-raise` id, so
+it wants a `continue`. No test pins a line that is an abstract-method raise
+*and* matches a later row - none of today's rows can match such a line in
+practice.
+
+**`gates.sh --fast`:** rc 0, `All required gates passed (0 ran, 5
+unconfigured, 0 known)` - this repository's project.conf is not bootstrapped,
+so it judges nothing here; the suite above is the evidence.
+`check-sigpipe.sh` and `check-grep-count.sh` clean over 56 shell files;
+`bash -n` clean.
+
+**Floor:** `boundaries` 340 -> 359 (+19), in `floors.conf` and in
+`selftest.test.sh`'s copy. Measured executed count 359 = 348 + 11. Until GREEN
+lands the suite sits below its floor (348 < 359) - expected in RED.
+
+**One contract inaccuracy, reported, not amended.** C-3's new paragraph says
+"two rows sharing an id (`rust-allow`, `empty-handler`) print that id once".
+Today's table has **one** `rust-allow` row (`#!?\[(allow|expect)\(`, row 6);
+only `empty-handler` has two. The orchestrator's own Return 3 text says so
+("`rust-allow` is one row"). The rule is unaffected; the parenthetical is
+wrong.
+
 ## Diff review
 
 ### Round 1 (2026-10-29, on f6c6447) - fresh `feature-developer`, resolved **claude-opus-5-5**, no override
@@ -1680,6 +1933,43 @@ here under that approval - C-3's precedence bullet amended in place, (a)-(c),
 and a second return to RED; finding 2 is folded into the same fix as (c).
 Findings 3 and 4 change C-1's settled EREs again and go to the follow-up
 list.
+
+### Round 3 (2026-10-30, on ff2bcd2) - fresh `feature-developer`, resolved **claude-opus-5-5**, no override
+
+Method: both shipped functions over hand-built multi-file, multi-hunk
+all-added diffs, gawk and mawk 1.3.4, byte-identical. Round 2's fix checked
+correct: a stale `peh`/`eh` is never observable (`peh` is read only when `pk`
+is set, and both are written together; `clear()` empties `pk`), across files
+and hunks; the `empty-handler` rows are the last two, so the re-test reaches
+them from any earlier winner; a closer that is itself a one-line handler, a
+closer that is also an opener, the two-catch line with and without a leading
+directive, directives on both opener and closer - all as C-3 (a)-(c) say.
+Output order puts a closer's row before its opener's `empty-handler`; the
+caller prints one refusal per hit, so order is cosmetic.
+
+**Must fix**
+
+1. *A directive on a stub line still approves the stub.* First row wins, the
+   directive rows come first, and round 2's re-test looks only for
+   `empty-handler`: `raise NotImplementedError  # pragma: no cover` reports
+   only `no-cover`; `let x = todo!(); // eslint-disable-line` only
+   `eslint-disable`; `throw new Error("not implemented") // istanbul ignore
+   next` only `coverage-ignore`; `...; // @ts-ignore` only `ts-ignore`.
+   Declaring the directive then passes the stub. The first is the standard
+   Python idiom. Same family as round 2's finding 1, on the stub rows.
+
+Verdict: fix 1 first.
+
+**Orchestrator's reproduction (different inputs):**
+
+```
+1|no-cover|raise NotImplementedError("subclass")  # pragma: no cover
+2|coverage-ignore|unimplemented!() // c8 ignore next
+3|noqa|push_error("not implemented") # noqa
+4|type-ignore|raise NotImplementedError  # type: ignore[misc]
+```
+
+Reproduces: each line reports only its directive, never its stub row.
 
 ## Gate results
 

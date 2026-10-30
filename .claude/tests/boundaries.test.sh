@@ -2705,6 +2705,87 @@ assert_eq "HARNESS-082's return 2: the branch - rc|refusals (two per (a) and (b)
   "1|$(( ${#r2_want[@]} + 1 ))|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
 
 # ---------------------------------------------------------------------------
+describe "HARNESS-082's return 3: a directive on a stub line does not approve the stub - every rule a line matches is reported"
+
+# HARNESS-082's return 3 (diff review round 3, finding 1; C-3's Precedence
+# bullet, "Every rule a line matches is reported", and C-4 as amended). The
+# directive rows come first in the table, so "first row wins" let a directive on
+# a stub line hide the stub, and declaring the directive passed the stub. Now
+# one refusal per distinct rule id the line matches, in table order. A branch of
+# its own, so every count above is unchanged and the one below is exact.
+# <path>|<directive id>|<stub id>|<line>: each line matches exactly those two
+# rows of today's table and no third (checked by testing every row of
+# suppression_needles against each line, gawk and the default awk). One GREEN
+# commit per line; two whole-line refusals at that line, the directive's first.
+r3_paths="src/app.py src/lib.rs src/main.ts src/player.gd"
+_src_branch
+r3_want=()
+r3_order=()
+while IFS='|' read -r path did sid line; do
+  [ -z "$path" ] && continue
+  _src_story GREEN "$r3_paths"
+  r3_ln=$(( $(_nlines "$path") + 1 ))
+  printf '%s\n' "$line" >> "$FIX/$path"
+  commit_all "T-1 GREEN adds a [$sid] stub carrying [$did] to $path"
+  r3_dir="$(want_3j "$(_short)" GREEN "$path" "$r3_ln" "$did" "$(_trim "$line")")"
+  r3_stub="$(want_3j "$(_short)" GREEN "$path" "$r3_ln" "$sid" "$(_trim "$line")")"
+  r3_want+=("'$(_trim "$line")' in $path, the directive's refusal [$did]|$r3_dir")
+  r3_want+=("'$(_trim "$line")' in $path, AND the stub's refusal [$sid] at the same line although it hit [$did]|$r3_stub")
+  r3_order+=("'$(_trim "$line")' in $path: [$did] then [$sid]|$r3_dir|$r3_stub")
+done <<'ROWS'
+src/app.py|no-cover|stub-raise|raise NotImplementedError  # pragma: no cover
+src/lib.rs|eslint-disable|stub-todo|let x = todo!(); // eslint-disable-line
+src/main.ts|coverage-ignore|stub-throw|throw new Error("not implemented") // istanbul ignore next
+src/player.gd|noqa|stub-gd|push_error("not implemented") # noqa
+ROWS
+# The @abstractmethod exclusion drops ONLY stub-raise: an abstract method whose
+# raise carries `# pragma: no cover`, all three lines added in one commit, is
+# refused exactly once, for no-cover, at the raise's line.
+_src_story GREEN "$r3_paths"
+r3_ln=$(( $(_nlines src/app.py) + 3 ))
+printf '    @abstractmethod\n    def f(self):\n        raise NotImplementedError  # pragma: no cover\n' >> "$FIX/src/app.py"
+commit_all "T-1 GREEN adds an abstract method whose raise carries [no-cover]"
+r3_ac="$(_short)"
+r3_abs_nc="$(want_3j "$r3_ac" GREEN src/app.py "$r3_ln" no-cover 'raise NotImplementedError  # pragma: no cover')"
+r3_abs_sr="$(want_3j "$r3_ac" GREEN src/app.py "$r3_ln" stub-raise 'raise NotImplementedError  # pragma: no cover')"
+_src_story REVIEW "$r3_paths"
+commit_all "T-1 to review"
+run_boundaries </dev/null
+for w in "${r3_want[@]}"; do
+  whole_line "HARNESS-082's return 3: ${w%%|*} - refused by its whole line" "${w#*|}"
+done
+for w in "${r3_order[@]}"; do
+  what="${w%%|*}"; w="${w#*|}"; r3_d="$(_r2_at "${w%%|*}")"; r3_s="$(_r2_at "${w#*|}")"
+  if [ -n "$r3_d" ] && [ -n "$r3_s" ] && [ "$r3_d" -lt "$r3_s" ]; then r3_got=before
+  else r3_got="directive at line ${r3_d:-<none>}, stub at line ${r3_s:-<none>}"; fi
+  assert_eq "HARNESS-082's return 3: $what - the directive's refusal is printed, then the stub's after it (table order)" \
+    before "$r3_got"
+done
+assert_eq "HARNESS-082's return 3: an @abstractmethod raise carrying '# pragma: no cover' is not refused as stub-raise (whole lines)" \
+  0 "$(sup_count "$r3_abs_sr")"
+assert_eq "HARNESS-082's return 3: an @abstractmethod raise carrying '# pragma: no cover' is refused as no-cover exactly once, at the raise's line (whole lines)" \
+  1 "$(sup_count "$r3_abs_nc")"
+assert_eq "HARNESS-082's return 3: the abstract-method commit draws exactly one refusal in all" \
+  1 "$(grep -cF -- "commit $r3_ac (GREEN) added a suppression to" <<< "$out")"
+assert_eq "HARNESS-082's return 3: the branch - rc|refusals (two per directive-on-stub commit, one for the abstract method)|summary" \
+  "1|$(( ${#r3_want[@]} + 1 ))|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+
+# AC-4's shape for the new behaviour: the no-cover + stub-raise line with ONLY
+# [no-cover] declared. The declaration discharges no-cover and nothing else, so
+# the stub is still refused - one refusal, exit 1. A here-string, not a pipe:
+# source_story sets $sup_c and $sup_n in THIS shell.
+R3_AC4_LINE='raise NotImplementedError  # pragma: no cover'
+source_story GREEN src/app.py "$R3_AC4_LINE" \
+  <<< $'## Suppressions\n\n- `src/app.py` [no-cover] approved by ryan: coverage tool cannot reach it'
+run_boundaries </dev/null
+whole_line "HARNESS-082's return 3 AC-4: the declared [no-cover] is accepted" \
+  "ok    suppression [no-cover] in 'src/app.py' is declared in ## Suppressions"
+whole_line "HARNESS-082's return 3 AC-4: declaring [no-cover] does not declare the stub - refused as stub-raise by its whole line" \
+  "$(want_3j "$sup_c" GREEN src/app.py "$sup_n" stub-raise "$R3_AC4_LINE")"
+assert_eq "HARNESS-082's return 3 AC-4: only [no-cover] declared - rc|refusals" \
+  "1|1" "$rc|$(sup_nfail)"
+
+# ---------------------------------------------------------------------------
 describe "HARNESS-082 AC-2/AC-3 controls: a handler that pre-existed, has a body or spans hunks, and an abstract method, are clean"
 
 # One branch of GREEN commits, each one C-2 or C-3 says is NOT refused, and the
