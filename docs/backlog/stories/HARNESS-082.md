@@ -4,8 +4,8 @@ title: A stub added to source in GREEN or GATES is refused unless the story decl
 slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -596,6 +596,9 @@ name, below the table.
 - GATES diff review round 2 - fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
 - RED (return 2) - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-29); no override.
 - GREEN (return 2) - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-30); no override.
+- GATES diff review round 3 - fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-30); no override.
+- RED (return 3) - `test-developer`, resolved **claude-opus-5-5** (2026-10-30); GREEN (return 3) - `feature-developer`, resolved **claude-opus-5-5** (2026-10-30), stopped on a wrong test; RED (return 4) - `test-developer`, resolved **claude-opus-5-5** (2026-10-30); GREEN (return 4) - no dispatch, the orchestrator ran the mutations. All no override.
+- GATES diff review round 4 - fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-30); no override. Verdict: Ship.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -2240,12 +2243,53 @@ Verdict: fix 1 first.
 
 Reproduces: each line reports only its directive, never its stub row.
 
+### Round 4 (2026-10-30, on 45dd8f6) - fresh `feature-developer`, resolved **claude-opus-5-5**, no override
+
+Method: the shipped `suppression_needles`, `suppression_hits` and
+`suppression_declared` over hand-built diffs, gawk 5.4.1 and mawk 1.3.4
+byte-identical; and the 3j loop end to end on a real git fixture built with
+the suite's own `make_project_fixture`. Checked correct: two and three
+directive rows on one line each refused once, in table order
+(`x = 1  # pragma: no cover  # noqa` gives `noqa` then `no-cover`); the same
+id on two rows printed once (`except: pass  # was catch {}`); the abstract
+method with two directives drops only `stub-raise`; `eh`/`peh` with `eh` set
+from the row loop; `split("", seen)` per line under mawk. End to end:
+partial declaration refuses only the undeclared id, with HARNESS-081's
+partial-entry suffix; full declaration gives `rc=0` and the summary counts
+commits, not hits (`2 commit(s) judged`); no declaration gives one `FAIL`
+per (line, id). No comment still describes first-row-wins.
+
+**Should fix**
+
+1. *"Two rows sharing an id print that id once" has no test that fails when
+   it breaks.* Deleting `(id[k] in seen) ||` in a scratch copy prints
+   `except: pass  # was catch {}` as `empty-handler` twice; no fixture line
+   matches both `empty-handler` rows. Fix: one fixture line, refused once,
+   earned by that mutation - a return to RED - or decline with the reason.
+
+Verdict: Ship.
+
+**Orchestrator's check and decision (2026-10-30).** Reproduced on a
+different input that the case is reachable and the shipped guard holds:
+
+```
+$ ... suppression_hits <<< '... +except KeyError: ...  # old: } catch {}'
+1|empty-handler|except KeyError: ...  # old: } catch {}
+```
+
+This corrects Return 3's parenthetical, which said the case has no
+reachable input; it has one, a commented-out brace handler after a one-line
+`except`. **Declined for this story, to the follow-up list:** the guard is
+correct, its failure would print a duplicate refusal of an id the line
+genuinely carries (no wrong accept, no wrong reject), and a fifth return to
+RED for that is cost out of proportion. The story ships on `Verdict: Ship.`
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-30T15:45:20Z
-    commit: 3ab506f
+    run:    2026-10-30T17:09:52Z
+    commit: 45dd8f6
     tree:   abb9e88b001c0aca33109fa42729eadbfcd27380
     result: pass (0 ran, 7 unconfigured, 0 known)
 
@@ -2403,9 +2447,17 @@ quoting `foo(todo!())` (C-1's accepted comment false positive).
 - An Allman-brace or promise `.catch(() => {})` empty handler, and a brace
   opener with a trailing directive (`} catch (e) { // eslint-disable-line`),
   are not seen (C-3, Out of scope).
+- Diff review round 4, finding 1: pin "two rows of one id print it once"
+  with `except: pass  # was catch {}` refused as `empty-handler` exactly
+  once, earned by deleting `(id[k] in seen) ||`.
 - Diff review round 2, findings 3 and 4: `stub-throw`'s message prefix stops
   at any quote character (`"can't do that: not implemented"` missed), and
   `stub-gd` lacks `stub-throw`'s `NOT IMPLEMENTED` / `not yet implemented`.
 - HARNESS-081's parent-phase arm judges a RED commit whose parent was GATES,
   labelled `RED, after GATES` (seen in DV-2's re-run); it was meant for the
   GATES -> REVIEW step only.
+
+**Self-test at GATES -> REVIEW (2026-10-30, on 45dd8f6 plus the round-4
+review notes):** `selftest-needed: run - 5 harness path(s) changed against
+origin/main`; `SELFTEST_JOBS=4 bash scripts/selftest.sh` exited 0 in 3135 s,
+last line `30 harness suite(s) passed.`
