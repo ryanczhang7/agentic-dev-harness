@@ -2875,4 +2875,440 @@ git -C "$FIX" rm -q --cached src/handler.ts src/handler.py src/twohunk.ts src/if
 rm -f "$FIX/src/handler.ts" "$FIX/src/handler.py" "$FIX/src/twohunk.ts" "$FIX/src/iface.py" "$FIX/src/stubs.rs"
 commit_all "HARNESS-082 baseline removed"
 
+# ---------------------------------------------------------------------------
+describe "HARNESS-083: a gate loosened in project.conf during GREEN or GATES - the fixture"
+
+# Issue #132, third family. 3j walks GREEN and GATES commits and reads what they
+# ADD to source; a lowered floor or a deleted evidence line is not an added
+# line, and project.conf classifies as `harness`, which 3j's category test never
+# reads. So 3j gains a second per-path branch, by PATH (C-1): it compares the
+# file before and after the commit and refuses a loosened gate as
+# [gate-loosened], declarable through the same ## Suppressions hatch.
+#
+# The fixture is 3j's spike (see the comment above _src_story), so `rc 0` means
+# something. Every project.conf below is built from REAL lines - this
+# repository's own file and the stack profiles under
+# .claude/skills/stack-profiles/reference/ - because DV-2's fallback is "the
+# fixture corpus is copied from the real file's lines" (C-6). In particular the
+# rust profile's coverage gate, the python profile's `--cov-fail-under=`, the
+# node profile's evidence/floor/covers/discovery lines, and this repository's
+# `slow`, `ondemand` and `task` lines are verbatim apart from the numbers.
+#
+# No existing assertion moves: no GREEN or GATES fixture commit above touches
+# .claude/harness/project.conf (the 3j describes write src/, docs, scripts/x.sh
+# and tests/ only), so no `(N commit(s) judged)` count above changes when
+# project.conf joins the walk. Main's project.conf here is `BOOTSTRAPPED=no`,
+# as the "a harness change bumps the stamp" describe left it; a story branch is
+# never asked to bump, so changing it on story/T-1-fixture costs nothing else.
+GL_PATH=.claude/harness/project.conf
+GL_BASE="$(cat <<'CONF'
+# Project quality gates and tasks. THE SINGLE PLACE the harness learns how to
+# build, test and run *this* project. Written by the bootstrap story once
+# /plan-product has chosen a stack.
+#
+#   covers | unit        | src/core/**
+#   covers | integration | src/render/**
+
+# Set to yes by the bootstrap story once the stack is real.
+BOOTSTRAPPED=no
+
+# --- Gates ------------------------------------------------------------------
+gate | format    | optional | . | pnpm exec prettier --check .
+gate | lint      | required | . | pnpm exec eslint .
+gate | unit      | required | . | pnpm exec vitest run
+gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 80
+gate | integration | optional | . | pnpm exec playwright test
+gate | build     | required | . | pnpm build
+gate | mutation  | optional | . | pnpm exec stryker run
+
+# --- Left out of `gates.sh --fast` ------------------------------------------
+slow | integration | needs a browser or a running service; minutes, not seconds
+slow | build       | a release bundle, which RED and GREEN have no use for
+
+# --- Evidence of work -------------------------------------------------------
+evidence | unit        | Tests +[1-9][0-9]* passed
+evidence | coverage    | TOTAL
+evidence | integration | [1-9][0-9]* passed
+floor    | unit        | 40
+
+# --- What each gate reads ---------------------------------------------------
+covers | unit        | src/core/**
+covers | unit        | src/platform/**
+covers | coverage    | src/core/**
+discovery | platform | . | pnpm exec vitest list | grep "src/platform/" > /dev/null
+
+# --- Tasks ------------------------------------------------------------------
+task | install | - | . |
+task | test    | - | . | pnpm exec vitest run
+CONF
+)"
+# The base's lines that cases below remove or rewrite, by name.
+GL_COV='gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 80'
+GL_EVID='evidence | unit        | Tests +[1-9][0-9]* passed'
+GL_FLOOR='floor    | unit        | 40'
+GL_SLOWB='slow | build       | a release bundle, which RED and GREEN have no use for'
+GL_TASK='task | test    | - | . | pnpm exec vitest run'
+
+# gl_swap <conf> <exact line> <replacement text>   <conf> with the one line that
+# equals <exact line> replaced (an empty replacement deletes the line). Pure
+# bash on a quoted pattern, so nothing in the line is a regex. A line that is
+# not there is a fixture bug, said out loud rather than producing a case whose
+# before and after are the same file.
+gl_swap() {
+  local conf=$'\n'"$1"$'\n' old=$'\n'"$2"$'\n' new
+  case "$conf" in *"$old"*) ;; *) printf 'FIXTURE BUG: gl_swap found no line: %s\n' "$2" >&2 ;; esac
+  if [ -n "$3" ]; then new=$'\n'"$3"$'\n'; else new=$'\n'; fi
+  conf="${conf/"$old"/"$new"}"; conf="${conf#$'\n'}"; printf '%s' "${conf%$'\n'}"
+}
+# gl_after <conf> <exact line> <line to add>   <conf> with <line to add> placed
+# directly after <exact line>.
+gl_after() { gl_swap "$1" "$2" "$2"$'\n'"$3"; }
+
+GL_ABSENT='__no project.conf on the before side__'
+# conf_story <phase> <before> <after>   C-6's helper, in the shape of
+# manifest_story: a branch whose first commit (story at RED, so never judged -
+# its parent on main carries no T-1 story) writes <before> as project.conf, or
+# deletes the file when <before> is $GL_ABSENT; whose second commit, the story
+# at <phase>, writes <after>; and whose last moves the story to REVIEW with the
+# body on stdin, which is how a ## Suppressions entry reaches the working-tree
+# story. Sets $gl_c, the short form of the <phase> commit. A <before> equal to
+# <after> would make that commit change only the story - a control that judges
+# nothing - so it is a fixture bug, reported.
+conf_story() {
+  local phase="$1" before="$2" after="$3" body
+  body="$(cat)"
+  [ "$before" = "$after" ] && printf 'FIXTURE BUG: conf_story before and after are identical\n' >&2
+  _src_branch
+  _src_story RED "$GL_PATH"
+  if [ "$before" = "$GL_ABSENT" ]; then rm -f "$FIX/$GL_PATH"
+  else printf '%s\n' "$before" > "$FIX/$GL_PATH"; fi
+  commit_all "T-1 RED: project.conf as it stood before"
+  _src_story "$phase" "$GL_PATH"
+  printf '%s\n' "$after" > "$FIX/$GL_PATH"
+  commit_all "T-1 $phase changes project.conf"
+  gl_c="$(_short)"
+  _src_story REVIEW "$GL_PATH" "$body"
+  commit_all "T-1 to review"
+}
+
+# The refusal, as C-1 pins it, byte for byte, and pinned as a WHOLE line.
+GL_TAIL=". A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason."
+# want_gl <commit> <PHASE> <finding> [suffix]   <finding> is `<id>: <what>` (C-2).
+want_gl() { printf "FAIL  story T-1: commit %s (%s) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: %s%s%s" "$1" "$2" "$3" "$GL_TAIL" "${4:-}"; }
+# gl_fails   Every line this rule printed as a refusal, in order. A here-string.
+gl_fails() { grep -F -- 'loosened a gate in' <<< "$out"; }
+# gl_refused <what> <PHASE> <finding>   The run just made refused exactly once,
+# by this whole line: rc 1, one FAIL line in the whole output, and it is this.
+gl_refused() {
+  whole_line "$1: refused by the whole line naming '$3'" "$(want_gl "$gl_c" "$2" "$3")"
+  assert_eq "$1: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines" \
+    "1|1" "$rc|$(grep -c '^FAIL' <<< "$out")"
+}
+# gl_clean <what>   The run just made refused nothing and exited 0, and 3j
+# counted the project.conf commit as judged - so the control is a commit the
+# rule READ and passed, not one it never looked at (C-1: such a commit is
+# judged; today it is not, which is why the second assertion is red in RED).
+gl_clean() {
+  assert_eq "$1: not refused - rc|FAIL lines" "0|" "$rc|$(grep '^FAIL' <<< "$out")"
+  whole_line "$1: and 3j counts the project.conf commit as judged" "$(want_3j_ok 1)"
+}
+
+# The premise, on the eve of the first case: the base conf on a spike branch
+# whose GREEN commit only edits a comment is a branch nothing else refuses.
+# PASSES ON ARRIVAL, by design - a claim about the fixture, not about 3j.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" '# Set to yes by the bootstrap story once the stack is real.' '# Set to yes by the bootstrap story once the stack is real (it is not yet).')" </dev/null
+run_boundaries </dev/null
+assert_eq "HARNESS-083 fixture: a spike branch whose GREEN commit edits a project.conf comment exits 0, and nothing objects" \
+  "0|" "$rc|$(grep '^FAIL' <<< "$out")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 AC-1: a removed evidence, floor, covers or discovery line is refused, by kind, in GREEN and GATES"
+
+for ph in GREEN GATES; do
+  conf_story "$ph" "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_EVID" '')" </dev/null
+  run_boundaries </dev/null
+  gl_refused "HARNESS-083 AC-1 ($ph): evidence | unit deleted" "$ph" 'unit: evidence line removed'
+done
+
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_FLOOR" '')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-1: floor | unit deleted" GREEN 'unit: floor line removed'
+
+# One of unit's two covers globs goes; the finding names THAT glob, and the
+# other glob, still present, is no finding.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" 'covers | unit        | src/platform/**' '')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-1: covers | unit | src/platform/** deleted" GREEN 'unit: covers line removed src/platform/**'
+
+# discovery's field 2 is a discovery id, not a gate id, and names the finding.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" 'discovery | platform | . | pnpm exec vitest list | grep "src/platform/" > /dev/null' '')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-1: discovery | platform deleted" GREEN 'platform: discovery line removed'
+
+# C-2: `evidence | g | -` declares that no evidence exists - the same weakening.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_EVID" 'evidence | unit        | -')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-1: evidence | unit regex replaced by '-'" GREEN 'unit: evidence line removed'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 AC-2: a floor lowered is refused with both numbers; raised or newly added, it is not"
+
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_FLOOR" 'floor    | unit        | 12')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-2: floor | unit 40 -> 12" GREEN 'unit: floor lowered 40 -> 12'
+
+# DV-1 mutates the comparison from < to != - this control is what goes red.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_FLOOR" 'floor    | unit        | 60')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-2 control: floor | unit 40 -> 60 (tightening is silent)"
+
+conf_story GREEN "$GL_BASE" "$(gl_after "$GL_BASE" "$GL_FLOOR" 'floor    | coverage    | 40')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-2 control: a floor | coverage line added where none existed"
+
+# C-2: numbers are compared as numbers.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_FLOOR" 'floor    | unit        | 40.0')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-2 control: floor | unit 40 -> 40.0 is the same number"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 AC-3: required -> optional and a removed gate are refused; the reverse and a new gate are not"
+
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_COV" 'gate | coverage  | optional | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 80')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-3: gate | coverage required -> optional" GREEN 'coverage: required -> optional'
+
+# The unit gate removed outright, and every line of it with it - its evidence,
+# its floor, both covers globs. C-2: a gate removed reports ONLY `gate removed`.
+gl_nounit="$(gl_swap "$GL_BASE" 'gate | unit      | required | . | pnpm exec vitest run' '')"
+gl_nounit="$(gl_swap "$gl_nounit" "$GL_EVID" '')"
+gl_nounit="$(gl_swap "$gl_nounit" "$GL_FLOOR" '')"
+gl_nounit="$(gl_swap "$gl_nounit" 'covers | unit        | src/core/**' '')"
+gl_nounit="$(gl_swap "$gl_nounit" 'covers | unit        | src/platform/**' '')"
+conf_story GREEN "$GL_BASE" "$gl_nounit" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-3: gate | unit removed with its evidence, floor and covers lines" GREEN 'unit: gate removed'
+
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" 'gate | integration | optional | . | pnpm exec playwright test' 'gate | integration | required | . | pnpm exec playwright test')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-3 control: gate | integration optional -> required"
+
+conf_story GREEN "$GL_BASE" "$(gl_after "$GL_BASE" 'gate | lint      | required | . | pnpm exec eslint .' 'gate | typecheck | required | . | pnpm exec tsc --noEmit')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-3 control: a new gate | typecheck line added"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 AC-4: a threshold flag lowered in a gate command is refused, per flag; raised, added or unchanged, it is not"
+
+# One row per spelling: <gate line before>|<gate line after>|<finding>. The
+# first two are the rust and python profiles' real coverage gates
+# (rust-cargo.md line 12, python-uv.md line 11), numbers lowered from 100.
+# The rows are TAB-separated because a gate line is full of `|`.
+gl_rows="$(printf '%s\t%s\t%s\n' \
+  'gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 80' \
+  'gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 70' \
+  'coverage: threshold lowered --fail-under-lines 80 -> 70' \
+  'gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80' \
+  'gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=70' \
+  'coverage: threshold lowered --cov-fail-under 80 -> 70' \
+  'gate | coverage  | required | . | pnpm exec vitest run --coverage --coverage.thresholds.lines=80' \
+  'gate | coverage  | required | . | pnpm exec vitest run --coverage --coverage.thresholds.lines=75' \
+  'coverage: threshold lowered --coverage.thresholds.lines 80 -> 75' \
+  'gate | coverage  | required | . | pnpm exec diff-cover coverage.xml --min-coverage 90' \
+  'gate | coverage  | required | . | pnpm exec diff-cover coverage.xml --min-coverage 85' \
+  'coverage: threshold lowered --min-coverage 90 -> 85' \
+  'gate | lint      | required | . | pnpm exec jscpd src --threshold 5' \
+  'gate | lint      | required | . | pnpm exec jscpd src --threshold 3' \
+  'lint: threshold lowered --threshold 5 -> 3')"
+while IFS=$'\t' read -r gl_b gl_a gl_f; do
+  [ -n "$gl_b" ] || continue
+  case "$gl_b" in
+    'gate | lint '*) gl_old='gate | lint      | required | . | pnpm exec eslint .' ;;
+    *)               gl_old="$GL_COV" ;;
+  esac
+  gl_before="$(gl_swap "$GL_BASE" "$gl_old" "$gl_b")"
+  conf_story GREEN "$gl_before" "$(gl_swap "$gl_before" "$gl_b" "$gl_a")" </dev/null
+  run_boundaries </dev/null
+  gl_refused "HARNESS-083 AC-4: ${gl_f#*lowered }" GREEN "$gl_f"
+done <<< "$gl_rows"
+
+# Two flags lowered in one command are two findings, each by its whole line.
+gl_two_b='gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 80 --fail-under-functions 70'
+gl_two_a='gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 75 --fail-under-functions 60'
+gl_before="$(gl_swap "$GL_BASE" "$GL_COV" "$gl_two_b")"
+conf_story GREEN "$gl_before" "$(gl_swap "$gl_before" "$gl_two_b" "$gl_two_a")" </dev/null
+run_boundaries </dev/null
+whole_line "HARNESS-083 AC-4: two flags lowered in one command - --fail-under-lines is one finding" \
+  "$(want_gl "$gl_c" GREEN 'coverage: threshold lowered --fail-under-lines 80 -> 75')"
+whole_line "HARNESS-083 AC-4: two flags lowered in one command - --fail-under-functions is the other" \
+  "$(want_gl "$gl_c" GREEN 'coverage: threshold lowered --fail-under-functions 70 -> 60')"
+assert_eq "HARNESS-083 AC-4: two flags lowered in one command - rc|FAIL lines" "1|2" "$rc|$(grep -c '^FAIL' <<< "$out")"
+
+# The controls.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_COV" 'gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 90')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-4 control: --fail-under-lines 80 -> 90 (raised)"
+
+gl_before="$(gl_swap "$GL_BASE" "$GL_COV" 'gate | coverage  | required | . | pnpm exec vitest run --coverage')"
+conf_story GREEN "$gl_before" "$(gl_swap "$gl_before" 'gate | coverage  | required | . | pnpm exec vitest run --coverage' 'gate | coverage  | required | . | pnpm exec vitest run --coverage --coverage.thresholds.lines=80')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-4 control: --coverage.thresholds.lines=80 added where no flag was"
+
+gl_before="$(gl_swap "$GL_BASE" "$GL_COV" 'gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80')"
+conf_story GREEN "$gl_before" "$(gl_swap "$gl_before" 'gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80' 'gate | coverage  | required | . | uv run --package app pytest --cov=app --cov-report=term-missing --cov-branch --cov-fail-under=80')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-4 control: a renamed package and a new -- option, --cov-fail-under=80 unchanged"
+
+gl_before="$(gl_swap "$GL_BASE" "$GL_COV" 'gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 80.0')"
+conf_story GREEN "$gl_before" "$GL_BASE" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-4 control: --fail-under-lines 80.0 -> 80 is the same number"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 AC-4, threshold removed: a threshold flag deleted from a gate command is refused, with the number it had"
+
+# C-2's `threshold removed` row (amended in RED, approved by the user): the gate
+# exists on both sides, its command had a flag from AC-4's list before and has
+# no flag of that name after. Deleting the flag is the same weakening as
+# deleting a `floor` line. The "flag added where none was" control above stays:
+# a flag present only AFTER is no finding.
+
+# The rust profile's coverage gate (rust-cargo.md line 12), as GL_BASE carries
+# it with 80, the flag deleted outright.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_COV" 'gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-4 threshold removed: --fail-under-lines 80 deleted from the rust coverage gate" GREEN 'coverage: threshold removed --fail-under-lines 80'
+
+# The python profile's coverage gate (python-uv.md line 11), verbatim, the `=`
+# spelling deleted. The flag is named up to the `[ =]`, the number after it.
+gl_py='gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=100'
+gl_before="$(gl_swap "$GL_BASE" "$GL_COV" "$gl_py")"
+conf_story GREEN "$gl_before" "$(gl_swap "$gl_before" "$gl_py" 'gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-4 threshold removed: --cov-fail-under=100 deleted from the python coverage gate" GREEN 'coverage: threshold removed --cov-fail-under 100'
+
+# Two flags in one command, one deleted and the other lowered: two findings,
+# each by its whole line. Their relative order is NOT pinned - C-2's Order
+# bullet fixes the before file's LINE order, and both come from one line.
+gl_two_b='gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 80 --fail-under-functions 70'
+gl_two_a='gate | coverage  | required | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-functions 60'
+gl_before="$(gl_swap "$GL_BASE" "$GL_COV" "$gl_two_b")"
+conf_story GREEN "$gl_before" "$(gl_swap "$gl_before" "$gl_two_b" "$gl_two_a")" </dev/null
+run_boundaries </dev/null
+whole_line "HARNESS-083 AC-4 threshold removed: one flag deleted, one lowered - --fail-under-lines is removed" \
+  "$(want_gl "$gl_c" GREEN 'coverage: threshold removed --fail-under-lines 80')"
+whole_line "HARNESS-083 AC-4 threshold removed: one flag deleted, one lowered - --fail-under-functions is lowered" \
+  "$(want_gl "$gl_c" GREEN 'coverage: threshold lowered --fail-under-functions 70 -> 60')"
+assert_eq "HARNESS-083 AC-4 threshold removed: one flag deleted, one lowered - rc|FAIL lines" "1|2" "$rc|$(grep -c '^FAIL' <<< "$out")"
+
+# Control: the coverage gate removed outright, with every line of it - its
+# command carried --fail-under-lines 80, and C-2 says a gate removed reports
+# ONLY `gate removed`. A rule that also reported the flag as removed (the gate
+# is not on both sides) prints a second FAIL and this goes red on 1|1.
+gl_nocov="$(gl_swap "$GL_BASE" "$GL_COV" '')"
+gl_nocov="$(gl_swap "$gl_nocov" 'evidence | coverage    | TOTAL' '')"
+gl_nocov="$(gl_swap "$gl_nocov" 'covers | coverage    | src/core/**' '')"
+conf_story GREEN "$GL_BASE" "$gl_nocov" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-4 threshold removed control: gate | coverage removed outright, flag and all" GREEN 'coverage: gate removed'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 AC-5: a slow, ondemand or waiver line added on a gate required BEFORE is refused; on an optional gate it is not"
+
+# The base's existing `slow | build` sits on a required gate on both sides of
+# every case in this section, so a line present before is no finding.
+conf_story GREEN "$GL_BASE" "$(gl_after "$GL_BASE" "$GL_SLOWB" 'slow | unit        | the suite takes a minute on this runner')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-5: slow | unit added, unit required before" GREEN 'unit: slow added on required gate'
+
+conf_story GREEN "$GL_BASE" "$(gl_after "$GL_BASE" "$GL_SLOWB" 'ondemand | coverage | the instrumented run is too slow to pay per story')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-5: ondemand | coverage added, coverage required before" GREEN 'coverage: ondemand added on required gate'
+
+conf_story GREEN "$GL_BASE" "$(gl_after "$GL_BASE" "$GL_SLOWB" 'waiver | build | the bundler cannot start on this runner yet')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 AC-5: waiver | build added, build required before" GREEN 'build: waiver added on required gate'
+
+# This repository's own line, verbatim, on its own optional mutation gate.
+conf_story GREEN "$GL_BASE" "$(gl_after "$GL_BASE" "$GL_SLOWB" 'ondemand | mutation | per-story cost the user declined (HARNESS-015); run it with /audit-mutations')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-5 control: this repository's ondemand | mutation line, on the optional mutation gate"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 AC-6: a loosening declared in ## Suppressions is accepted by HARNESS-081's hatch, and only a whole declaration"
+
+# A here-string, not a pipe: conf_story sets $gl_c in THIS shell.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_EVID" '')" \
+  <<< $'## Suppressions\n\n- `.claude/harness/project.conf` [gate-loosened] approved by ryan: the suite was split in two'
+run_boundaries </dev/null
+assert_eq "HARNESS-083 AC-6: the declared evidence removal - rc|refusals" "0|" "$rc|$(gl_fails)"
+whole_line "HARNESS-083 AC-6: and the rule says project.conf's [gate-loosened] is declared, once" \
+  "ok    suppression [gate-loosened] in '.claude/harness/project.conf' is declared in ## Suppressions"
+
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_EVID" '')" \
+  <<< $'## Suppressions\n\n- `.claude/harness/project.conf` [noqa] approved by ryan: the wrong rule id'
+run_boundaries </dev/null
+whole_line "HARNESS-083 AC-6: an entry naming the path with another rule id is refused, saying what it is missing" \
+  "$(want_gl "$gl_c" GREEN 'unit: evidence line removed' " The ## Suppressions line naming '.claude/harness/project.conf' is missing the rule id [gate-loosened].")"
+assert_eq "HARNESS-083 AC-6: the partial entry - rc|FAIL lines" "1|1" "$rc|$(grep -c '^FAIL' <<< "$out")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 AC-7: a project.conf change that loosens nothing is not refused, and the commit is judged"
+
+# The header's commented example lines are this repository's own header's: deleting
+# `#   covers | integration | src/render/**` is a comment edit, not a covers line removed.
+gl_cmt="$(gl_swap "$GL_BASE" '# --- Gates ------------------------------------------------------------------' '# --- Gates (reviewed 2026-10-30) ------------------------------------------')"
+conf_story GREEN "$GL_BASE" "$(gl_swap "$gl_cmt" '#   covers | integration | src/render/**' '')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-7: a comment edited, and a commented example covers line deleted"
+
+conf_story GREEN "$GL_BASE" "$(gl_after "$GL_BASE" "$GL_TASK" 'task | dev     | - | . | pnpm exec vite')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-7: a task | dev line added"
+
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" 'gate | unit      | required | . | pnpm exec vitest run' 'gate | unit      | required | . | pnpm exec vitest run --reporter=verbose')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 AC-7: a gate command changed with no threshold in it"
+
+# C-2: a project.conf missing on the before side - the commit created it -
+# produces no findings.
+conf_story GREEN "$GL_ABSENT" "$GL_BASE" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 C-2: project.conf created by the GREEN commit, nothing before it"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 C-1/C-2: two findings in one commit print in the before-file's line order; the parent-phase arm applies"
+
+# The coverage gate line precedes the floor line in the before file, so its
+# finding prints first - though `floor` is a kind an implementation iterating
+# kinds might visit first.
+gl_after_two="$(gl_swap "$GL_BASE" "$GL_COV" 'gate | coverage  | optional | . | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 80')"
+gl_after_two="$(gl_swap "$gl_after_two" "$GL_FLOOR" 'floor    | unit        | 12')"
+conf_story GREEN "$GL_BASE" "$gl_after_two" </dev/null
+run_boundaries </dev/null
+assert_eq "HARNESS-083 order: required -> optional, then floor lowered - both whole lines, in the before file's order" \
+  "$(want_gl "$gl_c" GREEN 'coverage: required -> optional')"$'\n'"$(want_gl "$gl_c" GREEN 'unit: floor lowered 40 -> 12')" \
+  "$(gl_fails)"
+assert_eq "HARNESS-083 order: rc|FAIL lines" "1|2" "$rc|$(grep -c '^FAIL' <<< "$out")"
+
+# The documented GATES -> REVIEW step sets the phase and only then commits, so
+# the loosening lands in a commit whose own story says REVIEW; judged by its
+# parent's phase, as 3j judges source (C-1).
+_src_branch
+_src_story RED "$GL_PATH"
+printf '%s\n' "$GL_BASE" > "$FIX/$GL_PATH"
+commit_all "T-1 RED: project.conf as it stood before"
+_src_story GATES "$GL_PATH"
+commit_all "T-1 to GATES"
+_src_story REVIEW "$GL_PATH"
+printf '%s\n' "$(gl_swap "$GL_BASE" "$GL_EVID" '')" > "$FIX/$GL_PATH"
+commit_all "T-1 to review, with the GATES work still uncommitted"
+gl_c="$(_short)"
+run_boundaries </dev/null
+gl_refused "HARNESS-083 C-1: evidence | unit deleted by the commit that sets REVIEW after GATES" "REVIEW, after GATES" 'unit: evidence line removed'
+
+# Put main back as the describes above found it: no branch here committed to
+# main, so there is nothing to undo; leave main checked out.
+git -C "$FIX" checkout -q main 2>/dev/null
+
 summary "boundaries"

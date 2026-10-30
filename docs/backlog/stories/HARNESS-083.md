@@ -4,8 +4,8 @@ title: A gate loosened in project.conf during GREEN or GATES is refused unless t
 slug: a-gate-loosened-in-project-conf-during-g
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-083-a-gate-loosened-in-project-conf-during-g
 depends_on: [HARNESS-081]      # reuses 3j's commit walk and the ## Suppressions escape hatch
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -134,8 +134,17 @@ splitting `gates.sh` uses (`|`, fields trimmed). Findings:
 | `floor lowered` | both sides have `floor \| g \| N`, and N_after < N_before (numeric) |
 | `required -> optional` | severity field changed that way |
 | `gate removed` | a `gate \| g` line before, none after |
-| `threshold lowered` | the gate's command on both sides has the same flag from AC-4's list and its number went down; several flags are several findings; a flag present on one side only is no finding |
+| `threshold lowered` | the gate's command on both sides has the same flag from AC-4's list and its number went down; several flags are several findings |
+| `threshold removed` | the gate exists on both sides and its command had a flag from AC-4's list before and has no such flag (by name) after; a flag present only **after** (added) is no finding |
 | `slow added on required gate` / `ondemand added on required gate` / `waiver added on required gate` | the line is on the after side only, and the gate is `required` on the **before** side |
+
+*Amended in RED (2026-10-30), approved by the user ("Refuse it"):* the first
+cut said "a flag present on one side only is no finding", so deleting
+`--fail-under-lines 80` from a gate command outright was silent - the same
+weakening as deleting a `floor` line, which is refused. The test-developer
+raised it. No acceptance criterion changes: AC-4 refuses a lowered number
+and its controls (a flag added, numbers equal) stand; AC-7's "a gate command
+changed with no threshold in it" has no threshold on either side.
 
 Nothing else is a finding (AC-7). A `-` evidence line (`evidence | g | -`)
 replacing a real regex **is** `evidence line removed` - the declaration that
@@ -158,7 +167,8 @@ findings.
   `covers line removed <glob>` (one per glob gone); `discovery line removed`;
   `floor lowered <before> -> <after>`; `required -> optional`;
   `gate removed`; `threshold lowered <flag> <before> -> <after>` (flag as
-  written, e.g. `--cov-fail-under`); `slow added on required gate`,
+  written, e.g. `--cov-fail-under`); `threshold removed <flag> <before>`
+  (e.g. `coverage: threshold removed --fail-under-lines 80`); `slow added on required gate`,
   `ondemand added on required gate`, `waiver added on required gate`.
 - **A gate removed reports only `gate removed`** for that id - its evidence,
   floor and covers lines go with it and are not reported again.
@@ -306,28 +316,287 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One level: integration, through `bash scripts/check-boundaries.sh main` in a
+real two-branch fixture repository (`.claude/tests/boundaries.test.sh`), as
+every 3j case is. The suite drives the script, never the function (C-7).
+
+Nine new describes, all marked HARNESS-083, appended after HARNESS-082's last
+3j describe and before `summary` (the ninth, `AC-4, threshold removed`, added in
+RED after the user approved C-2's `threshold removed` row):
+
+| Describe | AC / clause | Cases |
+|---|---|---|
+| `HARNESS-083: ... - the fixture` | premise | a spike branch whose GREEN commit edits a project.conf comment exits 0 with no FAIL |
+| `HARNESS-083 AC-1` | AC-1, C-2 rows 1-2 | `evidence \| unit` deleted at GREEN and at GATES; `floor \| unit` deleted; one of unit's two `covers` globs deleted (named by glob); `discovery \| platform` deleted (named by discovery id); `evidence \| unit \| <regex>` -> `-` |
+| `HARNESS-083 AC-2` | AC-2, C-2 row 3 | floor 40 -> 12 refused; controls 40 -> 60, a new `floor \| coverage`, 40 -> 40.0 |
+| `HARNESS-083 AC-3` | AC-3, C-2 rows 4-5 | coverage required -> optional; unit gate removed with its evidence, floor and both covers lines (only `gate removed`); controls integration optional -> required, a new `typecheck` gate |
+| `HARNESS-083 AC-4` | AC-4, C-2 row 6 | one row per flag spelling (5); two flags lowered in one command (2 findings); controls raised, flag added where none was, renamed package + new option with equal numbers, 80.0 -> 80 |
+| `HARNESS-083 AC-4, threshold removed` | AC-4, C-2 `threshold removed` row (amended in RED) | `--fail-under-lines 80` deleted from the rust coverage gate; `--cov-fail-under=100` deleted from the python profile's gate verbatim; one flag deleted and the other lowered in one command (2 findings, `1\|2`, relative order not pinned); control: the coverage gate removed outright, flag and all, reports only `coverage: gate removed` (`1\|1`) |
+| `HARNESS-083 AC-5` | AC-5, C-2 row 7 | `slow \| unit`, `ondemand \| coverage`, `waiver \| build` added on gates required before; control: this repository's own `ondemand \| mutation` line on the optional mutation gate |
+| `HARNESS-083 AC-6` | AC-6, C-3 | the AC-1 commit with a whole `## Suppressions` entry (rc 0, ok line once); an entry naming the path with `[noqa]` (refused, whole line with HARNESS-081's partial-entry suffix) |
+| `HARNESS-083 AC-7` | AC-7, C-1, C-2 | a comment edited plus a commented example `covers` line deleted; a `task \| dev` line added; a gate command changed with no threshold; project.conf created by the GREEN commit (missing before) |
+| `HARNESS-083 C-1/C-2` | C-2 order, C-1 parent-phase arm | two findings in one commit print in the before-file's order; evidence deleted by the commit that sets REVIEW after GATES is refused naming `REVIEW, after GATES` |
+
+Every fixture project.conf is `GL_BASE` or a one-line edit of it, and
+`GL_BASE` is built from real lines: this repository's header and
+`slow`/`ondemand`/`task` lines, the node profile's gate commands, evidence,
+`floor`, `covers` and `discovery` lines, the rust profile's coverage gate
+(`--fail-under-lines`, rust-cargo.md line 12) and the python profile's
+(`--cov-fail-under=`, python-uv.md line 11). The stack profiles carry no other
+spelling of AC-4's flags, so C-4's list is unchanged; `--min-coverage`,
+`--coverage.thresholds.lines` and `--threshold` fixtures use plausible tool
+lines (`diff-cover`, `vitest`, `jscpd`), and the two-flag case uses
+`--fail-under-functions`, which AC-4's `--fail-under[-a-z]*` covers.
+
+**Existing judged counts do not move.** Checked before writing: no GREEN or
+GATES fixture commit in the 3j describes touches `.claude/harness/project.conf`
+(they write `src/`, the story, `scripts/x.sh` and `tests/a.test.ts`), and main's
+project.conf at that point is `BOOTSTRAPPED=no`. The full run confirms it: all
+359 pre-existing assertions pass.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+**Model.** Dispatched as `test-developer`, which declares `opus`; ran as
+claude-opus-5-5. No override.
+
+**Command.**
+
+    bash .claude/tests/boundaries.test.sh      # or: bash scripts/selftest.sh boundaries
+
+The whole suite took 50m51s locally with the ninth describe (38m41s for the first pass; host under load). For iteration, a
+scratch subset (lines 1-109 with line 9 pointed at the real `_lib.sh`, then the
+3j fixture describe up to its premise, then the HARNESS-083 section) ran in
+about 4 min.
+
+**Red on arrival, against the shipped check-boundaries.sh (release 101):**
+
+    boundaries: 375 passed, 67 failed
+    rc=1
+
+All 67 failures are HARNESS-083 assertions (`grep "^    FAIL" | grep -vc HARNESS-083`
+= 0); all 359 pre-existing assertions pass; no bash error and no `FIXTURE BUG`
+line in the output. The shape of each red is the right one - the rule is
+absent, so no refusal is printed, the run exits 0, and 3j never counts a
+project.conf-only commit:
+
+    HARNESS-083 AC-1: a removed evidence, floor, covers or discovery line is refused, by kind, in GREEN and GATES
+      FAIL HARNESS-083 AC-1 (GREEN): evidence | unit deleted: refused by the whole line naming 'unit: evidence line removed'
+           expected: 1
+           actual:   0
+      FAIL HARNESS-083 AC-1 (GREEN): evidence | unit deleted: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+           expected: 1|1
+           actual:   0|0
+      ...
+    HARNESS-083 AC-2: a floor lowered is refused with both numbers; raised or newly added, it is not
+      FAIL HARNESS-083 AC-2: floor | unit 40 -> 12: refused by the whole line naming 'unit: floor lowered 40 -> 12'
+      FAIL HARNESS-083 AC-2: floor | unit 40 -> 12: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+      FAIL HARNESS-083 AC-2 control: floor | unit 40 -> 60 (tightening is silent): and 3j counts the project.conf commit as judged
+           expected: 1
+           actual:   0
+      ...
+    HARNESS-083 AC-4, threshold removed: a threshold flag deleted from a gate command is refused, with the number it had
+      FAIL HARNESS-083 AC-4 threshold removed: --fail-under-lines 80 deleted from the rust coverage gate: refused by the whole line naming 'coverage: threshold removed --fail-under-lines 80'
+           expected: 1
+           actual:   0
+      FAIL HARNESS-083 AC-4 threshold removed: --fail-under-lines 80 deleted from the rust coverage gate: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+           expected: 1|1
+           actual:   0|0
+      FAIL HARNESS-083 AC-4 threshold removed: --cov-fail-under=100 deleted from the python coverage gate: refused by the whole line naming 'coverage: threshold removed --cov-fail-under 100'
+      FAIL HARNESS-083 AC-4 threshold removed: --cov-fail-under=100 deleted from the python coverage gate: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+      FAIL HARNESS-083 AC-4 threshold removed: one flag deleted, one lowered - --fail-under-lines is removed
+      FAIL HARNESS-083 AC-4 threshold removed: one flag deleted, one lowered - --fail-under-functions is lowered
+      FAIL HARNESS-083 AC-4 threshold removed: one flag deleted, one lowered - rc|FAIL lines
+           expected: 1|2
+           actual:   0|0
+      FAIL HARNESS-083 AC-4 threshold removed control: gate | coverage removed outright, flag and all: refused by the whole line naming 'coverage: gate removed'
+      FAIL HARNESS-083 AC-4 threshold removed control: gate | coverage removed outright, flag and all: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+           expected: 1|1
+           actual:   0|0
+    HARNESS-083 AC-6: a loosening declared in ## Suppressions is accepted by HARNESS-081's hatch, and only a whole declaration
+      FAIL HARNESS-083 AC-6: and the rule says project.conf's [gate-loosened] is declared, once
+      FAIL HARNESS-083 AC-6: an entry naming the path with another rule id is refused, saying what it is missing
+      FAIL HARNESS-083 AC-6: the partial entry - rc|FAIL lines
+    HARNESS-083 AC-7: a project.conf change that loosens nothing is not refused, and the commit is judged
+      FAIL HARNESS-083 AC-7: a comment edited, and a commented example covers line deleted: and 3j counts the project.conf commit as judged
+      FAIL HARNESS-083 AC-7: a task | dev line added: and 3j counts the project.conf commit as judged
+      FAIL HARNESS-083 AC-7: a gate command changed with no threshold in it: and 3j counts the project.conf commit as judged
+      FAIL HARNESS-083 C-2: project.conf created by the GREEN commit, nothing before it: and 3j counts the project.conf commit as judged
+    HARNESS-083 C-1/C-2: two findings in one commit print in the before-file's line order; the parent-phase arm applies
+      FAIL HARNESS-083 order: required -> optional, then floor lowered - both whole lines, in the before file's order
+      FAIL HARNESS-083 order: rc|FAIL lines
+      FAIL HARNESS-083 C-1: evidence | unit deleted by the commit that sets REVIEW after GATES: refused by the whole line naming 'unit: evidence line removed'
+      FAIL HARNESS-083 C-1: evidence | unit deleted by the commit that sets REVIEW after GATES: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+
+    boundaries: 375 passed, 67 failed
+
+The full output is reproducible with the command above; the 67 are: 26
+refusal whole lines, 25 refusing `rc|FAIL lines` pairs (`1|1`, or `1|2` for the
+two-flag, removed-plus-lowered and order cases), AC-6's ok line, the order case's two-line compare,
+and the 14 controls' "judged" halves.
+
+**`bash scripts/gates.sh --fast`** runs nothing here: every gate in this
+repository's project.conf is UNCONFIGURED, mutation is ON REQUEST, `--fast`
+skipped integration and build, rc 0, not recorded. The artifact is judged by
+`bash scripts/selftest.sh boundaries`. `check-sigpipe.sh` (56 files, 0 findings)
+and `check-grep-count.sh` (56 files, 0 findings) are clean over the tree with
+the new test code in it.
+
+**Files touched.**
+
+- `.claude/tests/boundaries.test.sh` - the nine describes and their helpers
+  (`GL_PATH`, `GL_BASE`, `GL_COV`, `GL_EVID`, `GL_FLOOR`, `GL_SLOWB`, `GL_TASK`,
+  `gl_swap`, `gl_after`, `GL_ABSENT`, `conf_story`, `GL_TAIL`, `want_gl`,
+  `gl_fails`, `gl_refused`, `gl_clean`).
+- `.claude/tests/floors.conf` - `boundaries` 359 -> 442, with its comment entry.
+- `.claude/tests/selftest.test.sh` - the hand-copied table, `boundaries 442`.
+- this story: `## Test plan`, `## Handoff: RED -> GREEN`.
+
+**One line per test** (each `gl_refused` is two assertions: the whole line,
+then `rc|FAIL lines` = `1|1`; each `gl_clean` is two: `rc|FAIL lines` = `0|`,
+then `want_3j_ok 1` as a whole line):
+
+- premise - the spike fixture with a comment-only GREEN edit exits 0, no FAIL (fixture claim).
+- AC-1 (GREEN), AC-1 (GATES) - `unit: evidence line removed`.
+- AC-1 floor - `unit: floor line removed`.
+- AC-1 covers - `unit: covers line removed src/platform/**`; the other glob, still present, is no finding.
+- AC-1 discovery - `platform: discovery line removed`.
+- AC-1 `-` - `unit: evidence line removed` for a regex replaced by `-`.
+- AC-2 - `unit: floor lowered 40 -> 12`; controls 40 -> 60, new `floor | coverage`, 40 -> 40.0.
+- AC-3 - `coverage: required -> optional`; `unit: gate removed` and nothing else for that id; controls integration optional -> required, new typecheck gate.
+- AC-4 - `coverage: threshold lowered --fail-under-lines 80 -> 70`, `... --cov-fail-under 80 -> 70`, `... --coverage.thresholds.lines 80 -> 75`, `... --min-coverage 90 -> 85`, `lint: threshold lowered --threshold 5 -> 3`; two flags in one command give `--fail-under-lines 80 -> 75` and `--fail-under-functions 70 -> 60`, rc|FAIL lines `1|2`; controls raised, added, equal numbers, 80.0 -> 80.
+- AC-4, threshold removed - `coverage: threshold removed --fail-under-lines 80` (rust gate, flag deleted); `coverage: threshold removed --cov-fail-under 100` (python gate verbatim, `=` spelling deleted); one command with `--fail-under-lines 80` deleted and `--fail-under-functions 70 -> 60` gives both `coverage: threshold removed --fail-under-lines 80` and `coverage: threshold lowered --fail-under-functions 70 -> 60`, each a whole line, rc|FAIL lines `1|2`; control: the coverage gate removed with its evidence and covers lines gives only `coverage: gate removed`, rc|FAIL lines `1|1` (a `threshold removed` beside it would be a second FAIL).
+- AC-5 - `unit: slow added on required gate`, `coverage: ondemand added on required gate`, `build: waiver added on required gate`; control the real `ondemand | mutation` line.
+- AC-6 - declared: rc|refusals `0|` and the ok line once; partial `[noqa]` entry: the whole refusal with the suffix, rc|FAIL lines `1|1`.
+- AC-7 - three non-loosening edits and the created-file case, each `gl_clean`.
+- order - `gl_fails` equals exactly the two whole lines, `coverage: required -> optional` then `unit: floor lowered 40 -> 12`; rc|FAIL lines `1|2`.
+- C-1 parent arm - `want_gl <c> "REVIEW, after GATES" 'unit: evidence line removed'`.
+
+**Export shape the tests pin.** There is no module import; the tests pin
+printed lines and exit status.
+
+- The refusal, exactly (one per finding, through `problem`, so it starts `FAIL  `):
+
+      FAIL  story T-1: commit <7> (<PHASE>) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: <id>: <what>. A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason.
+
+  with `<PHASE>` = `GREEN`, `GATES` or `REVIEW, after GATES`, and, when a
+  partial entry names the path, the suffix appended directly after `reason.`:
+
+      " The ## Suppressions line naming '.claude/harness/project.conf' is missing the rule id [gate-loosened]."
+
+  (a leading space, as HARNESS-081's `$sup_more`).
+- The `<id>: <what>` strings, exactly: `unit: evidence line removed`,
+  `unit: floor line removed`, `unit: covers line removed src/platform/**`,
+  `platform: discovery line removed`, `unit: floor lowered 40 -> 12`,
+  `coverage: required -> optional`, `unit: gate removed`,
+  `<gate>: threshold lowered <flag> <before> -> <after>` with the flag up to the
+  `[ =]` (`--fail-under-lines`, `--cov-fail-under`,
+  `--coverage.thresholds.lines`, `--min-coverage`, `--threshold`,
+  `--fail-under-functions`),
+  `<gate>: threshold removed <flag> <before>` with the same flag naming and
+  the before side's number as written (`coverage: threshold removed
+  --fail-under-lines 80`, `coverage: threshold removed --cov-fail-under 100`),
+  `<gate>: slow|ondemand|waiver added on required gate`.
+- A gate removed outright reports `gate removed` and **no** `threshold removed`
+  for the flags its command carried: the row's condition is "the gate exists on
+  both sides", and the test counts exactly one FAIL.
+- The declared line, exactly once:
+  `ok    suppression [gate-loosened] in '.claude/harness/project.conf' is declared in ## Suppressions`.
+- The 3j summary, now counting a project.conf-only GREEN commit:
+  `ok    GREEN/GATES added no suppression (1 commit(s) judged)` on every clean
+  case. Note the wording stays HARNESS-081's; the tests pin it as is.
+- Exit 1 with exactly one `^FAIL` line on each single-finding branch (so the
+  rule must not also print a second, differently worded refusal), and exit 0
+  with no `^FAIL` on every control.
+- Order: two findings from one commit print in the before file's line order
+  (a `gate` line before a `floor` line).
+
+**Not constrained** (the implementer's choice): the name, arguments and output
+format of `project_conf_loosenings` - C-2's `<gate id>\t<what>\t<before>\t<after>`
+is the contract's, but no test sees it; how before/after reach the awk (temp
+files or here-strings); the order of two findings from ONE line (both two-flag
+cases - two lowered, and one removed plus one lowered - assert each whole line
+and the count, not their order; C-2's Order bullet fixes before-file LINE
+order only); where an
+"added on required gate" finding prints relative to before-line findings (no
+case has both); what happens when GREEN deletes project.conf outright (after
+side missing); several declared findings in one PR printing the ok line once
+(only single-finding declared case is tested).
+
+**Passed on arrival (16), and what earns each.** No assertion here imports a
+missing module, so all of them ran - but the rule they constrain does not exist,
+so the 16 green ones pass vacuously today. The premise is a fixture claim and
+earns itself by the reds around it (the same fixture exits 1 the moment a rule
+fires). AC-6's `rc|refusals` = `0|` is earned by the partial-entry case beside
+it, which must go red. The 14 controls' `rc|FAIL lines` halves are earned by a
+mutation each, which GREEN or the orchestrator runs with `scripts/mutate.sh`
+against the shipped `project_conf_loosenings`:
+
+| Control | Expected (rc\|FAIL lines; judged) | Measured on a scratch candidate of C-2 (gawk --posix) | Mutation that must turn it red |
+|---|---|---|---|
+| AC-2 floor 40 -> 60 | `0\|`; `want_3j_ok 1` | no findings | floor compare `<` -> `!=` (DV-1) |
+| AC-2 new `floor \| coverage` | `0\|`; 1 | no findings | floor-removed test reads the AFTER side as before (an added line reads as removed) |
+| AC-2 floor 40 -> 40.0 | `0\|`; 1 | no findings | compare floors as strings with `!=` |
+| AC-3 integration optional -> required | `0\|`; 1 | no findings | severity test `before==required && after==optional` -> `before!=after` |
+| AC-3 new typecheck gate | `0\|`; 1 | no findings | gate-removed test iterates the after file's gates |
+| AC-4 --fail-under-lines 80 -> 90 | `0\|`; 1 | no findings | flag compare `<` -> `!=` |
+| AC-4 --coverage.thresholds.lines added | `0\|`; 1 | no findings | report a flag present on one side only |
+| AC-4 renamed package, equal numbers | `0\|`; 1 | no findings | compare the whole command string instead of the flag numbers |
+| AC-4 80.0 -> 80 | `0\|`; 1 | no findings | compare flag numbers as strings with `!=` |
+| AC-4 --coverage.thresholds.lines added (re-measured with `threshold removed` in the candidate) | `0\|`; 1 | no findings | report a flag present on the AFTER side only |
+| AC-4 threshold removed control: coverage gate removed outright | `1\|1`, the one line `coverage: gate removed` (a refusal, so not a "judged" control) | `coverage: gate removed` only; **with** the gate-removed `continue` dropped from the candidate (`cand_gone_mut.awk`), `coverage: gate removed` **and** `coverage: threshold removed --fail-under-lines 80` (measured: fires) | report `threshold removed` without requiring the gate on the after side |
+| AC-5 `ondemand \| mutation` on optional | `0\|`; 1 | no findings | drop the "required on the before side" test |
+| AC-7 comment + commented `covers` example deleted | `0\|`; 1 | no findings; **with** the mutant below, `integration: covers line removed src/render/**` | strip a leading `#` and parse comment lines as data (measured: fires) |
+| AC-7 `task \| dev` added | `0\|`; 1 | no findings | report any kind added on the after side |
+| AC-7 gate command, no threshold | `0\|`; 1 | no findings | compare the whole command string |
+| C-2 project.conf created | `0\|`; 1 | no findings; **with** `FNR == 1 { side++ }` (an empty before file has no record), 7 x `gate removed` + 1 discovery | side counting by `FNR == 1` instead of by file name (measured: fires) |
+
+The "measured" column is a scratch candidate of `project_conf_loosenings`
+written outside the tree (a plain awk run over each fixture pair that the test
+helpers build, never through the suite) to check that every expected value is
+reachable by one awk and that every control is silent: it printed exactly the
+expected finding for every refusing fixture pair (the REVIEW-after-GATES
+case was not driven separately: it is the AC-1 pair), both lines in the expected
+order for the order case, and nothing for each of the 14 controls. Those
+numbers are claims about a candidate, not the shipped code: confirming each
+against the shipped `check-boundaries.sh` is GREEN's job, and the "judged" half
+of every control is red until GREEN adds project.conf to `sup_paths`.
+
+**Discovered, for the implementation.**
+
+1. An empty before side is a trap. `git show "$c^:$f"` fails when the commit
+   created the file; if that becomes an empty temp file, `FNR == 1` never fires
+   for it and the after file is read as the before side - the candidate printed
+   7 `gate removed` findings for a commit that loosened nothing. Decide the side
+   by file name (`FILENAME == ARGV[1]`) or skip the comparison when the before
+   side is unreadable. The created-file control catches it.
+2. Inside a string regex, `\.` warns under gawk and is fragile across awks; the
+   candidate used `[.]` for `--coverage.thresholds.` and the decimal part. CI's
+   awk is mawk 1.3.4; the candidate ran under gawk 5.4 `--posix` (no mawk here).
+3. A gate removed must suppress its own evidence/floor/covers findings even
+   though those lines come AFTER the gate line in the before file: compute the
+   removed set first, then walk the before lines.
+4. A commented example line (`#   covers | integration | src/render/**`, the
+   header shape of this repository's own file) contains `|`; skipping by
+   "trimmed text starts `#`" must come before the `|` test, as `gates.sh` does.
+
+**Doubt raised in the first RED pass, now resolved.** C-2 first said "a flag
+present on one side only is no finding", so deleting `--fail-under-lines 80`
+from a gate command outright was silent. Put to the orchestrator; the user
+approved refusing it ("Refuse it"), C-2 gained the `threshold removed` row (see
+its amendment note), and the ninth describe, `AC-4, threshold removed`, pins
+it. A flag present only on the after side is still no finding, and the AC-4
+"flag added where none was" control is unchanged.
+
+**Contract amendments:** none by RED (C-2's `threshold removed` row is the
+orchestrator's amendment, user-approved). One thing GREEN should know: in C-2's
+table the amendment note sits between the `threshold removed` row and the
+`slow/ondemand/waiver added on required gate` row, so in rendered markdown that
+last row is outside the table. Its text is unchanged and still binding.
+
+**Deferred verifications.** DV-1 and DV-2 are owned by GATES and are **not
+runnable in RED**: both mutate or exercise the shipped `project_conf_loosenings`,
+which does not exist yet. I did not run them. The AC-2 raise control above is
+the assertion DV-1 must turn red.
 
 ## Regressions
 
@@ -404,3 +673,13 @@ name, below the table.
    pinned by its whole line including any partial-entry suffix, and one
    commit carrying two findings expects both.
 
+
+**Phase-lock report from RED's second pass (2026-10-30), not reproduced.**
+The test-developer reported the guard refusing `cd "C:/Users/.../scratchpad"
+&& awk ... > candidate.awk` (a write outside the repository) as `source`.
+The orchestrator fed `.claude/hooks/phase-guard.sh` that shape directly, in
+both the `C:/...` (quoted) and `/c/...` spellings, with cwd
+`D:\agentic-dev-harness` at phase RED: both returned rc 0 with no decision,
+i.e. allowed. The agent's exact command was not recorded, so the refusal is
+unexplained, not confirmed; if it recurs, capture the command verbatim and
+add it to `.claude/tests/phase-guard.test.sh` as CLAUDE.md says.
