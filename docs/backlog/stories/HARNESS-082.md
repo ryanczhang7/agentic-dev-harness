@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -486,6 +486,65 @@ all hits over .claude/skills/security-audit/validate-findings.cjs (773 lines): 0
 all hits over .claude/skills/security-audit/validate-findings.cjs (772 lines): 1
 322|empty-handler|} catch (error) {
 === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_security-audit_validate-findings.cjs.20261030T054758Z.5350.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**DV-1, DV-2 and DV-2b re-run (GATES after returns 3 and 4, 2026-10-30, on
+3ab506f).** DV-1 against `sub5.test.sh` (confirmed a verbatim slice by
+`diff`, 218 assertions): the same two red, restored and green. DV-2: every
+quoted example fires its own row, and "report every rule" shows on real
+lines - 777 draws `eslint-disable` and `empty-handler`. Line 778's prose
+`` `raise NotImplementedError  # pragma: no cover` `` draws `no-cover` only:
+`raise` follows a backtick, which the stub anchor `O` excludes by design
+(C-1). DV-2b unchanged.
+
+```
+##### DV-1 (re-run on 3ab506f): the window is not disarmed by an added line that is not a closer
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by /^      pk = ""$/d) ===
+  813 -       pk = ""
+    FAIL HARNESS-082 control: an except whose next added line is a statement (src/app.py) is not refused
+    FAIL HARNESS-082 controls: the branch - rc|FAIL lines|summary(6)
+boundaries: 216 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T152812Z.530.bak) ===
+##### the same subset, restored
+boundaries: 218 passed, 0 failed
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+##### DV-2 first half (re-run on 3ab506f): the branch as it stands
+(3j printed nothing matching)
+##### DV-2 second half: category test widened to harness (lines on scripts/check-boundaries.sh only)
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/in source|config) sup_paths=/in source|config|harness) sup_paths=/) ===
+  871 -     case "$(classify "$f")" in source|config) sup_paths="$sup_paths $f" ;; esac
+  871 +     case "$(classify "$f")" in source|config|harness) sup_paths="$sup_paths $f" ;; esac
+2cf0fb1 (GREEN) line 777 [eslint-disable]: # `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
+2cf0fb1 (GREEN) line 777 [empty-handler]: # `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
+2cf0fb1 (GREEN) line 778 [no-cover]: # `empty-handler`, and `raise NotImplementedError  # pragma: no cover` prints
+db248cf (GREEN) line 772 [noqa]: # `except:  # noqa: E722` over `pass` prints both `noqa` and `empty-handler` at
+db248cf (GREEN) line 773 [noqa]: # the opener's line, and `pass  # noqa: SIM105` under `except ValueError:` prints
+db248cf (GREEN) line 776 [eslint-disable]: # so `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
+db248cf (GREEN) line 776 [empty-handler]: # so `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
+db248cf (GREEN) line 780 [empty-handler]: # `} catch (A e) {} catch (B e) {` over `}` is refused once. A stub-raise
+2fc8ba9 (GREEN) line 706 [empty-handler]: #   } catch (e) {}
+2fc8ba9 (GREEN) line 720 [empty-handler]: # rows are the ONE-line shape the window cannot see, `} catch (e) {}` and
+2fc8ba9 (GREEN) line 772 [noqa]: # opener, so `except:  # noqa: E722` over `pass` prints both `noqa` and
+31a3195 (GREEN) line 696 [stub-todo]: # backtick), spelled out in every stub row - so `foo(todo!())` and
+31a3195 (GREEN) line 697 [stub-todo]: # `_ => todo!()` are caught, and `"todo!()"` and `my_todo!(` are not. The rows read a line, not a token stream, so a COMMENT
+31a3195 (GREEN) line 701 [stub-throw]: #   throw new Error("not implemented")
+31a3195 (GREEN) line 702 [stub-todo]: #   todo!()
+31a3195 (GREEN) line 703 [stub-todo]: #   unimplemented!("later")
+31a3195 (GREEN) line 704 [stub-raise]: #   raise NotImplementedError
+31a3195 (GREEN) line 705 [stub-gd]: #   push_error("not implemented")
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T154254Z.23731.b
+##### DV-2 restored
+(3j printed no refusal)
+##### DV-2b unmutated
+all hits over .claude/skills/security-audit/validate-findings.cjs (773 lines): 0
+(no empty-handler line)
+##### DV-2b with line 323 (the catch body) deleted
+=== mutate: .claude/skills/security-audit/validate-findings.cjs (1 line(s) changed by 323d) ===
+  323 -           errors.push(`${p}.pattern: invalid regular expression`);
+all hits over .claude/skills/security-audit/validate-findings.cjs (772 lines): 1
+322|empty-handler|} catch (error) {
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_security-audit_validate-findings.cjs.20261030T154457Z.26818.bak) ===
 mutate: no stranded mutation; nothing of a previous run is in the tree.
 ```
 
@@ -2185,9 +2244,9 @@ Reproduces: each line reports only its directive, never its stub row.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-30T05:48:20Z
-    commit: db248cf
-    tree:   7417d200e7b04af5a3f0506847ec7d92fa3096be
+    run:    2026-10-30T15:45:20Z
+    commit: 3ab506f
+    tree:   abb9e88b001c0aca33109fa42729eadbfcd27380
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
