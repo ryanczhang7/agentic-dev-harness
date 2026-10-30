@@ -2781,7 +2781,7 @@ run_boundaries </dev/null
 whole_line "HARNESS-082's return 3 AC-4: the declared [no-cover] is accepted" \
   "ok    suppression [no-cover] in 'src/app.py' is declared in ## Suppressions"
 whole_line "HARNESS-082's return 3 AC-4: declaring [no-cover] does not declare the stub - refused as stub-raise by its whole line" \
-  "$(want_3j "$sup_c" GREEN src/app.py "$sup_n" stub-raise "$R3_AC4_LINE")"
+  "$(want_3j "$sup_c" GREEN src/app.py "$sup_n" stub-raise "$R3_AC4_LINE" " The ## Suppressions line naming 'src/app.py' is missing the rule id [stub-raise].")"
 assert_eq "HARNESS-082's return 3 AC-4: only [no-cover] declared - rc|refusals" \
   "1|1" "$rc|$(sup_nfail)"
 

@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: RED
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -1919,6 +1919,52 @@ scripts/check-boundaries.sh:915:      [ -n "$sup_state" ] && sup_more=" The ## S
 so RED mutates line 915 (drop the suffix) through `mutate.sh` and shows it go
 red, and pastes that below. GREEN is then the already-written source,
 verified by a full run.
+
+#### Return 4, RED - test-developer
+
+Resolved model **claude-opus-5-5**, no override. One assertion changed in
+`.claude/tests/boundaries.test.sh` (line 2784), nothing else; the assertion
+count is unchanged, so the floor (359) stands.
+
+```diff
+-  "$(want_3j "$sup_c" GREEN src/app.py "$sup_n" stub-raise "$R3_AC4_LINE")"
++  "$(want_3j "$sup_c" GREEN src/app.py "$sup_n" stub-raise "$R3_AC4_LINE" " The ## Suppressions line naming 'src/app.py' is missing the rule id [stub-raise].")"
+```
+
+**Earned by mutation** - line 915 of `scripts/check-boundaries.sh` made to
+assign an empty suffix, run against the subset (suite lines 1-109 with line 9
+pointing at the tree's `_lib.sh`, plus the whole 3j section from
+`describe "GREEN and GATES add no suppression to source (HARNESS-081): the fixture"`
+to the end; built in the session scratchpad, never in the tree). The
+corrected assertion goes red, and so do HARNESS-081's three partial-entry
+controls (rows at lines 2449, 2450, 2456), which pin the same suffix:
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/&& sup_more=" The ## Suppressions line naming .\$f. is missing \$sup_state\."/\&\& sup_more=""/) ===
+  915 -       [ -n "$sup_state" ] && sup_more=" The ## Suppressions line naming '$f' is missing $sup_state."
+  915 +       [ -n "$sup_state" ] && sup_more=""
+    FAIL AC-5 control, an entry naming the path but not the rule id: still refused, by the whole line - rc|refusals|line|declared
+         expected: 1|1|1|0
+         actual:   1|1|0|0
+    FAIL AC-5 control, an entry naming path and rule id without approved by: still refused, by the whole line - rc|refusals|line|declared
+         expected: 1|1|1|0
+         actual:   1|1|0|0
+    FAIL AC-5 control, another id bracketed, the right one only bare (A-1): still refused, by the whole line - rc|refusals|line|declared
+         expected: 1|1|1|0
+         actual:   1|1|0|0
+    FAIL HARNESS-082's return 3 AC-4: declaring [no-cover] does not declare the stub - refused as stub-raise by its whole line
+         expected: 1
+         actual:   0
+boundaries: 214 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T134857Z.5706.bak) ===
+  915:       [ -n "$sup_state" ] && sup_more=" The ## Suppressions line naming '$f' is missing $sup_state."
+```
+
+Unmutated subset, same file, after the restore (`mutate.sh --check` clean):
+
+```
+boundaries: 218 passed, 0 failed
+```
 
 ## Diff review
 
