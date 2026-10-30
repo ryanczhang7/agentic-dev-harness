@@ -688,6 +688,46 @@ fi
 # only with a C-3-style control showing the string and URL cases stay clean.
 # The rows are data: a new directive is a new row and nothing else.
 #
+# The stub-* rows are a different kind: a stub stands in for an implementation,
+# and the claim it breaks is "full coverage of the behaviour the story claims",
+# not "the tests are frozen". A stub is an expression, not a comment, so it sits
+# after `(`, `=`, `>`, `,` or `|` as readily as after whitespace, and its anchor
+# is anything but an identifier character or a quote (double, single or
+# backtick), spelled out in every stub row - so `foo(todo!())` and
+# `_ => todo!()` are caught, and `"todo!()"` and `my_todo!(` are not. The rows read a line, not a token stream, so a COMMENT
+# quoting a stub is refused too; that false positive is accepted, and one
+# ## Suppressions line clears it. One example line each, verbatim, so a probe
+# that widens the category test below has a real line per rule:
+#   throw new Error("not implemented")
+#   todo!()
+#   unimplemented!("later")
+#   raise NotImplementedError
+#   push_error("not implemented")
+#   } catch (e) {}
+# stub-throw lets the message carry a prefix inside the quotes, so TypeScript's
+# own quick fix, `throw new Error("Method not implemented.")`, is caught, and so
+# are `not yet implemented` and `NOT IMPLEMENTED`; `"could not open the file"`
+# is not. stub-gd's `false` must end the identifier, so `assert(false_positives
+# == 0)` is clean.
+# `raise NotImplementedError` has one legitimate use, the abstract method, and
+# suppression_hits drops a stub-raise hit whose two previous ADDED lines in the
+# same hunk are a `def` and, above it, `@abstractmethod` or `@abc.abstractmethod`.
+# A decorator that is context is not in the diff, so it does not excuse the raise.
+#
+# An empty handler is usually two lines: an opener, and its closer as the very
+# next ADDED line in the same hunk. A row reads one line, so that shape is not a
+# row; suppression_hits keeps that window itself - see below. The two empty-handler
+# rows are the ONE-line shape the window cannot see, `} catch (e) {}` and
+# `except: pass`, under the same rule id, so one ## Suppressions line declares
+# either; a one-line handler with a body matches neither. The two opener shapes:
+#   } catch (e) {
+#   except Exception:
+# A brace opener must end in `{` and its closer begin with `}`, so `} finally {`
+# closes it too; a colon opener's closer is a lone `pass` or `...`. Allman braces
+# and `.catch(() => {` are not openers, and `catch (e) { log(e) }` has a body.
+# Under --unified=0 an opener that is context never reaches the awk, so a closer
+# added under an existing handler is not refused.
+#
 # The table reaches awk in its input stream, never through `awk -v`: -v
 # processes escapes, and gawk turns `\[` into `[` and dies on the bracket.
 suppression_needles() {
@@ -704,33 +744,81 @@ no-cover|(^|[[:space:];,)}])#[[:space:]]*pragma:[[:space:]]*no[[:space:]]+(cover
 stryker-disable|(^|[[:space:];,)}])(//|/\*|#)[[:space:]]*Stryker[[:space:]]+disable([[:space:]]|$|\*/)
 hadolint-ignore|^[[:space:]]*#[[:space:]]*hadolint[[:space:]]+ignore=
 shellcheck-disable|^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable=
+stub-throw|(^|[^A-Za-z0-9_"'`])throw[[:space:]]+(new[[:space:]]+)?(NotImplementedError[[:space:]]*\(|Error[[:space:]]*\([[:space:]]*["'`][^"'`]*([Nn]ot[[:space:]]*([Yy]et[[:space:]]*)?[Ii]mplemented|NOT[[:space:]]*IMPLEMENTED|TODO|[Uu]nimplemented))
+stub-todo|(^|[^A-Za-z0-9_"'`])(todo|unimplemented|unreachable)!\(
+stub-raise|(^|[^A-Za-z0-9_"'`])raise[[:space:]]+NotImplementedError([[:space:](]|$)
+stub-gd|(^|[^A-Za-z0-9_"'`])(push_error|assert)\([[:space:]]*(false([^A-Za-z0-9_]|$)|"[Nn]ot[[:space:]]+implemented)
+empty-handler|(^|[^A-Za-z0-9_"'`])catch([[:space:]]*\([^)]*\))?[[:space:]]*[{][[:space:]]*[}]
+empty-handler|^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$
 NEEDLES
 }
 
 # suppression_hits   stdin: the needle table, a `--8<-- diff` line, then one
 # file's `git show --unified=0` diff. Prints `<line no>|<rule id>|<line, trimmed>`
-# per ADDED line that matches a row (the first row wins). Only lines after the
+# per rule id an ADDED line matches, in table order; a second row of an id
+# already printed for the line prints nothing more. Only lines after the
 # first `@@` are hunk lines, so the `+++` header is skipped as a header and an
 # added line that happens to begin `++` is still read. The leading `+` is removed
 # before matching, or the `^` of every opener anchor would see it.
+#
+# It also keeps a window over the ADDED lines: the previous one's text (p1), the
+# one before it (p2), and, when p1 was a handler opener, its kind (pk), line
+# number and trimmed text. A hunk header or a `diff --git` line clears all of
+# it, and so does a context line; a `-` line or a `\ No newline` marker does
+# not, because neither sits between two added lines of one hunk. An added line
+# that is not the armed opener's closer disarms it. So an opener whose very
+# next added line is its closer prints `<opener line no>|empty-handler|<opener,
+# trimmed>`, once. A row hit on any line of a handler does not stand in for the
+# handler. The line is still tested as an opener and as a closer, so
+# `except:  # noqa: E722` over `pass` prints both `noqa` and `empty-handler` at
+# the opener's line, and `pass  # noqa: SIM105` under `except ValueError:` prints
+# `noqa` at its own line and `empty-handler` at the opener's. Every row is
+# tested, so a directive never hides what else the line is:
+# `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
+# `empty-handler`, and `raise NotImplementedError  # pragma: no cover` prints
+# `no-cover`, then `stub-raise`, each pair at that line; declaring one does not
+# declare the other. A line that reported empty-handler through a row gets no
+# second one from the window when it is also an opener, so
+# `} catch (A e) {} catch (B e) {` over `}` is refused once. A stub-raise
+# hit is dropped when p1 is a `def` and p2 an
+# `@abstractmethod` - three adjacent added lines, nothing looser - and only that
+# id: the line's other rows are still tested, so `# pragma: no cover` on an
+# abstract method's raise is refused as no-cover. The opener
+# anchor is the stub rows' anchor; its single quote is built from `%c` because
+# this program sits inside a single-quoted shell string.
 suppression_hits() {
   awk '
+    BEGIN {
+      O = "(^|[^A-Za-z0-9_\"" sprintf("%c", 39) "`])"
+      bo = O "catch([[:space:]]*\\([^)]*\\))?[[:space:]]*[{][[:space:]]*$"
+    }
+    function clear() { p1 = ""; p2 = ""; pk = "" }
     !d && $0 == "--8<-- diff" { d = 1; next }
     !d { i = index($0, "|"); if (i) { n++; id[n] = substr($0, 1, i - 1); re[n] = substr($0, i + 1) }; next }
-    /^diff --git / { inh = 0; next }
-    /^@@ / { h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/[^0-9].*$/, "", h); ln = h + 0; inh = 1; next }
+    /^diff --git / { inh = 0; clear(); next }
+    /^@@ / { h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/[^0-9].*$/, "", h); ln = h + 0; inh = 1; clear(); next }
     !inh { next }
     /^\+/ {
-      s = substr($0, 2)
-      for (k = 1; k <= n; k++) if (s ~ re[k]) {
-        t = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+      s = substr($0, 2); eh = 0; split("", seen)
+      t = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+      for (k = 1; k <= n; k++) {
+        if ((id[k] in seen) || s !~ re[k]) continue
+        if (id[k] == "stub-raise" && p1 ~ /^[[:space:]]*(async[[:space:]]+)?def[[:space:]]/ && p2 ~ /^[[:space:]]*@(abc\.)?abstractmethod/) continue
         printf "%d|%s|%s\n", ln, id[k], t
-        break
+        seen[id[k]] = 1
+        if (id[k] == "empty-handler") eh = 1
       }
+      if (!peh && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
+        printf "%d|empty-handler|%s\n", pln, pt
+      pk = ""
+      if (s ~ bo) pk = "brace"
+      else if (s ~ /^[[:space:]]*except([[:space:]]+[^:]+)?:[[:space:]]*(#.*)?$/) pk = "colon"
+      if (pk != "") { pln = ln; peh = eh; pt = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", pt) }
+      p2 = p1; p1 = s
       ln++; next
     }
     /^-/ || /^\\/ { next }
-    { ln++ }
+    { clear(); ln++ }
   '
 }
 
