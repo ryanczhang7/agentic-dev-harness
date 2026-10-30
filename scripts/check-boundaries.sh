@@ -755,7 +755,8 @@ NEEDLES
 
 # suppression_hits   stdin: the needle table, a `--8<-- diff` line, then one
 # file's `git show --unified=0` diff. Prints `<line no>|<rule id>|<line, trimmed>`
-# per ADDED line that matches a row (the first row wins). Only lines after the
+# per rule id an ADDED line matches, in table order; a second row of an id
+# already printed for the line prints nothing more. Only lines after the
 # first `@@` are hunk lines, so the `+++` header is skipped as a header and an
 # added line that happens to begin `++` is still read. The leading `+` is removed
 # before matching, or the `^` of every opener anchor would see it.
@@ -771,15 +772,18 @@ NEEDLES
 # handler. The line is still tested as an opener and as a closer, so
 # `except:  # noqa: E722` over `pass` prints both `noqa` and `empty-handler` at
 # the opener's line, and `pass  # noqa: SIM105` under `except ValueError:` prints
-# `noqa` at its own line and `empty-handler` at the opener's. A line whose
-# winning row is not empty-handler is tested against the empty-handler rows too,
-# so `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
-# `empty-handler`, both at that line; declaring one does not declare the other.
-# A line that reported empty-handler through a row, by either path, gets no
+# `noqa` at its own line and `empty-handler` at the opener's. Every row is
+# tested, so a directive never hides what else the line is:
+# `} catch {} // eslint-disable-line no-empty` prints `eslint-disable`, then
+# `empty-handler`, and `raise NotImplementedError  # pragma: no cover` prints
+# `no-cover`, then `stub-raise`, each pair at that line; declaring one does not
+# declare the other. A line that reported empty-handler through a row gets no
 # second one from the window when it is also an opener, so
 # `} catch (A e) {} catch (B e) {` over `}` is refused once. A stub-raise
 # hit is dropped when p1 is a `def` and p2 an
-# `@abstractmethod` - three adjacent added lines, nothing looser. The opener
+# `@abstractmethod` - three adjacent added lines, nothing looser - and only that
+# id: the line's other rows are still tested, so `# pragma: no cover` on an
+# abstract method's raise is refused as no-cover. The opener
 # anchor is the stub rows' anchor; its single quote is built from `%c` because
 # this program sits inside a single-quoted shell string.
 suppression_hits() {
@@ -795,16 +799,14 @@ suppression_hits() {
     /^@@ / { h = $0; sub(/^@@ -[0-9,]+ \+/, "", h); sub(/[^0-9].*$/, "", h); ln = h + 0; inh = 1; clear(); next }
     !inh { next }
     /^\+/ {
-      s = substr($0, 2); eh = 0
-      for (k = 1; k <= n; k++) if (s ~ re[k]) {
-        if (id[k] == "stub-raise" && p1 ~ /^[[:space:]]*(async[[:space:]]+)?def[[:space:]]/ && p2 ~ /^[[:space:]]*@(abc\.)?abstractmethod/) break
-        t = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+      s = substr($0, 2); eh = 0; split("", seen)
+      t = s; gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+      for (k = 1; k <= n; k++) {
+        if ((id[k] in seen) || s !~ re[k]) continue
+        if (id[k] == "stub-raise" && p1 ~ /^[[:space:]]*(async[[:space:]]+)?def[[:space:]]/ && p2 ~ /^[[:space:]]*@(abc\.)?abstractmethod/) continue
         printf "%d|%s|%s\n", ln, id[k], t
+        seen[id[k]] = 1
         if (id[k] == "empty-handler") eh = 1
-        else for (j = k + 1; j <= n; j++) if (id[j] == "empty-handler" && s ~ re[j]) {
-          printf "%d|empty-handler|%s\n", ln, t; eh = 1; break
-        }
-        break
       }
       if (!peh && (pk == "brace" && s ~ /^[[:space:]]*[}]/ || pk == "colon" && s ~ /^[[:space:]]*(pass|\.\.\.)[[:space:]]*(#.*)?$/))
         printf "%d|empty-handler|%s\n", pln, pt

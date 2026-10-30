@@ -5,7 +5,7 @@ slug: a-stub-added-to-source-in-green-or-gates
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-082-a-stub-added-to-source-in-green-or-gates
 depends_on: [HARNESS-081]      # the 3j walk, the needle table and ## Suppressions are its
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -1804,6 +1804,121 @@ Today's table has **one** `rust-allow` row (`#!?\[(allow|expect)\(`, row 6);
 only `empty-handler` has two. The orchestrator's own Return 3 text says so
 ("`rust-allow` is one row"). The rule is unaffected; the parenthetical is
 wrong.
+
+#### Return 3, GREEN - feature-developer (resolved claude-opus-5-5, no override) - STOPPED: test #18 is wrong
+
+**Code (uncommitted, `scripts/check-boundaries.sh`, `suppression_hits` and its
+two comments only):** every row is tested; one `<n>|<id>|<trimmed>` per
+distinct id, in table order (`split("", seen)` per line, `(id[k] in seen)`
+skips a second row of a printed id); the `@abstractmethod` exclusion is a
+`continue` on the `stub-raise` row; round 2's `for (j = k + 1 ...)` re-test is
+gone; (a) and (c) unchanged, `eh` set when a row prints `empty-handler`.
+
+**Subset** `sub4.test.sh` (scratchpad) regenerated as lines 1-109 + 1985-2878
+of the frozen suite with line 9 the absolute `_lib.sh`; `diff` against the
+existing file: identical. Run against the fix: `boundaries: 217 passed, 1
+failed`, rc 1. The one red:
+
+```
+    FAIL HARNESS-082's return 3 AC-4: declaring [no-cover] does not declare the stub - refused as stub-raise by its whole line
+         expected: 1
+         actual:   0
+```
+
+The neighbouring `rc|refusals` = `1|1` passes, so the stub *is* refused. The
+actual line, from an isolated copy of the same block printing `sup_fails`
+next to the test's `want_3j`:
+
+```
+=== OUT ===
+FAIL  story T-1: commit 3d603bd (GREEN) added a suppression to 'src/app.py' line 1 [stub-raise]: raise NotImplementedError  # pragma: no cover. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line. The ## Suppressions line naming 'src/app.py' is missing the rule id [stub-raise].
+=== WANT ===
+FAIL  story T-1: commit 3d603bd (GREEN) added a suppression to 'src/app.py' line 1 [stub-raise]: raise NotImplementedError  # pragma: no cover. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.
+```
+
+The declared line names `src/app.py` with a different id, so HARNESS-081's
+refusal appends its partial-entry suffix, ` The ## Suppressions line naming
+'src/app.py' is missing the rule id [stub-raise].` - C-4 freezes that text,
+and the suite already pins the same shape at `boundaries.test.sh:2449` ("an
+entry naming the path but not the rule id"). Assertion #18 calls `want_3j`
+without that 7th (suffix) argument, so it cannot match any output the frozen
+refusal text produces. The test is wrong, not the code: the fix is the 7th
+argument, `" The ## Suppressions line naming 'src/app.py' is missing the rule
+id [stub-raise]."`. Its red in RED was red for the wrong reason (no stub line
+at all at ff2bcd2, so the mismatch never showed). Back to RED for that one
+change; nothing in the source needs to move.
+
+**mawk / gawk** (functions extracted from the edited script; return-3 lines,
+the return-1/return-2 two-refusal cases, the round-3 reproduction lines and
+single-rule rows; 30 added lines): gawk 5.4.1 and mawk 1.3.4 20240123
+(WSL, `awk` symlinked to `/usr/bin/mawk`), `cmp` identical. Output:
+
+```
+1|no-cover|raise NotImplementedError  # pragma: no cover
+1|stub-raise|raise NotImplementedError  # pragma: no cover
+2|eslint-disable|let x = todo!(); // eslint-disable-line
+2|stub-todo|let x = todo!(); // eslint-disable-line
+3|coverage-ignore|throw new Error("not implemented") // istanbul ignore next
+3|stub-throw|throw new Error("not implemented") // istanbul ignore next
+4|noqa|push_error("not implemented") # noqa
+4|stub-gd|push_error("not implemented") # noqa
+7|no-cover|raise NotImplementedError  # pragma: no cover
+13|noqa|except:  # noqa: E722
+13|empty-handler|except:  # noqa: E722
+16|noqa|pass  # noqa: SIM105
+15|empty-handler|except ValueError:
+17|eslint-disable|} catch {} // eslint-disable-line no-empty
+17|empty-handler|} catch {} // eslint-disable-line no-empty
+18|noqa|except OSError: ...  # noqa: S112
+18|empty-handler|except OSError: ...  # noqa: S112
+19|empty-handler|} catch (IOException e) {} catch (Exception e) {
+22|eslint-disable|} // eslint-disable-line
+21|empty-handler|catch (err) {
+23|no-cover|raise NotImplementedError("subclass")  # pragma: no cover
+23|stub-raise|raise NotImplementedError("subclass")  # pragma: no cover
+24|coverage-ignore|unimplemented!() // c8 ignore next
+24|stub-todo|unimplemented!() // c8 ignore next
+25|type-ignore|raise NotImplementedError  # type: ignore[misc]
+25|stub-raise|raise NotImplementedError  # type: ignore[misc]
+26|eslint-disable|// eslint-disable-next-line @typescript-eslint/no-explicit-any
+27|noqa|x = eval(s)  # noqa: S307
+28|rust-allow|#[allow(dead_code)]
+29|empty-handler|} catch (e) {}
+```
+
+(Line 10, an `@abstractmethod` raise with no directive, prints nothing.)
+
+**Not done, because the suite cannot go green until #18 is corrected:** the
+four mutations, the full `boundaries.test.sh` run, `gates.sh --fast`. They
+belong to the GREEN after the RED fix, against the corrected assertion.
+
+### Return 4 - from GREEN, a wrong test (2026-10-30)
+
+**Which test.** `HARNESS-082's return 3 AC-4: declaring [no-cover] does not
+declare the stub - refused as stub-raise by its whole line`. It expects
+`want_3j "$sup_c" GREEN src/app.py "$sup_n" stub-raise "$R3_AC4_LINE"` with
+no suffix, but the story declares `src/app.py` under `[no-cover]`, so
+HARNESS-081's refusal (C-4, frozen) appends the partial-entry suffix
+` The ## Suppressions line naming 'src/app.py' is missing the rule id
+[stub-raise].` It was red in RED for the wrong reason: no stub refusal
+existed at ff2bcd2, so the missing suffix never showed.
+
+**How found.** The GREEN feature-developer stopped on it (block above). The
+orchestrator confirmed it independently, on a different path and ids, from
+the shipped helper and the frozen suite:
+
+```
+$ printf -- '- `lib/x.rs` [eslint-disable] approved by sam: generated\n' | suppression_declared lib/x.rs stub-todo
+the rule id [stub-todo]
+scripts/check-boundaries.sh:915:      [ -n "$sup_state" ] && sup_more=" The ## Suppressions line naming '$f' is missing $sup_state."
+.claude/tests/boundaries.test.sh:2449:an entry naming the path but not the rule id| The ## Suppressions line naming 'src/main.ts' is missing the rule id [eslint-disable].|...
+```
+
+**What it asserts now.** The same whole line with the suffix as `want_3j`'s
+7th argument. **What earns it**: the corrected assertion passes on arrival,
+so RED mutates line 915 (drop the suffix) through `mutate.sh` and shows it go
+red, and pastes that below. GREEN is then the already-written source,
+verified by a full run.
 
 ## Diff review
 
