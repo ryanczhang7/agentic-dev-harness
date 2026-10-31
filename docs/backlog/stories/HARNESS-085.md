@@ -1,6 +1,6 @@
 ---
 id: HARNESS-085
-title: The full gate run, the self-test and check-boundaries run in an opus dispatch that returns a verdict
+title: The full gate run and the self-test run in an opus dispatch that returns a verdict
 slug: the-full-gate-run-the-self-test-and-chec
 epic: 
 type: feature
@@ -15,18 +15,23 @@ required_gates: []  # gate ids that are optional for the repo but binding for TH
 ## Context
 
 Second of four (HARNESS-084..087). Today the orchestrator, on `fable`, runs
-the three longest commands of a story itself and waits: the full `bash
-scripts/gates.sh` at GREEN → GATES, `SELFTEST_JOBS=4 bash scripts/selftest.sh`
-at GATES → REVIEW step 2 (336 s at best on this host, 1-5 hours beside
-other runs, HARNESS-036/050..068), and `bash scripts/check-boundaries.sh` at
-step 5. A run spends no tokens while it executes, but the turn that follows
-it re-sends the orchestrator's whole context, and a multi-hour wait outlasts
-the prompt cache, so the next turn re-reads everything uncached. The user's
-decision: these three run in a **feature-developer** dispatch on the GATES
+the two longest commands of a story itself and waits: the full `bash
+scripts/gates.sh` at GREEN → GATES, and `SELFTEST_JOBS=4 bash
+scripts/selftest.sh` at GATES → REVIEW step 2 (336 s at best on this host,
+1-5 hours beside other runs, HARNESS-036/050..068). A run spends no tokens
+while it executes, but the turn that follows it re-sends the orchestrator's
+whole context, and a multi-hour wait outlasts the prompt cache, so the next
+turn re-reads everything uncached. The user's decision: these two run in a
+**feature-developer** dispatch on the GATES
 row of `.claude/harness/models.conf` (`opus`, a fresh and small context),
 which returns a verdict - exit status, last line, duration, log path - and the
 orchestrator checks that verdict with `bash scripts/attest.sh check`
 (HARNESS-084) rather than running the command.
+
+`bash scripts/check-boundaries.sh` at step 5 stays the orchestrator's own run.
+It takes seconds, so a dispatch would cost more tokens than the wait it
+saves; the user decided to keep it inline (see `## Notes`), and AC-3 pins
+that it is not dispatched.
 
 The precedent is the diff review (HARNESS-068): a fresh feature-developer
 dispatched on the GATES row that changes no file and returns a report. This
@@ -67,9 +72,10 @@ procedure` must stay green unchanged.
   *Control:* the step as it reads today (the orchestrator runs it) is
   reported with exactly one line.
 - **AC-3** — Given the same steps, when the step holding
-  `` `bash scripts/check-boundaries.sh` `` is read, then it names a
-  `feature-developer` dispatch and `bash scripts/attest.sh check -- bash
-  scripts/check-boundaries.sh`, and still comes after the commit step.
+  `` `bash scripts/check-boundaries.sh` `` is read, then it does not name
+  `feature-developer`, so the orchestrator still runs it itself, and it still
+  comes after the commit step. *Control:* a fixture whose step dispatches it
+  to a `feature-developer` is reported with exactly one line.
 - **AC-4** — Given complete-story.md and lead-po.md, when they are read, then
   complete-story.md's GATES → REVIEW bullet names the `feature-developer`
   dispatch and `verdict`, and lead-po.md's `## Orchestrating` section names
@@ -96,7 +102,7 @@ RED may amend any block in place, with a reason; GREEN builds what the
 amended block says.
 
 **C-1. The dispatch brief, as advance-story.md will state it.** One shape,
-used three times. Dispatch a **feature-developer** on the GATES row of
+used twice. Dispatch a **feature-developer** on the GATES row of
 `models.conf`, with: the worktree's absolute path and "run every command
 from there"; exactly one command to run, through `bash scripts/attest.sh --
 <command>`; "change nothing unless the command is `bash scripts/gates.sh`
@@ -112,7 +118,7 @@ reads `exit:` and `last:` from the record, and records the resolved model in
 what it says it ran on the tree that is there: send it back, and say so in
 `## Notes`.
 
-**C-2. The three sites in advance-story.md.**
+**C-2. The two sites in advance-story.md, and the one that stays.**
 
 - `**GREEN → GATES.**` region: `Then run `bash scripts/gates.sh`.` becomes
   the C-1 dispatch for `bash scripts/gates.sh`. The paragraphs that follow
@@ -127,32 +133,31 @@ what it says it ran on the tree that is there: send it back, and say so in
   passed.`) and `duration:` into `## Notes`, as the step asks today for the
   exit status, last line and duration. The timing history in the step
   (336 s, 1,135 s, 2,894-17,015 s) stays as the subagent's expectation.
-- Step 5: after the commit, the C-1 dispatch for `bash
-  scripts/check-boundaries.sh`; the orchestrator fixes what it reports before
-  pushing, as today.
+- Step 5 is unchanged: the orchestrator runs `bash
+  scripts/check-boundaries.sh` itself after the commit and fixes what it
+  reports before pushing. No dispatch: it takes seconds.
 
 Needles, so GREEN and RED agree on the strings (settled, read out):
 `feature-developer`, `GATES row`, `bash scripts/attest.sh -- bash
 scripts/gates.sh`, `bash scripts/attest.sh check -- bash scripts/gates.sh`,
 `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh`,
-`bash scripts/attest.sh check -- bash scripts/check-boundaries.sh`, `exit
-status`, `last line`, `duration`, `log`, `detached`, `alone`, `verdict`.
+`exit status`, `last line`, `duration`, `log`, `detached`, `alone`, `verdict`.
 `procedure.test.sh`'s needles (`STEP_SELFTEST`, `STEP_PHASE`,
 `STEP_BOUNDARIES`, `STEP_NEEDED`, `STEP_REVIEW`, `STEP_WORDS`) are untouched
 and in the same steps and order; its `allowed-tools` entries stay, because the
 orchestrator may still run any of them when a check answers `stale`.
 
 **C-3. complete-story.md and lead-po.md.** complete-story's `GATES → REVIEW
-opens with a review` bullet gains: the full gates, the self-test and
-check-boundaries each run in a `feature-developer` dispatch that returns a
+opens with a review` bullet gains: the full gates and the self-test each run
+in a `feature-developer` dispatch that returns a
 `verdict` the orchestrator checks with `bash scripts/attest.sh check`.
 lead-po.md `## Orchestrating`: the sentence `Verification is a ladder, and
 every rung is something you run, not something you are told` becomes one
 that says every rung is something you run **or have run under
 `scripts/attest.sh` and check**, and a new paragraph says the long runs -
-`bash scripts/gates.sh`, `SELFTEST_JOBS=4 bash scripts/selftest.sh`,
-`bash scripts/check-boundaries.sh` - go to a `feature-developer` on the GATES
-row, with the C-1 brief. `reporting.test.sh` reads `## Orchestrating` for its
+`bash scripts/gates.sh` and `SELFTEST_JOBS=4 bash scripts/selftest.sh` - go
+to a `feature-developer` on the GATES row, with the C-1 brief, while
+`bash scripts/check-boundaries.sh` stays the orchestrator's own run. `reporting.test.sh` reads `## Orchestrating` for its
 reference to the reporting rule, which stays; `phase.test.sh` needs `bash
 scripts/plan.sh after` in the file, which stays.
 
@@ -180,7 +185,7 @@ floors. Floors: `floor | dispatch | N` in `floors.conf` and the same N in
 |---|---|---|
 | advance-story `**GREEN → GATES.**` region | contains `feature-developer`, `GATES row`, `bash scripts/attest.sh check -- bash scripts/gates.sh` | `GREEN → GATES does not dispatch the full gate run` |
 | advance-story step holding STEP_SELFTEST | contains `feature-developer`, `detached`, `alone`, `verdict`, `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh` | `the self-test step does not dispatch the run` |
-| advance-story step holding STEP_BOUNDARIES | contains `feature-developer`, `bash scripts/attest.sh check -- bash scripts/check-boundaries.sh` | `the check-boundaries step does not dispatch the run` |
+| advance-story step holding STEP_BOUNDARIES | does not contain `feature-developer` | `the check-boundaries step dispatches a run that takes seconds` |
 | complete-story GATES → REVIEW bullet | contains `feature-developer` and `verdict` | `its GATES → REVIEW bullet does not name the dispatch` |
 | lead-po `## Orchestrating` | a paragraph contains both `SELFTEST_JOBS=4 bash scripts/selftest.sh` and `feature-developer`; `every rung is something you run, not` absent | `does not dispatch long runs` / `still runs every rung itself` |
 | feature-developer.md | a line exactly `## Run and report`; the section contains `bash scripts/attest.sh --`, `exit:`, `last:`, `duration:`, `log:`, `change nothing`, `alone` | `has no ## Run and report section` / `## Run and report does not say <needle>` |
@@ -234,8 +239,10 @@ name, below the table.
   `rules.md` ownership row, which HARNESS-087 is reshaping.
 - `ci-local.sh`: unchanged. It is the user's single-machine CI rehearsal and
   mirrors the workflow files by construction.
-- Dispatching `selftest-needed.sh`, the diff review (already a dispatch) or
-  `phase.sh`: the orchestrator's, as today.
+- Dispatching `selftest-needed.sh`, the diff review (already a dispatch),
+  `phase.sh` or `check-boundaries.sh`: the orchestrator's, as today.
+  `check-boundaries.sh` takes seconds, so a dispatch would cost more than it
+  saves.
 - Shortening the self-test or changing `SELFTEST_JOBS`.
 - Whether the runtime lets a subagent outlast a multi-hour background
   command. The step already says to run it detached; if a dispatch comes back
@@ -264,4 +271,11 @@ name, below the table.
      edit it. -->
 
 ## Notes
+
+- 2026-10-31, while PLANNED: the first cut also dispatched
+  `check-boundaries.sh`. The PO flagged that a seconds-long check costs more
+  tokens to dispatch than it saves, and the user decided to keep it as the
+  orchestrator's own run. AC-3 was rewritten to pin that, and C-1, C-2, C-3,
+  C-5, the title and `## Out of scope` were changed to match. The branch name
+  keeps the original slug.
 
