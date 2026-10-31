@@ -3311,4 +3311,97 @@ gl_refused "HARNESS-083 C-1: evidence | unit deleted by the commit that sets REV
 # main, so there is nothing to undo; leave main checked out.
 git -C "$FIX" checkout -q main 2>/dev/null
 
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 return 1: project.conf read as gates.sh reads it - any non-required severity, the first evidence line, the lowest repeated flag, a deleted file"
+
+# Return 1 (GATES -> RED), from the diff review's findings 1-4 and C-2's block
+# amended at GATES -> REVIEW. No acceptance criterion changed; each case pins
+# what gates.sh actually enforces, where the first cut read the file otherwise.
+
+# Severity. gates.sh treats a gate as required only when field 3 is exactly
+# `required` (`[ "$req" = "required" ]`, gates.sh 530/821), so ANY other after
+# value loosens it, and the finding names the value it became - an empty field
+# names nothing, so the finding ends `required -> ` and the refusal's `.`
+# follows the space.
+gl_covcmd='. | cargo llvm-cov --workspace --no-fail-fast --fail-under-lines 80'
+for gl_sev in advisory Required ''; do
+  conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_COV" "gate | coverage  | $gl_sev | $gl_covcmd")" </dev/null
+  run_boundaries </dev/null
+  gl_refused "HARNESS-083 return 1: gate | coverage required -> '$gl_sev'" GREEN "coverage: required -> $gl_sev"
+done
+
+# Controls. A gate optional BEFORE is not loosened by any after value (AC-3's
+# optional -> required control stands above); and `required` padded with
+# spaces trims to `required`, as gates.sh's `field` trims it.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" 'gate | integration | optional | . | pnpm exec playwright test' 'gate | integration | advisory | . | pnpm exec playwright test')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 1 control: gate | integration optional -> advisory (not required before)"
+
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_COV" "gate | coverage  |   required   | $gl_covcmd")" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 1 control: gate | coverage 'required' re-padded with spaces is still required"
+
+# Evidence. gates.sh's table_get takes the FIRST evidence line of a gate
+# (gates.sh 306-313), so `-` inserted ABOVE an unchanged real line turns the
+# unit gate's evidence off while the real line still exists.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_EVID" 'evidence | unit        | -'$'\n'"$GL_EVID")" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 return 1: evidence | unit | - inserted above the unchanged real evidence line" GREEN 'unit: evidence line removed'
+
+# Controls: the first line is still the real regex in both.
+conf_story GREEN "$GL_BASE" "$(gl_after "$GL_BASE" "$GL_EVID" 'evidence | unit        | [1-9][0-9]* tests? passed')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 1 control: a second real evidence | unit line added below the first"
+
+conf_story GREEN "$GL_BASE" "$(gl_after "$GL_BASE" "$GL_EVID" 'evidence | unit        | -')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 1 control: evidence | unit | - added BELOW the real line, which stays first"
+
+# Threshold repeated. Parsers disagree on whether the first or the last repeat
+# wins (argparse, under pytest-cov, takes the last), so the before value - the
+# first occurrence - is compared with the LOWEST occurrence after.
+gl_py90='gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=90'
+gl_before="$(gl_swap "$GL_BASE" "$GL_COV" "$gl_py90")"
+conf_story GREEN "$gl_before" "$(gl_swap "$gl_before" "$gl_py90" "$gl_py90 --cov-fail-under=10")" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 return 1: --cov-fail-under=90 repeated as --cov-fail-under=10" GREEN 'coverage: threshold lowered --cov-fail-under 90 -> 10'
+
+conf_story GREEN "$gl_before" "$(gl_swap "$gl_before" "$gl_py90" "$gl_py90 --cov-fail-under=95")" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 1 control: --cov-fail-under=90 repeated as --cov-fail-under=95 (higher)"
+
+# Three occurrences, the lowest in the MIDDLE: neither "first wins" (80) nor
+# "last wins" (90) sees it; only the lowest does.
+conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_COV" "$GL_COV --fail-under-lines 30 --fail-under-lines 90")" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 return 1: --fail-under-lines 80 repeated as 30 then 90 - the lowest, in the middle" GREEN 'coverage: threshold lowered --fail-under-lines 80 -> 30'
+
+# Deleted. A GREEN commit that removes project.conf is compared with an empty
+# after side: one `gate removed` per gate and `discovery line removed` per
+# discovery id, in the before file's order - and nothing for the removed gates'
+# evidence, floor, covers or slow lines. PASSES ON ARRIVAL (GREEN chose this);
+# earned by mutate.sh no-op'ing the deleted-file branch (## Regressions,
+# Return 1).
+_src_branch
+_src_story RED "$GL_PATH"
+printf '%s\n' "$GL_BASE" > "$FIX/$GL_PATH"
+commit_all "T-1 RED: project.conf as it stood before"
+_src_story GREEN "$GL_PATH"
+git -C "$FIX" rm -q "$GL_PATH" >/dev/null 2>&1
+commit_all "T-1 GREEN deletes project.conf"
+gl_c="$(_short)"
+_src_story REVIEW "$GL_PATH"
+commit_all "T-1 to review"
+run_boundaries </dev/null
+gl_del=""
+for gl_f in 'format: gate removed' 'lint: gate removed' 'unit: gate removed' 'coverage: gate removed' \
+            'integration: gate removed' 'build: gate removed' 'mutation: gate removed' 'platform: discovery line removed'; do
+  gl_del="$gl_del${gl_del:+$'\n'}$(want_gl "$gl_c" GREEN "$gl_f")"
+done
+assert_eq "HARNESS-083 return 1: project.conf deleted by a GREEN commit - every gate removed and the discovery line, whole lines in the before file's order" \
+  "$gl_del" "$(gl_fails)"
+assert_eq "HARNESS-083 return 1: project.conf deleted - rc|FAIL lines (seven gates, one discovery id)" "1|8" "$rc|$(grep -c '^FAIL' <<< "$out")"
+
+git -C "$FIX" checkout -q main 2>/dev/null
+
 summary "boundaries"

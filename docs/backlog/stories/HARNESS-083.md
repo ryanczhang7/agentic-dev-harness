@@ -5,7 +5,7 @@ slug: a-gate-loosened-in-project-conf-during-g
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-083-a-gate-loosened-in-project-conf-during-g
 depends_on: [HARNESS-081]      # reuses 3j's commit walk and the ## Suppressions escape hatch
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -185,6 +185,36 @@ findings.
   is deterministic.
 - **Severity**: a gate is "required" on a side when that side's `gate`
   line's field 3 trimmed is exactly `required`.
+
+*Amended at GATES -> REVIEW (2026-10-31), approved by the user ("Fix all 5"),
+after the diff review below; no acceptance criterion changes.* Each of these
+makes the table read `project.conf` as `gates.sh` reads it, where the first
+cut did not:
+
+- **Severity.** `required -> optional` becomes `required -> <after>` for
+  **any** after severity that is not exactly `required`, because `gates.sh`
+  treats every such value as optional (`[ "$req" = "required" ]`) and
+  `--audit` does not reject an unknown one. The pinned string for the
+  `optional` case is unchanged; `advisory`, `Required` and an empty field
+  print `required -> advisory`, `required -> Required`, `required -> ` (the
+  empty after value, nothing after the space).
+- **Evidence.** Replaces "the gate has that kind if any line of it exists"
+  for evidence: compare the **first** evidence line on each side, as
+  `gates.sh`'s `table_get` does. Before's first is a real regex and after's
+  first is `-` or absent, so `evidence line removed`. A second evidence line
+  added below the first is no finding. `floor` already compares first lines.
+- **Threshold flags.** Replaces "compare the first occurrence of each flag
+  name on each side" for the after side: the before value is the first
+  occurrence; a finding is `threshold lowered <flag> <before> -> <after>`
+  where `<after>` is the **lowest** value of that flag name on the after side,
+  when it is below the before value. Argument parsers disagree on whether the
+  first or last repeat wins (argparse, under pytest-cov, takes the last), so
+  any lower repeat is refused. `threshold removed` is unchanged: no occurrence
+  after.
+- **Deleted file.** A commit that deletes `project.conf` (a rename included)
+  is compared against an empty after side: one `gate removed` per gate and
+  `discovery line removed` per discovery id, in before-file order. GREEN
+  chose this; it is now pinned and tested.
 
 **C-3. What the escape hatch names.** The entry's path is
 `.claude/harness/project.conf` and the rule id is `gate-loosened`, so one
@@ -800,6 +830,91 @@ should target the shipped line
 (one match in the file; M2 above used the same anchor). The full selftest
 (`bash scripts/selftest.sh`) was not run here; only `boundaries` was.
 
+#### RED return 1
+
+Test Developer, return 1 (GATES -> RED). Dispatched as `test-developer`
+(declares `opus`); ran as **claude-opus-5-5**, no override. Remit: the four
+missing tests of `## Regressions`, Return 1; no existing assertion was touched.
+
+**Command.** `bash .claude/tests/boundaries.test.sh` (full, ~45 min locally).
+For iteration, the subset `...\scratchpad\sub083r1.test.sh` - the suite's
+lines 1-109, 1985-2091 and 2879-end, line 9 rewritten to the absolute
+`_lib.sh` path - runs the HARNESS-081 fixture and every HARNESS-083 describe
+(108 assertions, ~11 min).
+
+**Files touched.** `.claude/tests/boundaries.test.sh` (one new describe,
+"HARNESS-083 return 1: ...", after the C-1/C-2 describe and before
+`summary`); `.claude/tests/floors.conf` (boundaries 442 -> 466, with a
+comment); `.claude/tests/selftest.test.sh` (its copy, 442 -> 466); this story
+(`## Handoff`, `## Regressions`).
+
+**Export shape.** Unchanged and not constrained beyond what C-1/C-2 already
+pin: `project_conf_loosenings <before-file> <after-file>` printing
+`<id>\t<what>\t<before>\t<after>`; the tests read only `check-boundaries.sh`'s
+output, through the existing helpers (`want_gl`, `gl_refused`, `gl_clean`,
+`gl_fails`). How the awk picks the first evidence line or the lowest repeat
+is the implementer's choice.
+
+**The new cases and what each asserts** (all GREEN commits; `gl_refused` =
+whole line + `rc|FAIL lines` = `1|1`; `gl_clean` = `rc|FAIL lines` = `0|` +
+`ok    GREEN/GATES added no suppression (1 commit(s) judged)`):
+
+| # | case | expected | on shipped a6f648c |
+|---|---|---|---|
+| 1 | `gate \| coverage \| required` -> `advisory` | refused `coverage: required -> advisory` | RED (0 / `0\|0`) |
+| 2 | -> `Required` | refused `coverage: required -> Required` | RED |
+| 3 | -> empty field (`gate \| coverage  \|  \| . \| ...`) | refused `coverage: required -> ` - the finding ends in a space, so the whole line reads `...[gate-loosened]: coverage: required -> . A gate is never...` | RED |
+| 4 | control: `gate \| integration` optional -> advisory | silent, judged | passes |
+| 5 | control: `required` re-padded `\|   required   \|` | silent, judged | passes |
+| 6 | `evidence \| unit        \| -` inserted ABOVE the unchanged real line | refused `unit: evidence line removed` | RED |
+| 7 | control: a second real line `evidence \| unit \| [1-9][0-9]* tests? passed` added BELOW | silent, judged | passes |
+| 8 | control: `evidence \| unit \| -` added BELOW the real line | silent, judged | passes |
+| 9 | `--cov-fail-under=90` -> `--cov-fail-under=90 --cov-fail-under=10` | refused `coverage: threshold lowered --cov-fail-under 90 -> 10` | RED |
+| 10 | control: `--cov-fail-under=90` -> `... =90 --cov-fail-under=95` | silent, judged | passes |
+| 11 | `--fail-under-lines 80` -> `... 80 --fail-under-lines 30 --fail-under-lines 90` | refused `coverage: threshold lowered --fail-under-lines 80 -> 30` (lowest, in the middle: neither first-wins 80 nor last-wins 90 finds it) | RED |
+| 12 | `git rm .claude/harness/project.conf` in a GREEN commit | `gl_fails` equals, in order: `format`, `lint`, `unit`, `coverage`, `integration`, `build`, `mutation: gate removed`, then `platform: discovery line removed` (each a whole `want_gl` line); `rc\|FAIL lines` = `1\|8` | passes on arrival (GREEN built it); earned by mutation, `## Regressions` Return 1 |
+
+The existing `coverage: required -> optional` (AC-3), `optional -> required`
+control (AC-3) and every other HARNESS-083 assertion are unchanged and must
+stay green.
+
+**Negative controls - expected values.** Every control's expected value is
+`rc|FAIL lines` = `0|` (exit 0, no FAIL line at all) and exactly one
+`ok    GREEN/GATES added no suppression (1 commit(s) judged)` line. Unlike
+the first RED, these were **observed**, not claimed: the suite loads, so
+every control executed against the shipped code, and all five measured
+`0|` and the judged line (10 assertions green). GREEN re-measures them
+against its own code; the risk they guard is an over-broad fix:
+
+| control | the over-broad fix it catches |
+|---|---|
+| 4 optional -> advisory | `SEV[2] != "required"` without `SEV[1] == "required"` |
+| 5 `required` re-padded | comparing untrimmed severities |
+| 7 real line added below | "any line differs" / "the last line wins" |
+| 8 `-` added below | "any `-` line means no evidence" |
+| 10 higher repeat | "a repeat of a flag is a finding" / "last differs" |
+
+**Failure output** (subset, against shipped a6f648c, local):
+
+    boundaries: 96 passed, 12 failed
+
+The 12 reds are cases 1-3, 6, 9 and 11, both assertions each, every one
+`expected: 1 / actual: 0` (whole line) and `expected: 1|1 / actual: 0|0`;
+the full listing is in `## Regressions`, Return 1.
+
+**New floor.** `boundaries` 466 (442 + 24), in `floors.conf` and
+`selftest.test.sh`. Until GREEN lands the suite executes 466 and passes 454 -
+below its floor, expected in RED.
+
+**For GREEN.** Change `project_conf_loosenings` only (C-2's amended block):
+(a) `SEV[1, id] == "required" && SEV[2, id] != "required"` printing
+`"required -> " SEV[2, id]` - case 3's trailing space survives
+`read -r sup_gid sup_what _` with `IFS=$'\t'`, since space is not in IFS;
+(b) record per side only the **first** evidence line's value and compare
+"first is a real regex before, `-` or absent after"; (c) in `flags()`, keep
+the first occurrence on side 1 but the **minimum** on side 2 (today the
+`if ((s, id, nm) in FV) continue` keeps the first on both).
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -824,6 +939,194 @@ should target the shipped line
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### Return 1 (GATES -> RED, 2026-10-31)
+
+- **What was wrong.** No test was wrong; four behaviours were missing a
+  test, and three of those are holes in the code that the tests did not
+  demand. (1) A required gate's severity changed to anything but `optional`
+  (`advisory`, `Required`, empty) was silent, while `gates.sh` reads it as
+  optional. (2) An `evidence | g | -` line added **above** the real one was
+  silent; `gates.sh` uses the first. (3) A threshold flag repeated with a
+  lower value (`--cov-fail-under=90 --cov-fail-under=10`) was silent.
+  (4) Deleting `project.conf` reports every gate removed, but no test pins it.
+- **How found.** The fresh diff review at GATES -> REVIEW (`## Diff review`,
+  findings 1-4). The orchestrator reproduced 1-3 on its own inputs: GREEN's
+  function, extracted from `scripts/check-boundaries.sh` at a6f648c, prints
+  nothing for each pair, where each needs a finding:
+
+```
+== b1 -> a1:      (gate | unit | required -> advisory)
+== b1 -> a2:      (evidence | unit | - inserted above evidence | unit | ok [0-9]+)
+== b3 -> a3:      (pytest --cov-fail-under=90 -> --cov-fail-under=90 --cov-fail-under=10)
+```
+
+  and confirmed from `scripts/gates.sh` lines 306-313 (`table_get`: first
+  match wins) and 530/821 (`[ "$req" = "required" ]`) that each pair weakens
+  what `gates.sh` enforces.
+- **What the new tests assert.** The amended C-2 bullets above: `required ->
+  <after>` for any non-`required` after severity, with `optional -> required`
+  and `required -> required` still silent; first-evidence-line comparison,
+  with a second real line added below silent; the lowest repeat of a flag
+  name compared, with a higher repeat silent; a deletion refused with one
+  `gate removed` per gate.
+- **What earns them.** (1)-(3) fail on arrival against GREEN's code, so RED
+  watches them fail. (4) passes on arrival and is earned by `mutate.sh`
+  replacing the deleted-file branch with `continue`, pasted below by RED.
+- **GREEN after this return** changes `project_conf_loosenings` only.
+
+
+#### RED (return 1) - test-developer
+
+Ran as **claude-opus-5-5** (`test-developer`, declares `opus`; no override).
+One new describe in `.claude/tests/boundaries.test.sh`, "HARNESS-083 return
+1: ...", 24 assertions; nothing existing edited. The cases, the controls and
+their expected values are tabled in `## Handoff`, "RED return 1".
+
+**(1)-(3) fail on arrival, for the right reason** - no finding printed, so
+neither the whole refusal line (`expected: 1 / actual: 0`) nor the exit
+(`expected: 1|1 / actual: 0|0`) appears; not an error, not a fixture bug (no
+`FIXTURE BUG` line in the run). The subset `...\scratchpad\sub083r1.test.sh`
+(the HARNESS-081 fixture and every HARNESS-083 describe, from the edited
+suite) against the shipped `scripts/check-boundaries.sh` at a6f648c, local,
+2026-10-31; this describe's output, whole:
+
+      HARNESS-083 return 1: project.conf read as gates.sh reads it - any non-required severity, the first evidence line, the lowest repeated flag, a deleted file
+        FAIL HARNESS-083 return 1: gate | coverage required -> 'advisory': refused by the whole line naming 'coverage: required -> advisory'
+             expected: 1
+             actual:   0
+        FAIL HARNESS-083 return 1: gate | coverage required -> 'advisory': and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+             expected: 1|1
+             actual:   0|0
+        FAIL HARNESS-083 return 1: gate | coverage required -> 'Required': refused by the whole line naming 'coverage: required -> Required'
+             expected: 1
+             actual:   0
+        FAIL HARNESS-083 return 1: gate | coverage required -> 'Required': and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+             expected: 1|1
+             actual:   0|0
+        FAIL HARNESS-083 return 1: gate | coverage required -> '': refused by the whole line naming 'coverage: required -> '
+             expected: 1
+             actual:   0
+        FAIL HARNESS-083 return 1: gate | coverage required -> '': and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+             expected: 1|1
+             actual:   0|0
+        FAIL HARNESS-083 return 1: evidence | unit | - inserted above the unchanged real evidence line: refused by the whole line naming 'unit: evidence line removed'
+             expected: 1
+             actual:   0
+        FAIL HARNESS-083 return 1: evidence | unit | - inserted above the unchanged real evidence line: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+             expected: 1|1
+             actual:   0|0
+        FAIL HARNESS-083 return 1: --cov-fail-under=90 repeated as --cov-fail-under=10: refused by the whole line naming 'coverage: threshold lowered --cov-fail-under 90 -> 10'
+             expected: 1
+             actual:   0
+        FAIL HARNESS-083 return 1: --cov-fail-under=90 repeated as --cov-fail-under=10: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+             expected: 1|1
+             actual:   0|0
+        FAIL HARNESS-083 return 1: --fail-under-lines 80 repeated as 30 then 90 - the lowest, in the middle: refused by the whole line naming 'coverage: threshold lowered --fail-under-lines 80 -> 30'
+             expected: 1
+             actual:   0
+        FAIL HARNESS-083 return 1: --fail-under-lines 80 repeated as 30 then 90 - the lowest, in the middle: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+             expected: 1|1
+             actual:   0|0
+
+    boundaries: 96 passed, 12 failed
+
+The five controls and the deleted-file pair in the same run passed (12 green
+of this describe's 24; 84 earlier HARNESS-081/083 assertions green, as before).
+
+**(4) passes on arrival and is earned by a mutation.** The deleted-file branch
+of 3j - the one line comparing the before text with `/dev/null` - replaced by
+`sup_hits=""` (the brief said `continue`; an empty hit list is the same
+no-op without leaving the `for` loop's control flow in question). Dry run
+first, without writing: `sed -e '<expr>' scripts/check-boundaries.sh | diff
+scripts/check-boundaries.sh -` changed exactly line 1050. Then, against a
+narrow subset `...\scratchpad\sub083del.test.sh` (suite lines 1-109,
+1985-2091, the HARNESS-083 helpers 2879-3015, and this describe's deleted
+case to the end):
+
+    bash scripts/mutate.sh scripts/check-boundaries.sh '/ \/dev\/null)"$/s/sup_hits=.*/sup_hits=""/' -- bash .../scratchpad/sub083del.test.sh
+
+    === mutate: scripts/check-boundaries.sh (1 line(s) changed by / \/dev\/null)"$/s/sup_hits=.*/sup_hits=""/) ===
+      1050 -         sup_hits="$(project_conf_loosenings <(git show "$c^:$f" 2>/dev/null) /dev/null)"
+      1050 +         sup_hits=""
+
+    === mutate: running bash /c/Users/ryanc/AppData/Local/Temp/claude/D--agentic-dev-harness/4326bddd-3530-40cd-9f72-26679346bd6b/scratchpad/sub083del.test.sh ===
+
+      GREEN and GATES add no suppression to source (HARNESS-081): the fixture
+
+      HARNESS-083: a gate loosened in project.conf during GREEN or GATES - the fixture
+        FAIL HARNESS-083 return 1: project.conf deleted by a GREEN commit - every gate removed and the discovery line, whole lines in the before file's order
+             expected: FAIL  story T-1: commit 7a1c572 (GREEN) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: format: gate removed. A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason.
+             [7 further expected lines elided: lint, unit, coverage, integration, build, mutation: gate removed; platform: discovery line removed]
+             actual:   
+        FAIL HARNESS-083 return 1: project.conf deleted - rc|FAIL lines (seven gates, one discovery id)
+             expected: 1|8
+             actual:   0|0
+
+    boundaries: 1 passed, 2 failed
+
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261031T165137Z.12589.bak) ===
+      1050:         sup_hits="$(project_conf_loosenings <(git show "$c^:$f" 2>/dev/null) /dev/null)"
+
+Both assertions of case (4) go red and nothing else does; the restore is
+verified by `cmp`, and afterwards:
+
+    bash scripts/mutate.sh --check
+    mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+**The full suite**, edited, against the shipped `check-boundaries.sh`
+(a6f648c), local, 2026-10-31, tree clean of mutations:
+
+    bash .claude/tests/boundaries.test.sh
+    boundaries: 454 passed, 12 failed
+    real	49m5.956s
+
+466 executed = 442 + 24. The 12 failures are exactly the 12 above (cases
+1-3, 6, 9, 11, two assertions each); no existing assertion moved.
+`bash scripts/gates.sh --fast`: rc 0, `0 ran, 5 unconfigured`, not recorded.
+`check-sigpipe`: 56 files, 0 findings. `check-grep-count`: 56 files, 0
+findings. `bash scripts/mutate.sh --check`: no stranded mutation.
+
+## Diff review
+
+### Round 1 (2026-10-31, at a6f648c)
+
+Fresh `feature-developer` dispatch (declares `opus`), resolved
+**claude-opus-5-5**, no override; changed no file. Report, as returned:
+
+- Checked: the awk extracted and fed before/after pairs under gawk (Git
+  Bash) and mawk 1.3.4 20240123 (WSL), identical on CRLF, tabs, no-space `|`,
+  all five flag spellings, decimals; created, deleted and renamed
+  `project.conf` in a real repo (rename = deletion, every gate `gate
+  removed`); `sup_verdict` equivalent to the code it replaced, its only
+  callers the two in 3j; subset `sub083n.test.sh` 84 passed, 0 failed on HEAD.
+- **Must fix 1.** `SEV[1, id] == "required" && SEV[2, id] == "optional"`:
+  any other non-`required` after value (`Required`, `advisory`, a typo,
+  empty) makes the gate optional in `gates.sh` and is silent here. Sandbox:
+  `gate | coverage | Required | . | echo ran; false` gave `WARN coverage
+  (1s, exit 1, optional)`, rc 0; `--audit` passed it. Fix: test `!=
+  "required"`, print `"required -> " SEV[2, id]`.
+- **Should fix 2.** Evidence "any non-`-` line" vs `gates.sh`'s first line:
+  `evidence | unit | -` inserted above an unchanged real line turns `FAIL
+  unit (... no evidence of work ...)` into `PASS unit`; no finding. Fix:
+  compare the first evidence line per side.
+- **Should fix 3.** `flags()` keeps the first occurrence: `--fail-under-lines
+  80` -> `--fail-under-lines 80 --fail-under-lines 0` and the vitest
+  equivalent give no finding; argparse takes the last. Fix: compare every or
+  the last after occurrence.
+- **Should fix 4.** The deleted-file branch (`/dev/null` after side) has no
+  test; replacing it with `continue` leaves the suite green. Fix: one RED
+  case expecting `1|<gate count>`.
+- **Nice to have 5.** SKILL.md rule 5a ends "a gate or line added - is never
+  refused", contradicting the refused added `slow`/`ondemand`/`waiver` line.
+- Checked and fine: non-numeric floor reported loudly; a doubled space before
+  a flag's number reads as `threshold removed` (loud); `#` lines skipped
+  first; merge commits skipped.
+- `Verdict: fix 1 first.`
+
+Orchestrator: 1-3 reproduced on its own inputs (see `## Regressions`,
+Return 1); user chose "Fix all 5". 1-4 go through RED; 5 is a docs fix in
+GREEN.
 
 ## Gate results
 
