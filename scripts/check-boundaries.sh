@@ -668,6 +668,12 @@ fi
 # test paths are out by category, so a project that reclassifies a path moves it
 # in or out of this rule with no change to this block.
 #
+# The one exception is by path, and it is a second branch rather than a widened
+# category: `.claude/harness/project.conf`, where every gate's evidence, floor
+# and severity live, is compared before and after the commit for a gate
+# loosened (HARNESS-083; project_conf_loosenings, below), not scanned for
+# directives.
+#
 # suppression_needles   One `<rule id>|<ERE>` row per directive. Every ERE is
 # anchored on the comment opener, and the directive is the first thing after it,
 # so a comment that MENTIONS a directive is not one. The opener must begin the
@@ -857,6 +863,144 @@ suppression_declared() {
     END { if (!found && miss != "") print miss }' "$1" "$2"
 }
 
+# --- 3j, second branch: a gate loosened in project.conf (HARNESS-083) ---------
+#
+# A lowered floor or a deleted evidence line is not an ADDED line, so no needle
+# sees it, and project.conf classifies as `harness`, which the category test
+# above never reads. So the walk takes that one file by PATH, beside the
+# category test and not through it, and compares it before and after the
+# commit, as 3i reads a manifest. A finding is refused as [gate-loosened] and
+# declared through the same ## Suppressions hatch: one line names the path and
+# the id, and so covers every loosening in the file, because splitting a suite
+# in two lowers a floor and changes an evidence regex as one decision.
+#
+# project_conf_loosenings <before-file> <after-file>   Prints one
+# `<gate id>\t<what>\t<before>\t<after>` line per finding, in the order of the
+# BEFORE file's lines, then any `slow`/`ondemand`/`waiver` line added on a gate
+# that was required. Lines are parsed as gates.sh parses them: blank and `#`
+# lines skipped first - so a commented example `#   covers | ...` is a comment,
+# never a covers line removed - then a line with no `|`; kind and id are fields
+# 1 and 2, trimmed, and the value is the rest from field 3, its `|`s kept. A
+# gate's severity is field 3 and its command the rest from field 5.
+#
+#   evidence line removed      the gate had evidence before and has none after;
+#                              `evidence | g | -` is no evidence
+#   floor line removed         likewise; `floor lowered B -> A` when both sides
+#                              have one and the first is lower AFTER, as numbers
+#                              (`40 -> 40.0` is no finding)
+#   covers line removed G      per glob; `discovery line removed` per discovery id
+#   required -> optional       exactly that change of severity
+#   gate removed               and nothing else for that id: its evidence, floor
+#                              and covers lines went with it
+#   threshold lowered F B -> A / threshold removed F B   per threshold flag name
+#                              in the command of a gate on both sides; the first
+#                              occurrence of each name on each side is compared,
+#                              and a flag only AFTER is no finding
+#   K added on required gate   K is slow, ondemand or waiver, the line is new, and
+#                              the gate is required on the BEFORE side
+#
+# Tightening is silent by construction: every test above is "worse after". The
+# side is decided by file NAME, not `FNR == 1`: an empty before file has no first
+# record, and the after file would be read as the before side. The flag ERE uses
+# `[.]` rather than `\.`, which mawk and gawk do not read alike in a string.
+project_conf_loosenings() {
+  awk '
+    function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+    function out(id, what, b, a) { printf "%s\t%s\t%s\t%s\n", id, what, b, a }
+    # flags <side> <id> <command>   The number after the first occurrence of
+    # each threshold flag name; the before side also keeps the names in order.
+    function flags(s, id, cmd,   m, k, nm) {
+      while (match(cmd, TF)) {
+        m = substr(cmd, RSTART, RLENGTH); cmd = substr(cmd, RSTART + RLENGTH)
+        k = match(m, /[ =]/); nm = substr(m, 1, k - 1)
+        if ((s, id, nm) in FV) continue
+        FV[s, id, nm] = substr(m, k + 1)
+        if (s == 1) { FN[id]++; FL[id, FN[id]] = nm }
+      }
+    }
+    BEGIN { TF = "--(fail-under[-a-z]*|cov-fail-under|coverage[.]thresholds[.][a-z]*|min-coverage|threshold)[ =][0-9]+([.][0-9]+)?" }
+    {
+      s = (FILENAME == ARGV[1]) ? 1 : 2
+      sub(/\r$/, ""); t = trim($0)
+      if (t == "" || substr(t, 1, 1) == "#") next
+      if (!(i = index(t, "|"))) next
+      kind = trim(substr(t, 1, i - 1)); r = substr(t, i + 1)
+      j = index(r, "|"); id = trim(j ? substr(r, 1, j - 1) : r); v = j ? trim(substr(r, j + 1)) : ""
+      if (id == "") next
+      if (s == 1) { n++; K[n] = kind; I[n] = id; V[n] = v } else { na++; AK[na] = kind; AI[na] = id }
+      if (kind == "gate") {
+        if ((s, id) in G) next
+        G[s, id] = 1
+        j = index(v, "|"); SEV[s, id] = trim(j ? substr(v, 1, j - 1) : v)
+        cmd = ""; if (j) { r = substr(v, j + 1); j = index(r, "|"); if (j) cmd = substr(r, j + 1) }
+        flags(s, id, cmd)
+      }
+      else if (kind == "evidence") { if (v != "-") EV[s, id] = 1 }
+      else if (kind == "floor") { if (!((s, id) in FLR)) FLR[s, id] = v }
+      else if (kind == "covers") CV[s, id, v] = 1
+      else if (kind == "discovery") DS[s, id] = 1
+      else if (kind == "slow" || kind == "ondemand" || kind == "waiver") XL[s, kind, id] = 1
+    }
+    END {
+      for (k = 1; k <= n; k++) {
+        kind = K[k]; id = I[k]; v = V[k]
+        gone = ((1, id) in G) && !((2, id) in G)
+        if (kind == "gate") {
+          if (SEEN["g", id]++) continue
+          if (gone) { out(id, "gate removed", "", ""); continue }
+          if (SEV[1, id] == "required" && SEV[2, id] == "optional") out(id, "required -> optional", "required", "optional")
+          for (q = 1; q <= FN[id]; q++) {
+            nm = FL[id, q]; b = FV[1, id, nm]
+            if (!((2, id, nm) in FV)) out(id, "threshold removed " nm " " b, b, "")
+            else if (FV[2, id, nm] + 0 < b + 0) out(id, "threshold lowered " nm " " b " -> " FV[2, id, nm], b, FV[2, id, nm])
+          }
+        }
+        else if (kind == "discovery") {
+          if (!SEEN["d", id]++ && !((2, id) in DS)) out(id, "discovery line removed", "", "")
+        }
+        else if (gone) continue
+        else if (kind == "evidence") {
+          if (v != "-" && !SEEN["e", id]++ && !((2, id) in EV)) out(id, "evidence line removed", "", "")
+        }
+        else if (kind == "floor") {
+          if (SEEN["f", id]++) continue
+          if (!((2, id) in FLR)) out(id, "floor line removed", FLR[1, id], "")
+          else if (FLR[2, id] + 0 < FLR[1, id] + 0) out(id, "floor lowered " FLR[1, id] " -> " FLR[2, id], FLR[1, id], FLR[2, id])
+        }
+        else if (kind == "covers") {
+          if (!SEEN["c", id, v]++ && !((2, id, v) in CV)) out(id, "covers line removed " v, v, "")
+        }
+      }
+      for (k = 1; k <= na; k++) {
+        kind = AK[k]; id = AI[k]
+        if (kind != "slow" && kind != "ondemand" && kind != "waiver") continue
+        if (((1, kind, id) in XL) || SEEN["a", kind, id]++) continue
+        if (SEV[1, id] == "required") out(id, kind " added on required gate", "", "")
+      }
+    }' "$1" "$2"
+}
+
+# sup_verdict <path> <rule id> <refusal>   One finding of either branch: the
+# `ok` line once per path and id when ## Suppressions declares it, otherwise the
+# refusal, with what a partial entry naming the path is missing.
+sup_verdict() {
+  local st
+  st="$(suppression_declared "$1" "$2" <<< "$sup_decl")"
+  if [ "$st" = declared ]; then
+    case "$sup_declared_seen" in
+      *"|$2 $1|"*) ;;
+      *) sup_declared_seen="$sup_declared_seen|$2 $1|"
+         ok "suppression [$2] in '$1' is declared in ## Suppressions" ;;
+    esac
+    return 0
+  fi
+  sup_refused=1
+  sup_more=""
+  [ -n "$st" ] && sup_more=" The ## Suppressions line naming '$1' is missing $st."
+  problem "$3$sup_more"
+}
+
+sup_conf=.claude/harness/project.conf
 sup_table="$(suppression_needles)"
 sup_decl="$(section "$sfile" "Suppressions" | strip_comments)"
 sup_judged=0
@@ -864,11 +1008,14 @@ sup_refused=0
 sup_declared_seen=""
 for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
   c7="${c%${c#???????}}"
-  # The source and config paths this commit changed; a commit with none has
-  # nothing this rule could judge, in any phase.
+  # The source and config paths this commit changed, and project.conf by path;
+  # a commit with none has nothing this rule could judge, in any phase.
   sup_paths=""
   for f in $(git diff-tree --no-commit-id --name-only -r "$c" 2>/dev/null); do
     case "$(classify "$f")" in source|config) sup_paths="$sup_paths $f" ;; esac
+    if [ "$f" = "$sup_conf" ]; then
+      case "$sup_paths " in *" $f "*) ;; *) sup_paths="$sup_paths $f" ;; esac
+    fi
   done
   [ -n "$sup_paths" ] || continue
   # 3i skips a commit whose story file it cannot read. This one says so: a
@@ -892,6 +1039,22 @@ for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
   esac
   sup_judged=$((sup_judged+1))
   for f in $sup_paths; do
+    if [ "$f" = "$sup_conf" ]; then
+      # A commit that created the file has no before side, and no findings. One
+      # that deleted it is compared with an empty after side: every gate in it
+      # was removed. The texts reach awk as files, never through -v.
+      git cat-file -e "$c^:$f" 2>/dev/null || continue
+      if git cat-file -e "$c:$f" 2>/dev/null; then
+        sup_hits="$(project_conf_loosenings <(git show "$c^:$f" 2>/dev/null) <(git show "$c:$f" 2>/dev/null))"
+      else
+        sup_hits="$(project_conf_loosenings <(git show "$c^:$f" 2>/dev/null) /dev/null)"
+      fi
+      while IFS=$'\t' read -r sup_gid sup_what _; do
+        [ -n "$sup_gid" ] || continue
+        sup_verdict "$f" gate-loosened "story $sid: commit $c7 ($ph_at) loosened a gate in '$f' [gate-loosened]: $sup_gid: $sup_what. A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason."
+      done <<< "$sup_hits"
+      continue
+    fi
     if ! sup_diff="$(git show --format= --unified=0 "$c" -- "$f" 2>/dev/null)"; then
       sup_refused=1
       problem "story $sid: commit $c7 ($ph_at) changed '$f', and its diff could not be read, so nothing can say the lines it added are not suppressions."
@@ -901,19 +1064,7 @@ for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
     [ -n "$sup_hits" ] || continue
     while IFS='|' read -r sup_n sup_rid sup_text; do
       [ -n "$sup_n" ] || continue
-      sup_state="$(suppression_declared "$f" "$sup_rid" <<< "$sup_decl")"
-      if [ "$sup_state" = declared ]; then
-        case "$sup_declared_seen" in
-          *"|$sup_rid $f|"*) ;;
-          *) sup_declared_seen="$sup_declared_seen|$sup_rid $f|"
-             ok "suppression [$sup_rid] in '$f' is declared in ## Suppressions" ;;
-        esac
-        continue
-      fi
-      sup_refused=1
-      sup_more=""
-      [ -n "$sup_state" ] && sup_more=" The ## Suppressions line naming '$f' is missing $sup_state."
-      problem "story $sid: commit $c7 ($ph_at) added a suppression to '$f' line $sup_n [$sup_rid]: $sup_text. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.$sup_more"
+      sup_verdict "$f" "$sup_rid" "story $sid: commit $c7 ($ph_at) added a suppression to '$f' line $sup_n [$sup_rid]: $sup_text. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line."
     done <<< "$sup_hits"
   done
 done

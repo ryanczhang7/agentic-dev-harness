@@ -5,7 +5,7 @@ slug: a-gate-loosened-in-project-conf-during-g
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-083-a-gate-loosened-in-project-conf-during-g
 depends_on: [HARNESS-081]      # reuses 3j's commit walk and the ## Suppressions escape hatch
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -281,6 +281,8 @@ name, below the table.
 
 - PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1** (2026-10-28). The story was cut and the Contract, Deferred verifications and Out of scope written in this dispatch; no override reported.
 - PLANNED -> RED refinement - `lead-po` (the orchestrating session), resolved **claude-opus-5-5** (2026-10-30): C-1 pinned against the shipped 3j walk and message, C-2's parsing and `<what>` strings, C-7 added.
+- RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-30), per its handoff; no override.
+- GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-30), per its handoff; no override. Orchestrator re-ran the full `boundaries` suite and `gates.sh --fast` itself.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -597,6 +599,161 @@ last row is outside the table. Its text is unchanged and still binding.
 runnable in RED**: both mutate or exercise the shipped `project_conf_loosenings`,
 which does not exist yet. I did not run them. The AC-2 raise control above is
 the assertion DV-1 must turn red.
+
+#### GREEN - feature-developer
+
+**Model.** Dispatched as `feature-developer`, which declares `opus`; ran as
+claude-opus-5-5. No override.
+
+**What was built.**
+
+- `scripts/check-boundaries.sh`, 3j. `project_conf_loosenings <before-file>
+  <after-file>`, one awk, C-2's table; the side is decided by
+  `FILENAME == ARGV[1]` (handoff note 1), the flag ERE uses `[.]` (note 2), the
+  findings walk the before file's lines in END after both sides are read, so
+  a removed gate suppresses its own evidence/floor/covers lines (note 3), and
+  `#` lines are skipped before the `|` test (note 4). The walk adds
+  `.claude/harness/project.conf` to `sup_paths` by an exact-path `if` on the
+  line AFTER the `classify` case line, which is byte-for-byte unchanged
+  (HARNESS-082's DV-2 mutates it); a path both classified `source|config` and
+  equal to project.conf is added once. The per-path loop sends project.conf
+  to the new branch: `git cat-file -e "$c^:$f"` fails (the commit created the
+  file, or there is no parent) -> no findings; otherwise the two sides reach
+  awk as process substitutions `<(git show ...)`, files with no temp
+  directory (lib.test.sh refuses `mktemp`/`$TMPDIR` in a shipped script, and
+  two 18.7 KB texts through ARGV would exceed Windows' 32 K command line).
+  A commit that DELETES project.conf is compared with `/dev/null` as the after
+  side, so every gate in it is `gate removed` - not constrained by any test;
+  chosen because deleting the file is the largest loosening there is.
+- The declared / partial-entry / refused logic of HARNESS-081's loop moved
+  into one function, `sup_verdict <path> <rule id> <refusal>`, which both
+  branches call; it is the old block verbatim (same `ok` dedupe key, same
+  `$sup_more` suffix, same `sup_refused=1`). All 359 pre-existing assertions
+  pass on it (subset below, and the full run).
+- One consequence worth knowing: a commit touching project.conf whose story
+  is unreadable at that commit now gets 3j's existing `note`. The first commit
+  of every `conf_story` (RED, parent on main with no T-1 story) prints it;
+  it is a note, never a FAIL, and no assertion reads it.
+- `.claude/skills/quality-gates/SKILL.md`: triage rule 5a (C-5).
+- `.claude/harness/VERSION`: `102 (2026-10-30)`.
+
+**Subsets, never in the tree.** Both are under the session scratchpad
+`C:\Users\ryanc\AppData\Local\Temp\claude\D--agentic-dev-harness\4326bddd-3530-40cd-9f72-26679346bd6b\scratchpad\`:
+`sub083g.test.sh` = suite lines 1-109 + 1985-end (the whole 3j section), and
+`sub083n.test.sh` = 1-109 + 1985-2091 (3j's helpers, baseline and premise) +
+2879-end (HARNESS-083), the narrowest command holding every control, used
+for the mutations. Each `diff` against the frozen suite's same lines shows
+only line 9:
+
+    9c9
+    < . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+    ---
+    > . /d/agentic-dev-harness/.claude/tests/_lib.sh
+
+    sub083g: boundaries: 301 passed, 0 failed   rc=0   (11m55s)
+    sub083n: boundaries: 84 passed, 0 failed    rc=0   (3m19s)
+
+**Controls, measured against the shipped code.** Every control's expected
+value holds on the shipped module (`0|` and `want_3j_ok 1`; the gate-removed
+control `1|1` with the one line `coverage: gate removed`); no divergence
+from RED's candidate column. Each mutation went through
+`bash scripts/mutate.sh scripts/check-boundaries.sh '<expr>' -- bash .../sub083n.test.sh`,
+dry-run first with `diff <(sed "$expr" ...)` to confirm the lines it changes.
+RED's table names mutations against its candidate's shape; where my code has
+a different shape I mutated the equivalent behaviour and say which. DV-1
+(floor `<` -> `!=`, the AC-2 raise control) is GATES' and was NOT run.
+
+| # | Control | Changed line(s) | Red (of 84) | Restore |
+|---|---|---|---|---|
+| M1s | AC-2 new `floor \| coverage` | after-only loop also takes `floor`, presence by `(1, id) in FLR` (an added line reads as a finding) | 2: exactly that control | exited 1; restored (verified byte-for-byte) |
+| M2 | AC-2 40 -> 40.0 | `FLR[2, id] + 0 < FLR[1, id] + 0` -> `FLR[2, id] != FLR[1, id]` | 4: that control and 40 -> 60 | same |
+| M3 | AC-3 integration optional -> required | `SEV[1]=="required" && SEV[2]=="optional"` -> `SEV[1, id] != SEV[2, id]` | 2: exactly that control | same |
+| M4 | AC-3 new typecheck gate | walk the after file's lines too (`if (s == 1)` -> `if (1)`) and `gone` symmetric (`!=`) | 8: that control, plus the 3 AC-5 refusals (the `else` that records after lines no longer runs) | same |
+| M5 | AC-4 80 -> 90 | flag `FV[2] + 0 < b + 0` -> `!=` | 2: exactly that control | same |
+| M6s | AC-4 `--coverage.thresholds.lines` added | names kept for both sides, and a name absent before reported | 17: that control, plus refusals doubled by names listed twice | same |
+| M7 | AC-4 renamed package; AC-7 command without threshold | store `CMD[s, id]`, and the severity test -> `CMD[1, id] != CMD[2, id]` | 23: both controls, 80 -> 90, added, 80.0 -> 80, and the refusals whose command changed | same |
+| M9 | AC-4 80.0 -> 80 | flag `FV[2] + 0 < b + 0` -> `FV[2, id, nm] != b` | 4: that control and 80 -> 90 | same |
+| M10 | threshold-removed control: coverage gate removed | `out(id, "gate removed", ...); continue` -> no `continue` | 1: exactly that control's `1\|1` | same |
+| M11 | AC-5 `ondemand \| mutation` on optional | `if (SEV[1, id] == "required") out(` -> `if (1) out(` | 2: exactly that control | same |
+| M12 | AC-7 comment + commented `covers` example | `#` skip -> strip a leading `#` and parse | 2: exactly that control | same |
+| M13s | AC-7 `task \| dev` added | after-only loop also takes `task` (recorded in XL), required test bypassed for it | 2: exactly that control | same |
+| M14 | C-2 created file | BOTH the caller's `cat-file -e ... \|\| continue` -> `\|\| :` AND the side by `FNR == 1` | 2: exactly that control | same |
+
+The broad first cuts, kept because they are measurements too: **M1** and
+**M13** (drop the after-only loop's kind filter, M13 also its required test)
+turned 53 of 84 red, the premise included - XL is the only presence record,
+so every unchanged line read as added. They turn the controls red, but too
+broadly to earn them alone, hence M1s and M13s. **M6** (names for both sides,
+plus `|| !((1, id, nm) in FV)`) did NOT turn its control red: reading
+`b = FV[1, id, nm]` on the line before creates the element, so the mutant's
+own presence test passed. A defect in the mutant, not in the code; M6s tests
+presence before reading.
+
+**The created-file control is guarded twice**, and no single mutation turns
+it red. Measured:
+
+    M14a  `git cat-file -e "$c^:$f" 2>/dev/null || continue` -> `|| :`
+          boundaries: 84 passed, 0 failed   (the awk sees an empty before file, decides the side by name: no findings)
+    M14b  `s = (FILENAME == ARGV[1]) ? 1 : 2` -> `if (FNR == 1) side++; s = side`
+          boundaries: 84 passed, 0 failed   (the caller never runs the awk for a created file)
+    M14   both
+          FAIL HARNESS-083 C-2: project.conf created by the GREEN commit, nothing before it: not refused - rc|FAIL lines
+               actual:   1|FAIL  story T-1: commit 9bdc2ff (GREEN) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: format: gate removed. ...
+               (then lint, unit, coverage, integration, build, mutation: gate removed; platform: discovery line removed)
+          FAIL HARNESS-083 C-2: project.conf created by the GREEN commit, nothing before it: and 3j counts the project.conf commit as judged
+          boundaries: 82 passed, 2 failed
+          === mutate: command exited 1; restored (verified byte-for-byte) ===
+
+RED's measured "7 x `gate removed` + 1 discovery" for the FNR candidate is
+exactly what the shipped code prints under M14: the base's 7 gates (format,
+lint, unit, coverage, integration, build, mutation) and `platform`. Logs:
+`...\scratchpad\g83\mut-<id>.log`. `bash scripts/mutate.sh --check` after the
+batch: `mutate: no stranded mutation; nothing of a previous run is in the tree.`
+
+A representative red, M10, whole:
+
+    === mutate: scripts/check-boundaries.sh (1 line(s) changed by s/out(id, "gate removed", "", ""); continue/out(id, "gate removed", "", "")/) ===
+        FAIL HARNESS-083 AC-4 threshold removed control: gate | coverage removed outright, flag and all: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+             expected: 1|1
+             actual:   1|2
+    boundaries: 83 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261030T215854Z.66728.bak) ===
+
+**mawk.** `project_conf_loosenings`, extracted from the script by
+`sed -n '/^project_conf_loosenings() {/,/^}/p'`, run over 38 before/after
+pairs rebuilt with the suite's own `GL_BASE`/`gl_swap`/`gl_after` and its AC-4
+row table (every pair the HARNESS-083 describes build, plus a CRLF pair and a
+deleted-after case), under Git Bash gawk 5.4.1, WSL gawk 5.2.1 and WSL
+`/usr/bin/mawk` 1.3.4 20240123 (WSL's `awk` is gawk there, not mawk, so mawk
+was called by path):
+
+    35df1ec8cabaff411cf673e250dd787c98b90baf  gawk.out       (Git Bash, gawk 5.4.1)
+    35df1ec8cabaff411cf673e250dd787c98b90baf  gawk-wsl.out   (WSL, gawk 5.2.1)
+    35df1ec8cabaff411cf673e250dd787c98b90baf  mawk.out       (WSL, mawk 1.3.4)
+    cmp mawk gawk: identical
+
+Every refusing pair printed exactly its pinned finding, the two-finding pairs
+both, in before-line order for the order case, and every control nothing.
+`<(cat ...)` as the two files also works under mawk on Linux (the order pair
+printed both findings). Files: `...\scratchpad\g83\{fn.sh,pairs.sh,run.sh,fx\}`.
+
+**The full suite and the checks**, with the tree restored (no mutation in
+flight; the full run started after the last `mutate.sh --check`):
+
+    bash .claude/tests/boundaries.test.sh
+    boundaries: 442 passed, 0 failed
+    rc=0 elapsed=2561s
+
+    bash scripts/gates.sh --fast       rc=0 - 0 ran, 5 unconfigured, mutation ON REQUEST; --fast skipped integration build; not recorded
+    bash scripts/check-sigpipe.sh      check-sigpipe: scanned 56 shell file(s), 51 with pipefail, 0 finding(s)
+    bash scripts/check-grep-count.sh   check-grep-count: scanned 56 shell file(s), 0 finding(s)
+    bash scripts/mutate.sh --check     mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+**For GATES.** DV-1 and DV-2 are yours and were not run. DV-1's expression
+should target the shipped line
+`else if (FLR[2, id] + 0 < FLR[1, id] + 0) out(id, "floor lowered " ...`
+(one match in the file; M2 above used the same anchor). The full selftest
+(`bash scripts/selftest.sh`) was not run here; only `boundaries` was.
 
 ## Regressions
 
