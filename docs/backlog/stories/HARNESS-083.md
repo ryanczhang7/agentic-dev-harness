@@ -5,7 +5,7 @@ slug: a-gate-loosened-in-project-conf-during-g
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-083-a-gate-loosened-in-project-conf-during-g
 depends_on: [HARNESS-081]      # reuses 3j's commit walk and the ## Suppressions escape hatch
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -240,6 +240,51 @@ scratch branch; paste both runs. If the scratch-branch mechanics turn out
 heavier than a fixture, say so and WAIVE this one with the reason - the
 fixture corpus in C-6 is copied from the real file's lines, which is the
 second-best form of the same probe.
+
+**DV-1 result (GATES, 2026-10-31, orchestrator).** Run against the narrowest
+suite holding AC-2: the scratchpad subset `sub083n.test.sh` (lines 1-109,
+1985-2091 and 2879-end of the frozen `boundaries.test.sh`, line 9 rewritten to
+the absolute `_lib.sh` path), not the full self-test. `<` became `!=` on line
+968; AC-2's raised-floor control went red, AC-2's refusal (`40 -> 12`) and the
+`40 -> 40.0` control stayed green; restored and verified byte-for-byte.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 968s/FLR\[2, id\] + 0 < FLR\[1, id\] + 0/FLR[2, id] + 0 != FLR[1, id] + 0/) ===
+  HARNESS-083 AC-2: a floor lowered is refused with both numbers; raised or newly added, it is not
+    FAIL HARNESS-083 AC-2 control: floor | unit 40 -> 60 (tightening is silent): not refused - rc|FAIL lines
+    FAIL HARNESS-083 AC-2 control: floor | unit 40 -> 60 (tightening is silent): and 3j counts the project.conf commit as judged
+boundaries: 82 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261031T160845Z.1992.bak) ===
+```
+
+Green run on the restored tree: the orchestrator's full `boundaries.test.sh`
+at GREEN commit f9b1969, `boundaries: 442 passed, 0 failed` (rc 0, 2407 s);
+`git diff --quiet scripts/check-boundaries.sh` clean after the restore.
+
+**DV-2 result (GATES, 2026-10-31, orchestrator).** Run, not waived. A scratch
+worktree `/d/adh-probe083` on branch `story/HARNESS-999-dv2-probe` off f9b1969,
+with a fixture story HARNESS-999 (this story's file, id/branch changed, phase
+GREEN) committed. Probe 1 used `mutate.sh` on the real line 311 of
+`.claude/harness/project.conf`, committed it, and ran `check-boundaries.sh
+main`. Probe 2 is the control: one commit dropped the real line 328
+(`ondemand | mutation ...`, set-up only, with `sed -i` in the scratch tree,
+which had no active lock and was discarded), and the next commit restored it
+verbatim. That re-adds the real line on the `optional` mutation gate, which
+must not be a finding. Worktree and branch were then removed.
+
+```
+### probe 1: real 'gate | lint | required' line -> optional
+ac340a3
+-gate | lint      | required | . |
++gate | lint      | optional | . |
+FAIL  story HARNESS-999: commit ac340a3 (GREEN) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: lint: required -> optional. A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason.
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/adh-probe083/.claude/state/mutations/.claude_harness_project.conf.20261031T161607Z.12371.bak) ===
+### probe 2: real 'ondemand | mutation' line added on the optional mutation gate
+d501129
++ondemand | mutation | per-story cost the user declined (HARNESS-015); run it with /audit-mutations
+ok    GREEN/GATES added no suppression (2 commit(s) judged)
+scratch worktree and branch discarded
+```
 
 ## Amendments
 
@@ -782,10 +827,21 @@ should target the shipped line
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-10-31T16:18:43Z
+    commit: f9b1969
+    tree:   aacc5571a00b2944621c6c4be3776ca523cd758f
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
