@@ -5,7 +5,7 @@ slug: a-gate-loosened-in-project-conf-during-g
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-083-a-gate-loosened-in-project-conf-during-g
 depends_on: [HARNESS-081]      # reuses 3j's commit walk and the ## Suppressions escape hatch
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -232,6 +232,20 @@ makes the table read `project.conf` as `gates.sh` does.
   highest-before; the strings are unchanged, `threshold lowered <flag>
   <highest before> -> <lowest after>`, and `threshold removed <flag>
   <highest before>`. Flag names stay in first-occurrence order.
+  *Corrected in GREEN (2026-10-31), orchestrator; no AC changes:* the rule
+  above refuses an UNCHANGED command that repeats a flag with two values
+  (`=10 =90` on both sides: lowest after 10 < highest before 90), which
+  return 2's frozen control 8 rightly expects to be silent (AC-7: a change
+  that loosens nothing is not refused). GREEN found it; the orchestrator
+  confirmed it by the arithmetic of the rule as written. The rule is now:
+  per flag name, a finding when **any** of the after side's first, last or
+  lowest value is below the before side's same statistic - the reading of a
+  first-wins parser, a last-wins parser, and "any lower repeat" respectively.
+  The printed string is unchanged, `<highest before> -> <lowest after>`.
+  Checks: `=10 =90` -> `=10` (last 90 -> 10) and -> `=90 =10` (last 90 ->
+  10) refused as `90 -> 10`; `=90` -> `=90 =10` (min, last) refused as
+  `90 -> 10`; `80` -> `80 30 90` (min) refused as `80 -> 30`; `=90` ->
+  `=90 =95` and `=10 =90` unchanged silent.
 - **BOOTSTRAPPED.** A new finding, printed with `<id>` `BOOTSTRAPPED`:
   `BOOTSTRAPPED: BOOTSTRAPPED yes -> <after>`, where each side's value is read
   as `gates.sh` reads it (lines 93-95): the first line matching
@@ -398,6 +412,9 @@ name, below the table.
 - GATES -> REVIEW diff review, round 1 - fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-31); no override.
 - RED return 1 - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-31); no override. Orchestrator re-ran the HARNESS-083 subset: 96 passed, 12 failed, the 12 the six new refusals.
 - GREEN return 1 - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-31); no override. Orchestrator re-ran the full suite: `boundaries: 466 passed, 0 failed` (1931 s), `gates.sh --fast` passed, `mutate.sh --check` clean.
+- GATES -> REVIEW diff review, round 2 - fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-31); no override.
+- RED return 2 - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-31); no override. Orchestrator re-ran the subset: 121 passed, 23 failed, all 23 in the return-2 describe.
+- GREEN return 2 - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-31); no override. It stopped once on a Contract conflict (the orchestrator's round-2 threshold rule refused an unchanged command; corrected in C-2), then finished. Orchestrator re-ran the full suite: `boundaries: 502 passed, 0 failed` (2897 s), `gates.sh --fast` passed, `mutate.sh --check` clean.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -1140,6 +1157,121 @@ floor that is empty is `floor line removed`. Mind the `/dev/null` after side
 of a deleted file: return 1's case 12 expects exactly the seven `gate removed`
 lines and the discovery line, and `GL_BASE` is `BOOTSTRAPPED=no`, so (c)
 prints nothing there.
+
+#### GREEN (return 2) - feature-developer
+
+Dispatched as `feature-developer` (declares `opus`); ran as
+**claude-opus-5-5**, no override. **First stopped:** the round-2 threshold
+bullet of C-2, built as written, refuses frozen control 8. The orchestrator
+corrected C-2 and GREEN resumed, and **the story is now green** (results at
+the end of this block). Nothing committed.
+
+**What the Contract says and what control 8 says.** C-2 round 2: "the before
+value is the **highest** occurrence of that flag name, the after value the
+**lowest**. A finding when lowest-after < highest-before". Control 8 keeps the
+pair `--cov-fail-under=10 --cov-fail-under=90` on both sides (adds `-q`) and
+expects silence. Under the written rule that pair is highest-before 90 and
+lowest-after 10, and 10 < 90, so it is refused. **Any unchanged command that
+repeats a flag with two different values is refused** under that rule. RED's
+`passes` for control 8 was measured against a33ac97, where before was the
+*first* occurrence (10), so it said nothing about the rule RED specified. The
+handoff's "for GREEN" (b), "side 1 keeps the maximum ... side 2 the minimum, as
+now", is the same rule and fails the same way. Subset
+`...\scratchpad\sub083r2.test.sh` with the rule as written (10m58s):
+
+```
+    FAIL HARNESS-083 return 2 control: --cov-fail-under=10 --cov-fail-under=90 on both sides, -q added: not refused - rc|FAIL lines
+         expected: 0|
+         actual:   1|FAIL  story T-1: commit ccdc5e8 (GREEN) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: coverage: threshold lowered --cov-fail-under 90 -> 10. A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason.
+    FAIL HARNESS-083 return 2 control: --cov-fail-under=10 --cov-fail-under=90 on both sides, -q added: and 3j counts the project.conf commit as judged
+         expected: 1
+         actual:   0
+boundaries: 142 passed, 2 failed
+```
+
+Every other return-2 assertion passes: cases 1-3, 6, 7, 9-12 and 15-18, and
+controls 4, 5, 13 and 14. All of return 1 and AC-1..7 pass too.
+
+**Which is wrong is a Contract decision, so GREEN does not make it.** Changing
+the rule is a C-2 amendment, and making control 8 go away is a test change. A
+candidate, run in scratch only (`...\scratchpad\progA.awk`) and NOT in the
+tree: per flag name, refuse when the after side's **lowest**, **first** or
+**last** value is below the before side's same statistic. That covers "any
+lower repeat", first-wins parsers and last-wins parsers (argparse). The
+printed string stays `threshold lowered <flag> <highest before> -> <lowest
+after>`. It gives the expected output for every threshold case of every
+round under gawk 5.4.1 and mawk 1.3.4, and the two awks agree:
+
+    r2-6  =10 =90 -> =10        coverage  threshold lowered --cov-fail-under 90 -> 10
+    r2-7  =10 =90 -> =90 =10    coverage  threshold lowered --cov-fail-under 90 -> 10
+    r2-8  control, -q added     (nothing)
+    r1    =90 -> =90 =10        coverage  threshold lowered --cov-fail-under 90 -> 10
+    r1    =90 -> =90 =95        (nothing)
+    r1    80 -> 80 30 90        coverage  threshold lowered --fail-under-lines 80 -> 30
+
+**Resolved by the orchestrator.** It confirmed the conflict and corrected C-2
+(the "*Corrected in GREEN (2026-10-31)*" note under the round-2 threshold
+bullet), adopting the candidate above. GREEN then implemented it.
+
+**Changed in the tree** (uncommitted). In `scripts/check-boundaries.sh`, only
+`project_conf_loosenings` and its header comment changed:
+(a) An evidence value that trims to empty is no evidence on either side, like
+`-`. This includes a line with no third field.
+(b) `flags()` keeps four values per side and flag name: `HI` (highest), `LO`
+(lowest), `FI` (first) and `LA` (last). The names stay in before-side
+first-occurrence order. `threshold lowered <flag> HI[1] -> LO[2]` fires when
+`FI[2] < FI[1]`, `LA[2] < LA[1]` or `LO[2] < LO[1]`, comparing as numbers.
+`threshold removed <flag> HI[1]` fires when the name has no occurrence after.
+The `in` test reads `HI` and comes before any read of it.
+(c) BOOTSTRAPPED is read before the blank, `#` and no-`|` skips. The CR is
+stripped first, and that changes nothing: gates.sh's `${..//[[:space:]]/}`
+removes a CR anyway, and `^BOOTSTRAPPED=` is a prefix test (`substr($0, 1, 13)`).
+The value is the text after the first `=` with `gsub(/[[:space:]]/, "")`
+applied, and an empty value or a missing line reads `no`.
+`BOOTSTRAPPED\tBOOTSTRAPPED yes -> <a>\tyes\t<a>` prints first in END.
+(d) An empty after floor gives `floor line removed`.
+**Kept, at the orchestrator's direction: an empty *before* floor is no
+floor.** This mirrors (a)'s before side, and it is beyond the brief.
+`floor | unit |` -> line deleted is now silent, because gates.sh sees no floor
+on either side. Before, it printed `floor line removed` with an empty before
+field. No test pins either answer (parity pair x-emptyfloor-before-deleted,
+silent).
+`.claude/skills/quality-gates/SKILL.md` 5a now names an emptied evidence regex
+or floor, a lower repeat on either side, and `BOOTSTRAPPED=yes` turned off.
+`VERSION` is unchanged (102).
+
+**gawk/mawk parity**, re-run on the shipped function (Git Bash gawk 5.4.1
+against WSL `/usr/bin/mawk` 1.3.4 20240123): 35 before/after pairs, `cmp`
+identical, 74 lines. Against the rule as first written, the only change is
+that control 8 lost its line. The pairs are every return-2 case and control,
+return 1's severity, evidence, repeat and deleted-file cases, CRLF files
+(`BOOTSTRAPPED=yes\r` -> `no\r`, `yes\r` both sides, `yes\r` with an emptied
+floor, `yes\r` -> `BOOTSTRAPPED=\r`), and `yes` -> deleted file. The case
+files and outputs are in `...\scratchpad\par\`, `out.gawk` and `out.mawk`.
+
+**Return-2 controls re-measured** against this code. In the subset, each
+control's two assertions passed (exact `rc|FAIL` = `0|`, one judged line).
+Called directly, the function prints nothing for each pair:
+
+| control | RED expected | measured |
+|---|---|---|
+| 4 empty before, unchanged | `0\|` + judged | `0\|` + judged; function silent |
+| 5 empty before, real after | `0\|` + judged | `0\|` + judged; function silent |
+| 8 `-q` added | `0\|` + judged | `0\|` + judged; function silent (was refused under the rule as first written, above) |
+| 13 `BOOTSTRAPPED=  yes  ` | `0\|` + judged | `0\|` + judged; function silent |
+| 14 `no -> yes` | `0\|` + judged | `0\|` + judged; function silent |
+
+**Results**, local, 2026-10-31:
+
+    subset sub083r2.test.sh:  boundaries: 144 passed, 0 failed   (12m25s)
+    full boundaries.test.sh:  boundaries: 502 passed, 0 failed   (41m45s)
+    gates.sh --fast:          All required gates passed (0 ran, 5 unconfigured, 0 known), rc 0, not recorded
+    check-sigpipe:            scanned 56 shell file(s), 51 with pipefail, 0 finding(s)
+    check-grep-count:         scanned 56 shell file(s), 0 finding(s)
+    mutate.sh --check:        no stranded mutation; rc 0
+
+I have not run the full `gates.sh`, which is the GATES phase's job. Nothing
+committed.
 
 ## Regressions
 

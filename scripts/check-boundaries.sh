@@ -875,20 +875,30 @@ suppression_declared() {
 # in two lowers a floor and changes an evidence regex as one decision.
 #
 # project_conf_loosenings <before-file> <after-file>   Prints one
-# `<gate id>\t<what>\t<before>\t<after>` line per finding, in the order of the
-# BEFORE file's lines, then any `slow`/`ondemand`/`waiver` line added on a gate
-# that was required. Lines are parsed as gates.sh parses them: blank and `#`
-# lines skipped first - so a commented example `#   covers | ...` is a comment,
-# never a covers line removed - then a line with no `|`; kind and id are fields
-# 1 and 2, trimmed, and the value is the rest from field 3, its `|`s kept. A
-# gate's severity is field 3 and its command the rest from field 5.
+# `<gate id>\t<what>\t<before>\t<after>` line per finding: a BOOTSTRAPPED
+# finding first, then the order of the BEFORE file's lines, then any
+# `slow`/`ondemand`/`waiver` line added on a gate that was required. Lines are
+# parsed as gates.sh parses them: BOOTSTRAPPED is read first, as gates.sh reads
+# it; then blank and `#` lines are skipped - so a commented example
+# `#   covers | ...` is a comment, never a covers line removed - then a line
+# with no `|`; kind and id are fields 1 and 2, trimmed, and the value is the
+# rest from field 3, its `|`s kept. A gate's severity is field 3 and its command
+# the rest from field 5.
 #
+#   BOOTSTRAPPED yes -> A      id BOOTSTRAPPED; each side is the first line
+#                              matching ^BOOTSTRAPPED= (none for `BOOTSTRAPPED =`),
+#                              the text after `=` with all whitespace removed,
+#                              empty or no line meaning `no`; before is `yes` and
+#                              after is anything else. `no -> yes` is silent
 #   evidence line removed      the gate's FIRST evidence line - the one gates.sh's
-#                              table_get uses - is a regex before and is `-` or
-#                              absent after; `evidence | g | -` is no evidence,
-#                              and a line added below the first is no finding
-#   floor line removed         likewise; `floor lowered B -> A` when both sides
-#                              have one and the first is lower AFTER, as numbers
+#                              table_get uses - is a regex before and is `-`,
+#                              empty or absent after; `-` and an empty value are
+#                              no evidence on either side (gates.sh matches an
+#                              empty regex against every line), and a line added
+#                              below the first is no finding
+#   floor line removed         likewise, an empty value being no floor on either
+#                              side; `floor lowered B -> A` when both sides have
+#                              one and the first is lower AFTER, as numbers
 #                              (`40 -> 40.0` is no finding)
 #   covers line removed G      per glob; `discovery line removed` per discovery id
 #   required -> S              the gate was exactly `required` before and is
@@ -899,11 +909,14 @@ suppression_declared() {
 #                              and covers lines went with it. A deleted file is
 #                              an empty after side, so every gate is removed
 #   threshold lowered F B -> A / threshold removed F B   per threshold flag name
-#                              in the command of a gate on both sides; B is the
-#                              name's first occurrence before and A its LOWEST
-#                              after, because parsers differ on which repeat
-#                              wins; no occurrence after is removed, and a flag
-#                              only AFTER is no finding
+#                              in the command of a gate on both sides: lowered
+#                              when the after side's FIRST, LAST or LOWEST value
+#                              is below the before side's same one - what a
+#                              first-wins parser, a last-wins parser (argparse)
+#                              and "any lower repeat" each read - so an unchanged
+#                              `=10 =90` is silent. B is the name's HIGHEST value
+#                              before and A its LOWEST after; no occurrence after
+#                              is removed, and a flag only AFTER is no finding
 #   K added on required gate   K is slow, ondemand or waiver, the line is new, and
 #                              the gate is required on the BEFORE side
 #
@@ -915,25 +928,35 @@ project_conf_loosenings() {
   awk '
     function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
     function out(id, what, b, a) { printf "%s\t%s\t%s\t%s\n", id, what, b, a }
-    # flags <side> <id> <command>   Per threshold flag name, the number after
-    # its FIRST occurrence on the before side, which also keeps the names in
-    # order, and its LOWEST on the after side. The `in` test comes before any
-    # read of FV, which would create the element it asks about.
+    # flags <side> <id> <command>   Per side and threshold flag name, the
+    # HIGHEST (HI), LOWEST (LO), FIRST (FI) and LAST (LA) numbers; the first
+    # occurrence before also fixes the names order. The `in` test comes before
+    # any read of HI, which would create the element it asks about.
     function flags(s, id, cmd,   m, k, nm, val) {
       while (match(cmd, TF)) {
         m = substr(cmd, RSTART, RLENGTH); cmd = substr(cmd, RSTART + RLENGTH)
         k = match(m, /[ =]/); nm = substr(m, 1, k - 1); val = substr(m, k + 1)
-        if (s == 1) {
-          if ((1, id, nm) in FV) continue
-          FV[1, id, nm] = val; FN[id]++; FL[id, FN[id]] = nm
+        if (!((s, id, nm) in HI)) {
+          HI[s, id, nm] = LO[s, id, nm] = FI[s, id, nm] = val
+          if (s == 1) { FN[id]++; FL[id, FN[id]] = nm }
+        } else {
+          if (val + 0 > HI[s, id, nm] + 0) HI[s, id, nm] = val
+          if (val + 0 < LO[s, id, nm] + 0) LO[s, id, nm] = val
         }
-        else if (!((2, id, nm) in FV) || val + 0 < FV[2, id, nm] + 0) FV[2, id, nm] = val
+        LA[s, id, nm] = val
       }
     }
     BEGIN { TF = "--(fail-under[-a-z]*|cov-fail-under|coverage[.]thresholds[.][a-z]*|min-coverage|threshold)[ =][0-9]+([.][0-9]+)?" }
     {
       s = (FILENAME == ARGV[1]) ? 1 : 2
-      sub(/\r$/, ""); t = trim($0)
+      sub(/\r$/, "")
+      # gates.sh: the first line matching ^BOOTSTRAPPED=, the text after the
+      # `=` with every whitespace character removed. Stripping the CR first
+      # changes nothing, since that removal would take it anyway.
+      if (!HB[s] && substr($0, 1, 13) == "BOOTSTRAPPED=") {
+        HB[s] = 1; BS[s] = substr($0, 14); gsub(/[[:space:]]/, "", BS[s])
+      }
+      t = trim($0)
       if (t == "" || substr(t, 1, 1) == "#") next
       if (!(i = index(t, "|"))) next
       kind = trim(substr(t, 1, i - 1)); r = substr(t, i + 1)
@@ -954,6 +977,8 @@ project_conf_loosenings() {
       else if (kind == "slow" || kind == "ondemand" || kind == "waiver") XL[s, kind, id] = 1
     }
     END {
+      b = (BS[1] == "") ? "no" : BS[1]; a = (BS[2] == "") ? "no" : BS[2]
+      if (b == "yes" && a != "yes") out("BOOTSTRAPPED", "BOOTSTRAPPED yes -> " a, b, a)
       for (k = 1; k <= n; k++) {
         kind = K[k]; id = I[k]; v = V[k]
         gone = ((1, id) in G) && !((2, id) in G)
@@ -962,9 +987,10 @@ project_conf_loosenings() {
           if (gone) { out(id, "gate removed", "", ""); continue }
           if (SEV[1, id] == "required" && SEV[2, id] != "required") out(id, "required -> " SEV[2, id], "required", SEV[2, id])
           for (q = 1; q <= FN[id]; q++) {
-            nm = FL[id, q]; b = FV[1, id, nm]
-            if (!((2, id, nm) in FV)) out(id, "threshold removed " nm " " b, b, "")
-            else if (FV[2, id, nm] + 0 < b + 0) out(id, "threshold lowered " nm " " b " -> " FV[2, id, nm], b, FV[2, id, nm])
+            nm = FL[id, q]; b = HI[1, id, nm]
+            if (!((2, id, nm) in HI)) out(id, "threshold removed " nm " " b, b, "")
+            else if (FI[2, id, nm] + 0 < FI[1, id, nm] + 0 || LA[2, id, nm] + 0 < LA[1, id, nm] + 0 || LO[2, id, nm] + 0 < LO[1, id, nm] + 0)
+              out(id, "threshold lowered " nm " " b " -> " LO[2, id, nm], b, LO[2, id, nm])
           }
         }
         else if (kind == "discovery") {
@@ -972,12 +998,12 @@ project_conf_loosenings() {
         }
         else if (gone) continue
         else if (kind == "evidence") {
-          if (SEEN["e", id]++ || EV[1, id] == "-") continue
-          if (!((2, id) in EV) || EV[2, id] == "-") out(id, "evidence line removed", "", "")
+          if (SEEN["e", id]++ || EV[1, id] == "-" || EV[1, id] == "") continue
+          if (!((2, id) in EV) || EV[2, id] == "-" || EV[2, id] == "") out(id, "evidence line removed", "", "")
         }
         else if (kind == "floor") {
-          if (SEEN["f", id]++) continue
-          if (!((2, id) in FLR)) out(id, "floor line removed", FLR[1, id], "")
+          if (SEEN["f", id]++ || FLR[1, id] == "") continue
+          if (!((2, id) in FLR) || FLR[2, id] == "") out(id, "floor line removed", FLR[1, id], "")
           else if (FLR[2, id] + 0 < FLR[1, id] + 0) out(id, "floor lowered " FLR[1, id] " -> " FLR[2, id], FLR[1, id], FLR[2, id])
         }
         else if (kind == "covers") {
