@@ -5,7 +5,7 @@ slug: a-gate-loosened-in-project-conf-during-g
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-083-a-gate-loosened-in-project-conf-during-g
 depends_on: [HARNESS-081]      # reuses 3j's commit walk and the ## Suppressions escape hatch
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -291,6 +291,13 @@ Green run on the restored tree: the orchestrator's full `boundaries.test.sh`
 at GREEN commit f9b1969, `boundaries: 442 passed, 0 failed` (rc 0, 2407 s);
 `git diff --quiet scripts/check-boundaries.sh` clean after the restore.
 
+*After return 1:* DV-1 ran at f9b1969, before return 1. Return 1 changed the
+severity, evidence and threshold arms of `project_conf_loosenings`, not the
+floor comparison it mutates, which is byte-identical (now at a later line), so
+the result stands. DV-2's probe 1 exercises the severity arm return 1 widened
+from `== "optional"` to `!= "required"`, which still prints `required ->
+optional` for an `optional` after value, the case DV-2 pasted.
+
 **DV-2 result (GATES, 2026-10-31, orchestrator).** Run, not waived. A scratch
 worktree `/d/adh-probe083` on branch `story/HARNESS-999-dv2-probe` off f9b1969,
 with a fixture story HARNESS-999 (this story's file, id/branch changed, phase
@@ -358,6 +365,9 @@ name, below the table.
 - PLANNED -> RED refinement - `lead-po` (the orchestrating session), resolved **claude-opus-5-5** (2026-10-30): C-1 pinned against the shipped 3j walk and message, C-2's parsing and `<what>` strings, C-7 added.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-30), per its handoff; no override.
 - GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-30), per its handoff; no override. Orchestrator re-ran the full `boundaries` suite and `gates.sh --fast` itself.
+- GATES -> REVIEW diff review, round 1 - fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-31); no override.
+- RED return 1 - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-31); no override. Orchestrator re-ran the HARNESS-083 subset: 96 passed, 12 failed, the 12 the six new refusals.
+- GREEN return 1 - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-10-31); no override. Orchestrator re-ran the full suite: `boundaries: 466 passed, 0 failed` (1931 s), `gates.sh --fast` passed, `mutate.sh --check` clean.
 
 **Oracle partition:** every criterion is mechanical (an exact message, an exit status, a table row); the needle/finding tables are settled and RED may tighten but not drop a row. See the Contract.
 
@@ -914,6 +924,87 @@ below its floor, expected in RED.
 "first is a real regex before, `-` or absent after"; (c) in `flags()`, keep
 the first occurrence on side 1 but the **minimum** on side 2 (today the
 `if ((s, id, nm) in FV) continue` keeps the first on both).
+
+#### GREEN (return 1) - feature-developer
+
+Dispatched as `feature-developer` (declares `opus`); ran as
+**claude-opus-5-5**, no override. Tests untouched (`.claude/tests/**` not in
+the diff).
+
+**What changed.** `scripts/check-boundaries.sh`, `project_conf_loosenings`
+only, and its header comment, which now describes the amended C-2:
+
+- (a) severity: `SEV[1, id] == "required" && SEV[2, id] != "required"`
+  prints `required -> <SEV[2, id]>`, with the columns `required` and the
+  after value as written (empty for case 3). It runs only after the `gone`
+  test, so a removed gate is still `gate removed` alone.
+- (b) evidence: `EV[s, id]` now holds the **first** evidence value per side
+  (`if (!((s, id) in EV))`), not "any real line". In END a before-first of
+  `-` is skipped; otherwise the finding fires when after has no evidence
+  line or its first is `-`.
+- (c) `flags()`: side 1 keeps the first occurrence per flag name (and the
+  name order, as before); side 2 keeps the lowest, `!((2, id, nm) in FV) ||
+  val + 0 < FV[2, id, nm] + 0` - the `in` test short-circuits before the
+  read, so no element is created by asking. END is unchanged:
+  `threshold removed` when no occurrence after, `threshold lowered` against
+  the lowest.
+
+`.claude/skills/quality-gates/SKILL.md` rule 5a: the tightening sentence now
+reads "a number raised, a gate added, or a line added other than a `slow`,
+`ondemand` or `waiver` line on a required gate - is never refused", and the
+list of refusals says `required` turned into any other severity and that a
+lower repeat of a flag counts. `VERSION` not bumped again (102 from GREEN).
+
+**gawk / mawk.** The awk extracted from the edited script and run on 17
+before/after pairs (the six RED cases, the five controls, `-` replacing the
+real line, `optional`, `90 -> 90.0`, `9` then `80` with CRLF, a deleted
+file) under GNU Awk 5.4.1 (Git Bash) and mawk 1.3.4 20240123 (WSL): `cmp`
+identical, every pair the expected output
+(`...\scratchpad\r1g2\{gawk,mawk}.out`):
+
+    == a01  unit^Irequired -> advisory^Irequired^Iadvisory$
+    == a02  unit^Irequired -> Required^Irequired^IRequired$
+    == a03  unit^Irequired -> ^Irequired^I$
+    == a04 / a05 / a07 / a08 / a10 / a15   (no output)
+    == a06  unit^Ievidence line removed^I^I$
+    == a09  coverage^Ithreshold lowered --cov-fail-under 90 -> 10^I90^I10$
+    == a11  coverage^Ithreshold lowered --fail-under-lines 80 -> 30^I80^I30$
+    == a12  coverage^Ithreshold removed --fail-under-lines 80^I80^I$
+    == a13  unit^Ievidence line removed^I^I$
+    == a14  unit^Irequired -> optional^Irequired^Ioptional$
+    == a16  coverage^Ithreshold lowered --cov-fail-under 90 -> 9^I90^I9$
+    == a17  unit / coverage / integration: gate removed
+
+**Subset** `...\scratchpad\sub083r1.test.sh`, local:
+
+    boundaries: 108 passed, 0 failed
+
+**Negative controls, measured against this code.** A driver
+(`...\scratchpad\ctl083r1.test.sh`: the narrow subset's fixture and helpers,
+then the five controls verbatim, printing `rc|FAIL lines` and the judged
+line before `gl_clean`):
+
+    MEASURED 4 optional -> advisory => rc|FAIL=0| | judged: ok    GREEN/GATES added no suppression (1 commit(s) judged)
+    MEASURED 5 required re-padded => rc|FAIL=0| | judged: ok    GREEN/GATES added no suppression (1 commit(s) judged)
+    MEASURED 7 real evidence added below => rc|FAIL=0| | judged: ok    GREEN/GATES added no suppression (1 commit(s) judged)
+    MEASURED 8 - evidence added below => rc|FAIL=0| | judged: ok    GREEN/GATES added no suppression (1 commit(s) judged)
+    MEASURED 10 higher repeat => rc|FAIL=0| | judged: ok    GREEN/GATES added no suppression (1 commit(s) judged)
+    boundaries: 11 passed, 0 failed
+
+All five equal RED's recorded value (`0|` and one judged line); no
+divergence.
+
+**Full suite**, local, 2026-10-31:
+
+    bash .claude/tests/boundaries.test.sh
+    boundaries: 466 passed, 0 failed
+    real	29m28.094s
+
+`bash scripts/gates.sh --fast`: rc 0, `All required gates passed (0 ran, 5
+unconfigured, 0 known)`, not recorded. `check-sigpipe`: 56 files, 0
+findings. `check-grep-count`: 56 files, 0 findings. `bash scripts/mutate.sh
+--check`: no stranded mutation. The full `gates.sh` run and the other
+selftest suites were not run in this dispatch.
 
 ## Regressions
 

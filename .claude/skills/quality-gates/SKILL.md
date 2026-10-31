@@ -610,15 +610,17 @@ probe before moving on, and say in the story that you did.
 5a. **CI refuses it, too.** A GREEN or GATES commit that loosens a gate in
    `.claude/harness/project.conf` - an `evidence`, `floor`, `covers` or
    `discovery` line removed (an evidence regex replaced by `-` counts), a floor
-   or a threshold flag's number lowered or the flag deleted, `required` turned
-   `optional`, a gate removed, or a `slow`, `ondemand` or `waiver` line added on
-   a gate that was required - is refused by `check-boundaries.sh` as
+   or a threshold flag's number lowered (a lower repeat of the flag counts) or
+   the flag deleted, `required` turned into any other severity, a gate
+   removed, or a `slow`, `ondemand` or `waiver` line added on a gate that was
+   required - is refused by `check-boundaries.sh` as
    `[gate-loosened]`, naming the gate and what changed. When the loosening is
    the right decision (a suite genuinely split in two), it is declared, never
    done quietly: one `## Suppressions` line carrying
    `.claude/harness/project.conf`, `[gate-loosened]` and `approved by <who>`,
-   with the reason. Tightening - a number raised, a gate or line added - is
-   never refused.
+   with the reason. Tightening - a number raised, a gate added, or a line
+   added other than a `slow`, `ondemand` or `waiver` line on a required gate -
+   is never refused.
 
 6. Adding a `no-count` line to silence a floor that is failing honestly is the
    same move. The line is a statement about what the regex can measure, not an

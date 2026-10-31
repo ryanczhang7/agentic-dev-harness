@@ -883,19 +883,27 @@ suppression_declared() {
 # 1 and 2, trimmed, and the value is the rest from field 3, its `|`s kept. A
 # gate's severity is field 3 and its command the rest from field 5.
 #
-#   evidence line removed      the gate had evidence before and has none after;
-#                              `evidence | g | -` is no evidence
+#   evidence line removed      the gate's FIRST evidence line - the one gates.sh's
+#                              table_get uses - is a regex before and is `-` or
+#                              absent after; `evidence | g | -` is no evidence,
+#                              and a line added below the first is no finding
 #   floor line removed         likewise; `floor lowered B -> A` when both sides
 #                              have one and the first is lower AFTER, as numbers
 #                              (`40 -> 40.0` is no finding)
 #   covers line removed G      per glob; `discovery line removed` per discovery id
-#   required -> optional       exactly that change of severity
+#   required -> S              the gate was exactly `required` before and is
+#                              anything else after (`optional`, `advisory`,
+#                              `Required`, empty), since gates.sh treats every
+#                              such value as optional; S is printed as written
 #   gate removed               and nothing else for that id: its evidence, floor
-#                              and covers lines went with it
+#                              and covers lines went with it. A deleted file is
+#                              an empty after side, so every gate is removed
 #   threshold lowered F B -> A / threshold removed F B   per threshold flag name
-#                              in the command of a gate on both sides; the first
-#                              occurrence of each name on each side is compared,
-#                              and a flag only AFTER is no finding
+#                              in the command of a gate on both sides; B is the
+#                              name's first occurrence before and A its LOWEST
+#                              after, because parsers differ on which repeat
+#                              wins; no occurrence after is removed, and a flag
+#                              only AFTER is no finding
 #   K added on required gate   K is slow, ondemand or waiver, the line is new, and
 #                              the gate is required on the BEFORE side
 #
@@ -907,15 +915,19 @@ project_conf_loosenings() {
   awk '
     function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
     function out(id, what, b, a) { printf "%s\t%s\t%s\t%s\n", id, what, b, a }
-    # flags <side> <id> <command>   The number after the first occurrence of
-    # each threshold flag name; the before side also keeps the names in order.
-    function flags(s, id, cmd,   m, k, nm) {
+    # flags <side> <id> <command>   Per threshold flag name, the number after
+    # its FIRST occurrence on the before side, which also keeps the names in
+    # order, and its LOWEST on the after side. The `in` test comes before any
+    # read of FV, which would create the element it asks about.
+    function flags(s, id, cmd,   m, k, nm, val) {
       while (match(cmd, TF)) {
         m = substr(cmd, RSTART, RLENGTH); cmd = substr(cmd, RSTART + RLENGTH)
-        k = match(m, /[ =]/); nm = substr(m, 1, k - 1)
-        if ((s, id, nm) in FV) continue
-        FV[s, id, nm] = substr(m, k + 1)
-        if (s == 1) { FN[id]++; FL[id, FN[id]] = nm }
+        k = match(m, /[ =]/); nm = substr(m, 1, k - 1); val = substr(m, k + 1)
+        if (s == 1) {
+          if ((1, id, nm) in FV) continue
+          FV[1, id, nm] = val; FN[id]++; FL[id, FN[id]] = nm
+        }
+        else if (!((2, id, nm) in FV) || val + 0 < FV[2, id, nm] + 0) FV[2, id, nm] = val
       }
     }
     BEGIN { TF = "--(fail-under[-a-z]*|cov-fail-under|coverage[.]thresholds[.][a-z]*|min-coverage|threshold)[ =][0-9]+([.][0-9]+)?" }
@@ -935,7 +947,7 @@ project_conf_loosenings() {
         cmd = ""; if (j) { r = substr(v, j + 1); j = index(r, "|"); if (j) cmd = substr(r, j + 1) }
         flags(s, id, cmd)
       }
-      else if (kind == "evidence") { if (v != "-") EV[s, id] = 1 }
+      else if (kind == "evidence") { if (!((s, id) in EV)) EV[s, id] = v }
       else if (kind == "floor") { if (!((s, id) in FLR)) FLR[s, id] = v }
       else if (kind == "covers") CV[s, id, v] = 1
       else if (kind == "discovery") DS[s, id] = 1
@@ -948,7 +960,7 @@ project_conf_loosenings() {
         if (kind == "gate") {
           if (SEEN["g", id]++) continue
           if (gone) { out(id, "gate removed", "", ""); continue }
-          if (SEV[1, id] == "required" && SEV[2, id] == "optional") out(id, "required -> optional", "required", "optional")
+          if (SEV[1, id] == "required" && SEV[2, id] != "required") out(id, "required -> " SEV[2, id], "required", SEV[2, id])
           for (q = 1; q <= FN[id]; q++) {
             nm = FL[id, q]; b = FV[1, id, nm]
             if (!((2, id, nm) in FV)) out(id, "threshold removed " nm " " b, b, "")
@@ -960,7 +972,8 @@ project_conf_loosenings() {
         }
         else if (gone) continue
         else if (kind == "evidence") {
-          if (v != "-" && !SEEN["e", id]++ && !((2, id) in EV)) out(id, "evidence line removed", "", "")
+          if (SEEN["e", id]++ || EV[1, id] == "-") continue
+          if (!((2, id) in EV) || EV[2, id] == "-") out(id, "evidence line removed", "", "")
         }
         else if (kind == "floor") {
           if (SEEN["f", id]++) continue
