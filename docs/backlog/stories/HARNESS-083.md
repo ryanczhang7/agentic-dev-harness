@@ -5,7 +5,7 @@ slug: a-gate-loosened-in-project-conf-during-g
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-083-a-gate-loosened-in-project-conf-during-g
 depends_on: [HARNESS-081]      # reuses 3j's commit walk and the ## Suppressions escape hatch
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -1685,9 +1685,9 @@ chose "Fix 1, 3, 4, 5"; 2 is deferred to `## Notes`.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-10-31T19:18:36Z
-    commit: fb206ff
-    tree:   cb95a993342f36f639c81ac025048f030691b04a
+    run:    2026-10-31T22:41:59Z
+    commit: 0710aa7
+    tree:   70ea3cd11a8c6d654b05bb5eb6f0ebaa0bf7c19a
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
