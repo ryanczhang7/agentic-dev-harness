@@ -5,7 +5,7 @@ slug: a-gate-loosened-in-project-conf-during-g
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-083-a-gate-loosened-in-project-conf-during-g
 depends_on: [HARNESS-081]      # reuses 3j's commit walk and the ## Suppressions escape hatch
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -215,6 +215,36 @@ cut did not:
   is compared against an empty after side: one `gate removed` per gate and
   `discovery line removed` per discovery id, in before-file order. GREEN
   chose this; it is now pinned and tested.
+
+*Amended again at GATES -> REVIEW (2026-10-31), round 2, approved by the
+user ("Fix 1, 3, 4, 5"); no acceptance criterion changes.* Same reason: each
+makes the table read `project.conf` as `gates.sh` does.
+
+- **Evidence, empty.** An evidence value that trims to empty
+  (`evidence | g |`, `evidence | g`, `evidence | g |   `) counts as no
+  evidence, like `-`: `gates.sh` matches an empty regex against every log line
+  (`$0 ~ ""`), so the gate passes having checked nothing. Before's first a real
+  regex and after's first empty is `evidence line removed`; an empty first
+  line on the before side is no evidence there.
+- **Threshold flags, both sides.** Replaces "the before value is the first
+  occurrence": the before value is the **highest** occurrence of that flag
+  name, the after value the **lowest**. A finding when lowest-after <
+  highest-before; the strings are unchanged, `threshold lowered <flag>
+  <highest before> -> <lowest after>`, and `threshold removed <flag>
+  <highest before>`. Flag names stay in first-occurrence order.
+- **BOOTSTRAPPED.** A new finding, printed with `<id>` `BOOTSTRAPPED`:
+  `BOOTSTRAPPED: BOOTSTRAPPED yes -> <after>`, where each side's value is read
+  as `gates.sh` reads it (lines 93-95): the first line matching
+  `^BOOTSTRAPPED=`, the text after `=` with all whitespace removed, empty
+  meaning `no`. A finding when before is `yes` and after is anything else (the
+  line removed reads as `no`). It prints before every other finding.
+  `no -> yes` is no finding.
+- **Floor, empty.** An after `floor | g |` with an empty value is `floor line
+  removed`, not `floor lowered N -> `: `gates.sh` treats an empty floor as no
+  floor.
+- **Not taken here:** a second `gate` line for one id (round 2, finding 2) -
+  recorded under `## Notes` for the follow-up, where `gates.sh --audit` can
+  refuse a duplicate gate id at the source.
 
 **C-3. What the escape hatch names.** The entry's path is
 `.claude/harness/project.conf` and the rule id is `gate-loosened`, so one
@@ -1006,6 +1036,111 @@ findings. `check-grep-count`: 56 files, 0 findings. `bash scripts/mutate.sh
 --check`: no stranded mutation. The full `gates.sh` run and the other
 selftest suites were not run in this dispatch.
 
+#### RED return 2
+
+Test Developer, return 2 (GATES -> RED). Dispatched as `test-developer`
+(declares `opus`); ran as **claude-opus-5-5**, no override. Remit: the four
+missing tests of `## Regressions`, Return 2 (C-2's round-2 bullets); no
+existing assertion was touched.
+
+**Command.** `bash .claude/tests/boundaries.test.sh` (full, 31m24s locally
+this time). For iteration, `...\scratchpad\sub083r2.test.sh` - the suite's
+lines 1-109, 1985-2091 and 2879-end, line 9 rewritten to the absolute
+`_lib.sh` path - runs the HARNESS-081 fixture and every HARNESS-083 describe
+(144 assertions, 11m35s).
+
+**Files touched.** `.claude/tests/boundaries.test.sh` (one new describe,
+"HARNESS-083 return 2: ...", after the return-1 describe and before
+`summary`); `.claude/tests/floors.conf` (boundaries 466 -> 502, with a
+comment); `.claude/tests/selftest.test.sh` (its copy, 466 -> 502); this story
+(`## Handoff`, `## Regressions`).
+
+**Export shape.** Unchanged: the tests read only `check-boundaries.sh`'s
+output through the existing helpers (`want_gl`, `gl_refused`, `gl_clean`,
+`gl_fails`). The BOOTSTRAPPED finding's `<id>` field is `BOOTSTRAPPED`, so
+`want_gl` builds `...[gate-loosened]: BOOTSTRAPPED: BOOTSTRAPPED yes -> no. A
+gate is never...`. Not constrained: how the awk reads the BOOTSTRAPPED line
+(it has no `|`, so today's parser skips it before reading any kind), how it
+holds the highest before-side repeat, and the `<before>`/`<after>` tab fields
+of the new finding.
+
+**The new cases** (all GREEN commits; `gl_refused` = whole line + `rc|FAIL
+lines` = `1|1`; `gl_clean` = `rc|FAIL lines` = `0|` + `ok    GREEN/GATES
+added no suppression (1 commit(s) judged)`). Exact finding strings:
+
+| # | before -> after | expected | on shipped a33ac97 |
+|---|---|---|---|
+| 1 | `evidence \| unit        \| Tests +[1-9][0-9]* passed` -> `evidence \| unit        \|` | refused `unit: evidence line removed` | RED (`0` / `0\|0`) |
+| 2 | -> `evidence \| unit` (no third field) | refused `unit: evidence line removed` | RED |
+| 3 | -> `evidence \| unit        \|   ` | refused `unit: evidence line removed` | RED |
+| 4 | control: before's evidence already `evidence \| unit        \|`; after edits only a comment | silent, judged | passes |
+| 5 | control: before empty as in 4; after the real regex | silent, judged | passes |
+| 6 | coverage `uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=10 --cov-fail-under=90` -> `... --cov-fail-under=10` | refused `coverage: threshold lowered --cov-fail-under 90 -> 10` | RED |
+| 7 | same before -> `... --cov-fail-under=90 --cov-fail-under=10` | refused `coverage: threshold lowered --cov-fail-under 90 -> 10` | RED |
+| 8 | control: same before -> `... -q --cov-fail-under=10 --cov-fail-under=90` | silent, judged | passes |
+| 9 | `BOOTSTRAPPED=yes` -> `BOOTSTRAPPED=no` | refused `BOOTSTRAPPED: BOOTSTRAPPED yes -> no` | RED |
+| 10 | `BOOTSTRAPPED=yes` line deleted | refused `BOOTSTRAPPED: BOOTSTRAPPED yes -> no` | RED |
+| 11 | -> `BOOTSTRAPPED=` | refused `BOOTSTRAPPED: BOOTSTRAPPED yes -> no` (empty reads `no`) | RED |
+| 12 | -> `BOOTSTRAPPED = yes` (space before `=`) | refused `BOOTSTRAPPED: BOOTSTRAPPED yes -> no` - no line matches `^BOOTSTRAPPED=`, so gates.sh reads `no` | RED |
+| 13 | control: -> `BOOTSTRAPPED=  yes  ` | silent, judged (whitespace removed: `yes`) | passes |
+| 14 | control: `BOOTSTRAPPED=no` -> `BOOTSTRAPPED=yes` | silent, judged | passes |
+| 15 | BOOTSTRAPPED line moved to the END of the file: `yes` -> `no`, and `floor \| unit 40` -> `12` | `gl_fails` equals, in order, `BOOTSTRAPPED: BOOTSTRAPPED yes -> no` then `unit: floor lowered 40 -> 12`; `rc\|FAIL lines` = `1\|2` | RED: only the floor line, `1\|1` |
+| 16 | `floor    \| unit        \| 40` -> `floor    \| unit        \|` | refused `unit: floor line removed` | whole line RED; `rc\|FAIL` `1\|1` passes on arrival (today prints `unit: floor lowered 40 -> `, also one FAIL) |
+| 17 | -> `floor    \| unit` | refused `unit: floor line removed` | as 16 |
+| 18 | -> `floor    \| unit        \|   ` | refused `unit: floor line removed` | as 16 |
+
+Case 12 departs from the brief's wording: the brief suggested `BOOTSTRAPPED =
+yes ` as a *silent* whitespace case, but C-2's round-2 bullet (and gates.sh
+93) reads only a line matching `^BOOTSTRAPPED=`, so a space before the `=`
+makes gates.sh read `no`. It is pinned as refused, per the Contract, and the
+silent whitespace control is case 13 (spaces after the `=`). If the
+orchestrator reads the Contract otherwise, case 12 is the one to revisit.
+
+**Negative controls - expected values.** Every control (4, 5, 8, 13, 14)
+expects `rc|FAIL lines` = `0|` and exactly one `ok    GREEN/GATES added no
+suppression (1 commit(s) judged)`. **Observed**, not claimed: the suite loads,
+so all five executed against shipped a33ac97 and measured `0|` plus the
+judged line (10 assertions green). GREEN re-measures them against its code:
+
+| control | the over-broad fix it catches |
+|---|---|
+| 4 empty before, unchanged | "empty after is removed" without "real before" |
+| 5 empty before, real after | treating an empty before as a regex that changed |
+| 8 same pair, `-q` added | "a repeated flag is a finding" / highest-after or lowest-before |
+| 13 `BOOTSTRAPPED=  yes  ` | comparing the untrimmed value, or the line text |
+| 14 `no -> yes` | "BOOTSTRAPPED changed" rather than "was yes, is not" |
+
+The three emptied-floor `rc|FAIL` assertions (16-18) pass on arrival because
+the current code already refuses with one (wrongly worded) finding; they pin
+that GREEN's fix replaces the wording rather than adding a second finding,
+and the whole-line assertion beside each is the red that demands the change.
+
+**Failure output** (full suite, against shipped a33ac97, local):
+
+    boundaries: 479 passed, 23 failed
+
+All 23 are in this describe (cases 1-3, 6, 7, 9-12, both assertions each =
+18; case 15's two; cases 16-18's whole lines = 3); the full listing is in
+`## Regressions`, Return 2. No `FIXTURE BUG` line in either run.
+
+**New floor.** `boundaries` 502 (466 + 36), in `floors.conf` and
+`selftest.test.sh`. Until GREEN lands the suite executes 502 and passes 479 -
+below its floor, expected in RED.
+
+**For GREEN.** Change `project_conf_loosenings` only (C-2's round-2 block):
+(a) an evidence value that trims to empty is no evidence on either side, like
+`-` (both `== "-"` tests on `EV[1,id]` and `EV[2,id]` also take `""`);
+(b) in `flags()`, side 1 keeps the **maximum** per flag name (names still in
+first-occurrence order), side 2 the minimum, as now; (c) read the first line
+matching `^BOOTSTRAPPED=` per side (before the `index(t, "|")` skip), the
+value after `=` with all whitespace removed, empty = `no`; print
+`BOOTSTRAPPED\tBOOTSTRAPPED yes -> <after>` first in END when before is `yes`
+and after is not - a missing line on the after side reads `no`; (d) an after
+floor that is empty is `floor line removed`. Mind the `/dev/null` after side
+of a deleted file: return 1's case 12 expects exactly the seven `gate removed`
+lines and the discovery line, and `GL_BASE` is `BOOTSTRAPPED=no`, so (c)
+prints nothing there.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -1178,6 +1313,157 @@ verified by `cmp`, and afterwards:
 `check-sigpipe`: 56 files, 0 findings. `check-grep-count`: 56 files, 0
 findings. `bash scripts/mutate.sh --check`: no stranded mutation.
 
+### Return 2 (GATES -> RED, 2026-10-31)
+
+- **What was wrong.** No test was wrong; four behaviours lacked one, and all
+  four are holes in the code: (1) an evidence regex emptied
+  (`evidence | g |`, spaces, or no value) was silent, while `gates.sh` matches
+  an empty regex against everything; (3) a repeated threshold flag on the
+  BEFORE side was compared at its first value, so `--cov-fail-under=10
+  --cov-fail-under=90` -> `--cov-fail-under=10` was silent; (4)
+  `BOOTSTRAPPED=yes -> no` was not parsed at all; (5) an emptied floor was
+  worded `floor lowered N -> `.
+- **How found.** Diff review round 2 (`## Diff review`, findings 1, 3, 4, 5).
+  The orchestrator reproduced 1 on its own input: GREEN's function at a33ac97
+  prints nothing for a required `lint` gate whose evidence goes from
+  `All checks passed` to blank, and `gates.sh`'s matcher with an empty regex
+  (line 775's awk) matches:
+
+```
+[]
+empty regex matches
+```
+
+- **What the new tests assert.** The round-2 C-2 bullets: `evidence line
+  removed` for an emptied regex (each spelling), with an empty first line
+  BEFORE being no finding; `threshold lowered <flag> <highest before> ->
+  <lowest after>` for a before-side repeat dropped (`=10 =90` -> `=10` is
+  `90 -> 10`) and for the two values swapped (`=10 =90` -> `=90 =10`, also
+  `90 -> 10`: a last-wins parser sees 90 drop to 10), with an unchanged
+  repeated pair silent; `BOOTSTRAPPED: BOOTSTRAPPED yes -> no` for the flip and
+  for the line removed, `no -> yes` silent; `floor line removed` for an
+  emptied floor.
+- **What earns them.** All four fail on arrival against GREEN's code, so RED
+  watches them fail.
+- **GREEN after this return** changes `project_conf_loosenings` (and the
+  SKILL.md 5a paragraph, to name BOOTSTRAPPED) only.
+
+#### RED (return 2) - test-developer
+
+Ran as **claude-opus-5-5** (`test-developer`, declares `opus`; no override).
+One new describe in `.claude/tests/boundaries.test.sh`, "HARNESS-083 return
+2: ...", 36 assertions; nothing existing edited. Cases, controls and expected
+values are tabled in `## Handoff`, "RED return 2".
+
+**Every refusal fails on arrival, for the right reason** - for an emptied
+evidence value, a before-side repeat and a BOOTSTRAPPED flip no finding
+prints, so neither the whole line (`expected: 1 / actual: 0`) nor the exit
+(`expected: 1|1 / actual: 0|0`) appears; in the combined case only the floor
+finding prints; for an emptied floor today's wording prints instead of
+`floor line removed`. Not an error, not a fixture bug (no `FIXTURE BUG` line).
+Full suite, against the shipped `scripts/check-boundaries.sh` at a33ac97,
+local, 2026-10-31, tree clean of mutations; this describe's output, whole,
+then the suite's last line and time:
+
+```
+  HARNESS-083 return 2: an emptied evidence or floor value, a threshold repeated on the before side, and BOOTSTRAPPED yes -> no
+    FAIL HARNESS-083 return 2: evidence | unit regex emptied as 'evidence | unit        |': refused by the whole line naming 'unit: evidence line removed'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: evidence | unit regex emptied as 'evidence | unit        |': and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-083 return 2: evidence | unit regex emptied as 'evidence | unit': refused by the whole line naming 'unit: evidence line removed'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: evidence | unit regex emptied as 'evidence | unit': and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-083 return 2: evidence | unit regex emptied as 'evidence | unit        |   ': refused by the whole line naming 'unit: evidence line removed'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: evidence | unit regex emptied as 'evidence | unit        |   ': and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-083 return 2: --cov-fail-under=10 --cov-fail-under=90 -> the 90 dropped: refused by the whole line naming 'coverage: threshold lowered --cov-fail-under 90 -> 10'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: --cov-fail-under=10 --cov-fail-under=90 -> the 90 dropped: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-083 return 2: --cov-fail-under=10 --cov-fail-under=90 -> swapped to =90 =10: refused by the whole line naming 'coverage: threshold lowered --cov-fail-under 90 -> 10'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: --cov-fail-under=10 --cov-fail-under=90 -> swapped to =90 =10: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-083 return 2: BOOTSTRAPPED=yes -> BOOTSTRAPPED=no: refused by the whole line naming 'BOOTSTRAPPED: BOOTSTRAPPED yes -> no'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: BOOTSTRAPPED=yes -> BOOTSTRAPPED=no: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-083 return 2: the BOOTSTRAPPED=yes line removed reads as no: refused by the whole line naming 'BOOTSTRAPPED: BOOTSTRAPPED yes -> no'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: the BOOTSTRAPPED=yes line removed reads as no: and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-083 return 2: BOOTSTRAPPED=yes -> BOOTSTRAPPED= (empty reads as no): refused by the whole line naming 'BOOTSTRAPPED: BOOTSTRAPPED yes -> no'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: BOOTSTRAPPED=yes -> BOOTSTRAPPED= (empty reads as no): and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-083 return 2: BOOTSTRAPPED=yes -> 'BOOTSTRAPPED = yes' (no ^BOOTSTRAPPED= line, reads as no): refused by the whole line naming 'BOOTSTRAPPED: BOOTSTRAPPED yes -> no'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: BOOTSTRAPPED=yes -> 'BOOTSTRAPPED = yes' (no ^BOOTSTRAPPED= line, reads as no): and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-083 return 2: BOOTSTRAPPED yes -> no and a floor lowered - BOOTSTRAPPED first though its line is last, whole lines
+         expected: FAIL  story T-1: commit 0ab132c (GREEN) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: BOOTSTRAPPED: BOOTSTRAPPED yes -> no. A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason.
+         FAIL  story T-1: commit 0ab132c (GREEN) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: unit: floor lowered 40 -> 12. A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason.
+         actual:   FAIL  story T-1: commit 0ab132c (GREEN) loosened a gate in '.claude/harness/project.conf' [gate-loosened]: unit: floor lowered 40 -> 12. A gate is never loosened to reach green; if this is deliberate, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason.
+    FAIL HARNESS-083 return 2: BOOTSTRAPPED and a floor - rc|FAIL lines
+         expected: 1|2
+         actual:   1|1
+    FAIL HARNESS-083 return 2: floor | unit 40 emptied as 'floor    | unit        |': refused by the whole line naming 'unit: floor line removed'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: floor | unit 40 emptied as 'floor    | unit': refused by the whole line naming 'unit: floor line removed'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-083 return 2: floor | unit 40 emptied as 'floor    | unit        |   ': refused by the whole line naming 'unit: floor line removed'
+         expected: 1
+         actual:   0
+
+boundaries: 479 passed, 23 failed
+real	31m23.759s
+```
+
+The emptied-floor whole-line assertions report only a count, so what today's
+code prints instead was read off the shipped function directly -
+`project_conf_loosenings` extracted from `scripts/check-boundaries.sh` at
+a33ac97, fed a one-line before `floor    | unit        | 40` and each after,
+through `cat -A`:
+
+```
+[floor    | unit        |] -> unit^Ifloor lowered 40 -> ^I40^I$
+[floor    | unit] -> unit^Ifloor lowered 40 -> ^I40^I$
+[floor    | unit        |   ] -> unit^Ifloor lowered 40 -> ^I40^I$
+```
+
+The 13 assertions of this describe that pass on arrival are the five
+controls (10) and the three emptied-floor `rc|FAIL lines` (`1|1`, satisfied
+by today's one wrongly worded finding). The 466 earlier assertions all pass;
+502 executed = 466 + 36. Subset `...\scratchpad\sub083r2.test.sh` (11m35s):
+`boundaries: 121 passed, 23 failed`, the same 23. `bash scripts/gates.sh
+--fast`: rc 0, `All required gates passed (0 ran, 5 unconfigured, 0 known)`,
+not recorded. `check-sigpipe`: 56 files, 0 findings. `check-grep-count`: 56
+files, 0 findings. No mutation was made in this return: every new refusal is
+red on arrival, so none is owed.
+
 ## Diff review
 
 ### Round 1 (2026-10-31, at a6f648c)
@@ -1218,6 +1504,50 @@ Fresh `feature-developer` dispatch (declares `opus`), resolved
 Orchestrator: 1-3 reproduced on its own inputs (see `## Regressions`,
 Return 1); user chose "Fix all 5". 1-4 go through RED; 5 is a docs fix in
 GREEN.
+
+### Round 2 (2026-10-31, at a33ac97)
+
+Fresh `feature-developer` dispatch (declares `opus`), resolved
+**claude-opus-5-5**, no override; changed no file. Report, as returned:
+
+- Round-1 fixes verified under gawk 5.4.1 and mawk 1.3.4: `required ->
+  advisory`; `-` inserted above the real evidence line; `--cov-fail-under=90`
+  repeated as `=10`; deleted file (tested at boundaries.test.sh:3401-3403);
+  SKILL.md 5a fixed.
+- Checked and fine: `80 -> 80.` and `80 -> 080` no finding (tools read 80),
+  `80 -> 08` refused, `.5` reads as `threshold removed`; floor `40 -> 040` no
+  finding (`gates.sh` compares with `-lt`); CRLF; tab-padded `required`;
+  created file; trailing space of `required -> ` survives the shell `read`;
+  `sup_paths` dedupe when project.conf classifies as config.
+- **Must fix 1.** An emptied evidence regex (`evidence | cov |`, no value, or
+  spaces) is silent: `table_get` returns empty with status 0, `exp` is neither
+  `<none>` nor `-`, and the empty regex matches every log. Sandbox: a required
+  gate running `echo "nothing here"` went `FAIL cov (... no evidence of work
+  ...)` -> `PASS cov (0s)`, rc 0; `--audit` passed it. Fix: treat empty like
+  `-` on both sides.
+- **Should fix 2.** Only the first `gate` line per id is read; `gates.sh` runs
+  every one and `--audit` accepts duplicates. A second `cov` line turned
+  `optional` with `--cov-fail-under=10` is silent (sandbox: `FAIL` rc 1 ->
+  `WARN ... optional` rc 0); adding an optional duplicate above a required one
+  is refused as `required -> optional`. Fix: read every gate line, or have
+  `--audit` refuse a duplicate id.
+- **Should fix 3.** Before side keeps the first repeat: `--cov-fail-under=10
+  --cov-fail-under=90` (argparse enforces 90) -> `--cov-fail-under=10`, or
+  swapped, is silent. Fix: before keeps the highest, after the lowest.
+- **Should fix 4.** `BOOTSTRAPPED=yes -> no` is not parsed (no `|`). With an
+  emptied command: `FAIL cov (required gate has no command)` rc 1 ->
+  `UNCONFIGURED cov`, `All required gates passed`, rc 0. Fix: report
+  `BOOTSTRAPPED yes -> <after>`.
+- **Nice to have 5.** `floor | cov | 40 -> floor | cov |` is refused but
+  worded `floor lowered 40 -> `. Fix: `floor line removed` on an empty after.
+- Outside the story: `--audit` accepts an empty evidence regex and duplicate
+  gate ids.
+- `Verdict: fix 1 first.`
+
+Orchestrator: 1 reproduced on its own input (a required `lint` gate,
+`evidence | lint | All checks passed` -> `evidence | lint |   `, function
+output empty; `gates.sh`'s matcher with an empty regex matched). The user
+chose "Fix 1, 3, 4, 5"; 2 is deferred to `## Notes`.
 
 ## Gate results
 
@@ -1290,3 +1620,12 @@ both the `C:/...` (quoted) and `/c/...` spellings, with cwd
 i.e. allowed. The agent's exact command was not recorded, so the refusal is
 unexplained, not confirmed; if it recurs, capture the command verbatim and
 add it to `.claude/tests/phase-guard.test.sh` as CLAUDE.md says.
+
+**Follow-up list (2026-10-31), for the next story after HARNESS-083:**
+
+- Duplicate `gate` ids (diff review round 2, finding 2): `project_conf_loosenings`
+  reads only the first `gate` line of an id, while `gates.sh` runs every one and
+  `gates.sh --audit` accepts a duplicate. Close it at the source: `--audit`
+  refuses a duplicate gate id (and, separately, an empty evidence regex).
+- Other weakenings of an evidence regex (`.` in place of a real one) are out of
+  this story's scope by C-2; listed so they are not forgotten.

@@ -3404,4 +3404,104 @@ assert_eq "HARNESS-083 return 1: project.conf deleted - rc|FAIL lines (seven gat
 
 git -C "$FIX" checkout -q main 2>/dev/null
 
+# ---------------------------------------------------------------------------
+describe "HARNESS-083 return 2: an emptied evidence or floor value, a threshold repeated on the before side, and BOOTSTRAPPED yes -> no"
+
+# Return 2 (GATES -> RED), from the diff review's round-2 findings 1, 3, 4 and 5
+# and C-2's block "Amended again at GATES -> REVIEW ... round 2". No acceptance
+# criterion changed; each case pins what gates.sh actually enforces.
+
+# Evidence, empty. gates.sh matches an empty regex against every log line
+# (`$0 ~ ""`), so an evidence value that trims to empty is no evidence, like
+# `-`. Three spellings: a bare `|`, no third field, and spaces after the `|`.
+for gl_ev in 'evidence | unit        |' 'evidence | unit' 'evidence | unit        |   '; do
+  conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_EVID" "$gl_ev")" </dev/null
+  run_boundaries </dev/null
+  gl_refused "HARNESS-083 return 2: evidence | unit regex emptied as '$gl_ev'" GREEN 'unit: evidence line removed'
+done
+
+# Controls: an empty first evidence line BEFORE is no evidence there, so there
+# is nothing to remove - whether the after side leaves it alone (an unrelated
+# comment edited) or fills it with a real regex.
+gl_e0="$(gl_swap "$GL_BASE" "$GL_EVID" 'evidence | unit        |')"
+conf_story GREEN "$gl_e0" "$(gl_swap "$gl_e0" '# Set to yes by the bootstrap story once the stack is real.' '# Set to yes by the bootstrap story once the stack is real (it is not yet).')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 2 control: evidence | unit already empty before, unchanged after (a comment edited)"
+
+conf_story GREEN "$gl_e0" "$(gl_swap "$gl_e0" 'evidence | unit        |' "$GL_EVID")" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 2 control: evidence | unit empty before, a real regex after"
+
+# Threshold repeated BEFORE. argparse (under pytest-cov) takes the last repeat,
+# so `=10 =90` enforces 90; the before value is the HIGHEST occurrence, the
+# after the LOWEST. Dropping the 90, or swapping the pair so a last-wins parser
+# sees 10, are both `90 -> 10`.
+gl_py='gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing'
+gl_b2="$(gl_swap "$GL_BASE" "$GL_COV" "$gl_py --cov-fail-under=10 --cov-fail-under=90")"
+conf_story GREEN "$gl_b2" "$(gl_swap "$gl_b2" "$gl_py --cov-fail-under=10 --cov-fail-under=90" "$gl_py --cov-fail-under=10")" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 return 2: --cov-fail-under=10 --cov-fail-under=90 -> the 90 dropped" GREEN 'coverage: threshold lowered --cov-fail-under 90 -> 10'
+
+conf_story GREEN "$gl_b2" "$(gl_swap "$gl_b2" "$gl_py --cov-fail-under=10 --cov-fail-under=90" "$gl_py --cov-fail-under=90 --cov-fail-under=10")" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 return 2: --cov-fail-under=10 --cov-fail-under=90 -> swapped to =90 =10" GREEN 'coverage: threshold lowered --cov-fail-under 90 -> 10'
+
+# Control: the same repeated pair on both sides, the command otherwise changed.
+conf_story GREEN "$gl_b2" "$(gl_swap "$gl_b2" "$gl_py --cov-fail-under=10 --cov-fail-under=90" "$gl_py -q --cov-fail-under=10 --cov-fail-under=90")" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 2 control: --cov-fail-under=10 --cov-fail-under=90 on both sides, -q added"
+
+# BOOTSTRAPPED, read as gates.sh 93-95 reads it: the first line matching
+# ^BOOTSTRAPPED=, the text after `=` with all whitespace removed, empty meaning
+# `no`. The base is `no`, so these cases start from a `yes` before.
+gl_by="$(gl_swap "$GL_BASE" 'BOOTSTRAPPED=no' 'BOOTSTRAPPED=yes')"
+conf_story GREEN "$gl_by" "$GL_BASE" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 return 2: BOOTSTRAPPED=yes -> BOOTSTRAPPED=no" GREEN 'BOOTSTRAPPED: BOOTSTRAPPED yes -> no'
+
+conf_story GREEN "$gl_by" "$(gl_swap "$gl_by" 'BOOTSTRAPPED=yes' '')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 return 2: the BOOTSTRAPPED=yes line removed reads as no" GREEN 'BOOTSTRAPPED: BOOTSTRAPPED yes -> no'
+
+conf_story GREEN "$gl_by" "$(gl_swap "$gl_by" 'BOOTSTRAPPED=yes' 'BOOTSTRAPPED=')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 return 2: BOOTSTRAPPED=yes -> BOOTSTRAPPED= (empty reads as no)" GREEN 'BOOTSTRAPPED: BOOTSTRAPPED yes -> no'
+
+# A space BEFORE the `=` no longer matches ^BOOTSTRAPPED=, so gates.sh finds no
+# line and reads `no`: a loosening that looks like reformatting.
+conf_story GREEN "$gl_by" "$(gl_swap "$gl_by" 'BOOTSTRAPPED=yes' 'BOOTSTRAPPED = yes')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-083 return 2: BOOTSTRAPPED=yes -> 'BOOTSTRAPPED = yes' (no ^BOOTSTRAPPED= line, reads as no)" GREEN 'BOOTSTRAPPED: BOOTSTRAPPED yes -> no'
+
+# Controls: whitespace AFTER the `=` is removed and still reads yes; and the
+# reverse flip tightens.
+conf_story GREEN "$gl_by" "$(gl_swap "$gl_by" 'BOOTSTRAPPED=yes' 'BOOTSTRAPPED=  yes  ')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 2 control: BOOTSTRAPPED=yes -> 'BOOTSTRAPPED=  yes  ' (whitespace removed, still yes)"
+
+conf_story GREEN "$GL_BASE" "$gl_by" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-083 return 2 control: BOOTSTRAPPED=no -> BOOTSTRAPPED=yes"
+
+# BOOTSTRAPPED prints before every other finding - so the line is moved to the
+# END of the file, after the floor line, where the before file's order would
+# put it last.
+gl_bend="$(gl_swap "$GL_BASE" 'BOOTSTRAPPED=no' '')"
+conf_story GREEN "$gl_bend"$'\n''BOOTSTRAPPED=yes' "$(gl_swap "$gl_bend" "$GL_FLOOR" 'floor    | unit        | 12')"$'\n''BOOTSTRAPPED=no' </dev/null
+run_boundaries </dev/null
+assert_eq "HARNESS-083 return 2: BOOTSTRAPPED yes -> no and a floor lowered - BOOTSTRAPPED first though its line is last, whole lines" \
+  "$(want_gl "$gl_c" GREEN 'BOOTSTRAPPED: BOOTSTRAPPED yes -> no')"$'\n'"$(want_gl "$gl_c" GREEN 'unit: floor lowered 40 -> 12')" \
+  "$(gl_fails)"
+assert_eq "HARNESS-083 return 2: BOOTSTRAPPED and a floor - rc|FAIL lines" "1|2" "$rc|$(grep -c '^FAIL' <<< "$out")"
+
+# Floor, empty. gates.sh treats an empty floor as no floor, so emptying it is
+# `floor line removed`, not `floor lowered 40 -> `.
+for gl_fl in 'floor    | unit        |' 'floor    | unit' 'floor    | unit        |   '; do
+  conf_story GREEN "$GL_BASE" "$(gl_swap "$GL_BASE" "$GL_FLOOR" "$gl_fl")" </dev/null
+  run_boundaries </dev/null
+  gl_refused "HARNESS-083 return 2: floor | unit 40 emptied as '$gl_fl'" GREEN 'unit: floor line removed'
+done
+
+git -C "$FIX" checkout -q main 2>/dev/null
+
 summary "boundaries"
