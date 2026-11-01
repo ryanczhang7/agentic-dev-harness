@@ -4,8 +4,8 @@ title: A subagent's verification run is recorded against the tree it ran on, and
 slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -140,6 +140,20 @@ Semantics: the hash moves when any tracked, staged **or untracked** `source`,
 ignored-path control). `gated_stdin` is the existing filter and defines
 "gated" here; nothing new decides it. `unavailable` is never `fresh`.
 
+*Amended in RED (test-developer, 2026-11-01).* "stays when only ...
+`harness` ... paths change" contradicts the sentence after it: `gated_stdin`
+KEEPS non-markdown `harness` files (hooks, scripts, `project.conf`) and drops
+only harness **markdown** and `.claude/state/`. Since `gated_stdin` is the
+settled definition, the semantics read: the hash stays when only `docs`,
+harness **markdown**, `vendor`, `ignored` or `.claude/state/` paths change; a
+change to a hook or a script moves it, as it moves `gate_tree_hash`. The suite
+pins harness markdown (untracked `.claude/commands/new.md`) as not moving it
+and pins nothing about non-markdown harness files. Also pinned, read out of
+the listing shape: with no untracked gated file, `work_tree_hash` **equals**
+`gate_tree_hash`; and an untracked file is hashed exactly as `gate_tree_hash`
+hashes it once `git add`-ed. Outside a repository it prints `unavailable`
+once (not twice) and returns 1.
+
 **C-3. The record.** Appended to `.claude/state/attest.log`, one block per
 run, blank-line separated, fields in this order:
 
@@ -159,6 +173,28 @@ of <log> ---` and the last `ATTEST_TAIL` lines (default 20) of the log. It
 never prints the whole output: that is the point. `status:` is `void` when
 `tree:` and `after:` differ (AC-3) or either is `unavailable`; the command's
 exit status is passed through regardless of status.
+
+*Amended in RED (test-developer, 2026-11-01).*
+- **The log's file name has no colons.** `<run>` in the gates.sh format
+  contains `:`, which NTFS does not allow in a file name and git for Windows
+  refuses to track. The name is `<run with every - and : removed>.<pid>.log`,
+  i.e. `.claude/state/attest-logs/20261101T044441Z.1234.log` - mutate.sh's
+  `STAMP` shape. The suite pins `^\.claude/state/attest-logs/[0-9]{8}T[0-9]{6}Z\.[0-9]+\.log$`
+  and that its stamp equals `run:` with `-` and `:` removed.
+- **The header names the `log:` path as written in the block** (relative,
+  `.claude/state/attest-logs/...`): `--- last 20 lines of <log:> ---`. N is
+  pinned only where the output is at least N lines long (30 lines, default 20;
+  `ATTEST_TAIL=5`); for a shorter output N is unconstrained.
+- **Padding** between `key:` and its value is not pinned (one or more
+  spaces); the field names, their order, and that there are no others are.
+- **The root is attest.sh's own** `scripts/..`, as gates.sh's is - not
+  `CLAUDE_PROJECT_DIR`. The suite exports `CLAUDE_PROJECT_DIR` as the real
+  repository while driving a fixture's attest.sh, so a script that read the
+  variable would hash the wrong tree.
+- **The printed block equals the block appended to attest.log**, byte for byte
+  (a CR-free comparison of lines), and the command's output appears on stdout
+  only once, in the tail; its stderr goes to the log, not to attest.sh's
+  stderr.
 
 **C-4. `check`.** Reads the log, takes the newest block whose `command:`
 equals the joined words. Answers, as the last line of stdout:
@@ -180,6 +216,22 @@ Before running (AC-4), `attest.sh` runs `bash scripts/mutate.sh --check` and
 refuses with its report, exit 2, when it is not clean - the same refusal
 `gates.sh` makes (HARNESS-030): a run inside a mutation is a run on a tree
 nobody will ever see again.
+
+*Amended in RED (test-developer, 2026-11-01).*
+- **The `void` row's last line is the block's `status:` value verbatim**:
+  `void: tree changed during the run` (or `void: hash unavailable`), not
+  `void: void: ...`. The table's `void: <its status text>` read both ways.
+- **The rows are checked in the table's order, and `void` outranks the hash
+  comparison**: a void record stays `void` after the tree is put back to its
+  `tree:`. Pinned.
+- **"Newest" is pinned**: when an older block for the same words matches the
+  current tree and the newest does not, the answer is `stale` against the
+  newest.
+- **A refusal (AC-4) and a usage error record nothing**: attest.log is
+  byte-identical afterwards. `attest.sh true` (a command with no `--`) is a
+  usage error, exit 2. `check` and `check --` are usage errors, exit 2.
+- `fresh`'s preceding lines (trailing blank lines dropped) equal the block as
+  it stands in attest.log.
 
 **C-5. The structural guard and its sites.** `attest_problems <root>` in
 `.claude/tests/attest.test.sh`, one line `<path>: <reason>` per violation,
@@ -209,6 +261,38 @@ the full run as `` `scripts/gates.sh` without `--fast` ``, which the needle
 does not match. Steps 8-9 renumber to 7-8; `briefs.test.sh` pins step 2's
 pointer and the `## Reuse before you write` section, neither of which moves.
 
+*Amended in RED (test-developer, 2026-11-01).*
+- **test-developer's tests needle.** `bash scripts/attest.sh --` is a prefix
+  of `bash scripts/attest.sh -- bash scripts/gates.sh --fast`, so "a line
+  contains `bash scripts/attest.sh --`" is satisfied by the `--fast` line
+  alone and cannot fail once the `--fast` row holds. The rule is: within the
+  numbered list, `bash scripts/attest.sh --` occurs **more often** than the
+  `--fast` needle - i.e. at least one attested run that is not the `--fast`
+  one.
+- **Regions.** "The numbered list" is: from the first `^[0-9]+\. ` line
+  after `## Method`, taking step lines, indented continuation lines and blank
+  lines, up to the first other line (an unindented paragraph) or the next
+  `## `. A paragraph after the list, inside `## Method`, is outside it. The
+  feature-developer and test-developer rows are judged **per line** (keep each
+  needle on one line). The advance-story regions run from the line beginning
+  `**X → Y.**` to the next line matching `^\*\*[^*]+ → [^*]+\.\*\*` - so a
+  bold non-phase line such as `**Pin the `## Contract`.**` does not end
+  `PLANNED → RED` - and are judged with their lines joined by one space, so a
+  phrase wrapped over two lines is found. complete-story is the whole file,
+  joined the same way; lead-po is `## Orchestrating` to the next `## `, joined.
+- **`<region>`** in the advance-story reasons is the heading without its
+  asterisks and period: `PLANNED → RED`, `RED → GREEN`. So:
+  `.claude/commands/advance-story.md: PLANNED → RED does not check the record`.
+- **Structural failures**, each one line: `<path>: file is missing`;
+  `<path>: has no `## Method` section`; `.claude/commands/advance-story.md: has
+  no `**PLANNED → RED.**` paragraph` (likewise `RED → GREEN`);
+  `.claude/agents/lead-po.md: has no `## Orchestrating` section`; and, for a
+  command without one, `<path>: has no `allowed-tools:` line in its frontmatter`
+  (procedure's wording) in place of `does not permit attest.sh`.
+- **Output order**: feature-developer (full run, then --fast), test-developer
+  (tests, then --fast), advance-story (tool, then PLANNED → RED check / re-run,
+  then RED → GREEN check / re-run), complete-story (tool, then check), lead-po.
+
 **C-6. What the prose says, in substance.** GREEN writes the words; these are
 the obligations. test-developer.md steps 4 and 7: run the test command and
 `--fast` as `bash scripts/attest.sh -- <command>`, and paste the `last:`
@@ -235,6 +319,12 @@ you, and the story that quotes it | yes. `settings.json` deny gains
 `settings.test.sh` checks the table and the rules against each other in both
 directions and needs no change. Both are `ignored` to the phase lock already
 (`.claude/state/*` is gitignored and no `paths.conf` rule classifies it).
+
+*Amended in RED (test-developer, 2026-11-01).* Measured, the last sentence is
+not so: `bash scripts/classify.sh .claude/state/attest.log` prints `harness`
+(a `paths.conf` rule classifies it before the gitignore is consulted). Nothing
+turns on it: `harness` is writable in every phase, and `gated_stdin` drops
+`.claude/state/` explicitly, so neither the lock nor the work hash cares.
 
 **C-8. The suite.** `.claude/tests/attest.test.sh`, sourcing `_lib.sh`,
 fixture from `make_project_fixture` (a git repository with the harness
@@ -319,21 +409,391 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One suite, `.claude/tests/attest.test.sh`, run by `bash scripts/selftest.sh
+attest`. Every criterion is mechanical (C-9), so every assertion pins an exact
+string, exit status or hash relation; nothing is thresholded. Levels:
+
+| Block (`describe`) | Level | Covers | Assertions |
+|---|---|---|---|
+| C-2 work_tree_hash | unit: the fixture's own `lib.sh` sourced, function called | C-2; the hash AC-2/AC-3 rest on | 19 |
+| AC-1 attest.sh -- <command> | integration: `scripts/attest.sh` run in a `make_project_fixture` tree | AC-1 + control; C-1 "executed directly"; C-3 tail | 28 |
+| C-1 usage errors | integration | C-1 exit 2; records nothing | 7 |
+| AC-2 check | integration | AC-2 + all its controls | 22 |
+| AC-3 void | integration | AC-3 + control | 14 |
+| C-4 newest block | integration | C-4 "newest" | 2 |
+| AC-4 stranded mutation | integration (planted `.active`, dead pid, as gates.test.sh's HARNESS-030 block) | AC-4 + control | 8 |
+| AC-5 real tree | structural guard over `REPO_ROOT` | AC-5 | 1 |
+| AC-5 fixtures | structural guard over trees compliant by construction, one site regressed each | AC-5, C-5's table row by row | 19 |
+| AC-6 rows | structural: README table (settings.test.sh's own `rows` parser, copied) and settings.json | AC-6 | 3 |
+
+123 executed assertions; none is conditional, so the count is the same red or
+green. AC-6's other half - the rows and the deny rule agree in both
+directions - is `bash scripts/selftest.sh settings`, unchanged; see the handoff.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control
-       * anything discovered that changes the approach -->
+RED by `test-developer`, on `claude-opus-5-5` (Opus 5.5), as declared; no
+override.
+
+**Read the Contract first: C-2, C-3, C-4, C-5 and C-7 carry RED amendments in
+place** (each headed *Amended in RED*). The suite pins the amended text.
+
+### Command
+
+    bash scripts/selftest.sh attest
+
+(`bash .claude/tests/attest.test.sh` runs the same suite without the run lock;
+`VERBOSE=1` names every passing assertion too.) Runtime here: about 6 s red;
+green will be longer (each attest/check call hashes the fixture twice) - well
+inside anything, no per-test timeout exists in this harness.
+
+### Files touched
+
+- `.claude/tests/attest.test.sh` - new suite (all ACs).
+- `.claude/tests/floors.conf` - `floor | attest        | 123`, above `boundaries`.
+- `.claude/tests/selftest.test.sh` - `attest 123` in the COUNTS table, above `boundaries 502`.
+- `docs/backlog/stories/HARNESS-084.md` - Contract amendments, `## Test plan`, this handoff.
+
+Nothing else. `scripts/attest.sh`, `lib.sh`, the agent/command prose, the
+README, settings.json, CLAUDE.md and VERSION are GREEN's and untouched.
+
+### The failure, and why it is the right one
+
+`attest: 22 passed, 101 failed`. Three causes, and only three:
+
+1. `scripts/attest.sh` does not exist: every attest call exits 127 with
+   `bash: scripts/attest.sh: No such file or directory` on stderr, no
+   `attest.log` exists, so every exit-status, field, block, check-line and
+   "records nothing" assertion is red. That is AC-1..AC-4 and C-1/C-4.
+2. `work_tree_hash` is not defined in `lib.sh`: `whash` prints nothing and
+   returns 127, so every C-2 assertion is red (the hash helpers refuse an empty
+   string, so "" = "" never passes), and every AC assertion that compares a
+   recorded `tree:` against the work hash is red on both counts.
+3. The real tree's prose and state files are unchanged: `attest_problems
+   "$REPO_ROOT"` prints the 12 lines below, and the README/settings.json lack
+   the rows (AC-6).
+
+No assertion is red for any other reason: no syntax error (`bash -n` clean),
+`check-sigpipe.sh` and `check-grep-count.sh` report 0 findings on the file,
+and the fixture preconditions that touch existing code are green (gate_tree_hash
+control, `mutate.sh --check` precondition).
+
+Verbatim excerpts of that run (contiguous; `[...]` marks omitted runs of the
+same shape):
+
+```
+=== attest ===
+
+  C-2  work_tree_hash: one hash, moving on gated content tracked, staged or untracked
+    FAIL work_tree_hash prints one hash on a clean tree
+         printed: []
+    FAIL work_tree_hash returns 0 on a clean tree
+         expected: 0
+         actual:   127
+    FAIL with nothing untracked it IS gate_tree_hash: the same listing, plus no lines
+         expected the hash: fb834a3d689099803fc3fc68f1e2813c9d020fed
+         actual:            
+    FAIL an untracked test file moves the work hash
+         expected two different hashes:
+         before: 
+         after:  
+    FAIL an untracked file is hashed exactly as gate_tree_hash hashes it once staged
+         expected the hash: 4f31c2296ea34f1abed62c1552e48ffde7331bee
+         actual:            
+[...]
+    FAIL outside a repository work_tree_hash prints exactly `unavailable`
+         expected: unavailable
+         actual:   
+    FAIL and returns 1
+         expected: 1
+         actual:   127
+
+  AC-1  attest.sh -- <command>: exit passed through, the record, then the tail
+    FAIL the command's exit status, 3, is attest.sh's
+         expected: 3
+         actual:   127
+    FAIL attest.log's last block has exactly C-3's fields, in C-3's order
+         expected: run command tree after status exit duration last log
+         actual:   
+[...]
+    FAIL the command's stderr goes to the log, not to attest.sh's stderr
+         log: []
+         attest.sh's stderr: bash: scripts/attest.sh: No such file or directory
+[...]
+    FAIL control: NAME=value is stripped from what is executed (exit 0, not 127)
+         expected: 0
+         actual:   127
+[...]
+  C-1  usage errors exit 2 and record nothing
+    FAIL no arguments: exit 2
+         expected: 2
+         actual:   127
+[...]
+  AC-2  check: fresh on the unchanged tree; none, stale, or still fresh on a docs edit
+    FAIL same words, unchanged tree: the last line is fresh
+         expected: fresh
+         actual:   
+[...]
+    FAIL after a tracked source edit: stale, naming the recorded and the current hash
+         expected: stale: recorded on  at , the tree is now 
+         actual:   
+[...]
+  AC-3  a command that edits a tracked source file: void, exit passed through
+    FAIL the command's exit status, 5, is passed through
+         expected: 5
+         actual:   127
+    FAIL status: void: tree changed during the run
+         expected: void: tree changed during the run
+         actual:   
+[...]
+  AC-4  a stranded mutation: refused before running, mutate.sh's report, exit 2
+    FAIL attest.sh exits 2
+         expected: 2
+         actual:   127
+    FAIL it prints mutate.sh --check's report
+         expected: 1
+         actual:   0
+[...]
+  AC-5  the guard is silent on the real tree
+    FAIL attest_problems over REPO_ROOT prints nothing
+         expected: 
+         actual:   .claude/agents/feature-developer.md: still runs the full gate run in GREEN
+         .claude/agents/feature-developer.md: does not run --fast through attest.sh
+         .claude/agents/test-developer.md: does not run its tests through attest.sh
+         .claude/agents/test-developer.md: does not run --fast through attest.sh
+         .claude/commands/advance-story.md: does not permit attest.sh
+         .claude/commands/advance-story.md: PLANNED → RED does not check the record
+         .claude/commands/advance-story.md: PLANNED → RED still re-runs the tests
+         .claude/commands/advance-story.md: RED → GREEN does not check the record
+         .claude/commands/advance-story.md: RED → GREEN still re-runs the tests
+         .claude/commands/complete-story.md: does not permit attest.sh
+         .claude/commands/complete-story.md: does not check the record
+         .claude/agents/lead-po.md: does not check the record
+
+  AC-5  ...and on a tree compliant by construction, and fires once per regression
+
+  AC-6  the state README and settings.json carry the attest rows
+    FAIL README: attest.log is a row, hand-editable no
+         expected: 1
+         actual:   0
+    FAIL README: attest-logs/*.log is a row, hand-editable yes
+         expected: 1
+         actual:   0
+    FAIL settings.json denies Edit(./.claude/state/attest.log)
+         expected: 1
+         actual:   0
+
+attest: 22 passed, 101 failed
+```
+
+The 12 real-tree lines are each true of today's files: feature-developer.md
+step 7 is ``Run `bash scripts/gates.sh`.`` and step 6 runs `--fast` bare;
+test-developer.md steps 4 and 7 name no attest.sh; neither command's
+allowed-tools has the entry; advance-story.md line 93 (PLANNED → RED) and line
+130 (RED → GREEN) both say `run the tests yourself` and neither region names
+the check; complete-story.md and lead-po.md's `## Orchestrating` never name it.
+
+### What each block asserts, and the AC
+
+C-2 `work_tree_hash` (19), via the fixture's lib.sh, `set_harness_root <fixture>`:
+- prints one hash, returns 0; **equals `gate_tree_hash`** with nothing untracked
+- an untracked `tests/new.test.ts` moves it; control: `gate_tree_hash` does not (green on arrival)
+- the untracked file hashes **exactly as `gate_tree_hash` after `git add`** (listing shape read out); staging it does not move the work hash
+- its content change moves it again; removing it restores the clean hash
+- untracked `src/new.ts` (source) and `tsconfig.json` (config), and an unstaged edit to tracked `src/main.ts`, each move it
+- tracked docs edit, untracked docs file, untracked `.claude/commands/new.md`, `dist/out.js` (vendor), `.claude/state/anything.txt`: each leaves it unmoved
+- outside a git repository: stdout exactly `unavailable`, return 1
+
+AC-1 (28): exit 3 passed through; the last attest.log block's keys are exactly
+`run command tree after status exit duration last log`; `run:` matches the
+gates.sh stamp and falls inside the call; `command:` is
+`bash <WORK>/cmds/two.sh alpha beta`; `tree:` = `after:` = the work hash
+before; `status: ok`; `exit: 3`; `duration: <n>s`; `last: second line` (the
+command's stderr line, followed by a blank line - so "combined" and
+"non-blank" both bite); `log:` matches the colon-free shape and its stamp is
+`run:` minus `-`/`:`; the log file holds `first line\nsecond line` (+ blank);
+stdout's block equals the log's block; the header is
+`--- last 20 lines of <log:> ---`; the lines after it are `first line`,
+`second line`; `first line` appears once on stdout; `second line` is in the
+log and not on attest.sh's stderr. Tail: 30 lines -> header 20, lines 11..30,
+log keeps 30; `ATTEST_TAIL=5` -> header 5, lines 26..30. Executed directly:
+`args.sh 'a b' '*'` logs `[a b]` / `[*]` and records `... args.sh a b *`.
+Control: `ATTEST_PROBE=value bash env.sh` exits 0, logs `NAME=value`, records
+`ATTEST_PROBE=value bash <WORK>/cmds/env.sh`.
+
+C-1 (7): exit 2 for no args, `--`, `frob -- true`, `check`, `check --`,
+`true`; attest.log byte-identical after all six.
+
+AC-2 (22): `check -- <same words>` -> last line `fresh`, exit 0, preceding
+lines = the AC-1 block. `none: no record for this command`, exit 1, for a
+never-run command, reordered words, a prefix, a superset, and env.sh without
+its assignment (with it: `fresh`). Docs-only edit: `fresh`, exit 0. Tracked
+source edit: `stale: recorded on <T0> at <R1>, the tree is now <Tn>`, exit 1;
+undone: `fresh`. Untracked test file: `stale ... now <Ta>`, exit 1; its content
+changed: `stale ... now <Tb>`, Tb != Ta, exit 1.
+
+AC-3 (14): `edit.sh` (appends to tracked `src/x.sh`, exits 5) -> exit 5,
+`status: void: tree changed during the run`, `tree:` before, `after:` the
+hash it exited on (different), `exit: 5`, block printed; `check` -> last line
+`void: tree changed during the run`, exit 1, and **still void after the file
+is put back**. Control: `state.sh` (writes only `.claude/state/...`) ->
+`status: ok`, exit 0, `after:` = hash before, `check` -> `fresh`.
+
+C-4 (2): re-run two.sh on an edited tree -> `fresh`; put the tree back ->
+`stale` against the NEWEST block although the older one matches.
+
+AC-4 (8): precondition `mutate.sh --check` exits 1 on the planted sentinel;
+attest.sh exits 2; the command's side effect (`<WORK>/ac4-ran`) is absent;
+stdout+stderr carry the whole line `mutate: a mutation is unaccounted for. The
+tree may not be the code you think.` and the whole line `  src/main.ts`;
+attest.log byte-identical. Control: sentinel removed -> same command exits 0
+and the side effect appears.
+
+AC-5 (1 + 19): real tree silent; compliant fixture silent; 18 one-line
+regressions (C-5's rows, plus: full run on a continuation line; attested
+--fast moved outside `## Method`; the re-run phrase wrapped over two lines;
+the check only in the next phase paragraph; an allowed-tools entry that
+*contains* the pattern; no PLANNED → RED paragraph; lead-po's check only in
+another section; lead-po empty; a missing complete-story.md).
+
+AC-6 (3): README rows `attest.log` -> `no` and `attest-logs/*.log` -> `yes`
+(parsed by a copy of settings.test.sh's `rows`); settings.json has a deny line
+exactly `"Edit(./.claude/state/attest.log)"`.
+
+### Export shape the tests pin (fact, not suggestion)
+
+`scripts/attest.sh`, run as `cd <root> && bash scripts/attest.sh ...`:
+- `-- <word>...`: leading `NAME=value` words exported and stripped; the rest
+  executed as `"$@"`; stdout+stderr to the log; exit = the command's. Prints
+  the block exactly as appended, then `--- last <N> lines of <log:> ---`,
+  then the last `ATTEST_TAIL` (default 20) log lines. Root = the script's own
+  `scripts/..` (CLAUDE_PROJECT_DIR is set to another tree throughout the suite).
+- Block keys, in order, nothing else: `run command tree after status exit
+  duration last log`, each `key:` + one or more spaces + value.
+  `status:` is `ok` or `void: tree changed during the run`.
+  `log:` is `.claude/state/attest-logs/YYYYMMDDTHHMMSSZ.<pid>.log`.
+- `check -- <word>...`: last stdout line and exit: `none: no record for this
+  command` 1; `void: tree changed during the run` 1; `stale: recorded on
+  <tree> at <run>, the tree is now <hash>` 1; `fresh` 0, preceded by the block.
+- Usage errors exit 2 and append nothing. A stranded mutation: exit 2, the
+  command not run, `mutate.sh --check`'s report on stdout or stderr (either is
+  read), nothing appended.
+- `.claude/hooks/lib.sh`: `work_tree_hash` with no arguments, judging
+  `$HARNESS_ROOT`; stdout one hash and return 0, or exactly `unavailable` and
+  return 1.
+
+Not constrained, so GREEN's choice: padding width; whether a blank line
+separates the block from the header; N in the header when the output is
+shorter than `ATTEST_TAIL`; which stream the refusal/report goes to; the
+`void: hash unavailable` path (not reachable from a fixture without breaking
+git); `show` entirely (no AC; nothing asserts it); the CLAUDE.md line (C-6,
+no AC); non-markdown harness files' effect on the work hash.
+
+Prose (AC-5): keep each needle on **one line** in feature-developer.md and
+test-developer.md (judged per line). test-developer.md needs an attested run
+**besides** the `--fast` one in its numbered list. Do not leave `run the tests
+yourself` anywhere in the PLANNED → RED or RED → GREEN paragraphs, including
+the "Unless the runner did not start" sub-paragraph (it is inside PLANNED → RED).
+
+### Passing on arrival (22), and what earns each
+
+- 19 AC-5 fixture assertions. The guard is written in the suite, not in
+  production, so it runs in RED. Each regression fixture is itself the
+  negative control for the compliant one: the compliant tree is silent AND
+  each one-site change produces exactly its one line, so neither "always
+  silent" nor "always noisy" passes. Measured in this run: all 19 green, the
+  real tree 12 lines. The real-tree probe (DV-2) is GATES'.
+- `control: gate_tree_hash does not see that untracked file` - a pin on
+  HARNESS-014 behaviour, covered already by lib.test.sh's "an untracked hook
+  does not move the hash"; its job here is to show why `work_tree_hash` must
+  exist, next to the assertion that fails.
+- `precondition: mutate.sh --check calls the planted sentinel stranded`:
+  existing code, a precondition (if it were green for the wrong reason, the
+  AC-4 refusal would be testing nothing).
+- `the command never ran (its side effect is absent)` passes vacuously in RED
+  (nothing ran at all). Earned by its control, `control: and its side effect
+  appears` with the sentinel removed, which is red now and must go green: a
+  mark.sh that never writes would fail that.
+
+### Negative controls: expected values
+
+Measured outside the framework with a **candidate** `work_tree_hash` composed
+in a scratch script (gate_tree_hash's temp-index listing + one `git
+hash-object` line per `untracked_gated` path, through `_hash_blob_listing`) on
+a `make_project_fixture` tree. Hash values depend on the copied harness and
+will differ at GREEN; the relations are what GREEN confirms against the shipped
+function:
+
+| Control | Expected | Measured (candidate) |
+|---|---|---|
+| clean tree: work hash vs gate_tree_hash | equal | `fb834a3d...` = `fb834a3d...` |
+| untracked tests/new.test.ts | moves | `4f31c229...` |
+| same file after `git add`, gate_tree_hash | equals the untracked work hash | `4f31c229...` |
+| its content changed | moves again | `bcc106b7...` |
+| file removed | back to clean | `fb834a3d...` |
+| writes under .claude/state/ (AC-3 control) | unmoved | `fb834a3d...` |
+| docs/notes.md edited (AC-2 control) | unmoved | `fb834a3d...` |
+| dist/out.js + .claude/commands/new.md | unmoved | `fb834a3d...` |
+| tracked src/main.ts edited | moves | `a0d71d21...` |
+| AC-5 compliant fixture | 0 lines | 0 (in-suite, this run) |
+| AC-5 each regression | exactly 1 line, as pinned | 1 each, 18/18 (in-suite, this run) |
+| AC-5 real tree | 0 lines after GREEN | 12 lines now (listed above) |
+
+attest.sh's own controls (env assignment -> exit 0 and `NAME=value`; state
+write -> `status: ok`; void stays void after restore; reordered/prefix ->
+`none`) cannot be measured in RED: there is no attest.sh. Their expected
+values are the strings above; **these are claims until GREEN measures them
+against the shipped script.**
+
+### Other suites, and the fast gates (local, this host, 2026-11-01)
+
+    $ bash scripts/selftest.sh attest
+    attest: 22 passed, 101 failed
+    FAIL attest  did 22 units of work, below the floor of 123 in .claude/tests/floors.conf
+    $ bash scripts/selftest.sh selftest
+    assertion floors: all 1 suite(s) met their declared floor (268 assertions executed, 268 declared).
+    $ bash scripts/selftest.sh settings
+    assertion floors: all 1 suite(s) met their declared floor (71 assertions executed, 70 declared).
+    $ bash scripts/gates.sh --fast        (rc 0; every gate unconfigured, nothing ran)
+    All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+`--fast` also listed `UNTRACKED  .claude/tests/attest.test.sh`: the new suite
+is not yet staged; the commit stages it. The floor of 123 is the executed
+count (22 + 101), with no conditional assertion, so it is the count GREEN
+must reach; the `attest` suite sits below its floor until then, as
+HARNESS-010's did. `selftest`'s table carries the same 123 and is green.
+
+### Deferred verifications
+
+DV-1 and DV-2 are owned by GATES. I did not run them and cannot: DV-1 mutates
+`scripts/attest.sh`, which does not exist, and DV-2 probes the real
+feature-developer.md after GREEN has rewritten it - today it already prints the
+line DV-2 looks for, plus 11 others. Declined in writing, left to GATES.
+
+### AC-6 and settings.test.sh
+
+`settings.test.sh` cannot hold a RED assertion for AC-6: it checks that the
+README rows and the deny rules agree in both directions, and today they agree
+(neither has the attest rows), so it is green now and will stay green only if
+GREEN adds the row **and** the rule together. The *existence* of the two rows
+and the rule is therefore pinned in this suite (3 assertions, red now);
+the agreement is `bash scripts/selftest.sh settings`, which GREEN must run.
+If the auto-mode classifier refuses the settings.json edit (PO decision 4),
+the third AC-6 assertion here and the settings suite both stay red until the
+user applies the line.
+
+### Discovered, for the approach
+
+- `gated_stdin` keeps non-markdown harness files, so C-2's original "stays on
+  harness" was wrong (amended).
+- `<run>` contains colons; a file name cannot on Windows (amended C-3).
+- `.claude/state/*` classifies `harness`, not `ignored` (C-7 note; no effect).
+- `manifest` (e.g. `package.json`) is not in `gated_stdin`'s kept set, so
+  neither hash moves on a manifest edit. Existing behaviour, out of scope, not
+  pinned; worth a story if it matters.
+- `bash scripts/attest.sh check` wrapped across two lines in advance-story,
+  complete-story or lead-po still counts (regions are joined); in the two agent
+  files it does not.
 
 ## Regressions
 
@@ -377,3 +837,15 @@ PO decisions at PLANNED → RED (2026-11-01), before dispatch:
    the one deny line and the user applies it; that is not a return to RED.
 5. **Epic.** `epic:` is empty; no done-when to check.
 
+- RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-11-01), per its report; no override.
+
+RED verification by the orchestrator (2026-11-01): `bash scripts/selftest.sh attest`
+re-run, 43.6 s: `attest: 22 passed, 101 failed`, below the floor of 123, as
+the handoff says. Failures grouped by message: every red one is `attest.sh`
+absent (exit 127, no record), `work_tree_hash` absent, or the real tree's
+prose and state rows unchanged; no syntax or unrelated error. The diff is
+the suite, `floors.conf`, `selftest.test.sh` and this file only: no
+`scripts/attest.sh`, no `lib.sh` change. `bash scripts/gates.sh --fast`:
+`All required gates passed (0 ran, 5 unconfigured, 0 known).`, not recorded.
+`docs/backlog/stories/HARNESS-088.md` is untracked and belongs to another
+session; it is left out of this branch.
