@@ -87,6 +87,20 @@ never the `evidence` line. A `WARN` on an optional gate means something
 changed: read it. If it is a known, permanent failure, it belongs in a `waiver`
 line with the reason, not in your memory.
 
+## Run and report
+
+When the brief names one command to run and nothing to build, running it is
+the whole job. Run it from the worktree the brief names, through
+`bash scripts/attest.sh -- <command>`, and run it alone: nothing else in that
+tree while it runs. A long run such as the self-test goes detached
+(`run_in_background` with the longest timeout, or `nohup`), and you wait for it
+to exit. Otherwise you change nothing: an agent given no work will find some,
+and here that is the failure. The one exception is `bash scripts/gates.sh`
+with a required gate failing, which you fix under this file's GATES rules
+(above) and then run again. Report the record's `exit:`, `last:`, `duration:`
+and `log:` lines and the model you resolved to, never the whole output; the
+caller checks the record with `attest.sh check` and reads the log itself.
+
 ## Reuse before you write
 
 Before writing a line, walk this ladder and take the first that works. Each

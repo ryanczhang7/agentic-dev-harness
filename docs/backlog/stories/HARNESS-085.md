@@ -5,7 +5,7 @@ slug: the-full-gate-run-the-self-test-and-chec
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-085-the-full-gate-run-the-self-test-and-chec
 depends_on: [HARNESS-084]      # the dispatch's verdict is checked with attest.sh, which 084 builds
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/agents/feature-developer.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -568,6 +568,55 @@ step (a `g` flag on a line-range address), or the probe proves nothing.
   is already there for the diff review. That half of AC-4 is satisfied by
   existing text, as the story's AC allows.
 
+### GREEN
+
+Written by feature-developer, model `opus` (claude-opus-5-5) as declared, no
+override. No test file touched.
+
+- `advance-story.md` GREEN → GATES: `Then run `bash scripts/gates.sh`.` is now
+  the C-1 dispatch (feature-developer, GATES row, attest run, the four verdict
+  fields, `attest.sh check`, `stale`/`none` sends it back), plus one paragraph
+  stating the brief once for both dispatches. The paragraphs after it keep
+  their text; the first now says `gates.sh` writes `## Gate results` "whoever
+  runs it" and that a failure the dispatch could not fix goes back to the
+  feature-developer.
+- `advance-story.md` step 2: on `run`, the self-test goes to a
+  feature-developer, run detached and alone through `attest.sh --`, checked
+  with `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh`;
+  the timing history stays as the expectation given to it; Notes take the
+  record's `exit:`, `last:`, `duration:`. Steps 3-5 untouched.
+- `complete-story.md` bullet: one sentence (dispatch, `verdict`, `attest.sh
+  check`, check-boundaries stays yours).
+- `lead-po.md` `## Orchestrating`: new long-runs paragraph before the ladder;
+  rung sentence now "something you run, or have run under `scripts/attest.sh`
+  and check - never something you are told".
+- `feature-developer.md`: `## Run and report` between `## Method` and
+  `## Reuse before you write`.
+- `VERSION`: `104 (2026-11-01)`.
+
+Checked: `attest.sh` exports leading `NAME=v` assignments to the command
+(scripts/attest.sh:149-182), so `attest.sh -- SELFTEST_JOBS=4 bash
+scripts/selftest.sh` runs as the brief says.
+
+Controls: every control in the handoff is a whole-output `assert_eq` in the
+suite, and all 67 assertions pass against the finished files, so each measured
+value equals RED's (one line each; the real tree now silent). No divergence.
+
+Run records (`attest.sh --`, ATTEST_TAIL unset or 0):
+
+    dispatch   status ok  exit 0  41s   last: 1 harness suite(s) passed.  (67 passed, 0 failed)  log .claude/state/attest-logs/20261101T233825Z.33666.log
+    procedure  status ok  exit 0  49s   last: 1 harness suite(s) passed.  log .claude/state/attest-logs/20261101T233927Z.35229.log
+    attest     status ok  exit 0  319s  last: 1 harness suite(s) passed.  log .claude/state/attest-logs/20261101T234023Z.36680.log
+    briefs     status ok  exit 0  31s   last: 1 harness suite(s) passed.  log .claude/state/attest-logs/20261101T234548Z.41710.log
+    reporting  status ok  exit 0  34s   last: 1 harness suite(s) passed.  log .claude/state/attest-logs/20261101T234625Z.43138.log
+    phase      status ok  exit 0  208s  last: 1 harness suite(s) passed.  log .claude/state/attest-logs/20261101T234707Z.43876.log
+    selftest   status ok  exit 0  318s  last: 1 harness suite(s) passed.  log .claude/state/attest-logs/20261101T235040Z.47861.log
+    gates.sh --fast  status ok  exit 0  2s  last: All required gates passed (0 ran, 5 unconfigured, 0 known).  log .claude/state/attest-logs/20261101T235609Z.51949.log
+
+DV-1 is GATES' and not run here. Note for it: step 2 now names
+`feature-developer` twice (the dispatch, and "A failure takes GATES' own
+routes: the feature-developer"), so mutate every occurrence in the step.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -611,3 +660,8 @@ step (a `g` flag on a line-range address), or the probe proves nothing.
   real-tree assertion, naming exactly the six unwritten sites), `procedure`
   (exit 0), `selftest` (exit 0) and `bash scripts/gates.sh --fast` (exit 0).
   Resolved: RED, test-developer, claude-opus-5-5.
+- 2026-11-01, GREEN verified by the orchestrator (claude-opus-5-5) without
+  re-running: `attest.sh check` answered `fresh` with `exit: 0` for
+  `bash scripts/selftest.sh` dispatch, procedure, attest, briefs, reporting,
+  phase and selftest, and for `bash scripts/gates.sh --fast`. Diff read
+  against C-1..C-4. Resolved: GREEN, feature-developer, claude-opus-5-5.
