@@ -4,8 +4,8 @@ title: A gate loosened in project.conf during GREEN or GATES is refused unless t
 slug: a-gate-loosened-in-project-conf-during-g
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-083-a-gate-loosened-in-project-conf-during-g
 depends_on: [HARNESS-081]      # reuses 3j's commit walk and the ## Suppressions escape hatch
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -1681,6 +1681,37 @@ Orchestrator: 1 reproduced on its own input (a required `lint` gate,
 output empty; `gates.sh`'s matcher with an empty regex matched). The user
 chose "Fix 1, 3, 4, 5"; 2 is deferred to `## Notes`.
 
+### Round 3 (2026-10-31, at afcc4a5)
+
+Fresh `feature-developer` dispatch (declares `opus`), resolved
+**claude-opus-5-5**, no override; changed no file. Report, as returned:
+
+- Checked and fine (gawk 5.4.1 and mawk 1.3.4 agree on every input): the
+  unchanged real `project.conf` through the production call shape gives no
+  output; all 15 commits on main touching `project.conf` replayed - one
+  finding, `build: slow added on required gate` at 2dc905d, a true AC-5 case;
+  rounds 1-2 fixes hold; BOOTSTRAPPED matches gates.sh 93-95 in every case
+  tried (`= y es \r` and `=\tyes\t` yes; `=YES`, `=yes # comment`, `=yes|`
+  refused; `=no` inserted above `=yes` refused; prints first; deleted file
+  gives it then `gate removed`); empty before floor as no floor agrees with
+  gates.sh's `table_get` and line 642's `-n`; tightening silent; no regression
+  from return 1's rule.
+- **Should fix 1.** The "first value lowered" arm has no test that fails
+  without it: deleting it changes only `=90 =10` -> `=80 =10`, refused before,
+  silent after. Rare (the before side must already repeat a flag with a lower
+  later value).
+- **Should fix 2.** A lowered middle repeat of three is silent: `a --threshold
+  60 && b --threshold 90 && c --threshold 60` -> `b --threshold 70`. Fix: add
+  the HIGHEST statistic. Rarer than a one-line edit.
+- **Nice to have 3.** The printed `<highest before> -> <lowest after>` can
+  name numbers the commit did not move (`=10 =90` -> `=10 =80` prints
+  `90 -> 10`); loud and correct.
+- `Verdict: Ship.`
+
+Orchestrator: Ship accepted. 1-3 are rare, none a silent one-line loosening
+of a file without repeated flags; all three go to the follow-up list in
+`## Notes` rather than a third return.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -1761,3 +1792,17 @@ add it to `.claude/tests/phase-guard.test.sh` as CLAUDE.md says.
   refuses a duplicate gate id (and, separately, an empty evidence regex).
 - Other weakenings of an evidence regex (`.` in place of a real one) are out of
   this story's scope by C-2; listed so they are not forgotten.
+- Repeated threshold flags (diff review round 3): a test pinning the
+  "first value lowered" arm (`=90 =10` -> `=80 =10`, earned by deleting that
+  arm with `mutate.sh`); a lowered middle repeat of three (add the HIGHEST
+  statistic, a C-2 amendment); print the statistic that actually fell.
+
+**Self-test at GATES -> REVIEW (2026-10-31):** `selftest-needed: run`;
+`SELFTEST_JOBS=4 bash scripts/selftest.sh` at afcc4a5 plus the uncommitted
+diff-review round 3 notes: exit 0, 5304 s (other test runs shared the host),
+last lines:
+
+```
+assertion floors: all 30 suite(s) met their declared floor (4840 assertions executed, 4815 declared).
+30 harness suite(s) passed.
+```
