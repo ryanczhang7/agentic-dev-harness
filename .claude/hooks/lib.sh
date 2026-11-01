@@ -1670,3 +1670,53 @@ _session_root() {
   set_harness_root "$__lib_wt"
 }
 _session_root
+
+# --- Work tree hash (HARNESS-084) -------------------------------------------
+
+# work_tree_hash   gate_tree_hash's tree PLUS the untracked gated files: one
+# hash for "the code a verification run just ran against", for
+# scripts/attest.sh. gate_tree_hash leaves untracked files out because a
+# commit contains none of them; a RED subagent's new test file is usually
+# untracked, so a record keyed to that hash alone could not tell its edits
+# apart. "Gated" is gated_stdin's, through untracked_gated: nothing new decides
+# it. With no untracked gated file this IS gate_tree_hash - the same listing,
+# plus no lines - and an untracked file hashes exactly as it would once
+# `git add`-ed: `<blob>\t<path>`, blob from `git hash-object` with the path's
+# attributes, through _hash_blob_listing.
+#
+# The temporary index is built as gate_tree_hash builds its own (seeded from a
+# `cp -p` of the real one, then `add -u`; see there for why both matter), under
+# a name of its own. gate_tree_hash is called by gates.sh, check-boundaries.sh
+# and the Stop hook, and returns only the hash, so it is left untouched
+# (HARNESS-084 C-10) rather than split to share the listing.
+#
+# stdout: one hash, return 0; or `unavailable` once, return 1, when either
+# part cannot be computed. `unavailable` is never a match for anything.
+work_tree_hash() {
+  local idx real listing files blobs
+  idx="$HARNESS_ROOT/.claude/state/.work-index.$$"
+  mkdir -p "$HARNESS_ROOT/.claude/state" 2>/dev/null; rm -f "$idx"
+  real="$(cd "$HARNESS_ROOT" && git rev-parse --git-path index 2>/dev/null)"
+  case "$real" in ''|/*|[A-Za-z]:*) ;; *) real="$HARNESS_ROOT/$real" ;; esac
+  listing="$( ( cd "$HARNESS_ROOT" \
+      && { { [ -n "$real" ] && [ -f "$real" ] && cp -p "$real" "$idx"; } \
+           || { GIT_INDEX_FILE="$idx" git read-tree HEAD >/dev/null 2>&1 || :; }; } \
+      && GIT_INDEX_FILE="$idx" git add -u . >/dev/null 2>&1 \
+      && GIT_INDEX_FILE="$idx" git ls-files -s ) \
+    | awk -F'\t' '{ split($1, a, " "); print a[2] "\t" $2 }' )"
+  rm -f "$idx"
+  [ -n "$listing" ] || { printf 'unavailable'; return 1; }
+  files="$(untracked_gated)"
+  if [ -n "$files" ]; then
+    blobs="$(cd "$HARNESS_ROOT" && printf '%s\n' "$files" | git hash-object --stdin-paths 2>/dev/null)" \
+      || { printf 'unavailable'; return 1; }
+    # Pair blob i with path i; a count mismatch is a part that failed.
+    listing="$listing
+$(printf '%s\n' "$files" | B="$blobs" awk '
+      BEGIN { n = split(ENVIRON["B"], b, "\n") }
+      { print b[NR] "\t" $0 }
+      END { if (NR != n) exit 1 }')" \
+      || { printf 'unavailable'; return 1; }
+  fi
+  printf '%s\n' "$listing" | _hash_blob_listing
+}

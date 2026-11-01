@@ -2,7 +2,7 @@
 description: Move one story forward by exactly one phase
 model: fable
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -89,9 +89,15 @@ and **partitioned by oracle** — which carry a settled number to read out, whic
 are oracle-free and need an invented metric with a negative control, which are
 mechanical and want exact pinning (see `story-authoring`, "Brief RED by
 oracle") — the relevant constraints from `docs/wiki/`, and the exact test
-command from `.claude/harness/project.conf`. When it returns, verify: read the test files it
-wrote and run the tests yourself. Confirm they fail, and fail for the right
-reason. If they pass, or fail on an unrelated error, send it back.
+command from `.claude/harness/project.conf`, and tell it to run that command
+and `--fast` through `bash scripts/attest.sh --`. When it returns, verify: read
+the test files it wrote, then run `bash scripts/attest.sh check -- <test command>`
+with the exact words it ran. **Run the command yourself only when the answer is
+not `fresh`** (`stale`, `void` or `none`), and say in the story which it was.
+`fresh` says the run was made on this tree, not that it failed the right way:
+read `exit:` and `last:`, and the log the record names, and confirm from that
+log that the tests fail, and fail for the right reason. If they pass, or fail on
+an unrelated error, send it back.
 
 **Unless the runner did not start at all** — no test in the repository ran and
 `gates.sh` failed outright. That is a real state, it is sometimes the correct
@@ -108,8 +114,9 @@ contract obliges GREEN to write. Then say so in the commit and paste the error
 into the handoff. An agent arriving at that tree otherwise cannot tell a
 deliberate dark suite from a broken repository, and will debug the wrong thing.
 
-Then run `bash scripts/gates.sh --fast` and read it before leaving RED. This is
-not a pass/fail check — the test gates are *supposed* to be red here. It asks a
+Then check `bash scripts/attest.sh check -- bash scripts/gates.sh --fast` the
+same way - running it yourself only when the answer is not `fresh` - and read
+its log before leaving RED. This is not a pass/fail check — the test gates are *supposed* to be red here. It asks a
 different question: are these tests **admissible** to the gates that will judge
 them? Expect lint and typecheck to pass, and the test gates to fail with the
 assertion the story is about. A test gate failing for any other reason — a
@@ -126,9 +133,13 @@ carry their **expected values**, not just the fact that they exist: in RED the
 suite failed at import, so no assertion in the file ran and every control is an
 unverified claim. Set the phase, then dispatch the **feature-developer** subagent
 with the story path, the handoff, and the test command, and tell it to confirm
-each recorded control value against the shipped module. When it returns, run the
-tests yourself, then `bash scripts/gates.sh --fast` — the same admissibility
-question, now expecting green.
+each recorded control value against the shipped module and to run the test
+command and `--fast` through `bash scripts/attest.sh --`. When it returns, read
+the files it wrote, then `bash scripts/attest.sh check -- <test command>` and
+`bash scripts/attest.sh check -- bash scripts/gates.sh --fast` — the same
+admissibility question, now expecting green. Run a command yourself only when
+its answer is not `fresh`, and say in the story which it was; a `fresh` record
+still has to show `exit: 0` and a passing `last:` line.
 
 **GREEN → GATES.** Set the phase, then — **before** `gates.sh` — run every entry
 in `## Deferred verifications` that names GATES as its owner, and paste what

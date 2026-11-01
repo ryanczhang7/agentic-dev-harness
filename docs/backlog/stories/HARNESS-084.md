@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -849,3 +849,55 @@ the suite, `floors.conf`, `selftest.test.sh` and this file only: no
 `All required gates passed (0 ran, 5 unconfigured, 0 known).`, not recorded.
 `docs/backlog/stories/HARNESS-088.md` is untracked and belongs to another
 session; it is left out of this branch.
+
+GREEN - `feature-developer`, resolved **claude-opus-5-5** (2026-11-01), as
+declared; no override.
+
+- Built: `scripts/attest.sh` (new); `work_tree_hash` appended to `lib.sh`
+  (`gate_tree_hash` not touched, C-10 - so the temp-index listing is built a
+  second time inside `work_tree_hash` rather than shared; untracked blobs via
+  `git hash-object --stdin-paths`); the prose in feature-developer.md (full
+  run out of `## Method`, its guidance moved to a GATES paragraph; steps 8-9
+  are now 7-8), test-developer.md steps 4 and 7, advance-story.md PLANNED →
+  RED and RED → GREEN, complete-story.md, lead-po.md's first rung; both
+  commands' `allowed-tools`; the CLAUDE.md line; the two README rows plus a
+  paragraph each; the settings.json deny line; VERSION 103.
+- `bash scripts/selftest.sh attest`: `attest: 123 passed, 0 failed`, floor met.
+- **Blocked: `bash scripts/selftest.sh settings` is red, `settings: 70 passed,
+  1 failed`**, on a frozen assertion from HARNESS-050:
+  `AC-1/C-1: the deny array is exactly the seven C-1 rules, in order`
+  (settings.test.sh line 279). It pins the whole deny array, so AC-6's deny
+  line - which attest.test.sh's third AC-6 assertion requires - cannot be added
+  without failing it. The handoff's claim that settings "needs no change"
+  (C-7) does not hold. The two frozen suites contradict each other; the fix is
+  a RED change to that one assertion (eight rules, `attest.log` after
+  `last-gate-run`), and `settings.test.sh` is not on the `**Writes:**` line.
+  Returned to the orchestrator; story goes back to RED for it.
+- Negative controls, measured on a `make_project_fixture` tree against the
+  shipped `work_tree_hash` (values differ from RED's candidate, relations all
+  hold): clean work = gate = `fc2c2a2d...`; untracked tests/new.test.ts ->
+  `0d5c628f...`, gate unmoved; staged, gate_tree_hash = `0d5c628f...` (equal);
+  content change -> `13644222...`; removed -> `fc2c2a2d...`; .claude/state
+  write -> unmoved; docs + dist/out.js + .claude/commands/new.md -> unmoved;
+  tracked src edit -> `43b818dc...`. attest.sh: `P=value bash env.sh` ->
+  exit 0, log `NAME=value`, `command:` keeps the assignment; state-only write
+  -> `status: ok`; `check -- b a` after running `a b` -> `none`; edit.sh ->
+  `void: tree changed during the run`, still `void` after the file is put back.
+- `bash scripts/selftest.sh` takes ONE suite name (`ONLY="${1:-}"`); a list
+  runs only the first. Suites were run one call each, all green: `procedure:
+  118 passed`, `briefs: 31`, `reporting: 27`, `phase: 73`, `mutate: 308`,
+  `policy: 17`, `selftest: 268`, `lib: 324`, 0 failed each, floors met.
+  `check-sigpipe` and `check-grep-count`: 0 findings over 58 files.
+  `bash scripts/gates.sh --fast`: `All required gates passed (0 ran, 5
+  unconfigured, 0 known).`, not recorded.
+- GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-11-01), per its report; no override.
+
+GREEN verification by the orchestrator (2026-11-01): `attest: 123 passed, 0
+failed`; `settings: 70 passed, 1 failed` - `AC-1/C-1: the deny array is
+exactly the seven C-1 rules, in order` (settings.test.sh ~line 279,
+HARNESS-050). Reproduced by reading the assertion: it pins the whole deny
+array, so no settings.json can carry AC-6's eighth rule and keep it green.
+C-7's "settings.test.sh needs no change" was wrong. Return to RED follows.
+A finding from the GREEN dispatch, about the orchestrator's brief:
+`bash scripts/selftest.sh a b c` runs only `a` (`ONLY="${1:-}"`) and still
+prints `1 harness suite(s) passed.`; each suite needs its own call.
