@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -1013,3 +1013,15 @@ C-7's "settings.test.sh needs no change" was wrong. Return to RED follows.
 A finding from the GREEN dispatch, about the orchestrator's brief:
 `bash scripts/selftest.sh a b c` runs only `a` (`ONLY="${1:-}"`) and still
 prints `1 harness suite(s) passed.`; each suite needs its own call.
+
+GREEN after return 1 (2026-11-01): a genuine no-op, no dispatch. The
+orchestrator ran each check through `scripts/attest.sh` itself:
+`selftest.sh settings` exit 0 (`1 harness suite(s) passed.`, 22 s),
+`selftest.sh attest` exit 0 (159 s), `gates.sh --fast` exit 0 (`0 ran, 5
+unconfigured`); `attest.sh check` answered `fresh` for each.
+
+Finding for GATES / the diff review: the first attest run here was made with
+`ATTEST_TAIL=2` on the outer call, and the suite inherited it - five AC-1
+tail assertions went red (`a 30-line output prints a 20-line header by
+default` and four others). `attest.test.sh` does not unset `ATTEST_TAIL`, so
+a caller's environment changes its result. Fixing that is a test change (RED).
