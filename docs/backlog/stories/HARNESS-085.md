@@ -279,3 +279,21 @@ name, below the table.
   C-5, the title and `## Out of scope` were changed to match. The branch name
   keeps the original slug.
 
+- 2026-11-01, PLANNED → RED (lead-po, claude-fable-5-1). PO decisions:
+  1. Criteria are testable as written: every needle the story reads out was
+     checked against main after HARNESS-084 merged (edd7e94). The lines are
+     `Then run `bash scripts/gates.sh`.` (advance-story.md:159), `every rung
+     is something you run, not` (lead-po.md:127), the complete-story bullet
+     `GATES → REVIEW opens with a review` (:35), and feature-developer.md
+     having no `## Run and report`. `dispatch.test.sh` does not exist yet.
+  2. The gate is `bash scripts/selftest.sh dispatch` (new suite) plus
+     `procedure` unchanged. This repo configures no project gates
+     (`gates.sh` reports all unconfigured), so the harness suites are the
+     only verification, and CI runs every one.
+  3. No signature changes (C-7), so there is no caller list. `epic:` is
+     empty, so there is no epic done-when to check.
+  4. Learned in HARNESS-084 and relevant here: `attest.sh` now passes the
+     caller's `CLAUDE_PROJECT_DIR` through to the command (return 4), and
+     `check` is keyed by the exact words, so the dispatch brief and the
+     orchestrator's `check` must name the command identically, including
+     `SELFTEST_JOBS=4`.
