@@ -352,3 +352,28 @@ name, below the table.
 
 ## Notes
 
+PO decisions at PLANNED → RED (2026-11-01), before dispatch:
+
+1. **The gate.** Every gate in this repository's `project.conf` is
+   unconfigured, so no `gates.sh` gate reads what this story builds. The gate
+   that fails if it breaks is `bash scripts/selftest.sh attest`, which CI's
+   `selftest.sh` step runs on every PR; `required_gates` stays empty because
+   there is no gate id to name. The same holds for every HARNESS story so
+   far.
+2. **The phase lock does not separate RED from GREEN here.** Every path on
+   the `**Writes:**` line classifies as `harness` (`bash scripts/classify.sh`
+   on each, 2026-11-01), which every phase may write. The discipline that
+   RED writes only `.claude/tests/attest.test.sh`, `floors.conf` and
+   `selftest.test.sh`'s table, and the story file, is the Test Developer's
+   own (`rules.md`, "Path ownership"), and the orchestrator checks the diff.
+3. **Callers.** C-10 changes no existing signature. Verified: `gate_tree_hash`,
+   `untracked_gated`, `_hash_blob_listing` and `gated_stdin` exist in
+   `lib.sh` (lines 1365-1456) and `work_tree_hash` does not yet; `has_entry`
+   and `first_step` are in `procedure.test.sh`; `make_project_fixture` is in
+   `_lib.sh`; feature-developer.md step 7 reads `` Run `bash scripts/gates.sh`. ``
+   at line 67 and test-developer.md step 7 at line 51, as C-5 assumes.
+4. **`settings.json`.** The auto-mode classifier has refused agent edits to
+   its `permissions` block before (PR #12). If GREEN is refused, it proposes
+   the one deny line and the user applies it; that is not a return to RED.
+5. **Epic.** `epic:` is empty; no done-when to check.
+
