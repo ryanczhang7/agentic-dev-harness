@@ -40,7 +40,9 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The root is this script's own, as gates.sh's is - never CLAUDE_PROJECT_DIR,
-# which names whichever tree the session started in.
+# which names whichever tree the session started in. The caller's value (or its
+# absence) is kept for the command, which must run in the caller's environment.
+CALLER_CPD="${CLAUDE_PROJECT_DIR-}"; CALLER_CPD_SET="${CLAUDE_PROJECT_DIR+1}"
 export CLAUDE_PROJECT_DIR="$ROOT"
 . "$ROOT/.claude/hooks/lib.sh"
 set_harness_root "$ROOT"
@@ -174,8 +176,10 @@ TREE="$(work_tree_hash)"
 started=$SECONDS
 # A subshell sets them and execs: the command sees them, attest.sh does not.
 # Not `env NAME=v "$@"`, which would also read a later word containing `=`
-# (say `./a=b`) as an assignment.
-( for a in ${ASSIGNS[@]+"${ASSIGNS[@]}"}; do export "${a%%=*}=${a#*=}"; done
+# (say `./a=b`) as an assignment. The caller's CLAUDE_PROJECT_DIR comes back
+# first, so a leading CLAUDE_PROJECT_DIR= assignment still wins (return 4).
+( if [ -n "$CALLER_CPD_SET" ]; then export CLAUDE_PROJECT_DIR="$CALLER_CPD"; else unset CLAUDE_PROJECT_DIR; fi
+  for a in ${ASSIGNS[@]+"${ASSIGNS[@]}"}; do export "${a%%=*}=${a#*=}"; done
   exec "$@" ) > "$ROOT/$LOG_REL" 2>&1
 rc=$?
 duration=$((SECONDS - started))

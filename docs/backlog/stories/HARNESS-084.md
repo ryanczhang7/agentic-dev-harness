@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -1528,6 +1528,51 @@ Files touched in this return: `.claude/tests/attest.test.sh` (`cpd.sh`
 command and the new block), `.claude/tests/floors.conf`,
 `.claude/tests/selftest.test.sh`, and this story (C-1 amendment, `## Test
 plan` note, this block). Nothing else.
+
+### GREEN after return 4 (2026-11-01)
+
+`feature-developer`, resolved **claude-opus-5-5**, as declared; no override.
+`scripts/attest.sh` only: before line 44's export it records the caller's
+`CLAUDE_PROJECT_DIR` and whether it was set (`CALLER_CPD`, `CALLER_CPD_SET`);
+the exec subshell restores it, or `unset`s it, before applying the leading
+assignments, so `CLAUDE_PROJECT_DIR=Y` still wins. attest.sh's own root,
+record and hashes are unchanged. No test file touched
+(`git diff HEAD -- .claude/tests` empty). Run with `ATTEST_TAIL` unset.
+
+`bash scripts/attest.sh -- bash scripts/selftest.sh attest` (`attest: 179
+passed, 0 failed`, floor met):
+
+    status:   ok
+    exit:     0
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261101T205029Z.1208.log
+
+`env -u CLAUDE_PROJECT_DIR bash scripts/attest.sh -- bash scripts/selftest.sh
+classify` - the original failure, now green through attest.sh (`classify: 55
+passed, 0 failed`):
+
+    status:   ok
+    exit:     0
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261101T205211Z.1017.log
+
+`env -u CLAUDE_PROJECT_DIR bash scripts/attest.sh -- bash scripts/selftest.sh
+selftest-needed`:
+
+    status:   ok
+    exit:     0
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261101T205254Z.792.log
+
+`bash scripts/attest.sh -- bash scripts/gates.sh --fast`:
+
+    status:   ok
+    exit:     0
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261101T205247Z.2589.log
+
+check-sigpipe (58 files, 0 findings) and check-grep-count (58 files, 0
+findings). The full self-test was not run in this dispatch.
 
 ## Diff review
 
