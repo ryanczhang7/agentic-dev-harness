@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -941,6 +941,64 @@ After the restore:
 settings: 71 passed, 0 failed
 
 assertion floors: all 1 suite(s) met their declared floor (71 assertions executed, 70 declared).
+1 harness suite(s) passed.
+```
+
+### Return 2: GATES -> RED (2026-11-01), `.claude/tests/attest.test.sh`
+
+**What was wrong.** The suite did not isolate itself from `ATTEST_TAIL` in the
+caller's environment. `att` runs `scripts/attest.sh` in the fixture and, unless
+`ATT_ENV` is set, passes the inherited environment straight through, so an
+exported `ATTEST_TAIL` reached every AC-1 tail assertion that expects the
+default of 20 lines. With `ATTEST_TAIL=2` exported, five assertions failed on a
+correct `attest.sh`. The defect is in the test, not in `attest.sh`, which honours
+`ATTEST_TAIL` exactly as the contract says.
+
+**How it was found.** By the orchestrator, running
+`ATTEST_TAIL=2 bash scripts/attest.sh -- bash scripts/selftest.sh attest`: the
+outer call's variable is exported into the command it records, and so reached
+the suite (recorded in `## Notes`).
+
+**What the suite does now.** It `unset`s `ATTEST_TAIL` beside
+`export CLAUDE_PROJECT_DIR="$REPO_ROOT"`, for the same reason that line exists:
+attest.sh under test must see what the assertion intends, not what the session
+happens to export. The one assertion that wants a non-default tail
+(`ATTEST_TAIL=5 prints a 5-line header`) still sets it explicitly through
+`ATT_ENV`, and still passes. Nothing else changed; the assertion count is 123
+before (118 passed + 5 failed) and after.
+
+**Earned by before/after under the hostile environment**, not by a mutation of
+`attest.sh`: the defect is test isolation, so the evidence is the same command
+run in the environment that broke it, against the uncorrected and the corrected
+file. No revert was needed for the "before": it was run first, on the committed
+file (`da11384..cd88b9b` leave `attest.test.sh` as committed), and the fix was
+applied afterwards.
+
+Before, `ATTEST_TAIL=2 bash scripts/selftest.sh attest` (FAIL lines and summary):
+
+```
+  AC-1  attest.sh -- <command>: exit passed through, the record, then the tail
+    FAIL then a header naming the log
+    FAIL then the log's last lines
+    FAIL the output is printed once, from the log, not streamed as well
+    FAIL a 30-line output prints a 20-line header by default
+    FAIL and exactly lines 11..30
+attest: 118 passed, 5 failed
+FAIL attest  did 118 units of work, below the floor of 123 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+```
+
+After, the same command with the fix:
+
+```
+attest: 123 passed, 0 failed
+1 harness suite(s) passed.
+```
+
+And plain `bash scripts/selftest.sh attest`, no `ATTEST_TAIL` exported:
+
+```
+attest: 123 passed, 0 failed
 1 harness suite(s) passed.
 ```
 

@@ -40,6 +40,11 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
 export CLAUDE_PROJECT_DIR="$REPO_ROOT"
+# ATTEST_TAIL is unset for the same reason: the default-tail assertions must
+# see attest.sh's default, not whatever an outer `ATTEST_TAIL=2 attest.sh --
+# selftest.sh attest` exported. The one assertion that wants it sets it
+# through ATT_ENV.
+unset ATTEST_TAIL
 
 WORK="$(mktemp -d 2>/dev/null || mktemp -d -t harness.XXXXXX)"
 FIX=""; WFIX=""
