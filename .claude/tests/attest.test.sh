@@ -25,7 +25,9 @@
 #   tests/new.test.ts                     test
 #   tsconfig.json                         config
 #   docs/notes.md                         docs
-#   .claude/commands/new.md               harness (markdown: gated_stdin drops it)
+#   .claude/commands/new.md, CLAUDE.md,   harness markdown: in the WORK hash (C-2 as
+#   .claude/agents/role.md               amended by A-2), not in gate_tree_hash
+#   scratch/out.ts                        source by name, but gitignored in WFIX
 #   dist/out.js                           vendor  (and gitignored)
 #   .claude/state/*                       harness by paths.conf, gitignored here
 #                                         as in the real .gitignore, and dropped
@@ -197,6 +199,11 @@ FIX="$(make_project_fixture)"
 # record and its logs are what they are in a real tree: untracked and ignored.
 printf '.claude/state/*\n' >> "$FIX/.gitignore"
 printf 'echo x\n' > "$FIX/src/x.sh"
+# Tracked harness markdown, for AC-2's A-2 cases: an edit to either makes a
+# record stale.
+mkdir -p "$FIX/.claude/agents"
+printf '# role\n' > "$FIX/.claude/agents/role.md"
+printf '# house rules\n' > "$FIX/CLAUDE.md"
 git -C "$FIX" add -A >/dev/null 2>&1
 git -C "$FIX" -c user.email=t@t -c user.name=t commit -qm "attest fixture" >/dev/null 2>&1
 
@@ -238,6 +245,18 @@ cat > "$C/mark.sh" <<EOF
 printf 'ran\n' > "$WORK/ac4-ran"
 printf 'marked\n'
 EOF
+# vars.sh: prints the variables an assignment word might aim at attest.sh's
+# own shell (finding 3), and leaves a side effect outside the tree.
+cat > "$C/vars.sh" <<EOF
+printf 'ran\n' > "$WORK/vars-ran"
+printf 'ROOT=%s\n' "\${ROOT:-<unset>}"
+printf 'ALOG=%s\n' "\${ALOG:-<unset>}"
+printf 'HARNESS_ROOT=%s\n' "\${HARNESS_ROOT:-<unset>}"
+EOF
+# side.sh: a side effect outside the tree, for the refused-word cases (finding 4).
+cat > "$C/side.sh" <<EOF
+printf 'ran\n' > "$WORK/side-ran"
+EOF
 
 ALOG="$FIX/$ALOG_REL"
 LOGRE='^\.claude/state/attest-logs/([0-9]{8}T[0-9]{6}Z)\.([0-9]+)\.log$'
@@ -247,7 +266,9 @@ describe "C-2  work_tree_hash: one hash, moving on gated content tracked, staged
 # ==============================================================================
 
 WFIX="$(make_project_fixture)"
-printf '.claude/state/*\n' >> "$WFIX/.gitignore"
+# scratch/ is an ignored path whose files classify `source` by name: the
+# ignored-path case below, as distinct from vendor (dist/).
+printf '.claude/state/*\nscratch/\n' >> "$WFIX/.gitignore"
 git -C "$WFIX" add -A >/dev/null 2>&1
 git -C "$WFIX" -c user.email=t@t -c user.name=t commit -qm "ignore state" >/dev/null 2>&1
 
@@ -256,7 +277,11 @@ w0="$(whash "$WFIX")"; w0rc=$?
 if is_hash "$w0"; then _ok "work_tree_hash prints one hash on a clean tree"
 else _bad "work_tree_hash prints one hash on a clean tree" "printed: [$w0]"; fi
 assert_eq "work_tree_hash returns 0 on a clean tree" 0 "$w0rc"
-assert_hash_eq "with nothing untracked it IS gate_tree_hash: the same listing, plus no lines" \
+# Holds by construction only while the tree carries no harness markdown: the
+# work hash covers it (C-2 as amended by A-2) and gate_tree_hash does not. This
+# fixture tracks none (its one .md is docs/notes.md), and this block adds some
+# only further down, after the listing-shape assertions.
+assert_hash_eq "with nothing untracked and no harness markdown, it IS gate_tree_hash: the same listing" \
   "$(ghash "$WFIX")" "$w0"
 
 # An untracked TEST file - the RED subagent's usual new file.
@@ -290,19 +315,56 @@ printf 'export const x = 2\n' > "$WFIX/src/main.ts"
 assert_hash_ne "an unstaged edit to a tracked source file moves it" "$w0" "$(whash "$WFIX")"
 git -C "$WFIX" checkout -q -- src/main.ts
 
-# What does NOT move it (C-2, as amended: harness MARKDOWN, not all harness).
-printf '# edited notes\n' > "$WFIX/docs/notes.md"
-assert_hash_eq "a tracked docs edit does not move it" "$w0" "$(whash "$WFIX")"
-printf '# new page\n' > "$WFIX/docs/new.md"
-assert_hash_eq "an untracked docs file does not move it" "$w0" "$(whash "$WFIX")"
-mkdir -p "$WFIX/.claude/commands"
+# Harness markdown MOVES it (C-2 as amended by A-2): the harness's own suites
+# read agent specs, commands, skills and CLAUDE.md, so a record made before an
+# instructions edit must not stay fresh after it.
+mkdir -p "$WFIX/.claude/commands" "$WFIX/.claude/agents" "$WFIX/.claude/skills/x"
 printf '# a prompt\n' > "$WFIX/.claude/commands/new.md"
-assert_hash_eq "an untracked harness markdown file does not move it" "$w0" "$(whash "$WFIX")"
+wm1="$(whash "$WFIX")"
+assert_hash_ne "an untracked harness markdown file (.claude/commands/new.md) moves it" "$w0" "$wm1"
+printf '# a prompt, reworded\n' > "$WFIX/.claude/commands/new.md"
+assert_hash_ne "and a content change to it moves it again" "$wm1" "$(whash "$WFIX")"
+rm -f "$WFIX/.claude/commands/new.md"
+printf '# a skill\n' > "$WFIX/.claude/skills/x/SKILL.md"
+assert_hash_ne "an untracked skill (.claude/skills/x/SKILL.md) moves it" "$w0" "$(whash "$WFIX")"
+rm -rf "$WFIX/.claude/skills"
+# Tracked harness markdown: commit an agent spec and a CLAUDE.md, then edit each.
+printf '# role\n\n## Method\n\n1. Read the story.\n' > "$WFIX/.claude/agents/role.md"
+printf '# house rules\n' > "$WFIX/CLAUDE.md"
+git -C "$WFIX" add -A >/dev/null 2>&1
+git -C "$WFIX" -c user.email=t@t -c user.name=t commit -qm "harness markdown" >/dev/null 2>&1
+wt="$(whash "$WFIX")"
+assert_hash_ne "committed harness markdown is part of the work hash (it moved from the clean tree's)" "$w0" "$wt"
+# Green on arrival, and C-10's half of A-2: gate_tree_hash and gated_stdin are
+# unchanged, so the same commit does not move the GATE hash.
+assert_hash_eq "control: gate_tree_hash does not see committed harness markdown (C-10)" "$g0" "$(ghash "$WFIX")"
+printf '# role\n\n## Method\n\n1. Read the story twice.\n' > "$WFIX/.claude/agents/role.md"
+assert_hash_ne "an unstaged edit to a tracked .claude/agents/*.md moves it" "$wt" "$(whash "$WFIX")"
+git -C "$WFIX" checkout -q -- .claude/agents/role.md
+assert_hash_eq "and undoing it returns it" "$wt" "$(whash "$WFIX")"
+printf '# house rules, amended\n' > "$WFIX/CLAUDE.md"
+assert_hash_ne "an unstaged edit to a tracked CLAUDE.md moves it" "$wt" "$(whash "$WFIX")"
+git -C "$WFIX" checkout -q -- CLAUDE.md
+
+# What does NOT move it (C-2 as amended by A-2: docs, vendor, ignored and
+# .claude/state/ only). Judged against $wt, the tree with harness markdown.
+printf '# edited notes\n' > "$WFIX/docs/notes.md"
+assert_hash_eq "a tracked docs edit does not move it" "$wt" "$(whash "$WFIX")"
+printf '# new page\n' > "$WFIX/docs/new.md"
+assert_hash_eq "an untracked docs file does not move it" "$wt" "$(whash "$WFIX")"
 mkdir -p "$WFIX/dist"
 printf 'built\n' > "$WFIX/dist/out.js"
-assert_hash_eq "a vendor (ignored build output) file does not move it" "$w0" "$(whash "$WFIX")"
+assert_hash_eq "a vendor (ignored build output) file does not move it" "$wt" "$(whash "$WFIX")"
+mkdir -p "$WFIX/scratch"
+printf 'export const s = 1\n' > "$WFIX/scratch/out.ts"
+assert_hash_eq "an ignored file (scratch/, source by name) does not move it" "$wt" "$(whash "$WFIX")"
+# The ignored case's control: the same content, not ignored, does move it.
+printf 'export const s = 1\n' > "$WFIX/src/scratch-out.ts"
+assert_hash_ne "control: the same content at a non-ignored source path moves it" "$wt" "$(whash "$WFIX")"
+rm -f "$WFIX/src/scratch-out.ts"
 printf 'state\n' > "$WFIX/.claude/state/anything.txt"
-assert_hash_eq "a file under .claude/state/ does not move it" "$w0" "$(whash "$WFIX")"
+printf '# state notes\n' > "$WFIX/.claude/state/notes.md"
+assert_hash_eq "a file under .claude/state/ (markdown included) does not move it" "$wt" "$(whash "$WFIX")"
 
 # Failure: not a git repository. gate_tree_hash prints `unavailable` there, and
 # work_tree_hash must print it ONCE - not twice, not beside a hash.
@@ -442,6 +504,25 @@ assert_eq "after a docs-only edit: still fresh" "fresh" "$(last_line "$OUT")"
 assert_eq "after a docs-only edit: exit 0" 0 "$RC"
 git -C "$FIX" checkout -q -- docs/notes.md
 
+# Harness markdown is not docs (C-2 as amended by A-2): an edit to a tracked
+# agent spec, or to CLAUDE.md, makes the record stale.
+printf '# role, reworded\n' > "$FIX/.claude/agents/role.md"
+Tm="$(whash "$FIX")"
+att check -- bash "$C/two.sh" alpha beta
+assert_eq "after a tracked .claude/agents/*.md edit: stale, naming the recorded and the current hash" \
+  "stale: recorded on $T0 at $R1, the tree is now $Tm" "$(last_line "$OUT")"
+assert_eq "and exits 1" 1 "$RC"
+git -C "$FIX" checkout -q -- .claude/agents/role.md
+printf '# house rules, amended\n' > "$FIX/CLAUDE.md"
+Tc="$(whash "$FIX")"
+att check -- bash "$C/two.sh" alpha beta
+assert_eq "after a tracked CLAUDE.md edit: stale, naming the recorded and the current hash" \
+  "stale: recorded on $T0 at $R1, the tree is now $Tc" "$(last_line "$OUT")"
+assert_eq "and exits 1" 1 "$RC"
+git -C "$FIX" checkout -q -- CLAUDE.md
+att check -- bash "$C/two.sh" alpha beta
+assert_eq "both edits undone: fresh again" "fresh" "$(last_line "$OUT")"
+
 # A tracked source edit: stale, naming both hashes and the run.
 printf 'export const x = 99\n' > "$FIX/src/main.ts"
 Tn="$(whash "$FIX")"
@@ -552,6 +633,97 @@ if [ -e "$WORK/ac4-ran" ]; then _ok "control: and its side effect appears"
 else _bad "control: and its side effect appears" "$WORK/ac4-ran is absent"; fi
 
 # ==============================================================================
+describe "C-1  a leading assignment reaches the command only, never attest.sh's own shell"
+# ==============================================================================
+# Diff review round 1, finding 3. attest.sh's own ROOT, ALOG and HARNESS_ROOT
+# decide where the record and the log land, which tree is hashed and whether
+# AC-4's refusal runs; an assignment word must change none of them.
+
+SCR="$WORK/scratch-root"; mkdir -p "$SCR"
+att -- "ROOT=$SCR" bash "$C/vars.sh"
+B="$(last_block "$ALOG")"; L="$(field "$B" log)"
+assert_eq "ROOT=<elsewhere>: exit 0" 0 "$RC"
+assert_eq "ROOT=<elsewhere>: the record lands in this tree's attest.log" "ROOT=$SCR bash $C/vars.sh" "$(field "$B" command)"
+if [ -n "$L" ] && [ -f "$FIX/$L" ]; then
+  _ok "ROOT=<elsewhere>: the log it names is under this tree's .claude/state/"
+  assert_eq "ROOT=<elsewhere>: and the command saw ROOT, which it printed" 1 "$(count_line "ROOT=$SCR" "$(cat "$FIX/$L")")"
+else
+  _bad "ROOT=<elsewhere>: the log it names is under this tree's .claude/state/" "no file at [$FIX/$L]"
+  _bad "ROOT=<elsewhere>: and the command saw ROOT, which it printed" "no log to read"
+fi
+if [ -e "$SCR/.claude/state" ]; then _bad "ROOT=<elsewhere>: nothing is written under <elsewhere>" "$(find "$SCR" -type f)"
+else _ok "ROOT=<elsewhere>: nothing is written under <elsewhere>"; fi
+
+AE="$WORK/elsewhere-attest.log"
+att -- "ALOG=$AE" bash "$C/vars.sh"
+B="$(last_block "$ALOG")"; L="$(field "$B" log)"
+assert_eq "ALOG=<elsewhere>: the record lands in this tree's attest.log" "ALOG=$AE bash $C/vars.sh" "$(field "$B" command)"
+if [ -e "$AE" ]; then _bad "ALOG=<elsewhere>: nothing is appended to <elsewhere>" "$(cat "$AE")"
+else _ok "ALOG=<elsewhere>: nothing is appended to <elsewhere>"; fi
+if [ -n "$L" ] && [ -f "$FIX/$L" ]; then
+  assert_eq "ALOG=<elsewhere>: and the command saw ALOG, which it printed" 1 "$(count_line "ALOG=$AE" "$(cat "$FIX/$L")")"
+else _bad "ALOG=<elsewhere>: and the command saw ALOG, which it printed" "no file at [$FIX/$L]"; fi
+
+SCR2="$WORK/scratch-harness"; mkdir -p "$SCR2"
+Th="$(whash "$FIX")"
+att -- "HARNESS_ROOT=$SCR2" bash "$C/vars.sh"
+B="$(last_block "$ALOG")"
+assert_eq "HARNESS_ROOT=<elsewhere>: status: ok (both hashes are of this tree)" "ok" "$(field "$B" status)"
+assert_hash_eq "HARNESS_ROOT=<elsewhere>: after: is this tree's work hash" "$Th" "$(field "$B" after)"
+
+# With a stranded mutation, an assignment cannot step around AC-4's refusal.
+printf 'pid\t%s\nfile\t%s\npath\t%s\nbackup\t%s\nexpr\t%s\ncommand\t%s\nstarted\t%s\n' \
+  "$DEAD" src/main.ts "$FIX/src/main.ts" "${ACT%.active}.bak" 's/1/-1/' 'bash scripts/gates.sh' 20261004T010203Z > "$ACT"
+SCR3="$WORK/scratch-mut"; mkdir -p "$SCR3"
+rm -f "$WORK/vars-ran"; before="$(sum "$ALOG")"
+att -- "ROOT=$SCR3" bash "$C/vars.sh"
+assert_eq "a stranded mutation and ROOT=<elsewhere>: still refused, exit 2" 2 "$RC"
+if [ -e "$WORK/vars-ran" ]; then _bad "a stranded mutation and ROOT=<elsewhere>: the command never ran" "$WORK/vars-ran exists"
+else _ok "a stranded mutation and ROOT=<elsewhere>: the command never ran"; fi
+assert_eq "a stranded mutation and ROOT=<elsewhere>: nothing recorded" "$before" "$(sum "$ALOG")"
+rm -f "$WORK/vars-ran"
+att -- "ALOG=$WORK/scratch-mut.log" bash "$C/vars.sh"
+assert_eq "a stranded mutation and ALOG=<elsewhere>: still refused, exit 2" 2 "$RC"
+if [ -e "$WORK/vars-ran" ]; then _bad "a stranded mutation and ALOG=<elsewhere>: the command never ran" "$WORK/vars-ran exists"
+else _ok "a stranded mutation and ALOG=<elsewhere>: the command never ran"; fi
+rm -f "$ACT"
+
+# ==============================================================================
+describe "C-1  a word holding a newline or a CR is a usage error, and forges nothing"
+# ==============================================================================
+# Diff review round 1, finding 4. A newline inside a word wrote extra lines into
+# the record, so a `command:` line naming a command that never ran made `check`
+# answer fresh for it. Refused before anything runs or is written.
+
+FORGED='bash scripts/gates.sh --fast'
+before="$(sum "$ALOG")"
+rm -f "$WORK/side-ran"
+att -- bash "$C/side.sh" "x
+command: $FORGED"
+assert_eq "a word containing a newline: exit 2" 2 "$RC"
+if [ -e "$WORK/side-ran" ]; then _bad "a word containing a newline: the command never ran" "$WORK/side-ran exists"
+else _ok "a word containing a newline: the command never ran"; fi
+rm -f "$WORK/side-ran"
+CR="$(printf '\r')"
+att -- bash "$C/side.sh" "x${CR}command: $FORGED"
+assert_eq "a word containing a CR: exit 2" 2 "$RC"
+if [ -e "$WORK/side-ran" ]; then _bad "a word containing a CR: the command never ran" "$WORK/side-ran exists"
+else _ok "a word containing a CR: the command never ran"; fi
+rm -f "$WORK/side-ran"
+att -- "P=a
+command: $FORGED" bash "$C/side.sh"
+assert_eq "a leading assignment containing a newline: exit 2" 2 "$RC"
+if [ -e "$WORK/side-ran" ]; then _bad "a leading assignment containing a newline: the command never ran" "$WORK/side-ran exists"
+else _ok "a leading assignment containing a newline: the command never ran"; fi
+att check -- bash "$C/side.sh" "x
+command: $FORGED"
+assert_eq "check with a word containing a newline: exit 2" 2 "$RC"
+assert_eq "none of them appended to attest.log" "$before" "$(sum "$ALOG")"
+att check -- bash scripts/gates.sh --fast
+assert_eq "the forged command has no record: check answers none" "none: no record for this command" "$(last_line "$OUT")"
+assert_eq "and exits 1" 1 "$RC"
+
+# ==============================================================================
 # AC-5: the structural guard (C-5)
 # ==============================================================================
 #
@@ -608,7 +780,8 @@ ATTEST_FAST='bash scripts/attest.sh -- bash scripts/gates.sh --fast'
 ATTEST_RUN='bash scripts/attest.sh --'
 ATTEST_CHECK='bash scripts/attest.sh check'
 RERUN='run the tests yourself'
-TOOL_ATTEST='Bash(bash scripts/attest.sh:*)'
+TOOL_CHECK='Bash(bash scripts/attest.sh check:*)'   # required (A-1)
+TOOL_ANY='Bash(bash scripts/attest.sh:*)'           # refused (A-1): runs any words
 
 # method_list   ML := the numbered list under `## Method` in the loaded file,
 # one array element per line. It starts at the first `^[0-9]+\. ` line after
@@ -683,17 +856,35 @@ section_text() {
   return 0
 }
 
+# body_lines   BODY := the loaded file's lines after its frontmatter: after the
+# line `---` that closes a first line `---`. The whole file when it has no
+# frontmatter (or an unclosed one).
+body_lines() {
+  local i n="${#LN[@]}" end=-1
+  BODY=("${LN[@]}")
+  [ "$n" -gt 0 ] && [ "${LN[0]}" = "---" ] || return 0
+  for ((i = 1; i < n; i++)); do
+    [ "${LN[$i]}" = "---" ] && { end=$i; break; }
+  done
+  [ "$end" -gt 0 ] && BODY=("${LN[@]:$((end + 1))}")
+  return 0
+}
+
 # join_by <sep> <item>...   The items joined by <sep>, in a subshell so IFS
 # stays the caller's.
 join_by() { ( IFS="$1"; shift; printf '%s' "$*" ); }
 
-# check_attest_tool <rel>   The allowed-tools entry, for the loaded file.
+# check_attest_tool <rel>   The allowed-tools entries, for the loaded file
+# (C-5 as amended by A-1): an entry EQUAL to the check pattern, and no entry
+# EQUAL to the bare prefix, which would auto-approve `attest.sh -- <anything>`.
+# Absent check first, then the prefix; a file wrong both ways prints both.
 check_attest_tool() {
   allowed_tools
   if [ "$HAS_AT" = 0 ]; then
     printf '%s: has no `allowed-tools:` line in its frontmatter\n' "$1"
   else
-    has_entry "$TOOL_ATTEST" || printf '%s: does not permit attest.sh\n' "$1"
+    has_entry "$TOOL_CHECK" || printf '%s: does not permit attest.sh check\n' "$1"
+    has_entry "$TOOL_ANY" && printf '%s: permits attest.sh to run any command\n' "$1"
   fi
   return 0
 }
@@ -739,11 +930,16 @@ attest_problems() {
       case "$RG" in *"$RERUN"*) printf '%s: %s still re-runs the tests\n' "$ADVANCE" "$name" ;; esac
     done
   fi
-  # complete-story.md: the tool, then the whole file.
+  # complete-story.md: the tool, then the BODY - the file after its frontmatter
+  # (C-5 as amended on return 3). Since A-1 the frontmatter's allowed-tools
+  # entry `Bash(bash scripts/attest.sh check:*)` itself contains the needle, so
+  # judging the whole file would make "does not check the record" unfailable
+  # while the entry stands.
   if [ ! -f "$root/$COMPLETE" ]; then printf '%s: file is missing\n' "$COMPLETE"
   else
     load "$root/$COMPLETE"; check_attest_tool "$COMPLETE"
-    all="$(join_by ' ' "${LN[@]}")"
+    body_lines
+    all="$(join_by ' ' "${BODY[@]}")"
     case "$all" in *"$ATTEST_CHECK"*) ;; *) printf '%s: does not check the record\n' "$COMPLETE" ;; esac
   fi
   # lead-po.md ## Orchestrating
@@ -770,7 +966,10 @@ attest_problems() {
 #   * lead-po: `bash scripts/attest.sh check` split by nothing, inside the
 #     section, after a sub-list.
 
-TOOLS_LINE='allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*),   Bash(bash scripts/attest.sh:*)  , Read, Task'
+# The check entry with odd spacing (trimmed, so equal), and a near-miss for the
+# refused prefix: an entry that CONTAINS `Bash(bash scripts/attest.sh:*)` but is
+# not equal to it, which has_entry's equality must not read as the prefix.
+TOOLS_LINE='allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*),   Bash(bash scripts/attest.sh check:*)  , Read, Task, NotBash(bash scripts/attest.sh:*)'
 
 good_tree() { # <root>
   local r="$1"
@@ -913,18 +1112,28 @@ expect_one "advance-story: the check named only in the NEXT paragraph" "$R" \
 R="$(regress as-rg-rerun "$ADVANCE" '{ print } /^\*\*RED → GREEN\.\*\*/ { print "When it returns, run the tests yourself." }')"
 expect_one "advance-story: RED → GREEN re-runs the tests" "$R" \
   ".claude/commands/advance-story.md: RED → GREEN still re-runs the tests"
-R="$(regress as-tool "$ADVANCE" '{ sub(/Bash\(bash scripts\/attest\.sh:\*\)/, "Bash(bash scripts/attest.sh check:*)"); print }')"
-expect_one "advance-story: an allowed-tools entry that CONTAINS the pattern is not it" "$R" \
-  ".claude/commands/advance-story.md: does not permit attest.sh"
+R="$(regress as-tool "$ADVANCE" '{ sub(/   Bash\(bash scripts\/attest\.sh check:\*\)  /, " XBash(bash scripts/attest.sh check:*)"); print }')"
+expect_one "advance-story: an allowed-tools entry that CONTAINS the check pattern is not it" "$R" \
+  ".claude/commands/advance-story.md: does not permit attest.sh check"
+R="$(regress as-tool-any "$ADVANCE" '/^allowed-tools:/ { $0 = $0 ", Bash(bash scripts/attest.sh:*)" } { print }')"
+expect_one "advance-story: the old prefix entry back beside the check entry (A-1)" "$R" \
+  ".claude/commands/advance-story.md: permits attest.sh to run any command"
+R="$(regress as-tool-old "$ADVANCE" '{ sub(/Bash\(bash scripts\/attest\.sh check:\*\)/, "Bash(bash scripts/attest.sh:*)"); print }')"
+assert_eq "advance-story: the pre-A-1 entry alone is wrong both ways, one line each" \
+  ".claude/commands/advance-story.md: does not permit attest.sh check
+.claude/commands/advance-story.md: permits attest.sh to run any command" "$(attest_problems "$R")"
 R="$(regress as-nopara "$ADVANCE" '{ sub(/^\*\*PLANNED → RED\.\*\*/, "**PLANNED.**"); print }')"
 expect_one "advance-story: no PLANNED → RED paragraph at all" "$R" \
   '.claude/commands/advance-story.md: has no `**PLANNED → RED.**` paragraph'
 
-R="$(regress cs-tool "$COMPLETE" '{ sub(/, +Bash\(bash scripts\/attest\.sh:\*\) +/, ""); print }')"
-expect_one "complete-story: allowed-tools without the entry" "$R" \
-  ".claude/commands/complete-story.md: does not permit attest.sh"
+R="$(regress cs-tool "$COMPLETE" '{ sub(/, +Bash\(bash scripts\/attest\.sh check:\*\) +/, ""); print }')"
+expect_one "complete-story: allowed-tools without the check entry" "$R" \
+  ".claude/commands/complete-story.md: does not permit attest.sh check"
+R="$(regress cs-tool-any "$COMPLETE" '/^allowed-tools:/ { $0 = $0 ", Bash(bash scripts/attest.sh:*)" } { print }')"
+expect_one "complete-story: the old prefix entry back beside the check entry (A-1)" "$R" \
+  ".claude/commands/complete-story.md: permits attest.sh to run any command"
 R="$(regress cs-check "$COMPLETE" '{ sub(/`bash scripts\/attest\.sh check`/, "`bash scripts/gates.sh --fast`"); print }')"
-expect_one "complete-story: does not name the check" "$R" \
+expect_one "complete-story: the check named only by the frontmatter's allowed-tools entry is not a check" "$R" \
   ".claude/commands/complete-story.md: does not check the record"
 
 R="$(regress lp-check "$LEADPO" '/attest\.sh check/ { print "- **A report of success is a claim;** run it yourself."; next } { print } /^Nothing\./ { print "Use `bash scripts/attest.sh check` here." }')"
