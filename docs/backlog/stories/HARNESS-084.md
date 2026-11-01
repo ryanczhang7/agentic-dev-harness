@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -1128,3 +1128,9 @@ Finding for GATES / the diff review: the first attest run here was made with
 tail assertions went red (`a 30-line output prints a 20-line header by
 default` and four others). `attest.test.sh` does not unset `ATTEST_TAIL`, so
 a caller's environment changes its result. Fixing that is a test change (RED).
+
+GREEN after return 2 (2026-11-01): a genuine no-op. Orchestrator run:
+`bash scripts/attest.sh -- ATTEST_TAIL=2 bash scripts/selftest.sh attest`
+-> `status: ok`, `exit: 0`, 106 s, `1 harness suite(s) passed.` - the hostile
+environment that broke five assertions before.
+- RED return 2 - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-11-01); no override.
