@@ -4,8 +4,8 @@ title: A subagent's verification run is recorded against the tree it ran on, and
 slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -522,6 +522,21 @@ attest: 162 passed, 3 failed
 
 DV-2 is not re-run: `feature-developer.md` and the guard's full-run row did
 not change in return 3; its result above stands.
+
+Re-run after return 4 (GATES, 2026-11-01; `attest.sh` changed): the same
+three AC-3 assertions red, nothing else, restore verified. DV-2 again not
+re-run, for the same reason.
+
+```
+  190 - elif [ "$TREE" != "$AFTER" ]; then
+  190 + elif false; then
+    FAIL status: void: tree changed during the run
+    FAIL check answers void, with the status text
+    FAIL void even once the tree is back to the recorded tree:
+attest: 176 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_attest.sh.20261101T205612Z.189.bak) ===
+  190: elif [ "$TREE" != "$AFTER" ]; then
+```
 
 **DV-2 (a rule probed against the tree it judges). Owner: GATES.** With a
 real line of `.claude/agents/feature-developer.md` mutated to put
@@ -1641,13 +1656,36 @@ Verdict: Ship.
 PO decision: ship; both findings become follow-ups (`## Notes`) rather than a
 fourth return to RED - neither is a defect in the shipped behaviour.
 
+### Round 3 (GATES after return 4, 2026-11-01; fresh feature-developer, resolved claude-opus-5-5)
+
+Scope: the return-4 fix only (`git diff 8bffb12 HEAD -- scripts/attest.sh
+.claude/tests`) and its callers.
+
+Checked, no finding:
+- `${CLAUDE_PROJECT_DIR+1}` separates set-to-empty from unset, so an empty
+  caller value reaches the command as empty.
+- The restore runs before the ASSIGNS loop, so a leading
+  `CLAUDE_PROJECT_DIR=` still wins (the Y case, earned by a probe).
+- The restore is inside the subshell only: `mutate.sh --check` and both
+  `work_tree_hash` calls still see `CLAUDE_PROJECT_DIR=$ROOT`.
+- No other leak: lib.sh exports nothing (`set_harness_root` only assigns);
+  ROOT, ALOG and HARNESS_ROOT are unexported.
+- Callers are instruction files only; nothing in `scripts/` or
+  `.claude/hooks/` invokes attest.sh. Wrapped commands either set the variable
+  themselves (`gates.sh:87`, `selftest-needed.sh:57`) or read it as the
+  caller's shell would, which is what this restores.
+- Needles match the whole `cpd=[...]` line; `env -u` is portable.
+- Ran `bash scripts/selftest.sh attest`: 179 passed, 0 failed, floor met.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-01T18:52:48Z
-    commit: 2121282
-    tree:   44f1f4b9de5aa2a0618a162b365dfdef87f32019
+    run:    2026-11-01T20:58:10Z
+    commit: 48500af
+    tree:   3f969d9ed7d10e3cce82ccb244dfd2ceb019eb1c
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1846,3 +1884,16 @@ accept a fresh attested `--fast` record. Not this story's scope.
 Follow-ups from diff review round 2 (not this story): pin a post-command
 `NAME=value` word reaching the command; refuse or document bash read-only
 names as leading assignments.
+
+Self-test at GATES → REVIEW (2026-11-01), `SELFTEST_JOBS=4`, run through
+`attest.sh`. First run, before return 4: exit 1, 5519 s,
+`2 of 31 harness suite(s) FAILED.` (classify, selftest-needed; the
+CLAUDE_PROJECT_DIR leak, see Return 4). After return 4:
+
+```
+status:   ok
+exit:     0
+duration: 2326s
+last:     31 harness suite(s) passed.
+log:      .claude/state/attest-logs/20261101T210124Z.868.log
+```
