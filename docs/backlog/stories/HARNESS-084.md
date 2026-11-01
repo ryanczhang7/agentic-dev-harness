@@ -4,8 +4,8 @@ title: A subagent's verification run is recorded against the tree it ran on, and
 slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
