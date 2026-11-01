@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -1006,9 +1006,9 @@ attest: 123 passed, 0 failed
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-01T17:50:10Z
-    commit: b341b4c
-    tree:   9a0fa41f043e0c84f7590a1913568349012740f7
+    run:    2026-11-01T18:01:55Z
+    commit: d656312
+    tree:   6c032341136e5bb1cd2c9611af5bcc29404c855c
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
