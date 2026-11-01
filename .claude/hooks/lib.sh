@@ -1673,22 +1673,63 @@ _session_root
 
 # --- Work tree hash (HARNESS-084) -------------------------------------------
 
-# work_tree_hash   gate_tree_hash's tree PLUS the untracked gated files: one
-# hash for "the code a verification run just ran against", for
-# scripts/attest.sh. gate_tree_hash leaves untracked files out because a
-# commit contains none of them; a RED subagent's new test file is usually
-# untracked, so a record keyed to that hash alone could not tell its edits
-# apart. "Gated" is gated_stdin's, through untracked_gated: nothing new decides
-# it. With no untracked gated file this IS gate_tree_hash - the same listing,
-# plus no lines - and an untracked file hashes exactly as it would once
-# `git add`-ed: `<blob>\t<path>`, blob from `git hash-object` with the path's
-# attributes, through _hash_blob_listing.
+# work_gated_stdin   gated_stdin's filter MINUS its harness-markdown exclusion:
+# reads "category\tpath", keeps source, test, config and harness - markdown
+# included - and drops docs, vendor, ignored and harness runtime state
+# (.claude/state/, markdown there too). The work hash's own definition of
+# "gated" (HARNESS-084 A-2). gated_stdin leaves harness markdown out because no
+# gate reads a prompt; this repository's own suites do read them, so a
+# verification record that stayed `fresh` across an edit to an agent spec, a
+# command, a skill or CLAUDE.md would vouch for a run that never saw the edit.
+# gated_stdin is NOT widened to match: gate_tree_hash and the CI comparison
+# against it stay as they are (C-10).
+work_gated_stdin() {
+  awk -F'\t' '
+    ($1 == "source" || $1 == "test" || $1 == "config" || $1 == "harness") \
+      && index($2, ".claude/state/") != 1 { print }'
+}
+
+# _work_hash_blob_listing   _hash_blob_listing's shape over work_gated_stdin:
+# reads "blob\tpath" lines, keeps the paths the work filter keeps, prints the
+# hash of their `<blob>  <path>` lines, LC_ALL=C sorted. It cannot simply call
+# _hash_blob_listing, which applies gated_stdin itself. On a tree with no
+# harness markdown the two filters agree, so the two hashes are equal there.
+_work_hash_blob_listing() {
+  local listing
+  listing="$(cat)"
+  [ -n "$listing" ] || { printf 'unavailable'; return 1; }
+  {
+    printf '%s\n' "$listing" | awk -F'\t' '{ print "B\t" $1 "\t" $2 }'
+    printf '%s\n' "$listing" | cut -f2- | classify_stdin | work_gated_stdin | awk -F'\t' '{ print "C\t" $2 }'
+  } | awk -F'\t' '
+      $1 == "B" { blob[$3] = $2; next }
+      $1 == "C" { gated[$2] = 1 }
+      END {
+        for (p in blob) {
+          if (!(p in gated)) continue
+          print blob[p] "  " p
+        }
+      }' | LC_ALL=C sort | git hash-object --stdin
+}
+
+# work_tree_hash   gate_tree_hash's tree PLUS the untracked files, judged by
+# work_gated_stdin rather than gated_stdin: one hash for "the code a
+# verification run just ran against", for scripts/attest.sh. gate_tree_hash
+# leaves untracked files out because a commit contains none of them; a RED
+# subagent's new test file is usually untracked, so a record keyed to that hash
+# alone could not tell its edits apart. It moves on harness markdown too (A-2),
+# and stays only on docs, vendor, ignored and .claude/state/. On a tree with
+# no harness markdown and no untracked file this IS gate_tree_hash - the same
+# listing through the same shape - and an untracked file hashes exactly as it
+# would once `git add`-ed: `<blob>\t<path>`, blob from `git hash-object` with
+# the path's attributes.
 #
 # The temporary index is built as gate_tree_hash builds its own (seeded from a
 # `cp -p` of the real one, then `add -u`; see there for why both matter), under
 # a name of its own. gate_tree_hash is called by gates.sh, check-boundaries.sh
 # and the Stop hook, and returns only the hash, so it is left untouched
-# (HARNESS-084 C-10) rather than split to share the listing.
+# (HARNESS-084 C-10) rather than split to share the listing; so are
+# untracked_gated and gated_stdin, which define what gates.sh refuses.
 #
 # stdout: one hash, return 0; or `unavailable` once, return 1, when either
 # part cannot be computed. `unavailable` is never a match for anything.
@@ -1706,7 +1747,10 @@ work_tree_hash() {
     | awk -F'\t' '{ split($1, a, " "); print a[2] "\t" $2 }' )"
   rm -f "$idx"
   [ -n "$listing" ] || { printf 'unavailable'; return 1; }
-  files="$(untracked_gated)"
+  # Untracked, not ignored, kept by the WORK filter - not untracked_gated,
+  # which drops harness markdown.
+  files="$(git -C "$HARNESS_ROOT" ls-files --others --exclude-standard 2>/dev/null \
+    | classify_stdin | work_gated_stdin | cut -f2- | LC_ALL=C sort)"
   if [ -n "$files" ]; then
     blobs="$(cd "$HARNESS_ROOT" && printf '%s\n' "$files" | git hash-object --stdin-paths 2>/dev/null)" \
       || { printf 'unavailable'; return 1; }
@@ -1718,5 +1762,5 @@ $(printf '%s\n' "$files" | B="$blobs" awk '
       END { if (NR != n) exit 1 }')" \
       || { printf 'unavailable'; return 1; }
   fi
-  printf '%s\n' "$listing" | _hash_blob_listing
+  printf '%s\n' "$listing" | _work_hash_blob_listing
 }

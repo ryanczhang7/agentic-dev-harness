@@ -17,10 +17,12 @@
 # exit non-zero, and folding the exit status into the answer would hide that.
 #
 # The words after `--` are executed directly ("$@"), never through a shell.
-# Leading NAME=value words are exported to the command and not executed, so
+# Leading NAME=value words go into the command's environment (never this
+# script's own) and are not executed, so
 # `SELFTEST_JOBS=4 bash scripts/selftest.sh` is one attestable command; the
 # recorded `command:` is ALL the words, joined by one space, and `check`
-# compares that string for equality - `a b` and `b a` are two commands.
+# compares that string for equality - `a b` and `b a` are two commands. A word
+# holding a newline or a CR is a usage error: it would forge record lines.
 #
 # The command's output goes to .claude/state/attest-logs/<run>.<pid>.log, not
 # the terminal; this prints the record, then the last ATTEST_TAIL (default 20)
@@ -90,6 +92,12 @@ case "$1" in
 esac
 if [ "$MODE" != show ]; then
   [ $# -gt 0 ] || usage
+  # A word holding a newline or a CR would write extra lines into the record:
+  # a forged `command:` line, and `check` answering `fresh` for a command that
+  # never ran. Refused before anything runs or is recorded, in both modes.
+  for w in "$@"; do
+    case "$w" in *$'\n'*|*$'\r'*) usage ;; esac
+  done
   WORDS="$*"   # IFS is the default here, so one space between words
 fi
 
@@ -136,9 +144,12 @@ fi
 
 # --- run -----------------------------------------------------------------------
 
-# Leading assignments go into the command's environment, not its argv.
+# Leading assignments go into the command's environment, not its argv - and
+# never into this shell's: ROOT=, ALOG= or HARNESS_ROOT= must not move the
+# record, the log or the tree hashed, nor skip the mutation refusal below.
+ASSIGNS=()
 while [ $# -gt 0 ] && [[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
-  export "${1%%=*}=${1#*=}"
+  ASSIGNS+=("$1")
   shift
 done
 [ $# -gt 0 ] || usage
@@ -161,7 +172,11 @@ mkdir -p "$ROOT/.claude/state/attest-logs"
 
 TREE="$(work_tree_hash)"
 started=$SECONDS
-"$@" > "$ROOT/$LOG_REL" 2>&1
+# A subshell sets them and execs: the command sees them, attest.sh does not.
+# Not `env NAME=v "$@"`, which would also read a later word containing `=`
+# (say `./a=b`) as an assignment.
+( for a in ${ASSIGNS[@]+"${ASSIGNS[@]}"}; do export "${a%%=*}=${a#*=}"; done
+  exec "$@" ) > "$ROOT/$LOG_REL" 2>&1
 rc=$?
 duration=$((SECONDS - started))
 AFTER="$(work_tree_hash)"

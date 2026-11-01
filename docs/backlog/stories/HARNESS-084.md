@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -1559,3 +1559,64 @@ log `.claude/state/attest-logs/20261101T183007Z.50862.log` shows
 `attest: 133 passed, 32 failed`, 32 FAIL lines, the ones the report names.
 The first use of the story's own mechanism; it saved one 106 s run.
 - RED return 3 - `test-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-11-01); no override.
+
+GREEN after return 3 (2026-11-01) - `feature-developer`, resolved
+**claude-opus-5-5**, as declared; no override.
+
+- Built: `lib.sh` - `work_gated_stdin` (gated_stdin's filter without the
+  harness-markdown exclusion) and `_work_hash_blob_listing` (`_hash_blob_listing`'s
+  shape over that filter) added; `work_tree_hash` takes its untracked list from
+  `git ls-files --others --exclude-standard | classify_stdin | work_gated_stdin`
+  and hashes through the new listing function. `gated_stdin`,
+  `_hash_blob_listing`, `gate_tree_hash`, `untracked_gated` byte-identical (C-10).
+  `attest.sh` - every word after `--` (run and `check`) holding LF or CR is
+  `usage`, exit 2, before anything runs or is recorded; leading assignments are
+  collected into `ASSIGNS` and set only in a subshell that `exec`s the command.
+  A subshell rather than `env "${assigns[@]}" "$@"`: `env` would also take a
+  later word containing `=` (`./a=b`) as an assignment. Both commands'
+  `allowed-tools`: `Bash(bash scripts/attest.sh check:*)` in place of the
+  prefix entry; advance-story.md, complete-story.md and lead-po.md now say the
+  orchestrator runs only `check` and, on a non-`fresh` answer, runs the command
+  directly. VERSION not bumped again (103 from the first GREEN).
+- Records (all `status: ok`):
+  `selftest.sh attest` exit 0, `attest: 165 passed, 0 failed`, 134 s,
+  `.claude/state/attest-logs/20261101T183712Z.1448.log`;
+  `settings` exit 0, 71 passed, `...20261101T183937Z.1384.log`;
+  `lib` exit 0, 324 passed, `...20261101T184005Z.1276.log`;
+  `procedure` exit 0, 118 passed, `...20261101T184135Z.310.log`;
+  `selftest` exit 0, 268 passed, `...20261101T184151Z.1532.log`;
+  `gates.sh --fast` exit 0, `All required gates passed (0 ran, 5 unconfigured,
+  0 known).`, `...20261101T184433Z.1045.log`. check-sigpipe and
+  check-grep-count: 0 findings over 58 files.
+- Controls, measured on `make_project_fixture` trees against the shipped code
+  (hashes fixture-specific): clean, no harness md: work = gate = `5e9f5a3a...`;
+  untracked tests/new.test.ts `5d9e2251...` = gate once staged; untracked
+  `.claude/commands/new.md` moves it (`eaaedadc...`); committing
+  `.claude/agents/role.md` + `CLAUDE.md`: gate stays `5e9f5a3a...`, work moves
+  (`f1ec8e0a...`); against the md tree, a docs edit, an untracked docs file,
+  `dist/out.js` (vendor), ignored `scratch/out.ts` and `.claude/state/` writes
+  (one `.md`) all leave it put; `src/scratch-out.ts` moves it; edits to
+  role.md and CLAUDE.md each move it and their undo returns it; an untracked
+  skill moves it. attest.sh: `ROOT=<dir>` exit 0, log under FIX, command
+  printed `ROOT=<dir>`, `<dir>` not created; `ALOG=<file>` `status: ok`,
+  `<file>` not created, record in FIX's log; `HARNESS_ROOT=<dir>` `status: ok`,
+  `after:` equal to FIX's work hash; stranded marker with `ROOT=` and with
+  `ALOG=`: exit 2, not run, log unchanged; newline word, CR word, newline
+  assignment: exit 2, not run; `check` newline word: exit 2; attest.log
+  byte-identical across the four; `check -- bash scripts/gates.sh --fast`
+  afterwards: `none: no record for this command`, exit 1. Real-tree
+  `attest_problems` silent (the suite's assertion is green). Every relation
+  matches the addendum's "Expected after GREEN" column; no divergence.
+- No test judged wrong.
+
+GREEN after return 3 verified (2026-11-01) without a re-run: `attest.sh
+check` answered `fresh`, exit 0, for `selftest.sh attest` (165/165),
+`settings`, `lib`, `procedure`, `selftest` and `gates.sh --fast`; `git diff
+HEAD -- .claude/tests` empty. The dispatch used one `sed -i` on a comment line
+of `scripts/attest.sh` (a `harness` path, writable in GREEN; not a
+diagnostic mutation, so not law 5's case, but noted).
+- GREEN after return 3 - `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (2026-11-01); no override.
+
+Follow-up candidate: `gate-reminder.sh` (the Stop hook) still asks for a
+`gates.sh --fast` run in GREEN while a subagent is mid-dispatch; it could
+accept a fresh attested `--fast` record. Not this story's scope.

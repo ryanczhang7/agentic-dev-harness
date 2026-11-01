@@ -2,7 +2,7 @@
 description: Move one story forward by exactly one phase
 model: fable
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -93,7 +93,8 @@ command from `.claude/harness/project.conf`, and tell it to run that command
 and `--fast` through `bash scripts/attest.sh --`. When it returns, verify: read
 the test files it wrote, then run `bash scripts/attest.sh check -- <test command>`
 with the exact words it ran. **Run the command yourself only when the answer is
-not `fresh`** (`stale`, `void` or `none`), and say in the story which it was.
+not `fresh`** (`stale`, `void` or `none`), directly rather than through
+`attest.sh` (you run only its `check`), and say in the story which it was.
 `fresh` says the run was made on this tree, not that it failed the right way:
 read `exit:` and `last:`, and the log the record names, and confirm from that
 log that the tests fail, and fail for the right reason. If they pass, or fail on
@@ -115,7 +116,7 @@ into the handoff. An agent arriving at that tree otherwise cannot tell a
 deliberate dark suite from a broken repository, and will debug the wrong thing.
 
 Then check `bash scripts/attest.sh check -- bash scripts/gates.sh --fast` the
-same way - running it yourself only when the answer is not `fresh` - and read
+same way - running it yourself, directly, only when the answer is not `fresh` - and read
 its log before leaving RED. This is not a pass/fail check — the test gates are *supposed* to be red here. It asks a
 different question: are these tests **admissible** to the gates that will judge
 them? Expect lint and typecheck to pass, and the test gates to fail with the
@@ -137,8 +138,8 @@ each recorded control value against the shipped module and to run the test
 command and `--fast` through `bash scripts/attest.sh --`. When it returns, read
 the files it wrote, then `bash scripts/attest.sh check -- <test command>` and
 `bash scripts/attest.sh check -- bash scripts/gates.sh --fast` — the same
-admissibility question, now expecting green. Run a command yourself only when
-its answer is not `fresh`, and say in the story which it was; a `fresh` record
+admissibility question, now expecting green. Run a command yourself, directly,
+only when its answer is not `fresh`, and say in the story which it was; a `fresh` record
 still has to show `exit: 0` and a passing `last:` line.
 
 **GREEN → GATES.** Set the phase, then — **before** `gates.sh` — run every entry
