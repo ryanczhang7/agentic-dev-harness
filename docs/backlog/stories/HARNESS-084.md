@@ -1436,6 +1436,26 @@ Orchestrator's independent reproduction (2026-11-01), different inputs:
    `project.conf` tasks, and `mutate.sh` is not listed.
 Both amendments are put to the user before RED.
 
+Round 2, 2026-11-01, fresh `feature-developer` on the GATES row, resolved
+**claude-opus-5-5**; it changed no file. Findings 1-4 of round 1 each closed
+against its reproduction (hash moves on `.claude/commands/status.md` and a
+skill, not on docs or `.claude/state/`; `gate_tree_hash` and its helpers
+byte-identical to main; allowed-tools `check` only; `ROOT=`/`ALOG=`/
+`HARNESS_ROOT=` cannot move the record; LF/CR refused in run and `check`;
+output cannot forge a record). New findings:
+
+- **Should fix** - nothing tests that an assignment-shaped word *after* the
+  command reaches it: a mutant dropping `X=1` after the command left
+  `attest: 165 passed`. One assertion (`-- bash args.sh X=1` prints `[X=1]`).
+- **Nice to have** - bash read-only names (`SHELLOPTS`, `UID`, `EUID`,
+  `PPID`, `BASHOPTS`) cannot be exported, so the command keeps the host value
+  while `command:` says otherwise; `status: ok`, one log line the only trace.
+
+Verdict: Ship.
+
+PO decision: ship; both findings become follow-ups (`## Notes`) rather than a
+fourth return to RED - neither is a defect in the shipped behaviour.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -1637,3 +1657,7 @@ diagnostic mutation, so not law 5's case, but noted).
 Follow-up candidate: `gate-reminder.sh` (the Stop hook) still asks for a
 `gates.sh --fast` run in GREEN while a subagent is mid-dispatch; it could
 accept a fresh attested `--fast` record. Not this story's scope.
+
+Follow-ups from diff review round 2 (not this story): pin a post-command
+`NAME=value` word reaching the command; refuse or document bash read-only
+names as leading assignments.
