@@ -91,7 +91,8 @@ the shape of `procedure.test.sh` and `policy.test.sh`.
   name `bash scripts/attest.sh check` and neither says `run the tests
   yourself`; complete-story.md and lead-po.md's `## Orchestrating` name
   `bash scripts/attest.sh check`; both commands' `allowed-tools` carry
-  `Bash(bash scripts/attest.sh:*)`. This criterion can only be checked
+  `Bash(bash scripts/attest.sh check:*)` and no entry `Bash(bash
+  scripts/attest.sh:*)`. This criterion can only be checked
   structurally: nothing executes the prose, and the suite pins that the
   instruction is present where the orchestrator reads it, not that a model
   follows it.
@@ -100,6 +101,38 @@ the shape of `procedure.test.sh` and `policy.test.sh`.
   new rows: `attest.log` hand-editable `no` (it is read as evidence, so
   `Edit(./.claude/state/attest.log)` is denied) and `attest-logs/*.log`
   hand-editable `yes`.
+
+## Amendments
+
+**A-1 (2026-11-01, approved by the user, "Approve, fix all four"; from diff
+review round 1, finding 2, reproduced by the orchestrator).** AC-5's last
+site said: both commands' `allowed-tools` carry `Bash(bash
+scripts/attest.sh:*)`. It now says: they carry `Bash(bash scripts/attest.sh
+check:*)` and no entry `Bash(bash scripts/attest.sh:*)`. Why: the prefix
+entry auto-approves `attest.sh -- <any command>`, and it was the only
+allowed-tools entry in either command that runs arbitrary words
+(orchestrator read `advance-story.md`'s list: `task.sh` runs named tasks
+only, `mutate.sh` is not listed). The orchestrator needs only `check`; a
+`stale` answer it re-runs directly.
+
+**A-2 (2026-11-01, approved by the user, same answer; from diff review round
+1, finding 1, reproduced by the orchestrator).** Not an acceptance criterion
+but the Contract's C-2, which RED had amended to "stays on harness
+markdown". It now says the work hash **moves** on harness markdown too
+(`.claude/agents/*.md`, `.claude/commands/*.md`, `CLAUDE.md`, skills), and
+stays only on `docs`, `vendor`, `ignored` and `.claude/state/`. Why: the
+harness's own suites read those files, so a pass recorded before an
+instructions edit stayed `fresh` after it. Reproduction, on a different file
+from the reviewer's: `work_tree_hash` before, after appending a line to
+`.claude/commands/status.md`, and after restoring it, was
+`6c032341136e5bb1cd2c9611af5bcc29404c855c` all three times.
+`gated_stdin` and `gate_tree_hash` are unchanged (C-10 stands).
+
+Findings 3 and 4 (env assignments clobbering attest.sh's own variables; a
+newline in a word forging a record) change no criterion: C-1 gains that a
+word containing a newline or CR is a usage error (exit 2), and that
+assignments reach the command only, never attest.sh's own shell. Finding 5
+is out of scope (see `## Out of scope`).
 
 ## Contract
 
@@ -447,6 +480,9 @@ name, below the table.
   anything.
 - A consuming project's `test` task in `project.conf`: the subagents attest
   whatever command the story names; no new `project.conf` grammar.
+- Recording argument boundaries in `command:` (diff review round 1, finding
+  5): `runner "a b"` and `runner a b` record the same string. Rare; the
+  orchestrator still reads `exit:` and `last:`. A follow-up if wanted.
 - Pruning the attest log. It is machine-local exhaust; the README says it is
   safe to delete.
 
