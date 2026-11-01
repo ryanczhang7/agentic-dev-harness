@@ -2,7 +2,7 @@
 description: Drive one story from its current phase all the way to a merged-ready PR
 model: fable
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -25,6 +25,13 @@ approval between phases is exactly when they get quietly reordered:
   tests instrumented, which is slower than the test command and slower again on
   CI. A suite can pass RED, pass GREEN, pass every local gate, and still fail a
   required gate in CI on a timeout nobody measured.
+- **The subagent runs them; you check the record.** RED and GREEN run the test
+  command and `--fast` through `bash scripts/attest.sh --`. When a dispatch
+  returns, `bash scripts/attest.sh check -- <the same words>` says whether that
+  run was made on the tree as it is now. You run only `check`; run the command
+  itself, directly, only when the answer is not `fresh`, and say in the story
+  which it was; `fresh` says it ran
+  here, not that it passed, so read `exit:`, `last:` and the log it names.
 - **GATES → REVIEW opens with a review of the diff and its callers**, by the
   `diff-review` skill on a fresh feature-developer dispatch, and goes on only
   on `Verdict: Ship.`; a fix it asks for changes the tree, so it comes before

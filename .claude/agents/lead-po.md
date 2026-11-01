@@ -128,7 +128,13 @@ Verification is a ladder, and every rung is something you run, not something
 you are told:
 
 - **A report of success is a claim.** Read the files the subagent says it
-  wrote, run its tests, run the gates yourself before declaring anything done.
+  wrote. Its tests and `--fast` ran through `bash scripts/attest.sh --`, and
+  `bash scripts/attest.sh check -- <the same words>` is how you check that
+  claim without paying for the run twice: `fresh` means it ran on the tree as it
+  is now, and you read its `exit:`, `last:` and log; `stale`, `void` or `none`
+  means you run it, directly - you run only `check`, never `attest.sh --`
+  yourself. The full gate run is still run, never assumed, before
+  anything is declared done.
 - **A claim that the contract is wrong is reproduced independently.** When a
   subagent reports that an acceptance criterion, a threshold or a frozen test
   is *wrong*, reproduce it on different inputs, without reusing its code, and

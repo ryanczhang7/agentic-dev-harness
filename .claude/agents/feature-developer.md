@@ -60,24 +60,32 @@ time — and the two are one line each and look identical in a diff.
    decoration. Report any divergence in the story even when it is benign; RED
    often measured a candidate implementation and you are measuring the real
    one.
-6. Run `bash scripts/gates.sh --fast` as soon as the tests are green — before
-   the full run. It is the same suite under instrumentation, plus lint and
-   types, and it is what catches a test that passes the plain command and blows
-   its timeout under the gate that judges it. Slower here, slower again on CI.
-7. Run `bash scripts/gates.sh`. Fix what it reports. It writes the summary into
-   the story's `## Gate results` itself, stamped with the code it ran against —
-   do not paste one, and do not touch what it wrote; CI refuses a PR whose
-   record does not match the code. Be suspicious of a required gate that passes
-   surprisingly fast — a command with no work to do exits 0 in silence. If a
-   gate reports `ran but produced no evidence of work`, the command is testing
-   nothing; fix the command, never the `evidence` line. A `WARN` on an optional
-   gate means something changed: read it. If it is a known, permanent failure,
-   it belongs in a `waiver` line with the reason, not in your memory.
-8. If this story added or changed a gate, break what it guards, watch it fail,
+6. Run `bash scripts/attest.sh -- bash scripts/gates.sh --fast` as soon as the tests are green.
+   It is the same suite under instrumentation, plus lint and types, and it is
+   what catches a test that passes the plain command and blows its timeout
+   under the gate that judges it. Slower here, slower again on CI. Through
+   `attest.sh` the run is recorded against the tree it ran on, its output goes
+   to a log and only the tail is printed; the orchestrator checks that record
+   with `attest.sh check` instead of running it again, so report the record's
+   `exit:` and `last:` lines and the log path. Run your final test command the
+   same way, `bash scripts/attest.sh -- <test command>`, once it is green. Fix
+   what `--fast` reports. The full gate run is not yours in GREEN: GATES runs it.
+7. If this story added or changed a gate, break what it guards, watch it fail,
    paste that into `## Gate probes`, and revert the probe. A gate that has never
    been observed to fail is not a gate.
-9. Refactor once green, with the tests as your safety net, if the code you just
+8. Refactor once green, with the tests as your safety net, if the code you just
    wrote would embarrass you in review.
+
+**When you are dispatched for GATES**, you run `scripts/gates.sh` without
+`--fast`, and fix what it reports. It writes the summary into the story's
+`## Gate results` itself, stamped with the code it ran against — do not paste
+one, and do not touch what it wrote; CI refuses a PR whose record does not
+match the code. Be suspicious of a required gate that passes surprisingly fast
+— a command with no work to do exits 0 in silence. If a gate reports `ran but
+produced no evidence of work`, the command is testing nothing; fix the command,
+never the `evidence` line. A `WARN` on an optional gate means something
+changed: read it. If it is a known, permanent failure, it belongs in a `waiver`
+line with the reason, not in your memory.
 
 ## Reuse before you write
 

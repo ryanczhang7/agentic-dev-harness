@@ -161,6 +161,7 @@ bash scripts/selftest-needed.sh  # does this story's diff touch a harness path? 
 bash scripts/gates.sh            # all gates
 bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and GREEN
 bash scripts/gates.sh --gate unit
+bash scripts/attest.sh -- CMD        # run CMD, record it against the tree; `check -- CMD` instead of a re-run
 bash scripts/check-boundaries.sh # the other half of CI: the commit, not the code
 bash scripts/check-sigpipe.sh   # refuse a pipefail SIGPIPE matcher, tree-wide
 bash scripts/check-grep-count.sh # refuse a printing `grep -c` fallback
