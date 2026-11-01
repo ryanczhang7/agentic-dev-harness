@@ -1002,6 +1002,53 @@ attest: 123 passed, 0 failed
 1 harness suite(s) passed.
 ```
 
+## Diff review
+
+Round 1, 2026-11-01, fresh `feature-developer` on the GATES row, resolved
+**claude-opus-5-5**; it changed no file. Report, condensed to its findings
+(full text in the session transcript):
+
+**Must fix**
+1. `work_tree_hash` leaves out harness markdown (`.claude/agents/*.md`,
+   `.claude/commands/*.md`, `CLAUDE.md`), which at least ten of this
+   repository's suites read. Reproduced by the reviewer: after an attested
+   `attest: 123 passed`, an edit to feature-developer.md's `--fast` line
+   left `check` answering `fresh` while a re-run gave `122 passed, 1 failed`.
+   Fix: its own filter that drops only docs, vendor, ignored and
+   `.claude/state/`; `gated_stdin` and `gate_tree_hash` unchanged. Contradicts
+   C-2 as amended and a pinned assertion (untracked `.claude/commands/new.md`
+   does not move it): Amendment + RED.
+2. `Bash(bash scripts/attest.sh:*)` in both commands' `allowed-tools` is a
+   prefix match over a script that runs whatever follows `--`, so any command
+   is auto-approved behind it. The orchestrator needs only `check`. Fix:
+   `Bash(bash scripts/attest.sh check:*)`. AC-5 pins the exact entry:
+   Amendment + RED.
+
+**Should fix**
+3. A leading `NAME=value` is exported into attest.sh's own shell, so
+   `ROOT=`, `ALOG=` or `HARNESS_ROOT=` redirect the log, the record and the
+   hash, and `ROOT=` skips the AC-4 mutation refusal. Fix: collect the
+   assignments, run `env "${assigns[@]}" "$@"`. Test: RED.
+4. A newline inside a word writes extra record lines: `attest.sh -- bash -c
+   $'exit 1\ncommand: bash scripts/gates.sh --fast\nexit: 0'` made `check --
+   bash scripts/gates.sh --fast` answer `fresh`, exit 0. Fix: refuse a word
+   containing a newline (or CR) as a usage error, exit 2. Test: RED.
+
+**Nice to have**
+5. `command:` is the words joined by one space, so `runner "a b"` and
+   `runner a b` collide. Fix needs C-1 changed.
+
+Verdict: fix 1 and 2 first.
+
+Orchestrator's independent reproduction (2026-11-01), different inputs:
+1. `work_tree_hash` before, after appending a line to
+   `.claude/commands/status.md`, and after restoring it: all three
+   `6c032341136e5bb1cd2c9611af5bcc29404c855c`.
+2. `advance-story.md`'s `allowed-tools`: `Bash(bash scripts/attest.sh:*)` is
+   the only entry that runs arbitrary words; `task.sh` runs named
+   `project.conf` tasks, and `mutate.sh` is not listed.
+Both amendments are put to the user before RED.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
