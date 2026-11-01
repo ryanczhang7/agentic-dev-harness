@@ -4,8 +4,8 @@ title: The full gate run and the self-test run in an opus dispatch that returns 
 slug: the-full-gate-run-the-self-test-and-chec
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-085-the-full-gate-run-the-self-test-and-chec
 depends_on: [HARNESS-084]      # the dispatch's verdict is checked with attest.sh, which 084 builds
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/agents/feature-developer.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -190,6 +190,69 @@ floors. Floors: `floor | dispatch | N` in `floors.conf` and the same N in
 | lead-po `## Orchestrating` | a paragraph contains both `SELFTEST_JOBS=4 bash scripts/selftest.sh` and `feature-developer`; `every rung is something you run, not` absent | `does not dispatch long runs` / `still runs every rung itself` |
 | feature-developer.md | a line exactly `## Run and report`; the section contains `bash scripts/attest.sh --`, `exit:`, `last:`, `duration:`, `log:`, `change nothing`, `alone` | `has no ## Run and report section` / `## Run and report does not say <needle>` |
 
+**C-5 amended in RED (test-developer, opus, 2026-11-01).** GREEN builds what
+this block says; the table above is the first cut. Each change has its reason.
+
+1. **Line format.** Every line is `<relative-path>: <reason>`, as in
+   `procedure_problems`, and at most one line per site (per needle only in
+   `## Run and report`). The exact lines, in print order:
+   - `.claude/commands/advance-story.md: GREEN → GATES does not dispatch the full gate run`
+   - `.claude/commands/advance-story.md: the self-test step does not dispatch the run`
+   - `.claude/commands/advance-story.md: the check-boundaries step dispatches a run that takes seconds`
+   - `.claude/commands/advance-story.md: the check-boundaries step does not come after the commit step` (new, item 4)
+   - `.claude/commands/complete-story.md: its GATES → REVIEW bullet does not name the dispatch`
+   - `.claude/agents/lead-po.md: does not dispatch long runs`
+   - `.claude/agents/lead-po.md: still runs every rung itself`
+   - ``.claude/agents/lead-po.md: does not name `bash scripts/attest.sh check` `` (new, item 5; the line ends at the closing backtick)
+   - `.claude/agents/feature-developer.md: has no ## Run and report section`
+   - ``.claude/agents/feature-developer.md: ## Run and report does not say `<needle>` `` (needle in backticks, line ends at the closing one)
+   - `<path>: file is missing` for any of the four files.
+   So DV-1's expected output is the whole line
+   `.claude/commands/advance-story.md: the self-test step does not dispatch the run`.
+2. **Row 1 carries every needle AC-1 names**, not three: `feature-developer`,
+   `GATES row`, `` bash scripts/attest.sh -- bash scripts/gates.sh` ``,
+   `` bash scripts/attest.sh check -- bash scripts/gates.sh` ``, `exit status`,
+   `last line`, `duration`, `log`. Reason: AC-1 requires the sentence to say
+   the subagent runs the attest command and returns the four fields; the first
+   cut left that half of AC-1 with no test.
+3. **The three command needles end with their code span's closing backtick**
+   (`` ...gates.sh` `` twice, `` ...SELFTEST_JOBS=4 bash scripts/selftest.sh` ``),
+   as `procedure.test.sh`'s `STEP_SELFTEST` does. Reason: without it
+   `attest.sh check -- bash scripts/gates.sh --fast` and a targeted
+   `... selftest.sh dispatch` satisfy them, and `check` is keyed by the exact
+   words (`## Notes`, PO decision 4), so those are different records. GREEN
+   must write each command as a whole code span, e.g.
+   `` `bash scripts/attest.sh check -- bash scripts/gates.sh` ``.
+4. **New row, AC-3's second half:** the step holding `STEP_BOUNDARIES` has a
+   higher number than the first step whose first line matches
+   `^[0-9]+\. Commit`. Reason: AC-3 says "still comes after the commit step",
+   and `procedure.test.sh` pins check-boundaries after the phase step, not
+   after the commit. Judged only when a check-boundaries step exists (its
+   absence is procedure's to report).
+5. **New clause, AC-4's last half:** a paragraph of lead-po's
+   `## Orchestrating` contains `bash scripts/attest.sh check`. Reason: AC-4
+   names it; it is present today (HARNESS-084), so this pins that GREEN's
+   rewrite of the rung sentence does not drop it.
+6. **Row 6 adds `GATES rules`.** Reason: AC-5 requires the section to say a
+   failing required gate is fixed under this file's GATES rules, and C-4 words
+   it "fixed under this file's GATES rules".
+7. **Regions.** The `**GREEN → GATES.**` region runs to the next *paragraph*
+   beginning `**` (a line beginning `**` whose previous line is blank), not
+   the next line beginning `**`: the real region has `**value** mutation`
+   mid-paragraph at advance-story.md:154, and the line rule would end it
+   before `Then run`. Today the region is lines 145-165, ending before
+   `**The stamp covers ...`. The GATES → REVIEW steps and the complete-story
+   bullet are `procedure.test.sh`'s parser, copied. lead-po's section runs from
+   the line exactly `## Orchestrating` to the next `## ` line; a paragraph is a
+   run of non-blank lines. feature-developer's section is the same rule for
+   `## Run and report`. Every needle is matched against the region's lines
+   trimmed and joined by one space, so a reflow across a line break neither
+   hides a needle nor hides the old rung sentence.
+8. **Case.** Needles are case-sensitive: `verdict` is lowercase, and
+   complete-story's `Verdict: Ship.` does not satisfy it. That is why the
+   bullet fires today although it already names `feature-developer` (for the
+   diff review).
+
 **C-6. Oracle partition.** Every criterion is **mechanical**; the needles
 above are settled, read out, and RED amends this block if it needs a
 different string rather than inventing one in the test.
@@ -252,13 +315,258 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One new suite, `.claude/tests/dispatch.test.sh` (`bash scripts/selftest.sh
+dispatch`), at the only level the criteria allow: structural reads of four
+prose files (story, "Every criterion can only be checked structurally"). It
+is `procedure.test.sh`'s shape: `dispatch_problems <root>` prints one line per
+violation (C-5 as amended in RED) and is asserted silent over `REPO_ROOT`, and
+fixtures built compliant by construction each regress one thing and must
+print exactly the one line. All comparisons are whole-output `assert_eq`, so a
+fixture printing the right line AND a wrong one fails.
+
+| Group | Cases | AC |
+|---|---|---|
+| real tree | the four files exist; `dispatch_problems "$REPO_ROOT"` is empty | AC-1..AC-5 |
+| compliant fixture | silent; silent with three needles reflowed across a line break; silent as CRLF | all (makes every negative mean something) |
+| GREEN → GATES | today's region (control) = 1 line; each of 8 needles removed = 1 line each; check only outside the region; a `**`-PARAGRAPH ends the region; no region (ascii arrow); `check` of `gates.sh --fast`; dispatch of `gates.sh --fast` | AC-1 |
+| self-test step | today's step (control) = 1 line; each of 5 needles removed; check without `SELFTEST_JOBS=4`; check of a targeted `selftest.sh dispatch`; words in a different step; no self-test step | AC-2 |
+| check-boundaries step | dispatched (control) = 1 line; dispatch on a continuation line; feature-developer in the NEXT step = silent; moved before the commit; no `Commit` step; no boundaries step = silent (procedure's) | AC-3 |
+| complete-story bullet | today's bullet (control: `Verdict` capital, feature-developer for the review); each of 2 needles removed; `verdict` in the next bullet; no bullet | AC-4 |
+| lead-po `## Orchestrating` | today (two lines, order); old rung sentence; old rung sentence wrapped after `run,`; long-run paragraph without `feature-developer`; without the self-test; needles in different paragraphs; only in a later section; no `attest.sh check`; no section heading | AC-4 |
+| feature-developer `## Run and report` | no heading (control); heading without `change nothing` (control); each of 8 needles removed; `## Run and report (dispatch)`; needle only in the next section; section with no needles = 8 lines in order | AC-5 |
+| files / order | each of four files missing = `file is missing` only; a tree with none of the story's edits = the six lines, in order | all |
+
+Not in this suite, by design: AC-2's "still carries procedure's STEP_WORDS and
+keeps its order" and the self-test/phase/boundaries order are
+`procedure.test.sh`'s assertions, and the story makes `bash scripts/selftest.sh
+procedure` staying green part of the gate.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. -->
+Written by test-developer, model `opus` (claude-opus-5-5) as declared, no
+override. Every timing below is from a local run on this Windows host, with
+two other `gates.sh` runs on the host (selftest.sh warned of them); none is
+from CI.
+
+### Command
+
+    bash scripts/selftest.sh dispatch      # the new suite; red until GREEN
+    bash scripts/selftest.sh procedure     # must stay green, unchanged
+    bash scripts/selftest.sh selftest      # the floors table agrees
+
+`selftest.sh` takes ONE suite name per call. Run them through
+`bash scripts/attest.sh -- ...` as below. A quick local loop without the floor
+audit: `VERBOSE=1 bash .claude/tests/dispatch.test.sh` (about 40 s here).
+
+### Attest records (RED)
+
+    command:  bash scripts/selftest.sh dispatch
+    status:   ok
+    exit:     1
+    duration: 21s
+    last:     1 of 1 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261101T231856Z.12185.log
+
+    command:  bash scripts/selftest.sh procedure
+    status:   ok
+    exit:     0
+    duration: 19s
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261101T231921Z.12717.log
+
+    command:  bash scripts/selftest.sh selftest
+    status:   ok
+    exit:     0
+    duration: 348s
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261101T231949Z.13387.log
+
+    command:  bash scripts/gates.sh --fast
+    status:   ok
+    exit:     0
+    duration: 9s
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261101T232547Z.19034.log
+
+`--fast` is green because this repo configures no project gates (PO decision
+2); the harness suites are the only verification, and `dispatch` is red as it
+should be. `check-sigpipe.sh` (59 files, 0 findings) and `check-grep-count.sh`
+(59 files, 0 findings) are clean with the new suite in the tree.
+
+### Verbatim failure (from the dispatch log)
+
+```
+=== dispatch ===
+
+  the real tree (AC-1 to AC-5)
+    FAIL dispatch_problems over the real tree prints nothing: GREEN → GATES and the self-test step dispatch a feature-developer and check its verdict with attest.sh check, check-boundaries stays the orchestrator's and comes after the commit, complete-story's bullet names the dispatch and its verdict, lead-po's ## Orchestrating dispatches the long runs and no longer says every rung is run by you, and feature-developer.md has ## Run and report
+         expected: 
+         actual:   .claude/commands/advance-story.md: GREEN → GATES does not dispatch the full gate run
+         .claude/commands/advance-story.md: the self-test step does not dispatch the run
+         .claude/commands/complete-story.md: its GATES → REVIEW bullet does not name the dispatch
+         .claude/agents/lead-po.md: does not dispatch long runs
+         .claude/agents/lead-po.md: still runs every rung itself
+         .claude/agents/feature-developer.md: has no ## Run and report section
+...
+dispatch: 66 passed, 1 failed
+FAIL dispatch  did 66 units of work, below the floor of 67 in .claude/tests/floors.conf
+
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+```
+
+This is the right failure: one real-tree assertion, naming exactly the six
+sites the story has not written, and nothing about the two sites that are
+already right today (check-boundaries undispatched and after the commit;
+`bash scripts/attest.sh check` in lead-po). The floor line is expected:
+`selftest.sh` reads the PASSED count, so the suite sits below its floor
+(66 < 67) until GREEN lands.
+
+### What each test asserts
+
+67 executed assertions, every one unconditional (fixed loops only). One line
+per test or loop:
+
+- the four files exist in REPO_ROOT - all ACs (green on arrival; a file-exists precondition).
+- `dispatch_problems "$REPO_ROOT"` is empty - AC-1..AC-5. **The one red assertion.**
+- compliant fixture silent; silent with needles reflowed across a line break; silent as CRLF - all ACs (the base every negative regresses from).
+- GREEN → GATES: today's region (control) gives exactly `L_GG` - AC-1.
+- GREEN → GATES: each of the 8 needles removed gives exactly `L_GG` (8 assertions) - AC-1.
+- GREEN → GATES: check only after REVIEW → DONE; a paragraph beginning `**` ends the region; no region (ascii arrow); `check` of `gates.sh --fast`; dispatch of `gates.sh --fast` - each exactly `L_GG` - AC-1.
+- self-test step: today's step (control) gives exactly `L_SELFTEST` - AC-2.
+- self-test step: each of the 5 needles removed (5) - AC-2.
+- self-test step: check without `SELFTEST_JOBS=4`; check of `selftest.sh dispatch`; words in a different step; no self-test step - each exactly `L_SELFTEST` - AC-2.
+- check-boundaries: dispatched (control) and dispatched on a continuation line give exactly `L_BOUND`; feature-developer in the next step is silent - AC-3.
+- check-boundaries: moved before the commit, and no `Commit` step, give exactly `L_COMMIT`; no boundaries step is silent - AC-3.
+- complete-story: today's bullet (control); each of 2 needles removed (2); `verdict` only in the next bullet; no bullet - each exactly `L_BULLET` - AC-4.
+- lead-po: today gives `L_LONG` then `L_RUNG`; old rung sentence, and wrapped after `run,`, give `L_RUNG`; long-run paragraph without `feature-developer`, without the self-test, split over two paragraphs, only in a later section give `L_LONG`; no `attest.sh check` gives `L_CHECK`; no `## Orchestrating` gives `L_LONG` then `L_CHECK` - AC-4.
+- feature-developer: no heading (control) and `## Run and report (dispatch)` give `L_NOHEAD`; heading without `change nothing` (control) gives that one line; each of 8 needles removed (8); needle only in the next section; empty-of-needles section gives the 8 lines in order - AC-5.
+- each of four files missing gives only `<path>: file is missing` (4); a tree with none of the story's edits gives the six lines in order - all ACs.
+
+### Files touched
+
+- `.claude/tests/dispatch.test.sh` (new; `git add`-ed, not committed)
+- `.claude/tests/floors.conf` (`floor | dispatch | 67`, after `classify`, and a HARNESS-085 note at the foot)
+- `.claude/tests/selftest.test.sh` (`dispatch 67` in the COUNTS table, after `classify`)
+- this story: `## Contract` C-5 amendment, `## Test plan`, this handoff.
+
+### What GREEN must write, file by file (the pinned shape)
+
+There is no module to import: the suite reads four files. The exact lines are
+C-5 item 1. Needles are case-sensitive fixed strings, matched against the
+region's lines trimmed and joined by one space (so a line break inside a
+needle is fine; anything else between its words is not).
+
+1. **`.claude/commands/advance-story.md`, `**GREEN → GATES.**` region** (today
+   lines 145-165: from the line beginning `**GREEN → GATES.**` to the blank
+   line before `**The stamp covers ...`). Replace `Then run `bash
+   scripts/gates.sh`.` (line 159) with the C-1 dispatch. Inside the region it
+   must contain all of: `feature-developer`, `GATES row`,
+   `` `bash scripts/attest.sh -- bash scripts/gates.sh` ``,
+   `` `bash scripts/attest.sh check -- bash scripts/gates.sh` `` (each as a
+   whole code span: the closing backtick is part of the needle),
+   `exit status`, `last line`, `duration`, `log`. Do not start a new
+   paragraph with `**` above the dispatch (a paragraph beginning `**` ends the
+   region; a `**` mid-paragraph, like line 154's `**value**`, does not).
+2. **advance-story.md, GATES → REVIEW step 2** (today lines 222-252, the step
+   holding `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` ``). Add, within the
+   step: `feature-developer`, `detached`, `alone`, `verdict`, and
+   `` `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh` ``.
+   `detached` and `alone` ("passed alone") are already there, but write
+   `alone` in the dispatch brief rather than relying on the history sentence.
+   Keep procedure.test.sh intact: the plain `` `SELFTEST_JOBS=4 bash
+   scripts/selftest.sh` `` span stays, `` `bash scripts/selftest-needed.sh` ``
+   stays before it, the words `detached`, `Windows`, `## Notes`,
+   `other test runs`, `skip` stay, every continuation line stays indented and
+   **no blank line inside the step** (a blank line ends a step in both
+   parsers).
+3. **advance-story.md, steps 4 and 5.** Step 4 must still begin
+   `4. Commit`; step 5 (`` `bash scripts/check-boundaries.sh` ``) must not
+   contain `feature-developer` on any of its lines.
+4. **`.claude/commands/complete-story.md`, the `- **GATES → REVIEW opens with
+   a review` bullet** (line 35 to the blank line after it). Add lowercase
+   `verdict` (and the dispatch, C-3); `feature-developer` is already there but
+   for the diff review. No blank line and no line beginning `- ` inside it.
+   procedure.test.sh still needs `` `diff-review` `` before
+   `` `bash scripts/selftest-needed.sh` `` before
+   `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` `` in this bullet.
+5. **`.claude/agents/lead-po.md`, `## Orchestrating`** (line 88 to
+   `## More than one worktree`). Rewrite line 127 so no paragraph of the
+   section contains `every rung is something you run, not` (reflow does not
+   hide it). Add one paragraph (no blank line inside) containing both
+   `SELFTEST_JOBS=4 bash scripts/selftest.sh` and `feature-developer`. Keep
+   `bash scripts/attest.sh check` in the section (it is there today), the
+   reporting-rule reference (`reporting.test.sh`) and `bash scripts/plan.sh
+   after` (`phase.test.sh`).
+6. **`.claude/agents/feature-developer.md`, new `## Run and report`** after
+   `## Method`, before `## Reuse before you write` (line 90). The heading line
+   must be exactly `## Run and report`; the section runs to the next line
+   beginning `## `. It must contain: `bash scripts/attest.sh --`, `exit:`,
+   `last:`, `duration:`, `log:`, `change nothing`, `alone`, `GATES rules`.
+   `briefs.test.sh` pins `## Method` step 2 and `## Reuse before you write`;
+   neither moves.
+
+Not constrained, and GREEN's choice: the wording around every needle, where
+in a region a needle sits, whether the C-1 brief is written once and referred
+to, the `.claude/harness/VERSION` bump, and `allowed-tools` (C-2 says they
+stay).
+
+### Passed on arrival
+
+All 66 fixture assertions passed on their first run. They are not regression
+guards over production: they test the guard itself, against fixtures this
+suite writes, and in this RED nothing failed at import, so every one of them
+**executed**. They were earned by three probes of the guard, run on a scratch
+copy (`.claude/tests/dispatch.test.sh` itself untouched):
+
+| Probe on a scratch copy of the suite | Result |
+|---|---|
+| A. region ends at ANY line beginning `**` (procedure's rule) | `dispatch: 17 passed, 50 failed` - the compliant fixture goes red (`the compliant fixture is silent`), and with it every fixture that expects a non-GG line |
+| B. command needles without the closing backtick | `dispatch: 63 passed, 4 failed` - exactly the real tree, `gates.sh --fast` check, `gates.sh --fast` dispatch, `selftest.sh dispatch` check |
+| C. `flat` joins with newlines instead of spaces | `dispatch: 65 passed, 2 failed` - exactly the real tree and `a needle reflowed across a line break still counts` |
+
+The file-exists precondition and the "no boundaries step is silent" case are
+green by design. The real-tree assertion is the only one about production,
+and it is red.
+
+### Negative controls, with the values measured in RED
+
+No control here has a threshold: each is a fixture whose whole output must
+EQUAL the expected lines. Unlike an import-failing RED, these ran - the values
+below are measured by the suite itself on this tree, against the guard as
+written. What remains unverified is only that the real files, once written,
+are silent.
+
+| Control (AC) | Expected output | Measured in RED |
+|---|---|---|
+| GREEN → GATES as it reads today (AC-1) | 1 line, `L_GG` | 1 line, `L_GG` (ok) |
+| self-test step as it reads today (AC-2) | 1 line, `L_SELFTEST` | 1 line (ok) |
+| check-boundaries dispatched (AC-3) | 1 line, `L_BOUND` | 1 line (ok) |
+| complete-story bullet as it reads today (AC-4) | 1 line, `L_BULLET` | 1 line (ok) |
+| feature-developer without the heading (AC-5) | 1 line, `L_NOHEAD` | 1 line (ok) |
+| feature-developer, heading but no `change nothing` (AC-5) | 1 line | 1 line (ok) |
+| the real tree today | 6 lines (GG, self-test, bullet, long, rung, no-heading) | the same 6, verbatim above |
+
+### For GATES: DV-1, declined in RED
+
+I did **not** run DV-1, and could not: it mutates the self-test step's
+dispatch, which does not exist until GREEN writes it. GATES owns it. Two
+notes for whoever runs it: the expected output is the whole line
+`.claude/commands/advance-story.md: the self-test step does not dispatch the run`
+(C-5 item 1); and today step 2 names `feature-developer` twice (the dispatch
+GREEN adds, plus "A failure takes GATES' own routes: the feature-developer"),
+so a `mutate.sh` expression that removes only one occurrence leaves the
+needle satisfied and the guard rightly silent. Mutate every occurrence in the
+step (a `g` flag on a line-range address), or the probe proves nothing.
+
+### Discovered, for the implementation approach
+
+- `log`, `duration` and `alone` are weak needles (substring of `logged`,
+  `durations`, `alone` in history prose). They are the settled C-2 strings;
+  the fixtures show each is required, not that it is used in the sense meant.
+- The complete-story bullet fires today only on `verdict`: `feature-developer`
+  is already there for the diff review. That half of AC-4 is satisfied by
+  existing text, as the story's AC allows.
 
 ## Regressions
 
@@ -297,3 +605,9 @@ name, below the table.
      `check` is keyed by the exact words, so the dispatch brief and the
      orchestrator's `check` must name the command identically, including
      `SELFTEST_JOBS=4`.
+- 2026-11-01, RED verified by the orchestrator (claude-opus-5-5, the session
+  model by then) without re-running: `attest.sh check` answered `fresh` for
+  `bash scripts/selftest.sh dispatch` (exit 1, 66 passed / 1 failed - the
+  real-tree assertion, naming exactly the six unwritten sites), `procedure`
+  (exit 0), `selftest` (exit 0) and `bash scripts/gates.sh --fast` (exit 0).
+  Resolved: RED, test-developer, claude-opus-5-5.
