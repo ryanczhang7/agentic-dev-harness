@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -490,6 +490,23 @@ attest: 120 passed, 3 failed
 === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_attest.sh.20261101T174310Z.623.bak) ===
   171: elif [ "$TREE" != "$AFTER" ]; then
 ```
+
+Re-run after return 3 (GATES, 2026-11-01; `attest.sh` changed): the same
+three AC-3 assertions red, nothing else, restore verified.
+
+```
+  186 - elif [ "$TREE" != "$AFTER" ]; then
+  186 + elif false; then
+    FAIL status: void: tree changed during the run
+    FAIL check answers void, with the status text
+    FAIL void even once the tree is back to the recorded tree:
+attest: 162 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_attest.sh.20261101T184923Z.1467.bak) ===
+  186: elif [ "$TREE" != "$AFTER" ]; then
+```
+
+DV-2 is not re-run: `feature-developer.md` and the guard's full-run row did
+not change in return 3; its result above stands.
 
 **DV-2 (a rule probed against the tree it judges). Owner: GATES.** With a
 real line of `.claude/agents/feature-developer.md` mutated to put
@@ -1423,9 +1440,9 @@ Both amendments are put to the user before RED.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-01T18:01:55Z
-    commit: d656312
-    tree:   6c032341136e5bb1cd2c9611af5bcc29404c855c
+    run:    2026-11-01T18:52:48Z
+    commit: 2121282
+    tree:   44f1f4b9de5aa2a0618a162b365dfdef87f32019
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
