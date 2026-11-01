@@ -253,6 +253,11 @@ printf 'ROOT=%s\n' "\${ROOT:-<unset>}"
 printf 'ALOG=%s\n' "\${ALOG:-<unset>}"
 printf 'HARNESS_ROOT=%s\n' "\${HARNESS_ROOT:-<unset>}"
 EOF
+# cpd.sh: prints the CLAUDE_PROJECT_DIR the command was given, UNSET when it
+# was given none (return 4).
+cat > "$C/cpd.sh" <<'EOF'
+printf 'cpd=[%s]\n' "${CLAUDE_PROJECT_DIR-UNSET}"
+EOF
 # side.sh: a side effect outside the tree, for the refused-word cases (finding 4).
 cat > "$C/side.sh" <<EOF
 printf 'ran\n' > "$WORK/side-ran"
@@ -687,6 +692,50 @@ assert_eq "a stranded mutation and ALOG=<elsewhere>: still refused, exit 2" 2 "$
 if [ -e "$WORK/vars-ran" ]; then _bad "a stranded mutation and ALOG=<elsewhere>: the command never ran" "$WORK/vars-ran exists"
 else _ok "a stranded mutation and ALOG=<elsewhere>: the command never ran"; fi
 rm -f "$ACT"
+
+# ==============================================================================
+describe "C-1  the command gets the caller's CLAUDE_PROJECT_DIR, not attest.sh's root"
+# ==============================================================================
+# Return 4 (GATES -> RED). attest.sh exports CLAUDE_PROJECT_DIR=$ROOT so its own
+# lib.sh calls judge its own tree; that export reached the command too, so
+# `attest.sh -- bash scripts/selftest.sh` ran the classify and selftest-needed
+# suites in a different environment from the caller's, and failed 6 assertions
+# that pass without attest.sh. The command's environment is the caller's plus
+# the leading assignments, and nothing else. The suite exports the variable as
+# REPO_ROOT, so each case below sets the caller's value explicitly.
+
+# cpd_case <label> <expected cpd line> <attest.sh invocation prefix...>
+#   Runs `<prefix> bash scripts/attest.sh -- [assign] bash $C/cpd.sh` in FIX and
+#   asserts the record lands in FIX's attest.log with status ok, and that the
+#   command's log holds exactly the expected cpd=[...] line.
+cpd_case() {
+  local label="$1" want="$2" cmdstr="$3"; shift 3
+  ( cd "$FIX" && "$@" ) > "$WORK/out" 2> "$WORK/err"
+  RC=$?
+  B="$(last_block "$ALOG")"; L="$(field "$B" log)"
+  assert_eq "$label: exit 0" 0 "$RC"
+  assert_eq "$label: the record lands in this tree's attest.log" "$cmdstr" "$(field "$B" command)"
+  assert_eq "$label: status: ok" "ok" "$(field "$B" status)"
+  if [ -n "$L" ] && [ -f "$FIX/$L" ]; then
+    if [ "$(count_line "$want" "$(cat "$FIX/$L")")" = 1 ]; then _ok "$label: the command printed exactly the line $want"
+    else _bad "$label: the command printed exactly the line $want" "it printed: $(grep '^cpd=' "$FIX/$L")"; fi
+  else _bad "$label: the command printed exactly the line $want" "no file at [$FIX/$L]"; fi
+}
+
+cpd_case "CLAUDE_PROJECT_DIR unset in the caller" "cpd=[UNSET]" "bash $C/cpd.sh" \
+  env -u CLAUDE_PROJECT_DIR bash scripts/attest.sh -- bash "$C/cpd.sh"
+
+CPDX="$WORK/caller-project-dir"; mkdir -p "$CPDX"
+cpd_case "CLAUDE_PROJECT_DIR=<X> in the caller" "cpd=[$CPDX]" "bash $C/cpd.sh" \
+  env "CLAUDE_PROJECT_DIR=$CPDX" bash scripts/attest.sh -- bash "$C/cpd.sh"
+if [ -e "$CPDX/.claude" ]; then _bad "CLAUDE_PROJECT_DIR=<X> in the caller: nothing is written under <X>" "$(find "$CPDX" -type f)"
+else _ok "CLAUDE_PROJECT_DIR=<X> in the caller: nothing is written under <X>"; fi
+
+CPDY="$WORK/assigned-project-dir"; mkdir -p "$CPDY"
+cpd_case "a leading CLAUDE_PROJECT_DIR=<Y> assignment over the caller's <X>" "cpd=[$CPDY]" "CLAUDE_PROJECT_DIR=$CPDY bash $C/cpd.sh" \
+  env "CLAUDE_PROJECT_DIR=$CPDX" bash scripts/attest.sh -- "CLAUDE_PROJECT_DIR=$CPDY" bash "$C/cpd.sh"
+if [ -e "$CPDY/.claude" ]; then _bad "a leading CLAUDE_PROJECT_DIR=<Y> assignment: nothing is written under <Y>" "$(find "$CPDY" -type f)"
+else _ok "a leading CLAUDE_PROJECT_DIR=<Y> assignment: nothing is written under <Y>"; fi
 
 # ==============================================================================
 describe "C-1  a word holding a newline or a CR is a usage error, and forges nothing"

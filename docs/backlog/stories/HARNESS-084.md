@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -177,6 +177,21 @@ findings 3 and 4; see `## Amendments`, the paragraph after A-2).*
   makes `check` answer `fresh` for a command that never ran. Pinned: after the
   refused attempts, `check -- bash scripts/gates.sh --fast` (the words the
   injection named) answers `none: no record for this command`, exit 1.
+
+*Amended on return 4 to RED (test-developer, 2026-11-01; GATES self-test run,
+see `## Regressions`, Return 4).* This changes no acceptance criterion; it
+states what "assignments reach the command only" already implied and the
+code did not do.
+- **The command's environment is the caller's, plus the leading assignments,
+  and nothing else.** attest.sh exports `CLAUDE_PROJECT_DIR=$ROOT` so that its
+  own lib.sh calls judge its own tree; that export must not reach the command.
+  `CLAUDE_PROJECT_DIR` reaches the command exactly as the caller had it: unset
+  in the caller, unset in the command; set to a directory X, the command sees
+  X. A leading `CLAUDE_PROJECT_DIR=Y` word still wins (the command sees Y). In
+  all three cases attest.sh's own root, record, log and hashes stay its own
+  `scripts/..`: the record lands in this tree's attest.log with `status: ok`,
+  and nothing is written under X or Y. Pinned: `cpd.sh` printing
+  `cpd=[${CLAUDE_PROJECT_DIR-UNSET}]`, matched as a whole line in the run's log.
 
 **C-2. The work hash.** `gate_tree_hash` (lib.sh) covers tracked and staged
 gated files - the tree `git commit -a` would make - and leaves untracked
@@ -599,6 +614,11 @@ conditional. C-2 work_tree_hash 19 -> 28; AC-2 22 -> 27; new block "C-1 a
 leading assignment reaches the command only" 15; new block "C-1 a word holding
 a newline or a CR" 10; AC-5 fixtures 19 -> 22. See `## Regressions`, Return 3. AC-6's other half - the rows and the deny rule agree in both
 directions - is `bash scripts/selftest.sh settings`, unchanged; see the handoff.
+
+**Return 4 (GATES self-test, CLAUDE_PROJECT_DIR leak):** 179 executed
+assertions, still none conditional. New block "C-1 the command gets the
+caller's CLAUDE_PROJECT_DIR, not attest.sh's root" 14. See `## Regressions`,
+Return 4.
 
 ## Handoff: RED -> GREEN
 
@@ -1388,6 +1408,126 @@ Files touched in this return: `.claude/tests/attest.test.sh`,
 `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, and this story
 (C-1, C-2, C-5 amendments, `## Test plan` note, the handoff addendum, this
 block). Nothing else.
+
+### Return 4: GATES -> RED (2026-11-01), `.claude/tests/attest.test.sh`
+
+**What was wrong.** An untested contract gap, not a wrong assertion. Line 44
+of `scripts/attest.sh`, `export CLAUDE_PROJECT_DIR="$ROOT"`, is there so that
+attest.sh's own lib.sh calls read its own tree. The export also reaches the
+command it runs, so a command whose behaviour depends on `CLAUDE_PROJECT_DIR`
+ran in a different environment from the one the caller gave it, and the
+record attested a run that was not the run the caller asked for. No test
+pinned the command's view of that variable, so nothing went red.
+
+**How it was found.** The full self-test in GATES, run as
+`bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh`, failed
+2 of 31 suites: `classify` (5 assertions) and `selftest-needed` (1). Both pass
+when run alone, and both fail the same way under
+`CLAUDE_PROJECT_DIR=$PWD bash scripts/selftest.sh classify`. Evidence:
+`.claude/state/attest-logs/20261101T190008Z.817.log`, lines 175-198 and 950.
+
+**What the tests assert.** New block in `attest.test.sh`, "C-1 the command
+gets the caller's CLAUDE_PROJECT_DIR, not attest.sh's root" (14 assertions),
+driven by a new command `$C/cpd.sh` printing
+`cpd=[${CLAUDE_PROJECT_DIR-UNSET}]`, matched as a WHOLE line (`grep -cxF`) in
+the run's log, so `cpd=[UNSET]` cannot be satisfied by a longer line. The
+suite exports `CLAUDE_PROJECT_DIR=$REPO_ROOT` throughout, so each case sets
+the caller's value explicitly on attest.sh's own invocation:
+
+| Case | Caller invocation | Command must print | Today |
+|---|---|---|---|
+| unset in the caller | `env -u CLAUDE_PROJECT_DIR bash scripts/attest.sh -- bash $C/cpd.sh` | `cpd=[UNSET]` | RED: prints the fixture root |
+| X in the caller (`$WORK/caller-project-dir`, neither fixture nor repo) | `env CLAUDE_PROJECT_DIR=X bash scripts/attest.sh -- bash $C/cpd.sh` | `cpd=[X]` | RED: prints the fixture root |
+| leading `CLAUDE_PROJECT_DIR=Y` over the caller's X | `env CLAUDE_PROJECT_DIR=X bash scripts/attest.sh -- CLAUDE_PROJECT_DIR=Y bash $C/cpd.sh` | `cpd=[Y]` | passes on arrival; earned by the probe below |
+
+Each case also asserts exit 0, that the newest block of the FIXTURE's
+`.claude/state/attest.log` has the exact `command:` words, and `status: ok`
+(both hashes are of the fixture). The X and Y cases assert nothing is written
+under X or Y (no `.claude/`). Those 12 pass today and must keep passing.
+
+**The failure, against the current attest.sh** (unchanged, frozen):
+`bash scripts/attest.sh -- bash scripts/selftest.sh attest`
+
+    exit:     1
+    last:     1 of 1 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261101T204056Z.727.log
+
+```
+  C-1  the command gets the caller's CLAUDE_PROJECT_DIR, not attest.sh's root
+    FAIL CLAUDE_PROJECT_DIR unset in the caller: the command printed exactly the line cpd=[UNSET]
+         it printed: cpd=[/tmp/tmp.f7EnVFATnh]
+    FAIL CLAUDE_PROJECT_DIR=<X> in the caller: the command printed exactly the line cpd=[/tmp/tmp.DR8U1KEdLw/caller-project-dir]
+         it printed: cpd=[/tmp/tmp.f7EnVFATnh]
+
+attest: 177 passed, 2 failed
+FAIL attest  did 177 units of work, below the floor of 179 in .claude/tests/floors.conf
+
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+```
+
+`/tmp/tmp.f7EnVFATnh` is the fixture (`$FIX`): attest.sh's root, which is
+exactly the leak. The right failure: the command ran, the record landed, only
+the variable is wrong.
+
+**Earning the assignment case (passes on arrival).** One mutation through
+`mutate.sh`: assignments are no longer applied in the exec subshell, so the
+command sees attest.sh's leaked root instead of Y.
+
+```
+=== mutate: scripts/attest.sh (1 line(s) changed by s/for a in \${ASSIGNS\[@\]+/for a in ${NOASSIGNS[@]+/) ===
+  178 - ( for a in ${ASSIGNS[@]+"${ASSIGNS[@]}"}; do export "${a%%=*}=${a#*=}"; done
+  178 + ( for a in ${NOASSIGNS[@]+"${ASSIGNS[@]}"}; do export "${a%%=*}=${a#*=}"; done
+=== mutate: running bash scripts/selftest.sh attest ===
+  C-1  the command gets the caller's CLAUDE_PROJECT_DIR, not attest.sh's root
+    FAIL CLAUDE_PROJECT_DIR unset in the caller: the command printed exactly the line cpd=[UNSET]
+         it printed: cpd=[/tmp/tmp.UwonuDHVIt]
+    FAIL CLAUDE_PROJECT_DIR=<X> in the caller: the command printed exactly the line cpd=[/tmp/tmp.a3SxqspErk/caller-project-dir]
+         it printed: cpd=[/tmp/tmp.UwonuDHVIt]
+    FAIL a leading CLAUDE_PROJECT_DIR=<Y> assignment over the caller's <X>: the command printed exactly the line cpd=[/tmp/tmp.a3SxqspErk/assigned-project-dir]
+         it printed: cpd=[/tmp/tmp.UwonuDHVIt]
+attest: 173 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_attest.sh.20261101T204449Z.6249.bak) ===
+  178: ( for a in ${ASSIGNS[@]+"${ASSIGNS[@]}"}; do export "${a%%=*}=${a#*=}"; done
+```
+
+(The other three failures in that run are the existing assignment
+assertions, "control: and exported to the command", "ROOT=<elsewhere>: and
+the command saw ROOT", "ALOG=<elsewhere>: and the command saw ALOG", as
+expected.) `bash scripts/mutate.sh --check`: no stranded mutation.
+
+**Floors.** 165 -> 179 in `floors.conf` and `selftest.test.sh`'s table: the
+executed count, none conditional. The suite sits below its floor (177 passes)
+until GREEN.
+
+`bash scripts/attest.sh -- bash scripts/selftest.sh selftest` (the table
+agrees with `floors.conf` at 179):
+
+    exit:     0
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261101T204658Z.275.log
+
+`bash scripts/attest.sh -- bash scripts/gates.sh --fast`:
+
+    exit:     0
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261101T204900Z.85.log
+
+**What GREEN must change.** `scripts/attest.sh` only: the command must get
+the caller's `CLAUDE_PROJECT_DIR` (set to its value, or unset if it was
+unset), with leading assignments still applied after it so
+`CLAUDE_PROJECT_DIR=Y` wins. attest.sh's own root, record and hashes are
+unchanged. One approach: save the caller's value (and whether it was set)
+before line 44's export, and in the exec subshell restore it or `unset` it
+before applying the assignments. GREEN chooses. Run
+`bash scripts/attest.sh -- bash scripts/selftest.sh attest` (179 passed, 0
+failed, floor met), then the full self-test, where `classify` and
+`selftest-needed` should now pass under attest.sh.
+
+Files touched in this return: `.claude/tests/attest.test.sh` (`cpd.sh`
+command and the new block), `.claude/tests/floors.conf`,
+`.claude/tests/selftest.test.sh`, and this story (C-1 amendment, `## Test
+plan` note, this block). Nothing else.
 
 ## Diff review
 
