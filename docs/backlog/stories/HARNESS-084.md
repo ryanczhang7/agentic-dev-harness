@@ -5,7 +5,7 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
@@ -371,6 +371,24 @@ red and nothing else in the suite should. RED cannot run this: there is no
 `attest.sh` to mutate. Run against `bash scripts/selftest.sh attest`; paste
 the red, the count and the restore.
 
+Result (GATES, 2026-11-01): red as required. Three assertions, all AC-3's
+void block - its `status:`, `check`'s `void`, and void-after-restore - and
+nothing else.
+
+```
+=== mutate: scripts/attest.sh (1 line(s) changed by s/elif \[ "\$TREE" != "\$AFTER" \]; then/elif false; then/) ===
+  171 - elif [ "$TREE" != "$AFTER" ]; then
+  171 + elif false; then
+=== mutate: running bash scripts/selftest.sh attest ===
+  AC-3  a command that edits a tracked source file: void, exit passed through
+    FAIL status: void: tree changed during the run
+    FAIL check answers void, with the status text
+    FAIL void even once the tree is back to the recorded tree:
+attest: 120 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_attest.sh.20261101T174310Z.623.bak) ===
+  171: elif [ "$TREE" != "$AFTER" ]; then
+```
+
 **DV-2 (a rule probed against the tree it judges). Owner: GATES.** With a
 real line of `.claude/agents/feature-developer.md` mutated to put
 `` Run `bash scripts/gates.sh`. `` back into `## Method`, `attest_problems
@@ -378,6 +396,20 @@ real line of `.claude/agents/feature-developer.md` mutated to put
 run in GREEN`, and nothing with the file restored. RED's fixtures say the
 guard is right about what it imagined; this says it is right about the file
 that is there.
+
+Result (GATES, 2026-11-01): exactly the one line, and silent again once the
+real file was restored (`bash scripts/selftest.sh attest` green beforehand).
+
+```
+=== mutate: .claude/agents/feature-developer.md (1 line(s) changed by 73s/^7\. /7. Run `bash scripts\/gates.sh`. /) ===
+  73 - 7. If this story added or changed a gate, break what it guards, watch it fail,
+  73 + 7. Run `bash scripts/gates.sh`. If this story added or changed a gate, break what it guards, watch it fail,
+    FAIL attest_problems over REPO_ROOT prints nothing
+         actual:   .claude/agents/feature-developer.md: still runs the full gate run in GREEN
+attest: 122 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_agents_feature-developer.md.20261101T174718Z.7393.bak) ===
+  73: 7. If this story added or changed a gate, break what it guards, watch it fail,
+```
 
 ## Model guidance
 
@@ -914,8 +946,21 @@ assertion floors: all 1 suite(s) met their declared floor (71 assertions execute
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run. Do not paste or
-     edit it. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-01T17:50:10Z
+    commit: b341b4c
+    tree:   9a0fa41f043e0c84f7590a1913568349012740f7
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
