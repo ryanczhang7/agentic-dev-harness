@@ -5,10 +5,10 @@ slug: a-subagent-s-verification-run-is-recorde
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: RED
 branch: story/HARNESS-084-a-subagent-s-verification-run-is-recorde
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
+touches: [scripts/attest.sh, .claude/hooks/lib.sh, .claude/tests/attest.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/tests/settings.test.sh, .claude/state/README.md, .claude/settings.json, .claude/agents/test-developer.md, .claude/agents/feature-developer.md, .claude/agents/lead-po.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, CLAUDE.md, .claude/harness/VERSION]
 required_gates: []  # gate ids that are optional for the repo but binding for THIS story
 ---
 
@@ -103,7 +103,7 @@ the shape of `procedure.test.sh` and `policy.test.sh`.
 
 ## Contract
 
-**Writes:** `scripts/attest.sh`, `.claude/hooks/lib.sh`, `.claude/tests/attest.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, `.claude/state/README.md`, `.claude/settings.json`, `.claude/agents/test-developer.md`, `.claude/agents/feature-developer.md`, `.claude/agents/lead-po.md`, `.claude/commands/advance-story.md`, `.claude/commands/complete-story.md`, `CLAUDE.md`, `.claude/harness/VERSION`
+**Writes:** `scripts/attest.sh`, `.claude/hooks/lib.sh`, `.claude/tests/attest.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, `.claude/tests/settings.test.sh`, `.claude/state/README.md`, `.claude/settings.json`, `.claude/agents/test-developer.md`, `.claude/agents/feature-developer.md`, `.claude/agents/lead-po.md`, `.claude/commands/advance-story.md`, `.claude/commands/complete-story.md`, `CLAUDE.md`, `.claude/harness/VERSION`
 
 RED may amend any block in place, with a reason; GREEN builds what the
 amended block says.
@@ -325,6 +325,17 @@ not so: `bash scripts/classify.sh .claude/state/attest.log` prints `harness`
 (a `paths.conf` rule classifies it before the gitignore is consulted). Nothing
 turns on it: `harness` is writable in every phase, and `gated_stdin` drops
 `.claude/state/` explicitly, so neither the lock nor the work hash cares.
+
+*Amended on the return to RED (test-developer, 2026-11-01).* "`settings.test.sh`
+... needs no change" is wrong. Besides the table/rule agreement it holds
+HARNESS-050's `AC-1/C-1: the deny array is exactly the seven C-1 rules, in
+order`, which pins the **whole** deny array; no `settings.json` can satisfy
+both that and this story's AC-6. That one assertion now pins the eight rules,
+in order, with `"Edit(./.claude/state/attest.log)"` directly after
+`"Edit(./.claude/state/last-gate-run)"` - where GREEN put it. No other
+assertion in the suite changes, and the assertion count does not move.
+`.claude/tests/settings.test.sh` is added to `**Writes:**` and `touches:`.
+See `## Regressions`.
 
 **C-8. The suite.** `.claude/tests/attest.test.sh`, sourcing `_lib.sh`,
 fixture from `make_project_fixture` (a git repository with the harness
@@ -797,8 +808,109 @@ user applies the line.
 
 ## Regressions
 
-<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
-     otherwise. One block per return, with the PASTED probe output. -->
+### Return 1: GREEN -> RED (2026-11-01), `.claude/tests/settings.test.sh`
+
+**What was wrong.** HARNESS-050's
+`AC-1/C-1: the deny array is exactly the seven C-1 rules, in order`
+(`settings.test.sh`, ~line 279) pins the *whole* `permissions.deny` array.
+This story's AC-6 adds an eighth rule, `"Edit(./.claude/state/attest.log)"`.
+No `settings.json` satisfies both, so the assertion is defective against this
+story's criteria, not the implementation. Contract C-7 had said the suite
+"needs no change"; that was wrong (C-7 amended in place, and the file added to
+`**Writes:**` and `touches:`).
+
+**How it was found.** The GREEN dispatch ran `bash scripts/selftest.sh settings`
+after adding the rule (`settings: 70 passed, 1 failed`, that assertion only);
+the orchestrator reproduced it by reading the assertion against AC-6.
+
+**What it asserts now.** The deny array is exactly eight rules, in order:
+the three `Read` denies, `Edit(./.claude/state/current-story.env)`,
+`Edit(./.claude/state/last-gate-run)`, `Edit(./.claude/state/attest.log)`,
+then HARNESS-047's two `Bash(git ... *--output*)` denies. Name changed from
+"seven" to "eight". No other assertion was touched; the suite still executes
+71 assertions, so `floors.conf` (`floor | settings`, 70) and selftest.test.sh's
+table are unchanged.
+
+**Earned by a probe.** The corrected assertion passes on arrival, so the rule
+it pins was removed from `settings.json` with `scripts/mutate.sh` (restore
+verified with `cmp`). Command (one suite name per `selftest.sh` call):
+
+    bash scripts/mutate.sh .claude/settings.json '/"Edit(\.\/\.claude\/state\/attest\.log)",/d' -- bash scripts/selftest.sh settings
+
+Two assertions went red: the corrected one, and the pre-existing
+table/rule agreement check `no disagreements`, which independently notices
+the README row has lost its deny rule. That second failure is correct and
+expected; nothing else failed. The probe removes the rule; it does not
+reorder it, so the "in order" half rests on the assertion being a whole-string
+`assert_eq` rather than on this run.
+
+```
+=== mutate: .claude/settings.json (1 line(s) changed by /"Edit(\.\/\.claude\/state\/attest\.log)",/d) ===
+  29 -       "Edit(./.claude/state/attest.log)",
+
+=== mutate: running bash scripts/selftest.sh settings ===
+selftest: 3 other test run(s) are on this host; expect this run to be slower, not wrong:
+selftest:   pid 1090: bash scripts/selftest.sh
+selftest:   pid 170237: bash /d/clean_calendar/.claude/tests/spawns.test.sh
+selftest:   pid 170235: bash scripts/selftest.sh
+
+=== settings ===
+
+  the shipped pair agrees with itself
+    FAIL no disagreements
+         expected: 
+         actual:   attest.log: not hand-editable, but settings.json has no "Edit(./.claude/state/attest.log)"
+
+  HARNESS-027 AC-7: the kept failing log has its own row
+
+  HARNESS-069 AC-11: the logs kept for a signature have their own row
+
+  the two files that carry evidence stay denied
+    FAIL AC-1/C-1: the deny array is exactly the eight C-1 rules (HARNESS-084 AC-6 adds attest.log), in order
+         expected: "Read(./.env)"
+         "Read(./.env.*)"
+         "Read(./**/secrets/**)"
+         "Edit(./.claude/state/current-story.env)"
+         "Edit(./.claude/state/last-gate-run)"
+         "Edit(./.claude/state/attest.log)"
+         "Bash(git log *--output*)"
+         "Bash(git diff *--output*)"
+         actual:   "Read(./.env)"
+         "Read(./.env.*)"
+         "Read(./**/secrets/**)"
+         "Edit(./.claude/state/current-story.env)"
+         "Edit(./.claude/state/last-gate-run)"
+         "Bash(git log *--output*)"
+         "Bash(git diff *--output*)"
+
+  each way of getting it wrong produces its own complaint
+
+  HARNESS-050 AC-5: the documents say Edit, and name no tool list
+
+  HARNESS-050 AC-6: the suite has no tool list
+
+  HARNESS-029 AC-6: a surviving mutations/*.new has a row, and the paragraph says what it means
+
+  HARNESS-047: git log and git diff stay allowed, and their --output is denied
+
+settings: 69 passed, 2 failed
+FAIL settings  did 69 units of work, below the floor of 70 in .claude/tests/floors.conf
+
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_settings.json.20261101T053315Z.171869.bak) ===
+  29:       "Edit(./.claude/state/attest.log)",
+```
+
+After the restore:
+
+```
+settings: 71 passed, 0 failed
+
+assertion floors: all 1 suite(s) met their declared floor (71 assertions executed, 70 declared).
+1 harness suite(s) passed.
+```
 
 ## Gate results
 
