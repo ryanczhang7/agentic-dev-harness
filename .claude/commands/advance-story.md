@@ -2,7 +2,7 @@
 description: Move one story forward by exactly one phase
 model: fable
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(bash scripts/story.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -14,7 +14,23 @@ Act as the **lead-po** orchestrator and advance this story by **one phase only**
 then stop and report. The user chose this command over `/complete-story`
 because they want to inspect the result before the next phase runs.
 
-Read `docs/backlog/stories/$1.md` first. Then, based on its current phase:
+Do not read the whole story file: it grows as the story runs, and every turn
+re-sends it. Read the frontmatter with `bash scripts/story.sh frontmatter $1`,
+then each section the current phase needs with
+`bash scripts/story.sh section $1 <name>` (`bash scripts/story.sh sections $1`
+lists the names, with their lengths):
+
+| Phase | Read with `bash scripts/story.sh section $1 <name>` |
+|---|---|
+| PLANNED → RED | Context, Acceptance criteria, Contract, Deferred verifications, Model guidance, Out of scope |
+| RED → GREEN | Acceptance criteria, Contract, Handoff: RED -> GREEN, Deferred verifications, Regressions, Model guidance |
+| GREEN → GATES | Deferred verifications, Gate results, Gate probes, Notes |
+| GATES → REVIEW | Diff review, Gate results, Deferred verifications, Notes |
+| REVIEW → DONE | Notes |
+
+A dispatch prompt is built from those sections, pasted, not from the file; a
+`## Handoff` section is pasted whole, because it is the channel between phases.
+Then, based on the story's current phase:
 
 **PLANNED → RED.** Confirm the acceptance criteria are testable; fix them with
 the user if they are not — this is the last phase in which they may change

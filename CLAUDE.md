@@ -170,6 +170,7 @@ bash scripts/plan.sh ID          advance-story or complete-story, and why
 bash scripts/plan.sh write ID    put the per-phase model plan in the story
 bash scripts/plan.sh conflicts   which startable stories share a declared file
 bash scripts/plan.sh after ID    what to run next, and what can run alongside it
+bash scripts/story.sh section ID NAME   # one section of a story, as check-boundaries reads it
 bash scripts/classify.sh --list source src   # what the lock thinks a path is
 bash scripts/refresh-harness.sh ../agentic-dev-harness  # pull a newer harness in
 bash scripts/tidy.sh [--apply]   # finished worktrees and merged branches

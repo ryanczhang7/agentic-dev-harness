@@ -5,7 +5,7 @@ slug: the-orchestrator-reads-a-story-by-sectio
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-086-the-orchestrator-reads-a-story-by-sectio
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/story.sh, .claude/hooks/lib.sh, .claude/tests/story.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, CLAUDE.md, .claude/harness/VERSION]
@@ -562,3 +562,38 @@ END of lib.sh, per C-2, so lib.test.sh's pinned lines do not move.
   --fast` (exit 0, nothing configured). Read the oracle wiring: `section()` is
   copied out of check-boundaries.sh and eval'd. DV-1's text corrected (see
   the block). Resolved: RED, test-developer, claude-opus-5-5.
+
+- 2026-11-02, GREEN (feature-developer, `model: opus`, resolved
+  claude-opus-5-5; no override in the dispatch). Built `scripts/story.sh`,
+  `story_section` at the end of `.claude/hooks/lib.sh`, the C-3 prose
+  (advance-story.md opening + table + dispatch sentence, complete-story.md,
+  lead-po.md `## Orchestrating`, CLAUDE.md `## Running things`), both
+  commands' `allowed-tools` gain `Bash(bash scripts/story.sh:*)`, VERSION
+  104 -> 105 (2026-11-02). `check-boundaries.sh` untouched.
+  `story_section` passes the name through `ENVIRON`, not `awk -v`, so a
+  backslash in a heading name is not escape-expanded.
+
+  **GREEN confirmations of the handoff's controls**, measured against the
+  shipped `scripts/story.sh` + `lib.sh` copied into a scratch tree (story with
+  Context, Handoff: RED -> GREEN holding a fenced `## fenced`, Empty,
+  `Notes   `), outside the suite:
+
+  | Control | RED (candidate) | GREEN (shipped) |
+  |---|---|---|
+  | `section T-1 "Gate results"` (absent) | exit 1, exact stderr | exit 1, stdout empty, stderr `no section "Gate results" in docs/backlog/stories/T-1.md` then `  Context`, `  Handoff: RED -> GREEN`, `  fenced`, `  Empty`, `  Notes` - matches |
+  | `section T-1 Handoff` (prefix) | exit 1, stdout empty | exit 1, stdout empty, the same absent-name stderr - matches |
+  | `section ../X Context` | exit 2 | exit 2, stdout empty, stderr exactly the refusal line - matches |
+  | `frontmatter T-2` (two `---` rules, no frontmatter) | exit 1 | exit 1, stdout empty, `no frontmatter in docs/backlog/stories/T-2.md` - matches |
+  | `frontmatter T-3` (never closed) | exit 1 | exit 1, same message - matches |
+  | `section T-1 Empty` | exit 0, nothing | exit 0, stdout empty, stderr empty - matches |
+  | `story_problems "$REPO_ROOT"` | 8 lines | empty (suite assertion green) |
+
+  No divergence from RED's numbers. Inside the suite: `story: 97 passed, 0
+  failed`, floor 97 met.
+- 2026-11-02, GREEN verified by the orchestrator (claude-opus-5-5) without
+  re-running: `attest.sh check` answered `fresh` with `exit: 0` for
+  `bash scripts/selftest.sh` story (97/0, floor met), selftest, boundaries,
+  procedure, policy, reporting, phase, mutate and lib, and for
+  `bash scripts/gates.sh --fast`. No test file in the diff. Read story.sh and
+  `story_section` against C-1/C-2 and the prose against C-3. Resolved: GREEN,
+  feature-developer, claude-opus-5-5.
