@@ -39,7 +39,10 @@ approval between phases is exactly when they get quietly reordered:
   `SELFTEST_JOBS=4 bash scripts/selftest.sh` runs at all - only when the
   diff touches a `harness` path; on `skip` its line goes into `## Notes` and
   CI runs the self-test on the PR - and when it runs, it runs detached
-  and alone, while the story is still at GATES. Then it sets the phase before
+  and alone, while the story is still at GATES. The full gates and the
+  self-test each run in a `feature-developer` dispatch that returns a
+  verdict you check with `bash scripts/attest.sh check`;
+  `bash scripts/check-boundaries.sh` stays your own run. Then it sets the phase before
   committing, runs `bash scripts/check-boundaries.sh`, and pushes and opens
   the PR. A suite the story never touched can fail on its change, and CI runs
   them all. `check-boundaries.sh` reads the phase out of the *committed*

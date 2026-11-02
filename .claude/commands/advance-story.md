@@ -156,9 +156,30 @@ arrival — is `/audit-mutations`' work, not this phase's. If an entry can no
 longer run, write `WAIVED` and the reason; leaving it silent is what
 `check-boundaries.sh` refuses.
 
-Then run `bash scripts/gates.sh`. It writes
-its own summary into the story's `## Gate results`; never paste or edit one.
-On failure, dispatch the **feature-developer** to fix it, unless the failure
+Then dispatch a **feature-developer** on the GATES row of `models.conf` to run
+the full gates, with the brief below. It runs
+`bash scripts/attest.sh -- bash scripts/gates.sh` and returns its verdict: the
+exit status, last line, duration and log path (the record's `exit:`, `last:`,
+`duration:` and `log:`), and the model it resolved to. Check it with
+`bash scripts/attest.sh check -- bash scripts/gates.sh`: require `fresh`, read
+`exit:` (0 passed, 1 failed or not recorded, 3 BLOCKED, the paragraph below)
+and the verdict line in the log it names, `All required gates passed ...` or
+`N required gate(s) failed.`, and record the resolved model under
+`## Model guidance`. For this command `last:` is the check-boundaries tip
+printed after the verdict, not the verdict.
+`stale`, `void` or `none` means it did not run that command on this tree: send
+it back, and say so in `## Notes`.
+
+The brief, here and for the self-test at GATES → REVIEW: the worktree's
+absolute path and "run every command from there"; the one command, through
+`bash scripts/attest.sh --`; "run nothing else in this worktree while it runs";
+and "change nothing, unless the command is `bash scripts/gates.sh` and a
+required gate fails: then fix it under your GATES rules and run it again".
+While it is out, you run nothing in that worktree either.
+
+`gates.sh` writes its own summary into the story's `## Gate results`, whoever
+runs it; never paste or edit one. A failure the dispatch could not fix goes
+back to the **feature-developer**, unless the failure
 means a test is wrong — in which case return the story to RED (see below). A
 `WARN` on an optional gate is read, not skipped; a known permanent failure gets
 a `waiver` line with its reason.
@@ -233,10 +254,16 @@ Then, **in this order**:
    every suite, once, while the story is still at GATES. CI runs every
    suite, and one the story never touched can still fail on its change: a
    line number another suite pins, a floor, a value an upstream suite
-   asserts. Run it detached (the Bash tool's `run_in_background` with its
-   longest timeout, or `nohup` from a shell), so that a tool timeout cannot
-   kill it, and run nothing else in this worktree until it exits: not
-   `gates.sh`, not a second self-test. CI's whole job takes about 2-4
+   asserts. Dispatch it to a `feature-developer` on the GATES row, with the
+   GREEN → GATES brief: it runs
+   `bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh`
+   detached (the Bash tool's `run_in_background` with its longest timeout,
+   or `nohup` from a shell), so that a tool timeout cannot kill it, and
+   alone: nothing else runs in this worktree until it exits, not
+   `gates.sh`, not a second self-test, nothing of yours. It returns the
+   verdict, and you check it with
+   `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh`,
+   requiring `fresh`. Give it the expectation: CI's whole job takes about 2-4
    minutes. On the Windows host this harness is developed on, the self-test
    took 336 s at `SELFTEST_JOBS=4` against 1,135 s serial (HARNESS-036), and
    2,894-17,015 s serial while other test runs shared the host
@@ -245,9 +272,9 @@ Then, **in this order**:
    suites. If a run
    goes far past the last duration a story recorded, look for an orphaned
    self-test or gate run before blaming the host; one run stalled past an
-   hour beside an orphan and passed alone. Judge it by its exit status and
-   its last line, `N harness suite(s) passed.`, and paste both, with the
-   duration, into `## Notes`. A failure takes GATES' own routes: the
+   hour beside an orphan and passed alone. Judge it by the record's `exit:`
+   and its `last:` line, `N harness suite(s) passed.`, and paste both, with
+   the `duration:`, into `## Notes`. A failure takes GATES' own routes: the
    feature-developer, or RED if a test is wrong. A fix changes the tree, so
    `bash scripts/gates.sh` runs again and these steps start over.
 3. `bash scripts/phase.sh set $1 REVIEW`
