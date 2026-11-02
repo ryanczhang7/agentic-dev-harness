@@ -4,8 +4,8 @@ title: The full gate run and the self-test run in an opus dispatch that returns 
 slug: the-full-gate-run-the-self-test-and-chec
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-085-the-full-gate-run-the-self-test-and-chec
 depends_on: [HARNESS-084]      # the dispatch's verdict is checked with attest.sh, which 084 builds
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/agents/feature-developer.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
