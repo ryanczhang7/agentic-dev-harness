@@ -4,8 +4,8 @@ title: The full gate run and the self-test run in an opus dispatch that returns 
 slug: the-full-gate-run-the-self-test-and-chec
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-085-the-full-gate-run-the-self-test-and-chec
 depends_on: [HARNESS-084]      # the dispatch's verdict is checked with attest.sh, which 084 builds
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/agents/feature-developer.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -807,3 +807,14 @@ case correctly as written.
   `last:` is the check-boundaries tip" to a pass; on exit 1 refused it is a
   pass line, on exit 3 the log has no verdict line (diff review round 2, nice
   to have 1).
+- 2026-11-02, GATES → REVIEW self-test, dispatched per the new step-2 brief
+  (feature-developer, resolved claude-opus-5-5). `selftest-needed: run`.
+  `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh` answered
+  `fresh` on tree 81cad99a (after: the same), `exit: 0`,
+  `last: 32 harness suite(s) passed.`, `duration: 10487s`, log
+  `.claude/state/attest-logs/20261102T154004Z.501.log`. The run opened with
+  two other `gates.sh` runs on the host. The dispatched agent waited out the
+  whole detached run (about 2 h 55 min) and reported after it exited: the
+  first real use of the long-run handoff held. An orchestrator check midway
+  read the previous day's record (tree 37ddcbe5) as `stale`, which was
+  correct - that record is not this run.
