@@ -5,7 +5,7 @@ slug: the-full-gate-run-the-self-test-and-chec
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-085-the-full-gate-run-the-self-test-and-chec
 depends_on: [HARNESS-084]      # the dispatch's verdict is checked with attest.sh, which 084 builds
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/agents/feature-developer.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -271,6 +271,24 @@ exactly `the self-test step does not dispatch the run` and nothing else, and
 (the pinned needles are untouched, which is what makes the two suites
 independent). RED cannot run this: the step it mutates does not exist yet.
 Paste the line, the procedure result and the restore.
+
+Result (GATES, 2026-11-02, orchestrator): as required. Both occurrences of
+`feature-developer` in step 2 (lines 253 and 274) replaced; the real-tree
+assertion printed exactly the one self-test line, every fixture still passed,
+and `procedure` stayed green under the same mutation.
+
+```
+  253 -    asserts. Dispatch it to a `feature-developer` on the GATES row, with the
+  253 +    asserts. Dispatch it to a `runner` on the GATES row, with the
+  274 -    feature-developer, or RED if a test is wrong. A fix changes the tree, so
+  274 +    runner, or RED if a test is wrong. A fix changes the tree, so
+         actual:   .claude/commands/advance-story.md: the self-test step does not dispatch the run
+dispatch: 66 passed, 1 failed
+procedure: 118 passed, 0 failed
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261102T150836Z.1326.bak) ===
+  253:    asserts. Dispatch it to a `feature-developer` on the GATES row, with the
+  274:    feature-developer, or RED if a test is wrong. A fix changes the tree, so
+```
 
 ## Model guidance
 
@@ -624,8 +642,21 @@ routes: the feature-developer"), so mutate every occurrence in the step.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run. Do not paste or
-     edit it. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-02T15:09:39Z
+    commit: 3de1a48
+    tree:   891f8370dd1e05eb17f12095c02fc730b31e2f14
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -665,3 +696,12 @@ routes: the feature-developer"), so mutate every occurrence in the step.
   `bash scripts/selftest.sh` dispatch, procedure, attest, briefs, reporting,
   phase and selftest, and for `bash scripts/gates.sh --fast`. Diff read
   against C-1..C-4. Resolved: GREEN, feature-developer, claude-opus-5-5.
+- 2026-11-02, GATES full gate run, dispatched per the new C-1 brief
+  (feature-developer, resolved claude-opus-5-5). `attest.sh check -- bash
+  scripts/gates.sh` answered `fresh`, `exit: 0`; the verdict
+  `All required gates passed (0 ran, 7 unconfigured, 0 known).` is log line
+  17 of `.claude/state/attest-logs/20261102T150934Z.1894.log`. Observed: the
+  record's `last:` is NOT that verdict but gates.sh's trailing
+  check-boundaries tip (`...very record still matches the tree. Run it after
+  committing, before the PR.`), so "read `exit:` and `last:`" reads the
+  wrong line for gates.sh. Put to the diff review.
