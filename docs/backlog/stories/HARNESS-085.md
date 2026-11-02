@@ -713,6 +713,31 @@ Records (ATTEST_TAIL unset, one suite per call, all `fresh`):
                            .claude/state/attest-logs/20261102T153436Z.16842.log
                            verdict in log (line 17): All required gates passed (0 ran, 7 unconfigured, 0 known).
 
+### Round 2 (GATES, 2026-11-02; fresh feature-developer, resolved claude-opus-5-5)
+
+Scope: the round-1 fix (`git diff HEAD~1 HEAD -- .claude`, abec0dc) and the
+paragraphs around it. Checked against gates.sh:1253-1290 for every exit:
+0 (pass, then the tip - `last:` is the tip, confirmed on the live record);
+1 failed (`last:` is the verdict); 1 refused (a pass line, then exit 1 -
+covered by "1 failed or not recorded" and the stamp paragraph); 3 BLOCKED
+(no verdict line; the parenthetical points to the BLOCKED paragraph). The
+RED → GREEN rule at :143 governs the test command and `--fast`, where the
+tip is not printed, so the two do not contradict. The self-test step still
+reads `last:` correctly. Findings 1-3 resolved.
+
+**Nice to have**
+
+1. "`last:` is the check-boundaries tip" holds only on a pass; on exit 1
+   refused it is a pass line, on a failure the verdict, and on exit 3 the log
+   has no verdict line. `exit:` already gives the right answer in every
+   case. Scope the sentence per outcome.
+
+Verdict: Ship.
+
+PO decision: ship; nice-to-have 1 becomes a follow-up (`## Notes`) rather
+than a further tree change and review round, since `exit:` decides every
+case correctly as written.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -778,3 +803,7 @@ Records (ATTEST_TAIL unset, one suite per call, all `fresh`):
   check-boundaries tip (`...very record still matches the tree. Run it after
   committing, before the PR.`), so "read `exit:` and `last:`" reads the
   wrong line for gates.sh. Put to the diff review.
+- Follow-up (not this story): scope advance-story.md's "for this command
+  `last:` is the check-boundaries tip" to a pass; on exit 1 refused it is a
+  pass line, on exit 3 the log has no verdict line (diff review round 2, nice
+  to have 1).
