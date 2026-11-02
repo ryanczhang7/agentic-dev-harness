@@ -162,9 +162,13 @@ the full gates, with the brief below. It runs
 exit status, last line, duration and log path (the record's `exit:`, `last:`,
 `duration:` and `log:`), and the model it resolved to. Check it with
 `bash scripts/attest.sh check -- bash scripts/gates.sh`: require `fresh`, read
-`exit:` and `last:`, and record the resolved model under `## Model guidance`.
-`stale` or `none` means it did not run that command on this tree: send it back,
-and say so in `## Notes`.
+`exit:` (0 passed, 1 failed or not recorded, 3 BLOCKED, the paragraph below)
+and the verdict line in the log it names, `All required gates passed ...` or
+`N required gate(s) failed.`, and record the resolved model under
+`## Model guidance`. For this command `last:` is the check-boundaries tip
+printed after the verdict, not the verdict.
+`stale`, `void` or `none` means it did not run that command on this tree: send
+it back, and say so in `## Notes`.
 
 The brief, here and for the self-test at GATES → REVIEW: the worktree's
 absolute path and "run every command from there"; the one command, through

@@ -222,8 +222,8 @@ imply that the two were verified together, because no gate here has seen them
 together. **The position this harness takes: the second PR waits for the
 first to merge.** After the user merges the first, merge the updated `main`
 into the second branch in its worktree - a merge, not a rebase, because the
-branch is already published and a rebase would need a force-push. Run
-`bash scripts/gates.sh` there, commit its record with the story still at
+branch is already published and a rebase would need a force-push. Dispatch
+`bash scripts/gates.sh` there, as above, commit its record with the story still at
 REVIEW, push, and only then report the second PR ready. That merged tree is the
 tree `main` will have after the second merge, so this one gate run is the joint
 verification, and it costs one run per extra PR. Nothing forces it until you

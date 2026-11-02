@@ -640,12 +640,85 @@ routes: the feature-developer"), so mutate every occurrence in the step.
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
      otherwise. One block per return, with the PASTED probe output. -->
 
+## Diff review
+
+### Round 1 (GATES, 2026-11-02; fresh feature-developer, resolved claude-opus-5-5)
+
+Scope `git diff main...HEAD`. Load assumed: one orchestrator and one runner
+per worktree.
+
+**Must fix**
+
+1. **The gate-run check reads the wrong line** (advance-story.md:162-163,
+   "require `fresh`, read `exit:` and `last:`"). `attest.sh` sets `last:` to
+   the last non-blank output line. For `bash scripts/gates.sh`
+   (gates.sh:1253-1287) that line is: on a pass, the check-boundaries tip; on
+   BLOCKED (exit 3), "...environment.md are where that gets fixed and written
+   down."; on a refused record (exit 1), `All required gates passed (...)`,
+   which looks like a pass beside a failing exit; and only on a failure is it
+   the verdict `N required gate(s) failed.`. Together with RED → GREEN's "a
+   `fresh` record still has to show `exit: 0` and a passing `last:` line"
+   (:143), a model rejects a passing run and re-runs the gates itself, which
+   is the wait this story removes. This story's own GATES dispatch hit the
+   pass case. Fix: read `exit:` (0 passed, 1 failed or not recorded, 3
+   BLOCKED) and the verdict in the log; say `last:` is the tip, not the
+   verdict. No needle moves; C-7 holds. The self-test step, lead-po:142 and
+   complete-story:34 are right as written (those commands end on their
+   verdict).
+
+**Nice to have**
+
+2. `void` is missing from the "`stale` or `none`" send-back sentence
+   (advance-story.md:164-165); lead-po:142 names all three.
+3. lead-po.md's "not yours to wait on" (:127-133) contradicts the unchanged
+   "Two PRs at REVIEW" paragraph (:226), "Run `bash scripts/gates.sh` there".
+   Fix: scope the new paragraph to a story's GATES phase, or point :226 at
+   the dispatch.
+
+Checked and coherent: BLOCKED (exit 3 is outside "a required gate fails",
+so the runner reports and the BLOCKED paragraph applies); the stamp paragraph
+(`git add` before dispatch is the orchestrator's; a refusal shows as
+`exit: 1`); story edits while a run is out (docs are outside the work hash);
+GATES → REVIEW ordering; `## Run and report` against the rest of
+feature-developer.md; dispatch.test.sh's shape and floors (67 in both).
+
+Verdict: fix 1 first.
+
+Orchestrator: the reading of gates.sh:1253-1287 was reproduced by reading
+the source (the tip prints after the verdict only on an unrefused full run;
+BLOCKED and refusal exit before or around it, as the review says). PO
+decision: fix 1, 2 and 3 in GATES, then a review of the fix.
+
+**Fix (GATES, round 1)** (feature-developer, resolved claude-opus-5-5; no
+override). Prose only, no test touched.
+
+1. advance-story.md, GREEN → GATES: "read `exit:` and `last:`" now reads
+   `exit:` (0 passed, 1 failed or not recorded, 3 BLOCKED, the paragraph
+   below) and the verdict line in the log, `All required gates passed ...` or
+   `N required gate(s) failed.`, and says that for this command `last:` is the
+   check-boundaries tip printed after the verdict, not the verdict.
+2. Same paragraph: "`stale` or `none`" is now "`stale`, `void` or `none`".
+3. lead-po.md, "Two PRs at REVIEW": "Run `bash scripts/gates.sh` there" is now
+   "Dispatch `bash scripts/gates.sh` there, as above" (the reviewer's second
+   option), so the one instruction is the "not yours to wait on" paragraph.
+
+Records (ATTEST_TAIL unset, one suite per call, all `fresh`):
+
+    selftest.sh dispatch   status ok exit 0 last "1 harness suite(s) passed."  .claude/state/attest-logs/20261102T151525Z.6226.log
+    selftest.sh procedure  status ok exit 0 last "1 harness suite(s) passed."  .claude/state/attest-logs/20261102T151605Z.6735.log
+    selftest.sh attest     status ok exit 0 last "1 harness suite(s) passed."  .claude/state/attest-logs/20261102T151647Z.7421.log
+    selftest.sh reporting  status ok exit 0 last "1 harness suite(s) passed."  .claude/state/attest-logs/20261102T152158Z.12621.log
+    selftest.sh phase      status ok exit 0 last "1 harness suite(s) passed."  .claude/state/attest-logs/20261102T152231Z.13016.log
+    gates.sh               status ok exit 0 last "...very record still matches the tree. Run it after committing, before the PR."
+                           .claude/state/attest-logs/20261102T153436Z.16842.log
+                           verdict in log (line 17): All required gates passed (0 ran, 7 unconfigured, 0 known).
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-02T15:09:39Z
-    commit: 3de1a48
+    run:    2026-11-02T15:34:53Z
+    commit: 85e77be (working tree had uncommitted changes)
     tree:   891f8370dd1e05eb17f12095c02fc730b31e2f14
     result: pass (0 ran, 7 unconfigured, 0 known)
 
