@@ -5,7 +5,7 @@ slug: the-orchestrator-reads-a-story-by-sectio
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-086-the-orchestrator-reads-a-story-by-sectio
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/story.sh, .claude/hooks/lib.sh, .claude/tests/story.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, CLAUDE.md, .claude/harness/VERSION]
@@ -232,11 +232,43 @@ is not owed: the prefix mutation is the story's central claim.) RED cannot
 run this: `story.sh` does not exist. Run against `bash scripts/selftest.sh
 story`; paste the red, the count and the restore.
 
+Result (GATES, 2026-11-02, orchestrator): `h == name` → `index(h, name) == 1`
+in lib.sh's `story_section`, via `mutate.sh`. Exactly the five `Handoff`-prefix
+assertions red, every other assertion green; restored and verified.
+
+```
+$ bash scripts/mutate.sh .claude/hooks/lib.sh 's/\/\^## \/ \&\& h == name {/\/^## \/ \&\& index(h, name) == 1 {/' -- bash scripts/selftest.sh story
+    FAIL the prefix `Handoff` does not match `Handoff: RED -> GREEN`: exit 1
+    FAIL the prefix `Handoff` prints nothing on stdout
+    FAIL the prefix `Handoff` is reported as an absent name
+    FAIL story_section with the prefix `Handoff` returns 1
+    FAIL story_section with the prefix `Handoff` prints nothing
+story: 92 passed, 5 failed
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_hooks_lib.sh.20261102T225920Z.99880.bak) ===
+```
+
 **DV-2 (a rule probed against the tree it judges). Owner: GATES.** With a
 real line of `.claude/commands/advance-story.md` mutated to put `Read
 `docs/backlog/stories/$1.md` first.` back, `story_problems "$REPO_ROOT"`
 **must** print exactly `still reads the whole story file first`, and nothing
 once restored.
+
+Result (GATES, 2026-11-02, orchestrator): real line 17 of advance-story.md
+replaced with the old sentence, via `mutate.sh`. Only the real-tree guard went
+red, printing exactly the one line; restored and verified. Unmutated, the same
+assertion is green (GREEN's fresh `story` record, 97/0).
+
+```
+$ bash scripts/mutate.sh .claude/commands/advance-story.md 's/^Do not read the whole story file: it grows as the story runs, and every turn$/Read `docs\/backlog\/stories\/$1.md` first./' -- bash scripts/selftest.sh story
+    FAIL story_problems over the real tree prints nothing: advance-story reads by section through a per-phase table and no longer reads the whole file first, complete-story and lead-po name `bash scripts/story.sh section`, both commands permit story.sh, and CLAUDE.md's Running things block lists it
+         expected: 
+         actual:   .claude/commands/advance-story.md: still reads the whole story file first
+story: 96 passed, 1 failed
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261102T225937Z.100231.bak) ===
+  17: Do not read the whole story file: it grows as the story runs, and every turn
+```
 
 ## Model guidance
 
@@ -533,8 +565,21 @@ END of lib.sh, per C-2, so lib.test.sh's pinned lines do not move.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run. Do not paste or
-     edit it. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-02T23:00:16Z
+    commit: ae9cf34
+    tree:   a475a70dc57d366e8f5e5d9f743ac120c0584994
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -597,3 +642,10 @@ END of lib.sh, per C-2, so lib.test.sh's pinned lines do not move.
   `bash scripts/gates.sh --fast`. No test file in the diff. Read story.sh and
   `story_section` against C-1/C-2 and the prose against C-3. Resolved: GREEN,
   feature-developer, claude-opus-5-5.
+- 2026-11-02, GATES: DV-1 and DV-2 run by the orchestrator via `mutate.sh`,
+  results pasted in their blocks. Full gate run dispatched
+  (feature-developer, resolved claude-opus-5-5); `attest.sh check -- bash
+  scripts/gates.sh` answered `fresh`, `exit: 0`, verdict at log line 17 of
+  `.claude/state/attest-logs/20261102T230014Z.100672.log`:
+  `All required gates passed (0 ran, 7 unconfigured, 0 known).` As always in
+  this repo, the self-test at GATES → REVIEW is the real check.
