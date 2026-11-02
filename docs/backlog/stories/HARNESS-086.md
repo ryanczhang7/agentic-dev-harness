@@ -81,8 +81,11 @@ amended block says.
     bash scripts/story.sh sections <id>           `<name>\t<lines>` per `## ` heading, file order
     bash scripts/story.sh frontmatter <id>        the lines between the first two `---` lines
 
-`<id>` is validated with `valid_story_id` (exit 2 on refusal, its message)
-and resolved to `docs/backlog/stories/<id>.md` under the repository root; a
+`<id>` is validated with `valid_story_id` (exit 2 on refusal). The function
+prints nothing itself; "its message" in AC-1 is the one every caller prints
+on refusal (gates.sh, new-story.sh), on stderr:
+`error: story id '<id>' is not one path component: an id is letters, digits,
+'.', '_' or '-', and starts with a letter or digit`. It is then resolved to `docs/backlog/stories/<id>.md` under the repository root; a
 missing file exits 1 with `no story file at docs/backlog/stories/<id>.md`.
 `<name>` is matched as the **whole** text after `## ` (trailing spaces
 trimmed), so `Handoff` does not match `Handoff: RED -> GREEN`. Unknown
@@ -234,6 +237,18 @@ name, below the table.
 
 ## Notes
 
+- PO decision 1 (2026-11-02, PLANNED → RED): HARNESS-083 has since merged
+  (DONE), so the reason for leaving `check-boundaries.sh` alone no longer
+  holds. The convergence stays out of scope anyway: the criteria were cut
+  without it, and it changes what CI reads (prefix callers), which wants its
+  own story and its own probe. It is now unblocked, not deferred.
+- PO decision 2 (2026-11-02, PLANNED → RED): AC-1's "`valid_story_id`'s
+  message" is pinned in C-1 as the refusal line its callers already print;
+  the function itself prints nothing. No criterion changed.
+- Epic check: `epic:` is empty, so there is no done-when to compare.
+- Callers (C-6): no existing signature changes. `valid_story_id` is called,
+  not changed; its callers today are gates.sh (107, 475), new-story.sh (12)
+  and phase.sh (157), none touched.
 - Follow-up, not this story: once HARNESS-083 has merged, make
   `check-boundaries.sh`'s `section()` call `story_section` and list its
   prefix-matching callers (the `Handoff` lookup) before changing it.
