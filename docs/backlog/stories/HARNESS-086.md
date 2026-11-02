@@ -563,12 +563,53 @@ END of lib.sh, per C-2, so lib.test.sh's pinned lines do not move.
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
      otherwise. One block per return, with the PASTED probe output. -->
 
+## Diff review
+
+### Round 1 (fresh feature-developer, resolved claude-opus-5-5, 2026-11-02)
+
+Verdict: fix 1 first.
+
+**Must fix 1. The GATES → REVIEW row leaves out sections its own procedure
+reads** (`.claude/commands/advance-story.md:28`). The procedure checks
+`## Gate probes` ("must record it having been observed to fail") and writes a
+PR body listing the acceptance criteria with their tests, but the row names
+neither `Gate probes` nor `Acceptance criteria` / `Test plan`. GREEN → GATES
+and GATES → REVIEW both record the resolved model under `## Model guidance`,
+which neither row names. Fix: add them. The guard pins only the row
+prefixes, so the suite stays green.
+
+**Should fix 2. A repeated `## <name>` cuts `section` off silently.** Real
+case: `bash scripts/story.sh sections HARNESS-054` lists `Notes` three times
+(80, 22, 237 lines): heredoc lines inside a fenced excerpt in that story's
+Notes are column-0 `## ` lines, so `section ... Notes` returns 80 of ~340
+lines. Inherited from `section()`'s reading, which AC-1 pins. Proposed: a
+stderr note when the name occurs more than once.
+
+**Nice to have 3. CR not trimmed** from headings or the `---` line: on a
+Linux awk with CRLF story files every lookup misses. Not reproducible here
+(gawk on this host drops the CR; this repo pins `*.md eol=lf`).
+
+Orchestrator reproduction: `bash scripts/story.sh sections HARNESS-054 |
+grep -n '^Notes'` printed `Notes 80`, `Notes 22`, `Notes 237`; the table rows
+read as quoted.
+
+PO decisions:
+- 3. Must fix 1 is a prose fix in GATES. The rows now differ from C-3's
+  block: GREEN → GATES adds `Model guidance`; GATES → REVIEW adds
+  `Gate probes`, `Acceptance criteria`, `Test plan`, `Model guidance`. C-3's
+  block was wrong against the procedure it serves; the guard's pins (the two
+  row prefixes) are unchanged.
+- 4. Should fix 2 is a behaviour change to `story.sh` with no failing test
+  in front of it, so it is not made in GATES. This story mitigates it in
+  prose: advance-story.md tells the orchestrator that a name `sections`
+  lists twice is cut at the second, and to read the rest by line range. The
+  stderr note is a follow-up story (RED first), together with finding 3.
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-02T23:00:16Z
-    commit: ae9cf34
+    run:    2026-11-02T23:12:31Z
+    commit: 40d0206 (working tree had uncommitted changes)
     tree:   a475a70dc57d366e8f5e5d9f743ac120c0584994
     result: pass (0 ran, 7 unconfigured, 0 known)
 
@@ -649,3 +690,7 @@ END of lib.sh, per C-2, so lib.test.sh's pinned lines do not move.
   `.claude/state/attest-logs/20261102T230014Z.100672.log`:
   `All required gates passed (0 ran, 7 unconfigured, 0 known).` As always in
   this repo, the self-test at GATES → REVIEW is the real check.
+- Follow-up, not this story (diff review round 1, findings 2 and 3):
+  `story.sh section` warns on stderr when the name occurs more than once
+  (HARNESS-054's Notes is the real case), and `story_section`, `headings`
+  and `frontmatter` trim a trailing CR. Both need a failing test first.

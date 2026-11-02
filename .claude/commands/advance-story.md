@@ -24,12 +24,17 @@ lists the names, with their lengths):
 |---|---|
 | PLANNED → RED | Context, Acceptance criteria, Contract, Deferred verifications, Model guidance, Out of scope |
 | RED → GREEN | Acceptance criteria, Contract, Handoff: RED -> GREEN, Deferred verifications, Regressions, Model guidance |
-| GREEN → GATES | Deferred verifications, Gate results, Gate probes, Notes |
-| GATES → REVIEW | Diff review, Gate results, Deferred verifications, Notes |
+| GREEN → GATES | Deferred verifications, Gate results, Gate probes, Model guidance, Notes |
+| GATES → REVIEW | Diff review, Gate results, Gate probes, Deferred verifications, Acceptance criteria, Test plan, Model guidance, Notes |
 | REVIEW → DONE | Notes |
 
 A dispatch prompt is built from those sections, pasted, not from the file; a
 `## Handoff` section is pasted whole, because it is the channel between phases.
+A `## ` line inside a fenced block counts as a heading, because that is
+`check-boundaries.sh`'s reading, so when `bash scripts/story.sh sections $1`
+lists a name more than once, `section` returned only the first part: read the
+rest of that section from the file by line range rather than taking the first
+part as the whole.
 Then, based on the story's current phase:
 
 **PLANNED → RED.** Confirm the acceptance criteria are testable; fix them with
