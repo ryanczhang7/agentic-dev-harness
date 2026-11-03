@@ -4,8 +4,8 @@ title: rules.md keeps every rule and moves its worked cases into the tdd-cycle s
 slug: rules-md-keeps-every-rule-and-moves-its
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-087-rules-md-keeps-every-rule-and-moves-its
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, .claude/skills/tdd-cycle/SKILL.md, .claude/skills/tdd-cycle/reference/cases.md, .claude/tests/rules-trim.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -925,3 +925,16 @@ Verdict: Ship.
   heading matches a `## ` line in cases.md, with a renamed-heading fixture
   control (diff review Should fix 2, PO decision 3). It needs a failing
   test first.
+- Self-test at GATES → REVIEW (2026-11-03): `selftest-needed: run`
+  (7 harness paths changed). It was dispatched to a feature-developer
+  (resolved claude-opus-5-5) and ran detached and alone through attest.
+  `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh` answered
+  `fresh`: `exit: 0`, `last: 34 harness suite(s) passed.`,
+  `duration: 9375s`, tree 6d35f011e344, log
+  `.claude/state/attest-logs/20261103T162503Z.12206.log`. Every floor was
+  met (5213 assertions executed against 5188 declared). That covers AC-5:
+  policy, reporting, mutate, new-story and settings all passed. The run was
+  2.4 times HARNESS-086's 3845 s. The agent found no orphaned run in this
+  worktree, only an unrelated `gates.sh --fast` in D:\adh-base-bar that
+  overlapped the last few minutes. The cause of the extra time is unknown.
+  The self-test was not re-run by the orchestrator.
