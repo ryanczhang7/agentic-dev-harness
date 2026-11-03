@@ -37,13 +37,15 @@ sentence another suite pins. What moves is the evidence behind them, into
 `.claude/skills/tdd-cycle/reference/cases.md`, each case under its own
 heading and cited from the rule it supports by path.
 
-Four suites already read rules.md and are the net under this change:
+Five suites already read rules.md and are the net under this change:
 `policy` (the `# Mutation work per story` heading, no per-story count),
 `reporting` (`# Reporting to the user`, its seven labelled bullets and their
 needles), `mutate` (the `.claude/state/**` bullet with `.bak`, `.active` and
-`mutate.sh --check`), `new-story` (the section name in the template). The
+`mutate.sh --check`), `new-story` (the section name in the template),
+`settings` (the same state bullet: `phase-guard-declined.log` and its
+`denied to `Edit` in `settings.json`` sentence). The
 gate that fails if the trim breaks is `bash scripts/selftest.sh rules-trim`
-(a new suite), and those four must stay green unchanged.
+(a new suite), and those five must stay green unchanged.
 
 ## Acceptance criteria
 
@@ -68,7 +70,7 @@ gate that fails if the trim breaks is `bash scripts/selftest.sh rules-trim`
   list of `reference/*.md`), so the file is reachable from the skill that
   loads it. This and AC-3's pointers can only be checked structurally.
 - **AC-5** — Given the real tree after GREEN, when `bash scripts/selftest.sh
-  policy`, `reporting`, `mutate` and `new-story` run, then each passes with
+  policy`, `reporting`, `mutate`, `new-story` and `settings` run, then each passes with
   its floor met - the suites that pin rules.md's text were the net, and the
   net held. This is a GATES check, not a new assertion; it is listed so the
   trim is not called done on `rules-trim` alone.
@@ -275,3 +277,18 @@ name, below the table.
 
 ## Notes
 
+- PO decision 1 (PLANNED → RED, 2026-11-03): AC-5 and Context name a fifth
+  net suite, `settings`. It reads the same `.claude/state/**` bullet as
+  `mutate` (`state_bullet` in `settings.test.sh`, pinning
+  `phase-guard-declined.log` and the C-3 `denied to `Edit`` sentence), so a
+  trim of that bullet can break it. I found it by grepping every
+  `.claude/tests/*.sh` for `rules.md`. The other eight hits only mention
+  rules.md in comments or fixtures, or pin the `Reporting to the user`
+  heading name (`security-audit`). Refined before the PLANNED commit, so no
+  Amendment is needed.
+- Pre-dispatch checks (2026-11-03, release 105): rules.md is 399 lines; each
+  of the 11 C-2 needles occurs exactly once (`grep -cF`); each of the 38 C-1
+  prefixes begins exactly one line (`awk index()==1`). No signature changes
+  (C-6), so there is no callers list. `epic:` is empty, so there is no
+  done-when to check. This repo has no configured gates; the check is
+  `bash scripts/selftest.sh rules-trim`, and CI runs every suite.
