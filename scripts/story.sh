@@ -7,7 +7,8 @@
 #   bash scripts/story.sh frontmatter <id>        the lines between line 1 `---` and the next `---`
 #
 # A section is check-boundaries.sh's reading - from the heading to the line
-# before the next column-0 `## `, fences not special - through lib.sh's
+# before the next column-0 `## ` (a later heading of the same name continues
+# it rather than ending it), fences not special - through lib.sh's
 # story_section, with the name matched against the WHOLE heading (trailing
 # spaces trimmed). Output is the file's lines unchanged, comments included:
 # strip_comments is the caller's choice.

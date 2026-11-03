@@ -630,13 +630,43 @@ And `section HARNESS-054 Notes | wc -l` = 339.
 PO decision 5: PO decision 4's premise ("cut at the second") was wrong; the
 deferral stands (a behaviour change needs a failing test first), and the
 follow-up is now specified against the measured behaviour above.
+### Round 3 (fresh feature-developer, resolved claude-opus-5-5, 2026-11-02)
+
+Verdict: fix 1 first.
+
+**Must fix 1. "`section` prints every copy joined" holds only for adjacent
+copies.** `story_section` exits at the first heading of a different name, so
+when a fenced `## X` sits in an earlier section and a real `## X` comes later
+past another heading, `section X` prints the stray lines INSTEAD of the real
+body, exit 0. Joining happens only when no other heading lies between the
+copies (HARNESS-054's three adjacent `Notes`, and round 2's probe).
+
+**Nice to have 2.** `grep -n '^## '` lists the fenced heading too, unmarked;
+add `-e '^```' -e '^~~~'` so fence lines show between the headings.
+
+**Nice to have 3.** The header comments of `story_section` and `story.sh` say
+a section ends "before the next column-0 `## `", but a later heading of the
+same name continues it. Comment only.
+
+Orchestrator reproduction, on a different input:
+`## P / p1 / ``` / ## Q / stray / ``` / p2 / ## R / r / ## Q / real-q / ## S`;
+`story_section Q` printed `stray`, the closing fence and `p2`, rc=0, and
+never `real-q`.
+
+PO decision 6: three rounds have each found the previous description of the
+mechanics incomplete. The sentence stops enumerating cases: it says that a
+fenced `## ` line makes `section` unreliable for that story (truncated,
+stray or missing lines, exit 0 regardless), and gives the workaround with
+fence lines listed (nice to have 2, taken). Nice to have 3 is taken (comment
+only, no behaviour). The follow-up carries round 3's case alongside round
+2's.
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-03T01:02:17Z
-    commit: 37e6b08 (working tree had uncommitted changes)
-    tree:   a475a70dc57d366e8f5e5d9f743ac120c0584994
+    run:    2026-11-03T01:07:31Z
+    commit: fc029ba (working tree had uncommitted changes)
+    tree:   47958fd6ca92de3be7b0715efb5d9b5961913bd3
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -719,6 +749,6 @@ follow-up is now specified against the measured behaviour above.
 - Follow-up, not this story (diff review round 1, findings 2 and 3):
   `story.sh section` warns on stderr when a heading name occurs more than
   once (HARNESS-054 lists `Notes` three times; `section` joins all three,
-  339 lines, and a section holding a fenced `## ` line is truncated with no
+  339 lines; a fenced `## X` before a non-adjacent real `## X` makes `section X` print the stray lines instead of the real body, exit 0 - diff review rounds 2 and 3; a section holding a fenced `## ` line is truncated with no
   flag - see diff review round 2), and `story_section`, `headings`
   and `frontmatter` trim a trailing CR. Both need a failing test first.

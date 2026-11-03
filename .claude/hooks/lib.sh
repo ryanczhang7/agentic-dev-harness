@@ -1766,7 +1766,8 @@ $(printf '%s\n' "$files" | B="$blobs" awk '
 }
 
 # story_section <file> <name>   The body of `## <name>`: every line after the
-# heading up to the line before the next column-0 `## `, heading excluded,
+# heading up to the line before the next column-0 `## ` (a later heading of
+# the same name continues it rather than ending it), heading excluded,
 # fences NOT special. Returns 1, printing nothing, when no heading matches.
 # This is check-boundaries.sh's `section()` reading with one tightening: the
 # name is matched against the WHOLE heading text (trailing spaces and tabs
