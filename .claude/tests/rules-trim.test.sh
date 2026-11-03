@@ -48,9 +48,11 @@ trap 'rm -rf "$WORK"' EXIT
 # --- the settled values (story Contract: read out, not re-derived) -----------
 
 # AC-1 / C-5. Settled by decision, not measured: rules.md was 399 lines on
-# 2026-10-31 (release 101), and still 399 on 2026-11-03 (release 105). Raising
-# it later is this one line.
-CAP=280
+# 2026-10-31 (release 101), and still 399 on 2026-11-03 (release 105). The
+# planner's estimate of 280 was wrong: GREEN measured 369 on 2026-11-03 with
+# every C-2 case moved, and the user set 370 (Amendments, A-1). Raising it
+# later is this one line.
+CAP=370
 
 RULES=".claude/harness/rules.md"
 CASES=".claude/skills/tdd-cycle/reference/cases.md"

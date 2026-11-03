@@ -5,7 +5,7 @@ slug: rules-md-keeps-every-rule-and-moves-its
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-087-rules-md-keeps-every-rule-and-moves-its
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, .claude/skills/tdd-cycle/SKILL.md, .claude/skills/tdd-cycle/reference/cases.md, .claude/tests/rules-trim.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -50,8 +50,8 @@ gate that fails if the trim breaks is `bash scripts/selftest.sh rules-trim`
 ## Acceptance criteria
 
 - **AC-1** — Given `.claude/harness/rules.md`, when its lines are counted,
-  then there are at most 280 (399 today). *Control:* the suite is red on
-  today's file.
+  then there are at most 370 (399 today). *Control:* the suite is red on
+  today's file. (Amended from 280: see `## Amendments`, A-1.)
 - **AC-2** — Given rules.md after the trim, when its structure is read, then
   every line of C-1's list is present exactly: the six `# ` headings, each
   `- **Label.**` bullet opener, and the first line of each unlabelled bullet
@@ -203,7 +203,8 @@ not point at reference/cases.md`, `SKILL.md: does not list reference/cases.md`.
 Floors: `floor | rules-trim | N` and the same N in `selftest.test.sh`'s table.
 The cap `280` is one constant at the top of the file with the measurement
 beside it (399 on 2026-10-31, release 101); raising it later is a visible
-one-line change.
+one-line change. *Amended in GREEN (A-1): the cap is `370`, and the message
+shape reads `the cap is 370`.*
 
 *RED amendment (2026-11-03, test-developer): where C-4 left a matching rule
 open, the suite settles it as follows; GREEN builds to these.* Reason: each
@@ -236,7 +237,10 @@ was a choice the shapes above did not fix, and a wrong guess is a red suite.
 it is **settled by decision, not measured**: the user asked for a shorter
 file, and 280 is the planner's estimate of what the rules occupy without
 their cases (headings and tables ~70, Non-negotiables ~70, the rest ~130). Its
-control is that the suite is red today. AC-2..AC-4 are **mechanical** with
+control is that the suite is red today. *Amended in GREEN (A-1): the
+estimate was wrong. Non-negotiables holds about 115 lines of rule text, not
+70, and moving every C-2 case reaches 369, so the user set the cap at 370.*
+AC-2..AC-4 are **mechanical** with
 settled needles read out of the file. Nothing is oracle-free.
 
 **C-6. No signature changes; no script changes.**
@@ -286,6 +290,23 @@ name, below the table.
   here.
 - A `rules.md` section the trim would have to invent (an index of cases):
   the pointers are per rule.
+
+## Amendments
+
+- **A-1 (AC-1, 2026-11-03, approved by the user, ryanc, in chat: "Cap at
+  370").**
+  - Before: "then there are at most 280 (399 today)".
+  - After: "then there are at most 370 (399 today)".
+  - Why: GREEN moved all 11 C-2 cases and reached 369 lines without
+    deleting or rewording a rule. The orchestrator reproduced the ceiling
+    independently (`## Notes`, "GREEN stopped on AC-1"): the cases total
+    53 non-blank lines, so even with no pointers rules.md would be about
+    346. 280 was an estimate in C-5, not a measurement.
+  - The choice the user did not take: widen C-2 to move more passages.
+  - 370 keeps the 30 lines saved and fails the suite if rules.md grows
+    again.
+  - C-4 and C-5 are amended to match. The test's `CAP` constant changes
+    through a return to RED (`## Regressions`).
 
 ## Test plan
 
@@ -609,8 +630,72 @@ needed amending.
 
 ## Regressions
 
-<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
-     otherwise. One block per return, with the PASTED probe output. -->
+### R-1 (2026-11-03, GREEN -> RED): the AC-1 cap was an estimate
+
+- **What was wrong.** `.claude/tests/rules-trim.test.sh` pinned `CAP=280`.
+  That number was the planner's estimate in C-5, not a measurement, and the
+  user corrected AC-1 to 370 (`## Amendments`, A-1).
+- **How it was found.** GREEN moved every C-2 case into
+  `.claude/skills/tdd-cycle/reference/cases.md` without deleting or rewording
+  a rule, and rules.md came to 369 lines. AC-1 could not be met at 280.
+- **The fix.** One line, `CAP=280` -> `CAP=370`, plus its comment. Nothing
+  else in the file changed. The fixtures derive from `$CAP`, so the suite
+  still executes 30 assertions and its floor is unchanged.
+- **What it asserts now.** `AC-1: rules.md is at most 370 lines`: the real
+  rules.md has at most 370 lines, and the whole-tree `rules_trim_problems`
+  check reports `rules.md: N lines, the cap is 370` when it has more.
+- **How it was earned.** The corrected assertion passes on its first run
+  against GREEN's 369-line rules.md, so I mutated rules.md by adding two
+  lines (to 371, one over the cap) and ran the suite once. Exactly the AC-1
+  cap assertion and the whole-tree check went red, both naming 371 against
+  370. mutate.sh restored the file byte-for-byte, `mutate.sh --check` is
+  clean, and rules.md is back to 369.
+
+```
+$ bash scripts/mutate.sh .claude/harness/rules.md '1s/^/x\nx\n/' -- bash .claude/tests/rules-trim.test.sh
+=== mutate: .claude/harness/rules.md (2 line(s) changed by 1s/^/x\nx\n/) ===
+  1 + x
+  2 + x
+
+=== mutate: running bash .claude/tests/rules-trim.test.sh ===
+
+  the pinned lists are the Contract's, whole
+
+  the real tree (red until GREEN moves the cases)
+    FAIL AC-1: rules.md is at most 370 lines
+         expected: 
+         actual:   rules.md: 371 lines, the cap is 370
+    FAIL rules_trim_problems over the real tree prints nothing: every rule kept, every case moved and pointed at
+         expected: 
+         actual:   rules.md: 371 lines, the cap is 370
+
+  the fixture: compliant by construction
+
+  AC-1  the cap
+
+  AC-2  every rule opener stays, exactly
+
+  AC-3  every case moves to cases.md, under a heading, and is pointed at
+
+  AC-4  SKILL.md lists cases.md under ## Details
+
+rules-trim: 28 passed, 2 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_harness_rules.md.20261103T155950Z.1240.bak) ===
+
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+After the fix, against the unmutated tree:
+
+```
+$ bash scripts/attest.sh -- bash scripts/selftest.sh rules-trim
+exit:     0
+last:     1 harness suite(s) passed.
+log:      .claude/state/attest-logs/20261103T160022Z.739.log
+(rules-trim: 30 passed, 0 failed; floor met, 30 executed, 30 declared)
+```
 
 ## Gate results
 
@@ -642,3 +727,30 @@ needed amending.
   reason. `gates.sh --fast` was `fresh`, exit 0 (0 gates ran). Read
   `rules_trim_problems` and its helpers. `mutate.sh --check` is clean.
   Neither command was re-run by the orchestrator.
+- GREEN stopped on AC-1 (2026-11-03). The feature-developer (resolved
+  claude-opus-5-5; it read the handoff, the contract and the criteria with
+  `story.sh section` rather than getting them pasted) moved all 11 C-2 cases
+  and reached 369 lines, not 280. In `rules-trim` the result is 28/30; the
+  two failures are both `rules.md: 369 lines, the cap is 280`. The other net
+  suites passed through attest: policy, reporting, mutate, new-story,
+  settings and shipped-docs.
+  Independent reproduction (orchestrator, not reusing its numbers):
+  `git diff -U0 HEAD -- rules.md` removes 53 non-blank lines and adds 23 for
+  pointers, a net 30. Per section, before → after: Non-negotiables 153 → 128,
+  Path ownership 82 → 79, model 38 → 37, Mutation work 29 → 28, Phase
+  permissions 59 → 59, Reporting 38 → 38. Even with every C-2 case removed
+  and no pointer at all, rules.md would be about 346 lines (399 - 53). So
+  280 is out of reach by C-2 alone. C-5's estimate of ~70 lines for
+  Non-negotiables was low: about 115 lines of it are rule text. This is the
+  AC-1 question put to the user, pending.
+- GREEN verification (orchestrator, 2026-11-03): after the RED return
+  (R-1, test-developer resolved claude-opus-5-5), GREEN was a no-op. The
+  source was unchanged, and its rules.md (369 lines) already met the
+  amended cap. `attest.sh check -- bash scripts/selftest.sh rules-trim`
+  answered `fresh`: `exit: 0`, `1 harness suite(s) passed.` (30/30).
+  `gates.sh --fast` was `fresh`, exit 0. Neither was re-run by the
+  orchestrator. Read the diff stat, the test diff (CAP only), the eight
+  pointers and cases.md's seven headings. `mutate.sh --check` is clean. No
+  feature-developer was dispatched for the no-op. The GREEN agent's net-suite
+  runs (policy, reporting, mutate, new-story, settings, shipped-docs, all
+  exit 0) predate the CAP edit, so AC-5 stands to the GATES self-test.
