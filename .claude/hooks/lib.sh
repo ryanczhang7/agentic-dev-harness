@@ -1764,3 +1764,23 @@ $(printf '%s\n' "$files" | B="$blobs" awk '
   fi
   printf '%s\n' "$listing" | _work_hash_blob_listing
 }
+
+# story_section <file> <name>   The body of `## <name>`: every line after the
+# heading up to the line before the next column-0 `## ` (a later heading of
+# the same name continues it rather than ending it), heading excluded,
+# fences NOT special. Returns 1, printing nothing, when no heading matches.
+# This is check-boundaries.sh's `section()` reading with one tightening: the
+# name is matched against the WHOLE heading text (trailing spaces and tabs
+# trimmed), not as a prefix, so `Handoff` does not find
+# `## Handoff: RED -> GREEN`. The name goes through ENVIRON rather than
+# `awk -v`, which would expand backslash escapes in it. scripts/story.sh is
+# the caller; converging check-boundaries.sh onto it is a recorded follow-up.
+story_section() {
+  STORY_SECTION_NAME="$2" awk '
+    BEGIN { name = ENVIRON["STORY_SECTION_NAME"] }
+    /^## / { h = substr($0, 4); sub(/[ \t]+$/, "", h) }
+    /^## / && h == name { on = 1; found = 1; next }
+    on && /^## / { exit }
+    on { print }
+    END { exit !found }' "$1"
+}

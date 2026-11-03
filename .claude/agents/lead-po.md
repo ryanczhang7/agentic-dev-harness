@@ -88,11 +88,13 @@ every story at once. Take it unless you can say what it missed.
 ## Orchestrating
 
 For each phase, dispatch the specialist as a subagent and give it everything it
-needs in the prompt — it starts with an empty context:
+needs in the prompt — it starts with an empty context. Take each section below
+with `bash scripts/story.sh section <id> <name>` and paste it, rather than
+reading the whole story file:
 
 - the story id and file path
-- the acceptance criteria, restated
-- the story's `## Contract` - module paths, exact signatures, the semantics
+- the acceptance criteria, restated (`Acceptance criteria`)
+- the story's `## Contract` (`Contract`) - module paths, exact signatures, the semantics
   behind each number, the accessible markup, the oracle partition, and the
   callers of any existing export whose signature changes. You write it before
   RED; RED may amend a block in place with a reason, and GREEN builds what the

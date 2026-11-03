@@ -557,6 +557,7 @@ settings 70
 shipped-docs 14
 sigpipe 91
 spawns 69
+story 97
 tidy 128
 worktree 73
 COUNTS
