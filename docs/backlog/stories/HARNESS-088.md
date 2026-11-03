@@ -209,7 +209,8 @@ refusal names the one that fell"; and the paragraph after "A gate with no
 `evidence` line behaves exactly as before" (around line 226) gains one
 sentence: `--audit` and a run refuse an evidence line with an **empty** regex
 (it matches every line) and a gate id declared twice. `VERSION` bumps in GREEN
-(`102` -> `103`).
+(`106` -> `107`; planned as `102` -> `103` before HARNESS-084..087 landed
+at 103..106).
 
 **C-4. Self-tests.** `gates.test.sh`: one `describe` for AC-1/AC-2 and one for
 AC-3/AC-4, each built with `write_conf` and `gates --audit` / `gates` as the
@@ -456,3 +457,18 @@ a merge of `main` into this branch before its GATES run, as the Lead PO's
 `story/HARNESS-084-...` with HARNESS-084 active at RED (docs writable, which
 is all this planning wrote); the story branch above is created by `phase.sh
 set HARNESS-088 RED` from `main` when the story starts, not now.
+
+**Pre-dispatch checks (orchestrator, PLANNED → RED, 2026-11-03, release 106):**
+none of `scripts/gates.sh`, `scripts/check-boundaries.sh`,
+`.claude/tests/gates.test.sh` or `.claude/tests/boundaries.test.sh` has
+changed since this story was planned (d8cfc42). The Contract's line
+references hold: gates.sh 181, 506, 580 and 997, and check-boundaries.sh 949
+(`TF`) and 992 (the three-disjunct test). The floors are still
+`boundaries 502` and `gates 920` in both tables. Rule 5a's parenthesis is
+at quality-gates SKILL.md:613-614, and the "behaves exactly as before"
+paragraph is at :225. The only stale item was C-3's VERSION number, now
+106 → 107, a contract edit at PLANNED with no AC touched. Callers (C-6):
+`project_conf_loosenings` is called only from 3j, which I rechecked; no
+signature changes. `epic:` is empty, so there is no done-when to check. No
+configured gate here; the artifact is judged by `selftest.sh gates`,
+`selftest.sh boundaries` and `gates.sh --audit`, all run by CI.
