@@ -716,6 +716,119 @@ log:      .claude/state/attest-logs/20261103T160022Z.739.log
 (rules-trim: 30 passed, 0 failed; floor met, 30 executed, 30 declared)
 ```
 
+## Diff review
+
+Round 1 (2026-11-03). A fresh feature-developer ran the review with the
+`diff-review` skill and resolved to claude-opus-5-5 (no override). It
+changed no file. Report, as returned:
+
+What this change does: It moves the worked examples (the incidents that
+taught each rule) out of `.claude/harness/rules.md`, which is loaded on every
+turn, into a new `.claude/skills/tdd-cycle/reference/cases.md`, and leaves a
+pointer in each rule. rules.md drops from 399 to 369 lines, under the amended
+cap of 370. A new suite, `.claude/tests/rules-trim.test.sh`, pins the rule
+openers, the move of every case and the pointers.
+
+How I checked it: I compared every removed rules.md line in
+`git diff main...HEAD` with cases.md, sentence by sentence. All 53 removed
+lines are in cases.md, word for word apart from light connective edits. That
+includes the "base ref expression" needle, which C-2 does not list. No rule
+statement and no instruction was lost.
+
+All 8 pointers name a cases.md `## ` heading exactly, across their line
+wraps. cases.md has 7 headings, and "Three guards…" is cited twice. Its
+preamble makes it stand alone and says rules.md wins on any conflict. The
+`## Details` entry is in SKILL.md, and SKILL.md's "A generator is part of the
+specification" section, which cases.md points to, exists at line 233.
+
+Other suites: I grepped `.claude/tests/` for readers of rules.md and the
+skills. Only policy, reporting, mutate, settings, new-story, security-audit
+(a heading name) and briefs (ponytail needles in SKILL.md) read the real
+text. refresh and boundaries only write fixtures. Nothing else in the tree
+cites a moved passage as being in rules.md. I ran rules-trim, briefs, policy,
+reporting, new-story, shipped-docs, settings and mutate one at a time with
+`bash scripts/selftest.sh <suite>`, and each ended
+`1 harness suite(s) passed.`
+
+**Should fix:**
+
+1. **The places where rules.md now reads wrong are not recorded in
+   `## Notes`** (`.claude/harness/rules.md:207-212, 227-231, 245-247,
+   265-271`; story `## Notes`)
+   - **What this is:** The story's `## Out of scope` says a rule that reads
+     wrong after its case leaves "is reported in `## Notes`, not fixed here."
+     The brief said GREEN had already flagged five such spots there. Neither
+     `## Notes` nor the GREEN commit message contains them.
+   - **Problem:** I found these. None is a lost rule, and each has its
+     statement and instruction intact:
+     - (a) l.207 "Four in one day, across two repositories (the case…)." now
+       has no noun: four what.
+     - (b) l.212 "Only the third catches the third case." refers to a list
+       that has left. cases.md l.52-54 does explain it.
+     - (c) l.230 "The first of them broke the phase lock…" refers to the
+       moved list, and this fact is in rules.md only, not in cases.md.
+     - (d) l.245 "for a measured reason (the case…)": the measurement is now
+       one hop away. The general lesson ("Writing a caveat where the
+       mechanism lives does not make the next person check…") stays.
+     - (e) l.265-271, the narrowing rule. This is the closest call. rules.md
+       no longer says *why* loosening a comparison is always a weakening (it
+       "stops it distinguishing values for every number in the document"),
+       or that it is the tempting edit ("a one-line edit in the file the
+       failure is reported in"). I judge it not lost: the bold opener still
+       states the rule, the three-part instruction stays, and the reason is
+       word for word in cases.md and in SKILL.md l.252-253, the skill GREEN
+       loads.
+     - (f) l.100-103 "Hence the other half of the rule" now follows a
+       pointer, not the story that motivated it. It still reads.
+   - **Fix:** The orchestrator adds one Notes entry listing (a) to (f) with
+     this judgement. It can also note a follow-up to reword (a) to (c),
+     which this story puts out of scope. Rewording now also hits the cap:
+     there is one line of headroom.
+   - **If we skip it:** The story breaks its own promise. The next person to
+     trim rules.md cannot tell these fragments were seen and accepted.
+
+2. **The suite does not check that a pointer names a heading that exists**
+   (`.claude/tests/rules-trim.test.sh`, the AC-3 pointer and heading checks)
+   - **What this is:** The check that each rules.md section points at
+     cases.md, and that each needle sits under some `## ` heading.
+   - **Problem:** The pointer check looks only for the string
+     `reference/cases.md` in the section. The heading check accepts any
+     `## ` line, as C-4 deliberately settled. So renaming
+     `## Four needles that could not fail` to `## Needles` in cases.md, or
+     typing a pointer's heading wrong, leaves the suite at 30/30 with a
+     dangling pointer. The same holds for the "base ref expression" bullet:
+     it is not a C-2 needle, so deleting it from cases.md is also invisible.
+   - **Fix:** This needs a return to RED. Add one assertion: every quoted
+     heading in a `(the case: …, "<heading>")` pointer, joined across its
+     line wrap, matches a `## <heading>` line in cases.md. Plus one fixture
+     control for a renamed heading. Or the orchestrator declines it, with a
+     reason, in `## Diff review`.
+   - **If we skip it:** The next edit to cases.md can quietly break the link
+     from a rule to its evidence, and that link is the whole point of the
+     change.
+
+Not checked: The full self-test, as the brief said. Only the eight suites
+above were run.
+
+Model: claude-opus-5-5 (Opus 5.5), as declared in `feature-developer`'s
+`model:`, no override.
+
+Verdict: Ship.
+
+**PO decisions on round 1.**
+- **PO decision 2 (Should fix 1): taken.** The (a)-(f) list goes into
+  `## Notes` below, with the reviewer's judgement that none is a lost rule.
+  GREEN's hand-back did list five of them; I had pointed at that report in
+  Notes but not copied the list in, which was my omission. Rewording (a)-(c)
+  is a follow-up, out of scope here.
+- **PO decision 3 (Should fix 2): declined for this story, filed as a
+  follow-up.** C-4 settled that the heading check accepts any `## ` line, and
+  it has no output shape for a pointer naming a missing heading. Adding one
+  means a new criterion and a return to RED, for a link that the reviewer
+  verified holds on this tree, all eight pointers against seven headings.
+  The follow-up is one assertion plus a renamed-heading fixture control,
+  taken with the rewording of (a)-(c).
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -794,3 +907,21 @@ log:      .claude/state/attest-logs/20261103T160022Z.739.log
   log `.claude/state/attest-logs/20261103T160732Z.7819.log`. No gate is
   configured in this repo; the self-test at GATES → REVIEW is the real
   check, including AC-5's net suites.
+- Read-wrong spots after the trim (diff review round 1, Should fix 1; none
+  is a lost rule, and each has its statement and instruction intact):
+  - (a) rules.md l.207 "Four in one day, across two repositories (the
+    case…)." has no noun.
+  - (b) l.212 "Only the third catches the third case." refers to a moved
+    list; cases.md l.52-54 explains it.
+  - (c) l.230 "The first of them broke the phase lock…" refers to the moved
+    list, and that fact is now only in rules.md.
+  - (d) l.245 "for a measured reason": the measurement is one hop away.
+  - (e) l.265-271: the narrowing rule's *why* (a loosened comparison stops
+    distinguishing values for every number; it is the tempting one-line
+    edit) is now only in cases.md and SKILL.md l.252-253.
+  - (f) l.100-103 "Hence the other half of the rule" follows a pointer.
+- Follow-up, not this story: reword (a)-(c) (one line of headroom under the
+  370 cap). Also add to rules-trim a check that every pointer's quoted
+  heading matches a `## ` line in cases.md, with a renamed-heading fixture
+  control (diff review Should fix 2, PO decision 3). It needs a failing
+  test first.
