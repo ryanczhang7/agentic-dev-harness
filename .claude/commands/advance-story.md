@@ -30,11 +30,13 @@ lists the names, with their lengths):
 
 A dispatch prompt is built from those sections, pasted, not from the file; a
 `## Handoff` section is pasted whole, because it is the channel between phases.
-A `## ` line inside a fenced block counts as a heading, because that is
-`check-boundaries.sh`'s reading, so when `bash scripts/story.sh sections $1`
-lists a name more than once, `section` returned only the first part: read the
-rest of that section from the file by line range rather than taking the first
-part as the whole.
+A `## ` line inside a fenced block is read as a heading, because that is
+`check-boundaries.sh`'s reading: the section holding it ends there, cut short
+with nothing to say so, and if a real section has the same name, `section`
+prints every copy joined, the stray fenced lines included. So when
+`bash scripts/story.sh sections $1` lists a name twice, or a heading the story
+should not have, find the real boundaries with `grep -n '^## '` on the story
+file and read that section by line range.
 Then, based on the story's current phase:
 
 **PLANNED → RED.** Confirm the acceptance criteria are testable; fix them with

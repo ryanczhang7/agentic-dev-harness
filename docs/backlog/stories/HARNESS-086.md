@@ -601,15 +601,41 @@ PO decisions:
   row prefixes) are unchanged.
 - 4. Should fix 2 is a behaviour change to `story.sh` with no failing test
   in front of it, so it is not made in GATES. This story mitigates it in
-  prose: advance-story.md tells the orchestrator that a name `sections`
-  lists twice is cut at the second, and to read the rest by line range. The
-  stderr note is a follow-up story (RED first), together with finding 3.
+  prose: advance-story.md tells the orchestrator how a fenced `## ` line
+  splits a section (premise corrected by round 2 and PO decision 5: copies
+  are joined, not cut). The stderr note is a follow-up story (RED first),
+  together with finding 3.
+### Round 2 (fresh feature-developer, resolved claude-opus-5-5, 2026-11-02)
+
+Verdict: fix 1 first. Every table row now names every section its procedure
+reads; story 97/0, procedure 118/0, dispatch 67/0, policy 17/0, reporting
+27/0, phase 73/0, boundaries 502/0 on HEAD (37e6b08).
+
+**Must fix 1. The new duplicate-heading sentence describes the wrong
+behaviour.** `story_section` turns printing back on at every `## <name>` with
+the same name, so `section` JOINS the copies; it does not stop at the second.
+`bash scripts/story.sh section HARNESS-054 Notes | wc -l` gives 339
+(80+22+237), the whole of Notes. Round 1's "80 of ~340" was read from
+`sections`, never from `section`. What does lose or mix content: the section
+holding a fenced `## ` line ends there (truncated, and listed only once), and
+if the fenced name is also a real section's name, that real section's read
+starts with the stray lines. Fix: say that, and correct PO decision 4.
+
+Orchestrator reproduction, on a different input (a 4-line story of my own):
+`## A / a1 / ``` / ## B / fenced / ``` / a2 / ## B / real b / ## C`.
+`story_section A` printed `a1` and the opening fence only (`a2` lost);
+`story_section B` printed `fenced`, the closing fence, `a2`, `real b`.
+And `section HARNESS-054 Notes | wc -l` = 339.
+
+PO decision 5: PO decision 4's premise ("cut at the second") was wrong; the
+deferral stands (a behaviour change needs a failing test first), and the
+follow-up is now specified against the measured behaviour above.
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-02T23:12:31Z
-    commit: 40d0206 (working tree had uncommitted changes)
+    run:    2026-11-03T01:02:17Z
+    commit: 37e6b08 (working tree had uncommitted changes)
     tree:   a475a70dc57d366e8f5e5d9f743ac120c0584994
     result: pass (0 ran, 7 unconfigured, 0 known)
 
@@ -691,6 +717,8 @@ PO decisions:
   `All required gates passed (0 ran, 7 unconfigured, 0 known).` As always in
   this repo, the self-test at GATES → REVIEW is the real check.
 - Follow-up, not this story (diff review round 1, findings 2 and 3):
-  `story.sh section` warns on stderr when the name occurs more than once
-  (HARNESS-054's Notes is the real case), and `story_section`, `headings`
+  `story.sh section` warns on stderr when a heading name occurs more than
+  once (HARNESS-054 lists `Notes` three times; `section` joins all three,
+  339 lines, and a section holding a fenced `## ` line is truncated with no
+  flag - see diff review round 2), and `story_section`, `headings`
   and `frontmatter` trim a trailing CR. Both need a failing test first.
