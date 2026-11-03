@@ -4,8 +4,8 @@ title: The orchestrator reads a story by section through scripts/story.sh
 slug: the-orchestrator-reads-a-story-by-sectio
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-086-the-orchestrator-reads-a-story-by-sectio
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/story.sh, .claude/hooks/lib.sh, .claude/tests/story.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, CLAUDE.md, .claude/harness/VERSION]
