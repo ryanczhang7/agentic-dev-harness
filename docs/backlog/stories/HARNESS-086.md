@@ -660,6 +660,22 @@ stray or missing lines, exit 0 regardless), and gives the workaround with
 fence lines listed (nice to have 2, taken). Nice to have 3 is taken (comment
 only, no behaviour). The follow-up carries round 3's case alongside round
 2's.
+### Round 4 (fresh feature-developer, resolved claude-opus-5-5, 2026-11-02)
+
+Every claim in the sentence and both comments probed true on scratch stories
+(cut short, stray lines before a real copy, stray lines in place of a
+non-adjacent real copy, same-name continuation, no match rc=1); the
+workaround grep lists fence lines in pairs on this story; the double-backtick
+span is valid markdown; no suite pins the removed wording.
+
+Nice to have (recorded as follow-up, not made: a change restarts the loop):
+1. The workaround is a shell `grep`, which `/advance-story`'s allowed-tools
+   do not permit; the Grep tool with `^(## |```|~~~)` does the same.
+2. "in a story that has one `section` can" wants a comma after "one".
+3. The comments' "a later heading of the same name" means the NEXT heading;
+   say "if that heading has the same name, the section continues".
+
+Verdict: Ship.
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -752,3 +768,7 @@ only, no behaviour). The follow-up carries round 3's case alongside round
   339 lines; a fenced `## X` before a non-adjacent real `## X` makes `section X` print the stray lines instead of the real body, exit 0 - diff review rounds 2 and 3; a section holding a fenced `## ` line is truncated with no
   flag - see diff review round 2), and `story_section`, `headings`
   and `frontmatter` trim a trailing CR. Both need a failing test first.
+- Follow-up, not this story (diff review round 4, nice to have 1-3): name the
+  Grep tool for the workaround in advance-story.md, add the comma, and
+  reword the same-name parenthetical in lib.sh and story.sh. Prose and
+  comments only; take them with the stderr-note follow-up.
