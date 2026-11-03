@@ -4,8 +4,8 @@ title: gates.sh refuses a duplicate gate id and an empty evidence regex, and a l
 slug: gates-sh-refuses-a-duplicate-gate-id-and
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-088-gates-sh-refuses-a-duplicate-gate-id-and
 depends_on: []      # HARNESS-083 is DONE (PR #171); nothing else is needed first
 touches: [scripts/gates.sh, scripts/check-boundaries.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
@@ -366,8 +366,81 @@ settled. RED pins exactly and may add a worked row, not change a printed value.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All the tests are mechanical, one level: the suites run the real scripts in a
+fixture repository and pin whole lines, exit statuses and summaries. Nothing
+reads either script's internals (C-6).
+
+**`.claude/tests/gates.test.sh`**: two describes before `summary "gates"`, on
+the shared `$FIX`, each starting from no active story. `h88_conf` writes
+project.conf from whole lines with `printf`, so AC-3's trailing-space spelling
+survives. The C-1 `<why>` texts are the constants `H88_DUP_AUDIT`,
+`H88_DUP_RUN`, `H88_EMPTY_AUDIT` and `H88_EMPTY_RUN`, copied from C-1. They are
+compared as whole lines (`count_line`, which is `grep -cxF`), as the complete
+list of `^FAIL` lines (`h88_fails`), or as the complete run summary
+(`verdict_of`, the HARNESS-052 helper, with timings masked to `(Ns`).
+
+- `HARNESS-088 AC-1/AC-2`:
+  - AC-1 is the duplicate under `--audit`. The FAIL line is whole and is the
+    only FAIL. The first line is still `ok   unit         evidence: ...`
+    exactly once. The audit ends `1 manifest problem(s).`, does not print
+    `Manifest audit passed.`, and exits 1.
+  - AC-1 control: the second line deleted gives `Manifest audit passed.`, no
+    FAIL and rc 0.
+  - AC-2 is the duplicate on a full run. The whole summary is `PASS unit (Ns,
+    observed 47)` / the duplicate FAIL / `1 required gate(s) failed.`, rc 1,
+    and `=== gate: unit (required) ===` appears once, so the duplicate runs
+    nothing. The same holds for the HARNESS-083 round-2 shape (the second line
+    is `optional` with `exit 1`, which today is a WARN at rc 0), and for
+    `--gate unit` (C-1: the fault is detected before the filter).
+  - AC-2 control: one line gives the whole summary `PASS` / `All required
+    gates passed (1 ran, 0 unconfigured, 0 known).` and rc 0.
+- `HARNESS-088 AC-3/AC-4`:
+  - AC-3 runs `evidence | unit |`, `evidence | unit` and `evidence | unit |   `
+    under `--audit`. Each gives the empty-regex FAIL as the only FAIL,
+    `1 manifest problem(s).` and rc 1.
+  - AC-3 controls: `-` is still `ok   unit         (liveness declared
+    unassertable)`, and no evidence line is still `WARN unit         no
+    evidence line; ...`. Each has no FAIL line, prints `Manifest audit
+    passed.` and exits 0.
+  - C-1 semantics: the same FAIL on an **optional** gate, on an
+    **unconfigured** gate (no command), and on an empty **first** evidence line
+    with a real regex after it.
+  - AC-4: `printf 'nothing here\n'` under `evidence | unit |`, on a full run,
+    gives the whole summary = the empty-regex run FAIL plus `1 required gate(s)
+    failed.`, no `PASS unit` line, and rc 1.
+  - AC-4 control: the same command under `evidence | unit | nothing here`
+    gives the whole summary `PASS unit (Ns)` / `All required gates passed (1
+    ran, 0 unconfigured, 0 known).` and rc 0. There is no `observed` count,
+    because the matched line has no digits.
+  - C-1, both faults on one gate (**pinned**): two `gate | unit` lines and
+    `evidence | unit |`. The FAIL lines are exactly the empty-regex line, then
+    the duplicate line, then `2 manifest problem(s).`, rc 1.
+
+**`.claude/tests/boundaries.test.sh`**: one describe, `HARNESS-088: a repeated
+threshold flag is judged by four statistics, and the refusal names the pair
+that fell`. It sits after HARNESS-083 return 2 and before `summary`, uses
+HARNESS-083's `conf_story`, `gl_swap`, `gl_refused` and `gl_clean`, and ends
+with `checkout main`. Each `gl_refused` call is two assertions: the whole
+`[gate-loosened]` line, and `rc|FAIL lines` = `1|1`. Each `gl_clean` call is
+two: `0|`, and 3j's `1 commit(s) judged` line.
+
+| case (C-2 row) | finding pinned | AC |
+|---|---|---|
+| lint `60 90 60` -> `60 70 60` | `lint: threshold lowered --threshold 90 -> 70` | AC-5 |
+| lint `60 90 60` -> `60 95 60` | clean | AC-5 control |
+| lint `60 90 60` with `-q` added | clean | AC-5 control |
+| python `=10 =90` -> `=10 =80` | `coverage: threshold lowered --cov-fail-under 90 -> 80` | AC-6 |
+| python `=90 =10` -> `=80 =10` | `... --cov-fail-under 90 -> 80` | AC-7 |
+| python `=90 =10 =95` -> `=80 =10 =95` | `... --cov-fail-under 90 -> 80` (first arm alone; DV-2's fixture) | AC-7 |
+| python `=90` -> `=90 =10` | `... --cov-fail-under 90 -> 10` (C-2 row "HARNESS-083's C-2 check") | C-2 |
+| lint `80` -> `80 30 90` | `lint: threshold lowered --threshold 80 -> 30` (C-2 row, lowest arm) | C-2 |
+
+AC-8 needs no new assertion (C-4). It was run against today's tree before
+anything was written; the result is in the handoff.
+
+**Floors**: `gates 920 -> 972` (+41 new, plus 11 that HARNESS-080 added
+without raising the floor), `boundaries 502 -> 518` (+16), in `floors.conf`
+and in its hand copy in `selftest.test.sh`.
 
 ## Handoff: RED -> GREEN
 
@@ -388,6 +461,264 @@ settled. RED pins exactly and may add a worked row, not change a printed value.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED was written on 2026-11-03 by `test-developer`, running on
+**claude-opus-5-5** with no override. Every timing below is local; none is
+from CI.
+
+**Commands.**
+
+    bash scripts/selftest.sh gates           # ~20 min here
+    bash scripts/selftest.sh boundaries      # ~56 min here, host under load
+    bash scripts/gates.sh --fast
+
+Both new suites can be iterated on a scratch subset instead:
+
+- `sub088.test.sh` takes boundaries.test.sh lines 1-110, 1985-2092, 2879-3024
+  and the HARNESS-088 describe through to the end, with line 9 rewritten to the
+  absolute `_lib.sh`. It runs in about 6 minutes: 18 assertions, which are the
+  HARNESS-081 fixture, the HARNESS-083 premise and the 16 new ones.
+- for gates, take lines 1-13 (line 8 rewritten to the absolute `_lib.sh`),
+  843-844 (`count_line`, `count_re`), 3219-3226 (`verdict_of`) and the
+  HARNESS-088 block. It runs in about 2.5 minutes.
+
+**Attested runs** (the tree is `619fe3c...`, with every test file staged):
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh gates
+      exit: 1  last: 1 of 1 harness suite(s) FAILED.
+      log:  .claude/state/attest-logs/20261103T210541Z.42206.log
+    bash scripts/attest.sh -- bash scripts/selftest.sh boundaries
+      exit: 1  last: 1 of 1 harness suite(s) FAILED.
+      log:  .claude/state/attest-logs/20261103T212522Z.67393.log
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+      exit: 0  last: All required gates passed (0 ran, 5 unconfigured, 0 known).
+      log:  .claude/state/attest-logs/20261103T222132Z.120108.log
+
+Every gate in this repository is UNCONFIGURED, so `--fast` judges nothing
+here. Its shape is correct: no gate failed on a config error or a timeout. The
+real tree's `gates.sh --audit` still prints `Manifest audit passed.`
+
+**Failure, gates** (the full suite, trimmed to the failures and the summary;
+all 30 come after the `HARNESS-088 AC-1/AC-2` header, and none comes before it):
+
+```
+  HARNESS-088 AC-1/AC-2: a gate id declared twice is a manifest fault, under --audit and on a run
+    FAIL AC-1: --audit prints the duplicate's FAIL line, whole
+    FAIL AC-1: and it is the audit's only FAIL line
+    FAIL AC-1: the first line is still judged as today
+    FAIL AC-1: the audit ends with 1 manifest problem(s).
+    FAIL AC-1: and does not say it passed
+    FAIL AC-1: and exits 1
+    FAIL AC-2: a full run reports the first line, then the duplicate's FAIL, then 1 failed - the whole summary
+    FAIL AC-2: and exits 1
+    FAIL AC-2: the duplicate runs nothing - unit's command ran once
+    FAIL AC-2: an optional second line with a failing command is the same fault, not a WARN - the whole summary
+    FAIL AC-2: and that run exits 1
+    FAIL AC-2 (C-1): --gate unit on a duplicated id reports the fault too
+    FAIL AC-2 (C-1): and exits 1
+
+  HARNESS-088 AC-3/AC-4: an empty evidence regex is a manifest fault, under --audit and on a run
+    FAIL AC-3: 'evidence | unit |' - --audit's only FAIL line is the empty-regex one, whole
+    FAIL AC-3: 'evidence | unit |' - the audit ends with 1 manifest problem(s).
+    FAIL AC-3: 'evidence | unit |' - and exits 1
+    FAIL AC-3: 'evidence | unit' - --audit's only FAIL line is the empty-regex one, whole
+    FAIL AC-3: 'evidence | unit' - the audit ends with 1 manifest problem(s).
+    FAIL AC-3: 'evidence | unit' - and exits 1
+    FAIL AC-3: 'evidence | unit |   ' - --audit's only FAIL line is the empty-regex one, whole
+    FAIL AC-3: 'evidence | unit |   ' - the audit ends with 1 manifest problem(s).
+    FAIL AC-3: 'evidence | unit |   ' - and exits 1
+    FAIL AC-3 (C-1): an OPTIONAL gate with an empty regex is the same FAIL - FAIL lines|rc
+    FAIL AC-3 (C-1): an UNCONFIGURED gate with an empty regex is the same FAIL, not ok (unconfigured) - FAIL lines|rc
+    FAIL AC-3 (C-1): an empty FIRST evidence line is the fault though a real regex follows - FAIL lines|rc
+    FAIL AC-4: a full run - the whole summary is the empty-regex FAIL and 1 failed
+    FAIL AC-4: no PASS line for unit
+    FAIL AC-4: and the run exits 1
+    FAIL C-1: duplicated id with an empty regex - the first line's empty-regex FAIL, then the second's duplicate FAIL
+    FAIL C-1: and that is 2 manifest problem(s)., exit 1
+
+gates: 942 passed, 30 failed
+FAIL gates  did 942 units of work, below the floor of 972 in .claude/tests/floors.conf
+```
+
+Two of the failures, shown with their expected and actual values:
+
+```
+    FAIL AC-2: a full run reports the first line, then the duplicate's FAIL, then 1 failed - the whole summary
+         expected: PASS         unit (Ns, observed 47)
+         FAIL         unit (declared twice: a second `gate` line for one id in project.conf; keep one)
+         1 required gate(s) failed.
+         actual:   PASS         unit (Ns, observed 47)
+         PASS         unit (Ns, observed 47)
+         All required gates passed (2 ran, 0 unconfigured, 0 known).
+    FAIL AC-4: a full run - the whole summary is the empty-regex FAIL and 1 failed
+         expected: FAIL         unit (evidence regex is empty in project.conf; an empty regex matches every log line)
+         1 required gate(s) failed.
+         actual:   PASS         unit (Ns)
+         All required gates passed (1 ran, 0 unconfigured, 0 known).
+```
+
+**Failure, boundaries** (the full suite; all 5 come after the HARNESS-088
+header, and none comes before it):
+
+```
+  HARNESS-088: a repeated threshold flag is judged by four statistics, and the refusal names the pair that fell
+    FAIL HARNESS-088 AC-5: --threshold 60 90 60 -> 60 70 60 (only the highest falls): refused by the whole line naming 'lint: threshold lowered --threshold 90 -> 70'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-088 AC-5: --threshold 60 90 60 -> 60 70 60 (only the highest falls): and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+    FAIL HARNESS-088 AC-6: --cov-fail-under=10 =90 -> =10 =80 names the pair that moved: refused by the whole line naming 'coverage: threshold lowered --cov-fail-under 90 -> 80'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-088 AC-7: --cov-fail-under=90 =10 -> =80 =10 (first and highest fall): refused by the whole line naming 'coverage: threshold lowered --cov-fail-under 90 -> 80'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-088 AC-7: --cov-fail-under=90 =10 =95 -> =80 =10 =95 (only the first falls): refused by the whole line naming 'coverage: threshold lowered --cov-fail-under 90 -> 80'
+         expected: 1
+         actual:   0
+
+boundaries: 513 passed, 5 failed
+FAIL boundaries  did 513 units of work, below the floor of 518 in .claude/tests/floors.conf
+```
+
+**Why these are the right failures.** Both suites load and run to `summary`.
+Every pre-existing assertion passes: gates 931 and boundaries 502, the
+executed counts before this story. Each red is an assertion this story
+introduces, and it fails on today's behaviour:
+
+- **gates.sh accepts the duplicate.** The audit prints `ok` twice and
+  `Manifest audit passed.`; the run executes both lines and passes.
+- **gates.sh accepts the empty regex.** The audit prints `ok   unit
+  evidence: ` with rc 0; the run gives `PASS unit (Ns)`.
+- **check-boundaries.sh has three statistics.** AC-5 is silent today (rc 0,
+  no FAIL). AC-6/AC-7's refusals still fire (their `rc|FAIL lines` halves pass
+  as `1|1`), but they print `<highest before> -> <lowest after>` (line 993).
+  That pair is `90 -> 10`, `90 -> 10` and `95 -> 10`, which I derived from the
+  line and did not print. Either way it is not the whole line pinned, so the
+  whole-line half is red.
+
+**Files touched, and the AC each covers.**
+
+- `.claude/tests/gates.test.sh`: describes `HARNESS-088 AC-1/AC-2` (AC-1,
+  AC-2, C-1's `--gate` clause) and `HARNESS-088 AC-3/AC-4` (AC-3, AC-4, C-1's
+  optional / unconfigured / first-line clauses, C-1's both-faults case), with
+  41 assertions. The Test plan has one line per case.
+- `.claude/tests/boundaries.test.sh`: describe `HARNESS-088: ...`, with 16
+  assertions (AC-5, AC-6, AC-7, and two C-2 rows).
+- `.claude/tests/floors.conf`: `gates 920 -> 972`, `boundaries 502 -> 518`,
+  with a comment.
+- `.claude/tests/selftest.test.sh`: its hand copy, the same two numbers.
+  `bash scripts/selftest.sh selftest` gives 268 passed, 0 failed.
+- this story: `## Test plan` and this handoff.
+
+**What the tests pin for GREEN.** They pin no function or exported name, only
+the scripts' output:
+
+- **gates.sh, `--audit`**: the exact lines are
+  `printf 'FAIL %-12s %s\n' unit '<C-1 audit why>'` for both faults, with C-1's
+  texts byte for byte (the backticks and `|` included), then
+  `N manifest problem(s).` and exit 1. A duplicated first line must still
+  print its own `ok   unit         evidence: <regex>` exactly once.
+- **gates.sh, run**: the lines are `FAIL         unit (<C-1 run why>)` in
+  `results`, counted in `fails`, giving `N required gate(s) failed.` and exit
+  1. This was read off the slow-with-no-reason case, whose summary is
+  `5 required gate(s) failed.`; that is the line this summary takes. The
+  duplicate's FAIL comes after the first line's PASS, in source order, and
+  the duplicate runs nothing: `=== gate: unit (required) ===` is printed once.
+- **Both faults on one gate**: the first line gets the empty-regex fault and
+  the second the duplicate, in that order, giving `2 manifest problem(s).`.
+  That is C-1's "one fault per gate line, the first in source order wins".
+  It follows if the duplicate test sits before `table_get exp` and the
+  empty-evidence test right after it.
+- **check-boundaries.sh**: the whole `[gate-loosened]` line through
+  `want_gl`, with the pair as in C-2's table. Nothing reads `out()`'s
+  tab-separated `<before>\t<after>` fields.
+- **Not constrained**: where in the loop the duplicate test sits, provided it
+  comes before the `--gate`/`--required` filters and after `fault_lose`;
+  `GATE_IDS`' multiplicity; `--list` output (C-1: unchanged, no test);
+  `GATES_FAULT_LOSE` on a duplicated id (not pinned); and how the awk chooses
+  the pair, provided the order is first, last, lowest, highest.
+
+**Passed on arrival** (11 in gates, 11 in boundaries), and what earns each:
+
+| assertion | why it passes today | earned by |
+|---|---|---|
+| gates AC-1 control (3), AC-2 control (2) | a single `gate` line is today's manifest | negative controls: AC-1/AC-2 are the same fixture plus one line, and they are red |
+| gates AC-3 controls (4): `-` is ok, no line is WARN | today's behaviour, which must survive | negative controls: AC-3's three spellings, one token away, are red |
+| gates AC-4 control (2): `nothing here` regex PASS | today's behaviour | negative control: AC-4, the same command with an empty regex, is red |
+| boundaries AC-5 controls (4): 60 95 60, `-q` added | nothing fires today | negative controls: AC-5 (60 70 60) is red. They become discriminating once GREEN adds the highest arm, since a reversed comparison would fire on 95 |
+| boundaries AC-6, AC-7 x2 `rc\|FAIL lines` (3) | today refuses once, with the wrong pair | paired with their whole-line halves, which are red |
+| boundaries C-2 rows `=90`->`=90 =10` and `80`->`80 30 90` (4) | today's `<highest before> -> <lowest after>` happens to be the right pair | **mutation, run in RED**, below |
+
+The two C-2 rows were earned by printing `<highest before> -> <highest after>`
+(scratch subset `sub088c2.test.sh`: the helpers, the fixture and those two
+cases):
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/" -> " LO\[2, id, nm\], b, LO\[2, id, nm\])/" -> " HI[2, id, nm], b, HI[2, id, nm])/) ===
+  993 -               out(id, "threshold lowered " nm " " b " -> " LO[2, id, nm], b, LO[2, id, nm])
+  993 +               out(id, "threshold lowered " nm " " b " -> " HI[2, id, nm], b, HI[2, id, nm])
+  HARNESS-088 C-2 rows (probe subset)
+    FAIL HARNESS-088 C-2 row: --cov-fail-under=90 -> =90 =10 (the last falls): refused by the whole line naming 'coverage: threshold lowered --cov-fail-under 90 -> 10'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-088 C-2 row: --threshold 80 -> 80 30 90 (the lowest falls): refused by the whole line naming 'lint: threshold lowered --threshold 80 -> 30'
+         expected: 1
+         actual:   0
+boundaries: 4 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261103T201154Z.14057.bak) ===
+  993:               out(id, "threshold lowered " nm " " b " -> " LO[2, id, nm], b, LO[2, id, nm])
+```
+
+`mutate.sh --check` afterwards reported no stranded mutation.
+
+**Negative controls, expected values.** Every gates control was run against
+today's gates.sh and passed with these values. GREEN must confirm the same
+values against its own code.
+
+| control | expected (measured today) |
+|---|---|
+| AC-1: one `gate \| unit` line, `--audit` | `Manifest audit passed.`, no FAIL line, rc 0 |
+| AC-2: one line, full run | `PASS         unit (Ns, observed 47)` / `All required gates passed (1 ran, 0 unconfigured, 0 known).`, rc 0 |
+| AC-3: `evidence \| unit \| -` | `ok   unit         (liveness declared unassertable)`, audit passed, rc 0 |
+| AC-3: no evidence line | `WARN unit         no evidence line; a vacuous pass would go unnoticed`, audit passed, rc 0 |
+| AC-4: `evidence \| unit \| nothing here` | `PASS         unit (Ns)` (no count: the line has no digits) / `All required gates passed (1 ran, 0 unconfigured, 0 known).`, rc 0 |
+| AC-5: `60 90 60` -> `60 95 60` | rc 0, no FAIL, `ok    GREEN/GATES added no suppression (1 commit(s) judged)` |
+| AC-5: `60 90 60` with `-q` | the same |
+
+**AC-8 (C-4), run before anything was written.** HEAD was 1f344cd, with
+boundaries.test.sh unmodified. The subset is boundaries.test.sh lines 1-110,
+1985-2092 and 2879-end, which is every HARNESS-083 describe, so it includes
+every threshold fixture AC-8 names. Local, 30m22s:
+
+    boundaries: 144 passed, 0 failed
+    rc=0
+
+The full suite on this RED tree also passes all 502 pre-existing assertions;
+its only 5 failures are new.
+
+**Deferred verifications: I decline all three; they belong to GATES.**
+DV-1 cannot run in RED, because no duplicate-id test exists yet to delete.
+DV-2 and DV-3 are GATES's, by the story. Expected values for DV-2, removing
+the `FI[2, id, nm] + 0 < FI[1, id, nm] + 0 ||` disjunct:
+
+| fixture | statistics (B,A) | expected under the mutation |
+|---|---|---|
+| `=90 =10 =95` -> `=80 =10 =95` | first 90,80; last 95,95; lowest 10,10; highest 95,95 | **red**: only the first falls, so nothing fires (rc 0, whole line absent) |
+| `=90 =10` -> `=80 =10` | first 90,80; last 10,10; lowest 10,10; highest 90,80 | **green**: the highest arm fires and prints `90 -> 80` from the highest pair, which is the same pair |
+
+**Amendments.** None. No contract block or AC changed.
+
+**Discovered.**
+
+1. The gates floor was stale. `floors.conf` said 920 while the suite executed
+   931, because HARNESS-080 (5db0542) added 11 assertions and raised nothing.
+   The attest logs in this worktree show `gates: 931 passed, 0 failed` at
+   release 106. The new floor is the executed count, 972 = 931 + 41, not the
+   briefed 920 + 41.
+2. In the AC-4 control the PASS line carries no `observed` count, because the
+   matched line has no digits. I read the expected value off the real run.
 
 ## Regressions
 
@@ -472,3 +803,16 @@ paragraph is at :225. The only stale item was C-3's VERSION number, now
 signature changes. `epic:` is empty, so there is no done-when to check. No
 configured gate here; the artifact is judged by `selftest.sh gates`,
 `selftest.sh boundaries` and `gates.sh --audit`, all run by CI.
+
+**RED verification (orchestrator, 2026-11-03):** the test-developer resolved to
+claude-opus-5-5. All three attest records were `fresh` on tree 619fe3c:
+- `selftest.sh gates`: `exit: 1`, `gates: 942 passed, 30 failed`.
+- `selftest.sh boundaries`: `exit: 1`, `boundaries: 513 passed, 5 failed`.
+- `gates.sh --fast`: `exit: 0`; no gate is configured.
+In both logs every FAIL line falls after the first `HARNESS-088` header
+(0 before it), so no pre-existing assertion broke. The gates floor goes to
+972, not 961, because HARNESS-080 left it at 920 while the suite executed
+931. That 931 is confirmed by HARNESS-087's self-test log
+(`20261103T162503Z.12206.log`: `gates: 931 passed, 0 failed`). I read the
+new gates describes' assertions; `mutate.sh --check` is clean. No command
+was re-run by the orchestrator.

@@ -4062,4 +4062,173 @@ assert_contains "AC-7: and says leaving out a required gate is allowed, unrecord
 # --help prints the whole header, not a range that stops short of it.
 assert_contains "AC-7: and reaches the header's last line" "Nobody pastes it." "$out"
 
+# ============================================================================
+# HARNESS-088: a duplicate gate id and an empty evidence regex are manifest
+# faults, under --audit and on a run (C-1)
+# ============================================================================
+#
+# Both are faults of the FILE, so they take the shape of the existing manifest
+# faults (`slow` with no reason, a broken `floor`): under --audit one
+# `FAIL <id>` line and `N manifest problem(s).`, exit 1; on a run one
+# `FAIL         <id> (<why>)` line counted in `N required gate(s) failed.`,
+# exit 1. The <why> texts are C-1's, byte for byte, and every needle below is a
+# WHOLE line or the whole list of FAIL lines, so a line that names the fault and
+# then says something else - or a FAIL for a different reason - does not
+# satisfy it.
+#
+# Every block resets the shared fixture to no active story, as the HARNESS-026
+# block does: a full run with a story active refuses to record over untracked
+# gated files, which is a refusal this story is not about.
+
+# h88_conf <line>...   project.conf from whole lines, with BOOTSTRAPPED=yes as
+# write_conf writes it. printf rather than a heredoc so that AC-3's third
+# spelling keeps its trailing spaces, which an editor would otherwise lose
+# without anyone noticing.
+h88_conf() { { printf 'BOOTSTRAPPED=yes\n'; printf '%s\n' "$@"; } > "$FIX/.claude/harness/project.conf"; }
+H88_GATE="gate     | unit | required | . | printf 'Tests  47 passed (47)\\n'"
+H88_EVID='evidence | unit | Tests +[1-9][0-9]* passed'
+H88_DUP_AUDIT="$(printf 'FAIL %-12s %s' unit 'declared twice: a second `gate` line for one id; gates.sh would run both and check-boundaries.sh judges only the first - keep one')"
+H88_DUP_RUN='FAIL         unit (declared twice: a second `gate` line for one id in project.conf; keep one)'
+H88_EMPTY_AUDIT="$(printf 'FAIL %-12s %s' unit 'evidence regex is empty: an empty regex matches every log line, so the gate would pass having checked nothing. Write the regex, or `evidence | unit | -` to declare that no evidence exists')"
+H88_EMPTY_RUN='FAIL         unit (evidence regex is empty in project.conf; an empty regex matches every log line)'
+# h88_fails <output>   Every line beginning FAIL, in order.
+h88_fails() { printf '%s\n' "$1" | grep '^FAIL'; }
+
+describe "HARNESS-088 AC-1/AC-2: a gate id declared twice is a manifest fault, under --audit and on a run"
+
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+
+# AC-1. Two `gate | unit` lines. The first is judged as today (`ok`), the
+# second is the fault, and it is the audit's only problem.
+h88_conf "$H88_GATE" "$H88_GATE" "$H88_EVID"
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-1: --audit prints the duplicate's FAIL line, whole" 1 "$(count_line "$H88_DUP_AUDIT" "$out")"
+assert_eq "AC-1: and it is the audit's only FAIL line" "$H88_DUP_AUDIT" "$(h88_fails "$out")"
+assert_eq "AC-1: the first line is still judged as today" 1 \
+  "$(count_line "$(printf 'ok   %-12s evidence: %s' unit 'Tests +[1-9][0-9]* passed')" "$out")"
+assert_eq "AC-1: the audit ends with 1 manifest problem(s)." 1 "$(count_line '1 manifest problem(s).' "$out")"
+assert_eq "AC-1: and does not say it passed" 0 "$(count_line 'Manifest audit passed.' "$out")"
+assert_eq "AC-1: and exits 1" 1 "$rc"
+
+# AC-1 control: the second line deleted.
+h88_conf "$H88_GATE" "$H88_EVID"
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-1 control: one gate | unit line passes the audit" 1 "$(count_line 'Manifest audit passed.' "$out")"
+assert_eq "AC-1 control: with no FAIL line" "" "$(h88_fails "$out")"
+assert_eq "AC-1 control: and exits 0" 0 "$rc"
+
+# AC-2. The same duplicate on a full run. Both lines print what the evidence
+# regex wants, so whatever they print cannot rescue the run: the first passes,
+# the second is the fault, and the run fails on it alone.
+h88_conf "$H88_GATE" "$H88_GATE" "$H88_EVID"
+out="$(gates)"; rc=$?
+assert_eq "AC-2: a full run reports the first line, then the duplicate's FAIL, then 1 failed - the whole summary" \
+"PASS         unit (Ns, observed 47)
+$H88_DUP_RUN
+1 required gate(s) failed." "$(verdict_of "$out")"
+assert_eq "AC-2: and exits 1" 1 "$rc"
+assert_eq "AC-2: the duplicate runs nothing - unit's command ran once" 1 \
+  "$(count_line "=== gate: unit (required) ===" "$out")"
+
+# The round-2 shape from HARNESS-083: the second line is an optional gate whose
+# command fails. Without the fault it was `WARN ... optional`, rc 0.
+h88_conf "$H88_GATE" "gate     | unit | optional | . | exit 1" "$H88_EVID"
+out="$(gates)"; rc=$?
+assert_eq "AC-2: an optional second line with a failing command is the same fault, not a WARN - the whole summary" \
+"PASS         unit (Ns, observed 47)
+$H88_DUP_RUN
+1 required gate(s) failed." "$(verdict_of "$out")"
+assert_eq "AC-2: and that run exits 1" 1 "$rc"
+
+# C-1: detected before the --gate filter, so naming the gate still reports it.
+h88_conf "$H88_GATE" "$H88_GATE" "$H88_EVID"
+out="$(gates --gate unit)"; rc=$?
+assert_eq "AC-2 (C-1): --gate unit on a duplicated id reports the fault too" 1 "$(count_line "$H88_DUP_RUN" "$out")"
+assert_eq "AC-2 (C-1): and exits 1" 1 "$rc"
+
+# AC-2 control: the duplicate deleted, the same run passes.
+h88_conf "$H88_GATE" "$H88_EVID"
+out="$(gates)"; rc=$?
+assert_eq "AC-2 control: one gate | unit line - the whole summary" \
+"PASS         unit (Ns, observed 47)
+All required gates passed (1 ran, 0 unconfigured, 0 known)." "$(verdict_of "$out")"
+assert_eq "AC-2 control: and exits 0" 0 "$rc"
+
+describe "HARNESS-088 AC-3/AC-4: an empty evidence regex is a manifest fault, under --audit and on a run"
+
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+
+# AC-3. Three spellings, one fault each: a bare `|`, no third field, and spaces
+# after the `|` (kept by h88_conf's printf).
+for h88_ev in 'evidence | unit |' 'evidence | unit' 'evidence | unit |   '; do
+  h88_conf "$H88_GATE" "$h88_ev"
+  out="$(gates --audit)"; rc=$?
+  assert_eq "AC-3: '$h88_ev' - --audit's only FAIL line is the empty-regex one, whole" "$H88_EMPTY_AUDIT" "$(h88_fails "$out")"
+  assert_eq "AC-3: '$h88_ev' - the audit ends with 1 manifest problem(s)." 1 "$(count_line '1 manifest problem(s).' "$out")"
+  assert_eq "AC-3: '$h88_ev' - and exits 1" 1 "$rc"
+done
+
+# AC-3 controls. `-` is today's declared-unassertable `ok`, and no evidence line
+# at all is today's WARN - neither is a FAIL.
+h88_conf "$H88_GATE" 'evidence | unit | -'
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-3 control: evidence | unit | - is still ok, liveness declared unassertable" 1 \
+  "$(count_line "$(printf 'ok   %-12s (liveness declared unassertable)' unit)" "$out")"
+assert_eq "AC-3 control: '-' - no FAIL line, the audit passes, exit 0" "|1|0" \
+  "$(h88_fails "$out")|$(count_line 'Manifest audit passed.' "$out")|$rc"
+
+h88_conf "$H88_GATE"
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-3 control: no evidence line at all is still today's WARN" 1 \
+  "$(count_line "$(printf 'WARN %-12s no evidence line; a vacuous pass would go unnoticed' unit)" "$out")"
+assert_eq "AC-3 control: no evidence line - no FAIL line, the audit passes, exit 0" "|1|0" \
+  "$(h88_fails "$out")|$(count_line 'Manifest audit passed.' "$out")|$rc"
+
+# C-1: every gate line, optional and unconfigured included, as a broken floor
+# is - a manifest fault is the file's, not the run's.
+h88_conf "gate     | unit | optional | . | printf 'Tests  47 passed (47)\\n'" 'evidence | unit |'
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-3 (C-1): an OPTIONAL gate with an empty regex is the same FAIL - FAIL lines|rc" "$H88_EMPTY_AUDIT|1" "$(h88_fails "$out")|$rc"
+h88_conf 'gate     | unit | optional | . |' 'evidence | unit |'
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-3 (C-1): an UNCONFIGURED gate with an empty regex is the same FAIL, not ok (unconfigured) - FAIL lines|rc" "$H88_EMPTY_AUDIT|1" "$(h88_fails "$out")|$rc"
+# C-1: table_get reads the FIRST evidence line, so an empty first line is the
+# fault even with a real regex below it - that is the line gates.sh matches with.
+h88_conf "$H88_GATE" 'evidence | unit |' "$H88_EVID"
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-3 (C-1): an empty FIRST evidence line is the fault though a real regex follows - FAIL lines|rc" "$H88_EMPTY_AUDIT|1" "$(h88_fails "$out")|$rc"
+
+# AC-4. The command exits 0 and prints nothing a real regex would want. Today
+# `$0 ~ ""` matches its one line and it PASSes.
+h88_conf "gate     | unit | required | . | printf 'nothing here\\n'" 'evidence | unit |'
+out="$(gates)"; rc=$?
+assert_eq "AC-4: a full run - the whole summary is the empty-regex FAIL and 1 failed" \
+"$H88_EMPTY_RUN
+1 required gate(s) failed." "$(verdict_of "$out")"
+assert_eq "AC-4: no PASS line for unit" 0 "$(count_re '^PASS +unit' "$out")"
+assert_eq "AC-4: and the run exits 1" 1 "$rc"
+
+# AC-4 control: the same command under a real regex its output matches.
+h88_conf "gate     | unit | required | . | printf 'nothing here\\n'" 'evidence | unit | nothing here'
+out="$(gates)"; rc=$?
+assert_eq "AC-4 control: a real regex the output matches - the whole summary" \
+"PASS         unit (Ns)
+All required gates passed (1 ran, 0 unconfigured, 0 known)." "$(verdict_of "$out")"
+assert_eq "AC-4 control: and exits 0" 0 "$rc"
+
+# C-1, where the two faults meet: one fault per gate LINE, the first in source
+# order wins. The first `gate | unit` line has the empty regex; the second is
+# the duplicate. Both are reported, in that order, and they are two problems.
+h88_conf "$H88_GATE" "$H88_GATE" 'evidence | unit |'
+out="$(gates --audit)"; rc=$?
+assert_eq "C-1: duplicated id with an empty regex - the first line's empty-regex FAIL, then the second's duplicate FAIL" \
+"$H88_EMPTY_AUDIT
+$H88_DUP_AUDIT" "$(h88_fails "$out")"
+assert_eq "C-1: and that is 2 manifest problem(s)., exit 1" "1|1" "$(count_line '2 manifest problem(s).' "$out")|$rc"
+
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+
 summary "gates"
