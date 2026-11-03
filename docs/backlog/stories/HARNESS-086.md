@@ -4,8 +4,8 @@ title: The orchestrator reads a story by section through scripts/story.sh
 slug: the-orchestrator-reads-a-story-by-sectio
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-086-the-orchestrator-reads-a-story-by-sectio
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/story.sh, .claude/hooks/lib.sh, .claude/tests/story.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, CLAUDE.md, .claude/harness/VERSION]
@@ -772,3 +772,10 @@ Verdict: Ship.
   Grep tool for the workaround in advance-story.md, add the comma, and
   reword the same-name parenthetical in lib.sh and story.sh. Prose and
   comments only; take them with the stderr-note follow-up.
+- Self-test at GATES → REVIEW (2026-11-02): `selftest-needed: run`;
+  dispatched to a feature-developer (resolved claude-opus-5-5), run detached
+  and alone through `attest.sh`. `attest.sh check -- SELFTEST_JOBS=4 bash
+  scripts/selftest.sh` answered `fresh`: `exit: 0`,
+  `last: 33 harness suite(s) passed.`, `duration: 3845s`, tree
+  4e4e2618b98e, log `.claude/state/attest-logs/20261103T011208Z.1357.log`.
+  Not re-run by the orchestrator.
