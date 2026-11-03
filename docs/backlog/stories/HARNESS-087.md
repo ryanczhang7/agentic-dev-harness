@@ -4,8 +4,8 @@ title: rules.md keeps every rule and moves its worked cases into the tdd-cycle s
 slug: rules-md-keeps-every-rule-and-moves-its
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-087-rules-md-keeps-every-rule-and-moves-its
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, .claude/skills/tdd-cycle/SKILL.md, .claude/skills/tdd-cycle/reference/cases.md, .claude/tests/rules-trim.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
