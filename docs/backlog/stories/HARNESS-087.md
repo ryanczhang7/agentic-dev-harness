@@ -5,7 +5,7 @@ slug: rules-md-keeps-every-rule-and-moves-its
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-087-rules-md-keeps-every-rule-and-moves-its
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/harness/rules.md, .claude/skills/tdd-cycle/SKILL.md, .claude/skills/tdd-cycle/reference/cases.md, .claude/tests/rules-trim.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -254,6 +254,25 @@ carry `IMPLAUSIBLE: sed -i option` again, `rules_trim_problems "$REPO_ROOT"`
 option"` and nothing else, and print nothing once restored. RED cannot run
 this: on today's file the needle is present and the whole suite is red, so
 one more red line proves nothing. Paste the line and the restore.
+
+**DV-1 result (GATES, 2026-11-03, orchestrator).** Real line 47 of
+rules.md (`Categories are decided by ...`, not a pinned line) was given the
+needle with `mutate.sh`. Both assertions that went red report exactly the
+one line, with no missing-line or cap noise. The file was restored
+byte-for-byte, and the suite is green again:
+
+```
+=== mutate: .claude/harness/rules.md (1 line(s) changed by s/^Categories are decided by/IMPLAUSIBLE: sed -i option. &/) ===
+=== mutate: running bash .claude/tests/rules-trim.test.sh ===
+    FAIL AC-3: rules.md no longer carries any C-2 case needle
+         actual:   rules.md: still carries "IMPLAUSIBLE: sed -i option"
+    FAIL rules_trim_problems over the real tree prints nothing: every rule kept, every case moved and pointed at
+         actual:   rules.md: still carries "IMPLAUSIBLE: sed -i option"
+rules-trim: 28 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_harness_rules.md.20261103T160600Z.5442.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+rules-trim: 30 passed, 0 failed
+```
 
 ## Model guidance
 
@@ -699,8 +718,21 @@ log:      .claude/state/attest-logs/20261103T160022Z.739.log
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run. Do not paste or
-     edit it. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-03T16:07:40Z
+    commit: ada2f6d
+    tree:   c38f6e0c1d8fbc5567dfd90b15af452072c02d19
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -754,3 +786,11 @@ log:      .claude/state/attest-logs/20261103T160022Z.739.log
   feature-developer was dispatched for the no-op. The GREEN agent's net-suite
   runs (policy, reporting, mutate, new-story, settings, shipped-docs, all
   exit 0) predate the CAP edit, so AC-5 stands to the GATES self-test.
+- GATES verification (orchestrator, 2026-11-03): DV-1 was run by the
+  orchestrator with `mutate.sh`; the result is pasted in its block. The full
+  gates were dispatched to a feature-developer (resolved claude-opus-5-5).
+  `attest.sh check -- bash scripts/gates.sh` answered `fresh`, `exit: 0`,
+  verdict `All required gates passed (0 ran, 7 unconfigured, 0 known).`,
+  log `.claude/state/attest-logs/20261103T160732Z.7819.log`. No gate is
+  configured in this repo; the self-test at GATES → REVIEW is the real
+  check, including AC-5's net suites.
