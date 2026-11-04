@@ -7,7 +7,7 @@ type: bug
 status: todo
 phase: PLANNED
 branch: story/HARNESS-089-check-boundaries-never-deadlocks-on-a-st
-depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
+depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]  # provisional, from the field report; the PO confirms at PLANNED
 required_gates: []  # every gate is unconfigured here; the artifact is judged by selftest (see Context)
 ---

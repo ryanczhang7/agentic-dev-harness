@@ -7,7 +7,7 @@ type: fix
 status: todo
 phase: PLANNED
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
-depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
+depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
 required_gates: []  # every gate is unconfigured here; the artifact is judged by selftest (see Context)
 ---
