@@ -5,7 +5,7 @@ slug: gates-sh-refuses-a-duplicate-gate-id-and
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-088-gates-sh-refuses-a-duplicate-gate-id-and
 depends_on: []      # HARNESS-083 is DONE (PR #171); nothing else is needed first
 touches: [scripts/gates.sh, scripts/check-boundaries.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md, .claude/tests/sigpipe.test.sh]
@@ -277,6 +277,67 @@ Then the audit on the restored file prints `Manifest audit passed.` Paste all
 three. If `mutate.sh` refuses `project.conf` for a reason this story did not
 foresee, say which and WAIVE with the reason; the fixture in `gates.test.sh`
 is then the only evidence and the story's report says so.
+
+**Results (GATES, 2026-11-04, orchestrator, all through `mutate.sh`; `mutate.sh --check` was clean after each).**
+
+The narrow commands are scratchpad subsets built by GREEN:
+- `subg.test.sh`: the `gates` helpers plus the two HARNESS-088 describes, 41 assertions;
+- `subb.test.sh`: the `boundaries` helpers plus the HARNESS-088 describe, 18 assertions.
+
+The "every other assertion stays green" half rests on the attested full runs on this same tree: `gates` 972/972 and `boundaries` 518/518, tree 6c6ae27.
+
+**DV-1.** gates.sh:512's duplicate test was disabled (`is_dup=0` → `is_dup=1`). All 14 AC-1/AC-2 refusal assertions went red, plus the C-1 both-faults case; no control did. The subset was green again after the restore:
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 512s/is_dup=0/is_dup=1/) ===
+    FAIL AC-1: --audit prints the duplicate's FAIL line, whole
+    FAIL AC-1: and it is the audit's only FAIL line
+    FAIL AC-1: the first line is still judged as today
+    FAIL AC-1: the audit ends with 1 manifest problem(s).
+    FAIL AC-1: and does not say it passed
+    FAIL AC-1: and exits 1
+    FAIL AC-2: a full run reports the first line, then the duplicate's FAIL, then 1 failed - the whole summary
+    FAIL AC-2: and exits 1
+    FAIL AC-2: the duplicate runs nothing - unit's command ran once
+    FAIL AC-2: an optional second line with a failing command is the same fault, not a WARN - the whole summary
+    FAIL AC-2: and that run exits 1
+    FAIL AC-2 (C-1): --gate unit on a duplicated id reports the fault too
+    FAIL AC-2 (C-1): and exits 1
+    FAIL C-1: duplicated id with an empty regex - the first line's empty-regex FAIL, then the second's duplicate FAIL
+gates: 27 passed, 14 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261104T012549Z.369222.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+gates: 41 passed, 0 failed
+```
+
+**DV-2.** check-boundaries.sh:999's first-value arm was disabled (`if (FI[2..] < FI[1..])` → `if (0)`). As predicted, only the `=90 =10 =95` → `=80 =10 =95` fixture went red. `=90 =10` → `=80 =10` stayed green, because the highest arm prints the same `90 -> 80`; that is why both fixtures exist.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 999s/if (FI\[2, id, nm\] + 0 < FI\[1, id, nm\] + 0)/if (0)/) ===
+    FAIL HARNESS-088 AC-7: --cov-fail-under=90 =10 =95 -> =80 =10 =95 (only the first falls): refused by the whole line naming 'coverage: threshold lowered --cov-fail-under 90 -> 80'
+         expected: 1
+         actual:   0
+    FAIL HARNESS-088 AC-7: --cov-fail-under=90 =10 =95 -> =80 =10 =95 (only the first falls): and that is the run's only FAIL, so it exits 1 - rc|FAIL lines
+         expected: 1|1
+         actual:   0|0
+boundaries: 16 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261104T012219Z.364136.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**DV-3.** Both probes were on the real `.claude/harness/project.conf` (line 311, `gate | lint      | required | . |`). After both, the restored file audits clean:
+
+```
+=== mutate: .claude/harness/project.conf (1 line(s) changed by /^gate | lint /p) ===
+FAIL lint         declared twice: a second `gate` line for one id; gates.sh would run both and check-boundaries.sh judges only the first - keep one
+1 manifest problem(s).
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_harness_project.conf.20261104T012144Z.363404.bak) ===
+=== mutate: .claude/harness/project.conf (1 line(s) changed by /^gate | lint /a evidence | lint |) ===
+FAIL lint         evidence regex is empty: an empty regex matches every log line, so the gate would pass having checked nothing. Write the regex, or `evidence | lint | -` to declare that no evidence exists
+1 manifest problem(s).
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_harness_project.conf.20261104T012150Z.363504.bak) ===
+Manifest audit passed.
+```
 
 ## Amendments
 
@@ -782,10 +843,21 @@ reports `fresh` after this section was written.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-04T01:27:58Z
+    commit: 3391c15
+    tree:   f98cec274470ab9c56c0e43847ffbd95e069d96f
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -882,3 +954,11 @@ was re-run by the orchestrator.
   - `is_dup` is 0 when the id IS a duplicate, an inverted name;
   - the empty-regex check sits after the ondemand / `--fast`-slow skips, so a skipped gate is judged only under `--audit`. The developer reported this.
 - No command was re-run by the orchestrator.
+
+**GATES verification (orchestrator, 2026-11-04):** I ran DV-1..DV-3 myself
+with `mutate.sh`; the results are pasted in their block. The full gates
+were dispatched to a feature-developer, which resolved to claude-opus-5-5.
+`attest.sh check -- bash scripts/gates.sh` answered `fresh` with `exit: 0`.
+The verdict, at log line 17 of
+`.claude/state/attest-logs/20261104T012754Z.372179.log`, is
+`All required gates passed (0 ran, 7 unconfigured, 0 known).`
