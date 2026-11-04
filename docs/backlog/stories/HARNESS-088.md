@@ -5,10 +5,10 @@ slug: gates-sh-refuses-a-duplicate-gate-id-and
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-088-gates-sh-refuses-a-duplicate-gate-id-and
 depends_on: []      # HARNESS-083 is DONE (PR #171); nothing else is needed first
-touches: [scripts/gates.sh, scripts/check-boundaries.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md]
+touches: [scripts/gates.sh, scripts/check-boundaries.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md, .claude/tests/sigpipe.test.sh]
 required_gates: []  # every gate is unconfigured here; the artifact is judged by selftest (see Context)
 ---
 
@@ -111,7 +111,7 @@ gawk-only functions, `[.]` not `\.` inside a string regex, no `mktemp` or
 
 ## Contract
 
-**Writes:** `scripts/gates.sh`, `scripts/check-boundaries.sh`, `.claude/tests/gates.test.sh`, `.claude/tests/boundaries.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, `.claude/harness/VERSION`, `.claude/skills/quality-gates/SKILL.md`
+**Writes:** `scripts/gates.sh`, `scripts/check-boundaries.sh`, `.claude/tests/gates.test.sh`, `.claude/tests/boundaries.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, `.claude/harness/VERSION`, `.claude/skills/quality-gates/SKILL.md`, `.claude/tests/sigpipe.test.sh` (added in GREEN: its C-5 freshness list pins `scripts/gates.sh:773`, which this story moves - see `## Regressions`)
 
 RED may amend any block in place, with a reason; GREEN builds what the
 amended block says. The acceptance criteria do not inherit that: a change to
@@ -722,11 +722,63 @@ the `FI[2, id, nm] + 0 < FI[1, id, nm] + 0 ||` disjunct:
 
 ## Regressions
 
-<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
-     otherwise. One block per return: which test, what it asserted, what was
-     wrong, how it was found, what it asserts now, and what EARNS it - a probe
-     through scripts/mutate.sh with the output pasted as a fence or a
-     four-space-indented block. -->
+### GREEN -> RED: a stale line-number pin in `sigpipe.test.sh` C-5
+
+**Which test.** `.claude/tests/sigpipe.test.sh`, the assertion `C-5 freshness:
+all twelve status-discarded lines are still where this suite says they are`.
+Its `DISCARDED` list (line 581) pinned
+`scripts/gates.sh:773:why="could not launch: $(` - asserting that line 773 of
+`gates.sh` still holds that status-discarded command substitution, so that the
+C-5 exclusion assertion about it is not vacuous.
+
+**What was wrong.** The pin is a line number, and this story's GREEN moves it:
+GREEN inserted 28 lines above that statement in `gates.sh`, so it now sits at
+line 801 (on HEAD `647f80b` it is at 773; in the working tree at 801). The
+story's `## Contract` did not list `.claude/tests/sigpipe.test.sh` as a file the
+change would reach, so RED did not update the pin. The assertion was correct;
+its data was stale. The other four pins into files this story changes
+(`gates.sh:93`, `check-boundaries.sh:395`, `434`, `626`) still hold.
+
+**How it was found.** The GREEN feature-developer's narrow sigpipe run, which
+reported:
+
+    scripts/gates.sh:773 no longer holds [why="could not launch: $(] - it holds:     fi
+
+**What it asserts now.** The same thing at the new address:
+`scripts/gates.sh:801:why="could not launch: $(`. One number changed; no
+needle, no other spec line and no assertion count changed (floor 91).
+
+**What earns it.** One mutation through `scripts/mutate.sh`, changing the text
+at `gates.sh:801` so the pin can no longer match. The freshness assertion goes
+red naming `scripts/gates.sh:801`, and the file is restored and verified:
+
+```
+=== mutate: scripts/gates.sh (1 line(s) changed by 801s/could not launch: /could not start: /) ===
+  801 -       why="could not launch: $(clean_log "$log" | grep -Eom1 -- "$blockpat" | head -1)"
+  801 +       why="could not start: $(clean_log "$log" | grep -Eom1 -- "$blockpat" | head -1)"
+
+=== mutate: running bash .claude/tests/sigpipe.test.sh ===
+...
+    FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+         expected: 12 lines, none stale
+         actual:   12 lines,
+           scripts/gates.sh:801 no longer holds [why="could not launch: $(] - it holds:       why="could not start: $(clean_log "$log" | grep -Eom1 -- "$blockpat" | head -1)"
+...
+sigpipe: 90 passed, 1 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261103T225950Z.147073.bak) ===
+  801:       why="could not launch: $(clean_log "$log" | grep -Eom1 -- "$blockpat" | head -1)"
+```
+
+`bash scripts/mutate.sh --check` afterwards:
+`mutate: no stranded mutation; nothing of a previous run is in the tree.`
+
+Unmutated, attested: `bash scripts/attest.sh -- bash scripts/selftest.sh sigpipe`
+- exit 0, `sigpipe: 91 passed, 0 failed`, floor met (91 executed, 91 declared),
+`last: 1 harness suite(s) passed.`, log
+`.claude/state/attest-logs/20261103T230505Z.157107.log`, tree
+`6c6ae27deb7d064c69fa20e7e196c497907c8b74`. `attest.sh check` on that command
+reports `fresh` after this section was written.
 
 ## Gate results
 
@@ -816,3 +868,17 @@ In both logs every FAIL line falls after the first `HARNESS-088` header
 (`20261103T162503Z.12206.log`: `gates: 931 passed, 0 failed`). I read the
 new gates describes' assertions; `mutate.sh --check` is clean. No command
 was re-run by the orchestrator.
+
+**GREEN verification (orchestrator, 2026-11-04):**
+- The feature-developer resolved to claude-opus-5-5, both before and after the RED return.
+- RED return R-1 (`sigpipe.test.sh` pin 773 → 801): test-developer resolved to claude-opus-5-5. I reproduced the moved line myself (HEAD 773, tree 801), and the other four pins still hold.
+- All four attest records were `fresh` on tree 6c6ae27, each with `exit: 0`:
+  - `selftest.sh gates`: 972/972, 1101 s;
+  - `selftest.sh boundaries`: 518/518, 3489 s;
+  - `selftest.sh sigpipe`: 91/91;
+  - `gates.sh --fast`: 0 gates configured.
+- `gates.sh --audit` on the real file: `Manifest audit passed.`
+- I read both script diffs. Two points for the diff review:
+  - `is_dup` is 0 when the id IS a duplicate, an inverted name;
+  - the empty-regex check sits after the ondemand / `--fast`-slow skips, so a skipped gate is judged only under `--audit`. The developer reported this.
+- No command was re-run by the orchestrator.

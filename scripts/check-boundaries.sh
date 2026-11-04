@@ -910,13 +910,16 @@ suppression_declared() {
 #                              an empty after side, so every gate is removed
 #   threshold lowered F B -> A / threshold removed F B   per threshold flag name
 #                              in the command of a gate on both sides: lowered
-#                              when the after side's FIRST, LAST or LOWEST value
-#                              is below the before side's same one - what a
-#                              first-wins parser, a last-wins parser (argparse)
-#                              and "any lower repeat" each read - so an unchanged
-#                              `=10 =90` is silent. B is the name's HIGHEST value
-#                              before and A its LOWEST after; no occurrence after
-#                              is removed, and a flag only AFTER is no finding
+#                              when the after side's FIRST, LAST, LOWEST or
+#                              HIGHEST value is below the before side's same one
+#                              - what a first-wins parser, a last-wins parser
+#                              (argparse), "any lower repeat" and a lowered
+#                              middle repeat each move - so an unchanged
+#                              `=10 =90` is silent. B -> A is the pair of the
+#                              first statistic that fell, in that order; removed
+#                              is `threshold removed F <HIGHEST before>` when no
+#                              occurrence is left after, and a flag only AFTER is
+#                              no finding
 #   K added on required gate   K is slow, ondemand or waiver, the line is new, and
 #                              the gate is required on the BEFORE side
 #
@@ -989,8 +992,16 @@ project_conf_loosenings() {
           for (q = 1; q <= FN[id]; q++) {
             nm = FL[id, q]; b = HI[1, id, nm]
             if (!((2, id, nm) in HI)) out(id, "threshold removed " nm " " b, b, "")
-            else if (FI[2, id, nm] + 0 < FI[1, id, nm] + 0 || LA[2, id, nm] + 0 < LA[1, id, nm] + 0 || LO[2, id, nm] + 0 < LO[1, id, nm] + 0)
-              out(id, "threshold lowered " nm " " b " -> " LO[2, id, nm], b, LO[2, id, nm])
+            else {
+              # Four statistics, judged in a fixed order; the refusal names
+              # the before and after of the first one that fell.
+              fb = fa = ""
+              if (FI[2, id, nm] + 0 < FI[1, id, nm] + 0) { fb = FI[1, id, nm]; fa = FI[2, id, nm] }
+              else if (LA[2, id, nm] + 0 < LA[1, id, nm] + 0) { fb = LA[1, id, nm]; fa = LA[2, id, nm] }
+              else if (LO[2, id, nm] + 0 < LO[1, id, nm] + 0) { fb = LO[1, id, nm]; fa = LO[2, id, nm] }
+              else if (HI[2, id, nm] + 0 < HI[1, id, nm] + 0) { fb = HI[1, id, nm]; fa = HI[2, id, nm] }
+              if (fb != "") out(id, "threshold lowered " nm " " fb " -> " fa, fb, fa)
+            }
           }
         }
         else if (kind == "discovery") {
