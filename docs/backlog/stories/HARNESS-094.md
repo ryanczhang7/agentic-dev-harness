@@ -4,8 +4,8 @@ title: The pre-PR self-test runs only the suites the story's diff can break
 slug: the-pre-pr-self-test-runs-only-the-suite
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-094-the-pre-pr-self-test-runs-only-the-suite
 depends_on: []      # nothing: this is the first of the pair; HARNESS-095 and HARNESS-089..093 wait for it
 touches: [scripts/selftest-needed.sh, scripts/selftest.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, CLAUDE.md, .claude/harness/VERSION]
@@ -167,8 +167,21 @@ existing one-argument form is unchanged in every byte and status.
 
 - *Enumeration.* The same as the run/skip mode, including every
   fail-toward-run fallback. In `--suites` a fallback prints `all` on stdout,
-  exit 0, and the fallback's existing one-line text on **stderr**. No harness
-  path: nothing on stdout, exit 1, the existing `skip` line on stderr.
+  exit 0, and the fallback's existing reason text on **stderr**, in the
+  `all:` shape of *Output* below:
+  `selftest-needed: suites — all: cannot compute the diff: <the existing reason>; defaulting to every suite`.
+  No harness path: nothing on stdout, exit 1, the existing `skip` line on
+  stderr.
+  *[Amended in RED, A-2: this bullet said "the fallback's existing one-line
+  text", which is `selftest-needed: run — cannot compute the diff: ...;
+  defaulting to run`, while *Output* shows the `suites — all: ...; defaulting
+  to every suite` shape for the same case. The two contradict, and only the
+  second composes with `selftest.sh --changed`, whose every-suite header
+  carries "`--suites`'s reason after `every suite: `" - i.e. the text after
+  `all: `. The tests pin the *Output* shape: whole line for no base, no merge
+  base and not a git checkout; prefix `selftest-needed: suites — all: cannot
+  compute the diff: ` and suffix `; defaulting to every suite` for the
+  library and `paths.conf` fallbacks, whose reason embeds a fixture path.]*
 - *The rules.* For each harness path `p`, in this order; every rule that
   matches contributes, and `all` wins over everything:
   - **R1, itself.** `p` matches `.claude/tests/<name>.test.sh` → `<name>`.
@@ -206,6 +219,20 @@ existing one-argument form is unchanged in every byte and status.
   - **R5, fail safe.** A harness `p` that R1-R4 all miss → `all`, with
     stderr naming `p`. This is the rule the user asked for: a path the
     mapping cannot place selects more, never fewer.
+  - **A-1, a rule names only a suite that exists** *[amended in RED]*. R1, R3
+    and R4 contribute `<name>` only when `.claude/tests/<name>.test.sh`
+    exists in the working tree the script runs in; a harness `p` for which no
+    rule contributes an existing suite is R5's (`all`). Reason: a suite
+    deleted on the branch matches R1 by its path, and a scanner row names its
+    suite whatever the tree holds; printing either hands
+    `selftest.sh --changed` a name that its multi-name path must refuse with
+    `No suites matched` (AC-6), so a story that deletes a suite could never
+    run `--changed` at all. Pinned by the A-1 case in
+    `selftest-needed.test.sh`: a committed deletion of the fixture's
+    `gamma.test.sh` prints `grep-count` and `sigpipe` (R4 `*.sh`, both
+    present), not `gamma`, and counts 8 suites. The scanner-row half (a row
+    whose suite is absent) follows from the same sentence and has no case of
+    its own.
 - *Output.* stdout: the sorted unique suite names, one per line, or the
   single line `all`. stderr, one header line then one line per selected
   suite with the first path and rule that selected it, in these shapes:
@@ -255,7 +282,13 @@ existing one-argument form is unchanged in every byte and status.
 
   The second shape carries `--suites`'s reason after `every suite: `. The
   per-suite reason lines from `--suites` stderr are passed through to
-  stderr. Totals and the last line count the suites that ran, so a selected
+  stderr. *[Amended in RED, A-3: streams. The header line (both shapes) and
+  the `selected no suite` line go to **stdout** - AC-7 calls the header "one
+  stdout line", and the no-suite line is the same kind of answer; the test
+  pins stdout as exactly that one line and does not pin stderr there. The
+  `cannot select` line goes to **stderr**, nothing on stdout; the test pins
+  exit 2, empty stdout and the prefix `selftest: --changed cannot select: `
+  of stderr's first line, not the usage text after it.]* Totals and the last line count the suites that ran, so a selected
   run and a full run are told apart by the header, never by the summary.
 - *`SELFTEST_JOBS`.* Unchanged: read first, applies to whatever `SUITES`
   holds.
@@ -437,28 +470,301 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All shell, at the level the contract lives: each case runs the fixture's
+copy of the real script in a throwaway git repository and compares exit
+status, whole stdout and pinned stderr. No unit level exists below that for
+a bash script. Everything is mechanical, so there are no thresholds.
+
+**`.claude/tests/selftest-needed.test.sh`**, seven describes marked
+`HARNESS-094` before `summary`. Fixture: `suites_stubs` writes nine one-line
+stub suites into the fixture's `.claude/tests` and commits them on `main`:
+alpha and beta mention `.claude/harness/m.conf`, beta also `n.conf`, policy
+mentions `.claude/skills/foo/SKILL.md`, and gamma, grep-count, lib, profiles,
+shipped-docs and sigpipe mention nothing. `expect_suites` runs from the root
+and from `src/`, four assertions each.
+
+| AC | Case (assertion label, abridged) | Pinned stdout |
+|---|---|---|
+| AC-1 | committed `n.conf` mentioned only by beta; controls: alpha and gamma absent | `beta` |
+| AC-1 | STAGED `m.conf` + UNTRACKED `n.conf`; `(mentioned)` reason lines for alpha and beta (beta's FIRST path, m.conf) | `alpha` `beta` |
+| AC-2 | edited `.claude/tests/gamma.test.sh`; `(itself)` reason line | `gamma` `grep-count` `sigpipe` |
+| AC-2 | new untracked `delta.test.sh`; header counts 10 suites | `delta` `grep-count` `sigpipe` |
+| AC-2 | `_lib.sh` beside a mapped `n.conf` (all wins) | `all` + whole stderr |
+| AC-2 | `_spawns.sh` | `all` + whole stderr |
+| AC-2 | edited `scripts/selftest.sh` | `all` + whole stderr |
+| AC-3 | **control**: unmapped `x.conf` beside mapped `m.conf` | `all`, stderr names x.conf |
+| AC-3 | **control for the control**: `m.conf` alone | `alpha` `beta` |
+| AC-3 | no origin/main or main; no merge base; not a git checkout | `all`, whole stderr line |
+| AC-3 | lib.sh trips `set -u`; paths.conf missing (prefix+suffix of the fallback line) | `all` |
+| AC-4 | `scripts/probes/x.sh` (depth); `(scans scripts/*.sh)` reason line | `grep-count` `lib` `sigpipe` |
+| AC-4 | `.claude/hooks/x.sh` | `grep-count` `lib` `sigpipe` |
+| AC-4 | `.claude/foo/x.sh`; control: lib absent | `grep-count` `sigpipe` |
+| AC-4 | `.claude/skills/stack-profiles/reference/x.txt` | `profiles` |
+| AC-4 | `.claude/commands/x.md` + `.claude/agents/x.md` | `shipped-docs` |
+| AC-4 | **control**: `.claude/skills/bar/deep/notes.md`, no mention | `shipped-docs` (not `all`) |
+| AC-4 | `.claude/skills/foo/SKILL.md`, which policy mentions | `policy` `shipped-docs` |
+| AC-5 | source-only diff | empty, exit 1, whole skip line on stderr |
+| AC-5 | `--suites release`; control: `--suites` on the same fixture | `beta`; empty, exit 1 |
+| AC-5 | `--suites -x`, `--suites main extra`, `main --suites` | exit 2, empty, stderr non-empty |
+| AC-5 | no `--suites`, a fixture with suites: the unchanged run line (existing `expect`) | the run line |
+| A-1 | committed DELETION of `gamma.test.sh`; header counts 8 | `grep-count` `sigpipe` |
+| AC-8 | the two lines directly after the existing `selftest-needed.sh` line of the real `CLAUDE.md`, each exactly once | - |
+
+**`.claude/tests/selftest.test.sh`**, seven describes marked `HARNESS-094`
+before `summary`. AC-6 runs in `$FIX` via `passing_suite`/`jrun`; AC-7 builds a
+fresh fixture per case with `cf_new` (alpha 3 and gamma 1 mention `m.conf`,
+beta 2 mentions nothing; committed on `main`, `.claude/state/` ignored) and
+runs it with `crun`.
+
+| AC | Case | What is pinned |
+|---|---|---|
+| AC-6 | `selftest.sh gamma alpha`, beta unfloored, a non-floor line in the file | exit 0, whole stdout golden (alpha block, then gamma's, floors line, `2 harness suite(s) passed.`), empty stderr; **controls**: no beta block; a full run over the same file exits 1 with `2 fault(s) ...` |
+| AC-6 | `selftest.sh alpha beta` | exit 0; stderr exactly beta's two WARNING lines; floors line `all 1 suite(s) ... (3 ... 3 ...)`; last line `2 harness suite(s) passed.` |
+| AC-6 | `selftest.sh alpha gamma`, both below floor | exit 1; both `FAIL <name>  did ...` lines; `2 of 2 harness suite(s) FAILED.` |
+| AC-6 | `selftest.sh alpha nosuch` | exit 1; stderr exactly `No suites matched 'nosuch'. ...`; empty stdout; no lock left |
+| AC-7 | `--changed`, new `m.conf` | exit 0; whole stdout golden with the header line first; **control** no beta block; alpha's `(mentioned)` line on stderr; `SELFTEST_JOBS=3` exits 0 with byte-identical stdout |
+| AC-7 | **control**: `--changed`, beta's floor `lots` committed on main, beta not selected | exit 1; stdout exactly the full-run fault report; `selftest.sh alpha gamma` on the same fixture exits 0 |
+| AC-7 | `--changed`, unmapped `x.conf` | exit 0; line 1 is the every-suite header; lines 2.. byte-identical to a plain full run (which exits 0, precondition) |
+| AC-7 | `--changed`, source-only diff | exit 1; stdout exactly the `selected no suite — <skip line>` line; no lock left |
+| AC-7 | `--changed release`; control `--changed` | exit 0, header selects alpha gamma, last line `2 harness suite(s) passed.`; control exit 1 |
+| AC-7 | `--changed -x` | exit 2; empty stdout; stderr line 1 begins `selftest: --changed cannot select: ` |
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+Model: this RED ran on **Opus 5.5 (`claude-opus-5-5`)**, the agent's own
+`model:` (`opus`); no override was reported to the dispatch.
+
+**Commands.**
+
+    bash scripts/selftest.sh selftest-needed
+    bash scripts/selftest.sh selftest
+
+Attested in RED (tree `f6819294ec31854b4bef4ae031d0c9c2329594e3`, local
+Windows/Git Bash host):
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed
+      exit: 1   duration: 474s   last: 1 of 1 harness suite(s) FAILED.
+      log:  .claude/state/attest-logs/20261104T205156Z.173145.log
+    bash scripts/attest.sh -- bash scripts/selftest.sh selftest
+      exit: 1   duration: 285s   last: 1 of 1 harness suite(s) FAILED.
+      log:  .claude/state/attest-logs/20261104T205957Z.184706.log
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+      exit: 0   duration: 4s     last: All required gates passed (0 ran, 5 unconfigured, 0 known).
+      log:  .claude/state/attest-logs/20261104T210509Z.194663.log
+
+`gates.sh --fast` runs no gate here (all unconfigured), as expected; its
+shape says nothing about the suites. `check-sigpipe.sh` and
+`check-grep-count.sh` were also run over the tree with the new files: 0
+findings each.
+
+**The failure, and why it is the right one.** Every pre-existing assertion
+in both suites passes (0 FAIL before the first `HARNESS-094` describe in
+either log). Every new failure is the absent mode or flag: `--suites` is a
+`-`-prefixed argument today, so `selftest-needed.sh` exits 2 with its usage
+line; `selftest.sh` reads only `$1`, so a second name is ignored and
+`--changed` is a suite name that matches nothing.
+
+```
+  HARNESS-094 AC-1: --suites prints the suites whose source mentions a changed path
+    FAIL a committed .claude/harness/n.conf, mentioned only by beta, prints beta [from root]: exits 0
+         expected: 0
+         actual:   2
+    FAIL a committed .claude/harness/n.conf, mentioned only by beta, prints beta [from root]: stdout is exactly the pinned list
+         expected: beta
+         actual:   
+    FAIL a committed .claude/harness/n.conf, mentioned only by beta, prints beta [from root]: stderr's first line is exactly the pinned header
+         expected: selftest-needed: suites — 1 of 9 selected from 1 harness path(s) changed against main (merge-base 207d52d)
+         actual:   usage: bash scripts/selftest-needed.sh [base-ref]
+...
+  HARNESS-094 AC-8: CLAUDE.md's command list names both, directly after the selftest-needed.sh line
+    FAIL the two lines directly after it are the --suites line, then the --changed line
+         expected: bash scripts/selftest-needed.sh --suites   # which suites that diff can break, one per line, or `all`
+         SELFTEST_JOBS=4 bash scripts/selftest.sh --changed   # run exactly those; the local self-test before a PR (HARNESS-095 switches the procedure to it)
+         actual:   bash scripts/gates.sh            # all gates
+         bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and GREEN
+
+selftest-needed: 259 passed, 199 failed
+FAIL selftest-needed  did 259 units of work, below the floor of 458 in .claude/tests/floors.conf
+```
+
+```
+  HARNESS-094 AC-6  two names run exactly those two, in glob order, with no whole-file audit
+    FAIL and its stdout is alpha's block then gamma's (glob order, not argument order), one floors line, 2 passed
+         expected: identical
+         actual:   differ:
+         2,5d1
+         < === alpha ===
+         ...
+         > assertion floors: all 1 suite(s) met their declared floor (1 assertions executed, 1 declared).
+         > 1 harness suite(s) passed.
+  HARNESS-094 AC-7  --changed runs the selected suites after one header line
+    FAIL `selftest.sh --changed` with a new m.conf exits 0
+         expected: 0
+         actual:   1
+  HARNESS-094 AC-7  --changed whose selection fails is exit 2
+    FAIL `--changed -x` (a usage error from --suites) exits 2
+         expected: 2
+         actual:   1
+    FAIL and stderr's first line says it cannot select
+         expected: selftest: --changed cannot select: 
+         actual:   No suites matched '--changed'. Look
+
+selftest: 288 passed, 21 failed
+FAIL selftest  did 288 units of work, below the floor of 309 in .claude/tests/floors.conf
+```
+
+**Files touched.** `.claude/tests/selftest-needed.test.sh`,
+`.claude/tests/selftest.test.sh` (a new block, plus `selftest 309` and
+`selftest-needed 458` in the hand-copied COUNTS table),
+`.claude/tests/floors.conf` (the two floors and a HARNESS-094 note), and this
+story (`## Contract` amendments A-1..A-3, `## Test plan`, this handoff).
+`CLAUDE.md` is classified `harness`, so RED could have written it. It is left
+to GREEN as instructed, which is why AC-8's three assertions are red now.
+
+**Floors, and how they were derived.** Both are the executed counts of the
+RED runs above. Both suites are unconditional (every case runs, and every
+assertion executes whatever the result), so RED's count is GREEN's.
+- `selftest-needed` 216 -> **458**. The floor lagged the suite: 226 executed
+  before this story on this host (`selftest-needed: 226 passed, 0 failed` in
+  six earlier attest logs). +232 new, measured: 259 passed + 199 failed = 458.
+  Per describe: AC-1 20, AC-2 41, AC-3 60, AC-4 58, AC-5 41, A-1 8, AC-8 4.
+  The HARNESS-078 AC-5 block is skipped on MINGW, so on CI (Linux) the suite
+  executes more than 458. The floor is this host's count, as before.
+- `selftest` 268 -> **309**. 268 executed before (13 earlier logs, `268
+  passed, 0 failed`). +41 (AC-6 18, AC-7 23), counted statically first and
+  confirmed by the run: 288 passed + 21 failed = 309.
+
+**Callers, checked against the tree.** `grep -n '\$ONLY' scripts/selftest.sh`
+gives five reads, as the Contract says: line 262 (suite list), 270 (full-run
+audit guard), 292 (fault filter), 411 (serial loop), 485 (no-match message),
+plus the assignment at 96. `selftest-needed.test.sh`'s usage case is the
+describe at line 245 (`run_sn "$d" main extra` at 248). It is untouched and
+passes in RED. `procedure.test.sh`, `dispatch.test.sh` and
+`.claude/commands/` are unchanged against `main` (`git diff --stat main --`
+over them is empty). Of the four suites the Contract says read `CLAUDE.md`,
+none pins the command block's line count (static check: `shipped-docs` writes
+its own fixture `CLAUDE.md`; `reporting` reads its `## Reporting to the user`
+section; `rules-trim` caps `rules.md`, not `CLAUDE.md`; `lib` reads the
+`@.claude/harness/rules.md` import). The Contract's "RED confirms by running
+those four" cannot apply while `CLAUDE.md` is unedited, so **GREEN runs
+`shipped-docs`, `reporting`, `rules-trim` and `lib` after adding the two
+lines.**
+
+**Contract amendments made in RED** (in place, each with its reason):
+- **A-1**: a rule names a suite only when `.claude/tests/<name>.test.sh`
+  exists. A path no rule maps to an existing suite is R5's `all`. Pinned by
+  the deleted-gamma case.
+- **A-2**: a `--suites` fallback's stderr is the *Output* `all:` shape,
+  `selftest-needed: suites — all: cannot compute the diff: <reason>;
+  defaulting to every suite`, not the run-mode line. The Enumeration bullet
+  and the Output block contradicted each other.
+- **A-3**: streams for `--changed`. The header lines and the `selected no
+  suite` line go to stdout; `cannot select` goes to stderr with nothing on
+  stdout.
+
+**What the tests pin: the interface GREEN must build.**
+
+`scripts/selftest-needed.sh --suites [base-ref]`:
+- stdout: sorted unique names one per line, or exactly `all`, or nothing.
+  Exit 0 for a list or `all`, exit 1 for nothing, exit 2 for usage.
+- stderr header for a list, whole line:
+  `selftest-needed: suites — <k> of <m> selected from <p> harness path(s) changed against <base> (merge-base <short>)`,
+  where `<m>` is the count of `.claude/tests/*.test.sh` in the tree and `<p>`
+  the count of harness paths.
+- one stderr line per selected suite: two spaces, the name, one or more
+  spaces, then exactly `<path> (<rule>)`. `<rule>` is one of `mentioned`,
+  `itself`, `scans <the matched pattern>` (e.g. `scans scripts/*.sh`), and
+  `<path>` is the suite's first selecting path in sort order. **Not pinned:**
+  the padding width, and the exact rule word for R4's `*.sh` rows (only lib's
+  `scans scripts/*.sh` is pinned).
+- `all` stderr, whole and alone:
+  `selftest-needed: suites — all: <path> is read by every suite` (R2),
+  `selftest-needed: suites — all: <path> is mapped by no rule; defaulting to every suite` (R5),
+  `selftest-needed: suites — all: cannot compute the diff: <existing reason>; defaulting to every suite` (fallbacks: whole for no base, no merge base and not a git checkout; prefix and suffix for lib.sh and paths.conf).
+- no harness path: stderr exactly the existing `selftest-needed: skip — ...` line.
+- usage, exit 2, nothing on stdout: `--suites -x`, `--suites main extra`,
+  `main --suites`. **Not pinned:** the usage text.
+- the run/skip mode: unchanged, all existing cases.
+
+`scripts/selftest.sh`:
+- `<a> <b>...`: glob order, the single-suite floor rule per suite, no audit.
+  An unknown name gives stderr exactly `No suites matched '<name>'. Looked in
+  .claude/tests/*.test.sh`, exit 1, empty stdout, no lock left. **Not
+  pinned:** what is printed for two unknown names at once.
+- `--changed [ref]`:
+  - a list: stdout line 1 is
+    `selftest: --changed — <k> of <m> suite(s) selected: <names space-joined>`,
+    then the multi-name run.
+  - `all`: `selftest: --changed — every suite: <text after "all: ">`, then a
+    byte-identical full run.
+  - nothing: `selftest: --changed selected no suite — <the skip line>` alone
+    on stdout, exit 1.
+  - the full-run floors audit comes first: on a fault, the fault report,
+    exit 1, no header.
+  - `cannot select`: on stderr line 1, exit 2.
+  **Not pinned:** stderr in the `all` and nothing cases, and whether the
+  `--suites` header line is passed through (only alpha's reason line is
+  pinned on stderr).
+
+**Passed on arrival, and what earns each.**
+
+| Suite | Assertions | Why green in RED | What earns it |
+|---|---|---|---|
+| selftest-needed | 9 usage (exit 2, empty stdout, stderr non-empty) | `--suites` itself is the usage error today | the `--suites release` case in the same describe, which must exit 0 in GREEN; GREEN confirms all 9 stay green beside it |
+| selftest-needed | 8, run/skip unchanged with suites present | existing behaviour | regression guard; its control is the `m.conf`-alone `--suites` case, same fixture shape, different answer |
+| selftest-needed | AC-5 skip and its release control: stdout empty, 0 lines (8) | stdout is empty on a usage error too | the paired exit-1 and whole-stderr assertions, which are red |
+| selftest-needed | controls `out_has` alpha, gamma, lib (3); four preconditions; AC-8 anchor (1) | absent from an empty stdout; fixture facts | the whole-stdout assertion beside each, which is red |
+| selftest | AC-6: exit 0, empty stderr, no beta, full-run control (2); `alpha beta` exit and floors line; `alpha gamma` exit 1 and alpha's FAIL; `alpha nosuch` exit 1 (alpha is short of the floor 4 there) and no lock | today's one-name run happens to give them | the whole-stdout / whole-stderr assertion in the same case, which is red |
+| selftest | AC-7: no beta block; JOBS=3 stdout identical; audit exit 1 and the `alpha gamma` control; full-run precondition; nothing-case exit 1 and no lock; ref control exit 1; `-x` empty stdout | `--changed` is an unmatched name (exit 1, empty stdout) | the golden / header assertions in the same case, which are red |
+
+None of these needs a mutation in RED. Each sits beside a red assertion in
+its own case that GREEN must turn green.
+
+**Negative controls: expected values.** There are no thresholds; each
+control is an exact value. Every value below is the fixture's, by
+construction. None of them could be measured against a `--suites` that does
+not exist, so they are claims until GREEN runs them.
+
+| Control | Expected | Measured in RED |
+|---|---|---|
+| AC-1: alpha / gamma in the n.conf list | 0 lines each | 0 (vacuous: stdout empty) |
+| AC-3: x.conf unmapped beside m.conf | stdout `all`, exit 0, stderr `... x.conf is mapped by no rule; ...` | exit 2, usage |
+| AC-3 control for the control: m.conf alone | stdout `alpha` `beta`, exit 0, header `2 of 9 ... 1 harness path(s)` | exit 2, usage |
+| AC-4: `.claude/foo/x.sh` has no lib | lib lines 0, stdout `grep-count` `sigpipe` | 0 (vacuous) |
+| AC-4: `.claude/skills/bar/deep/notes.md` | stdout `shipped-docs`, not `all` | exit 2, usage |
+| AC-5: `--suites` (no ref) on the release fixture | exit 1, empty, skip line | exit 2, usage |
+| AC-6: unnamed beta's block | 0 | 0 (vacuous: one suite ran) |
+| AC-6: full run over the faulted floors file | exit 1, last `2 fault(s) in .claude/tests/floors.conf. Nothing was run.` | exit 1, that line (green) |
+| AC-7: beta block under `--changed` | 0 | 0 (vacuous) |
+| AC-7: audit with unselected beta `lots` | exit 1, stdout exactly the 3-line fault report | exit 1, empty stdout |
+| AC-7: `alpha gamma` over that file | exit 0 | 0 (green) |
+| AC-7: `--changed` (no ref) on the release fixture | exit 1 | 1 (vacuous: unmatched name) |
+
+**Deferred verifications.** **DV-1 and DV-2 are owned by GATES, and RED
+declines both.** DV-1's defect-put-back mutates `selftest-needed.sh`'s R5
+line, which does not exist yet, and DV-2 times a `--changed` run that cannot
+run yet. Neither was attempted.
+
+**Found in RED that GREEN and GATES should know.**
+- **The Baseline's CLAUDE.md count looks low.** The Contract and DV-1 expect a
+  lone `CLAUDE.md` change to select 8 suites (`attest lib mutate refresh
+  reporting selftest-needed shipped-docs story`). A fixed-string search of
+  `main`'s suites (`git show main:<suite> | grep -qF CLAUDE.md`) finds **13**:
+  those eight plus `phase-guard`, `plan`, `rules-trim`, `sigpipe` and
+  `worktree`. No test here changes because of it (every list is the
+  fixture's). But DV-1's expected real-tree list should be written from R3 as
+  specified, not from the Baseline, and the difference recorded as DV-1 says.
+- This story's own `selftest-needed.test.sh` now mentions `scripts/selftest.sh`,
+  `CLAUDE.md`, `.claude/tests/_lib.sh` and many fixture paths, which widens
+  what R3 selects for those paths in the real tree. That over-selection is
+  correct. It is noted so that DV-1's list is not a surprise.
+- R4's `*.sh` row matches `.claude/tests/<name>.test.sh` too, so a changed
+  suite also selects `grep-count` and `sigpipe` (the AC-2 cases pin that).
+- Keep R3 to one `grep -lF -f <paths-file>` over the suite files. An empty
+  line in the patterns file matches every suite, so strip empty lines.
+- In the fixture `selftest.test.sh` uses for AC-7, the scanner suites do not
+  exist, so under A-1 a `.sh` change there would be R5's `all`. No case relies
+  on that.
 
 ## Regressions
 
@@ -520,3 +826,8 @@ name, below the table.
 
 ## Notes
 
+- **RED verification (orchestrator, 2026-11-04):** the test-developer resolved to claude-opus-5-5. `attest.sh check` answered `fresh` for all three runs:
+  - `bash scripts/selftest.sh selftest-needed`: exit 1, 259 passed and 199 failed. The log `.claude/state/attest-logs/20261104T205156Z.173145.log` shows 0 FAILs before the first HARNESS-094 describe. The first failure is `--suites` rejected with the usage line (exit 2).
+  - `bash scripts/selftest.sh selftest`: exit 1, 288 passed and 21 failed. The log `20261104T205957Z.184706.log` shows 0 FAILs before the first HARNESS-094 describe. The failures are a multi-name run running only one suite.
+  - `bash scripts/gates.sh --fast`: exit 0, 0 ran.
+  - None ran directly.

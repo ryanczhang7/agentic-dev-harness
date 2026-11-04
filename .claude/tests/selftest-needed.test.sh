@@ -467,4 +467,380 @@ case "$(uname -s)" in
     ;;
 esac
 
+# ===========================================================================
+# HARNESS-094: `--suites [base-ref]` - WHICH suites the diff can break, one
+# per line, or the single line `all`; exit 1 and nothing on stdout when no
+# harness path changed. The rules (story, Contract): R1 a changed
+# .claude/tests/<name>.test.sh selects <name>; R2 _lib.sh, _spawns.sh or
+# scripts/selftest.sh selects `all`; R3 a suite whose SOURCE holds the path as
+# a fixed string; R4 the five scanner rows; R5 a harness path no rule maps
+# selects `all`. Amendment A-1 (RED): a rule contributes a name only when
+# .claude/tests/<name>.test.sh exists in the tree - see the deleted-suite case.
+#
+# THE FIXTURE. suites_stubs writes nine throwaway suites into the fixture's
+# .claude/tests and commits them on `main`, so every list below is read out,
+# not derived: alpha and beta mention .claude/harness/m.conf, beta also
+# .claude/harness/n.conf, policy mentions .claude/skills/foo/SKILL.md, and
+# gamma and the five scanner suites mention no path at all. The stubs are
+# never executed - R3 reads source - so they are one comment line each. Every
+# name is lowercase letters and at most one `-`, chosen so that `sort` gives
+# the same order in the C locale and in en_US (gamma < grep-count, policy <
+# profiles, shipped-docs < sigpipe either way).
+#
+# THE NEEDLES. stdout is compared WHOLE, with its line count, from the root
+# and from src/. stderr's first line (the header) is compared whole where the
+# fixture makes it deterministic; one per-suite line per rule kind is matched
+# by reason_lines, which pins everything but the padding width between the
+# name and the path (the Contract shows the shape, not a width).
+#
+# THE RED SHAPE. Today `--suites` is a `-`-prefixed argument, so every run
+# exits 2 with the usage line and empty stdout. Every case runs regardless and
+# every assertion is unconditional, so the executed count is the same in RED
+# and GREEN. The usage cases and the run/skip-unchanged case pass on arrival;
+# the handoff says what earns them.
+
+SUITE_STUBS="alpha beta gamma grep-count lib policy profiles shipped-docs sigpipe"
+
+# suites_stubs   Writes the nine stub suites into $d/.claude/tests and commits
+# them on the current branch (main).
+suites_stubs() {
+  local s
+  for s in $SUITE_STUBS; do put ".claude/tests/$s.test.sh" "# fixture suite $s"; done
+  printf '# reads .claude/harness/m.conf\n' >> "$d/.claude/tests/alpha.test.sh"
+  printf '# reads .claude/harness/m.conf and .claude/harness/n.conf\n' >> "$d/.claude/tests/beta.test.sh"
+  printf '# reads .claude/skills/foo/SKILL.md\n' >> "$d/.claude/tests/policy.test.sh"
+  commit_all "stub suites"
+}
+
+# suites_fixture   d := a fresh fixture holding the stubs on main, checked out
+# on a story branch with no change yet.
+suites_fixture() {
+  new_fixture; SN="$d/scripts/selftest-needed.sh"
+  suites_stubs
+  story_branch
+}
+
+# es_run <cwd> [args...]   run_sn, then OUTS := the whole stdout, its lines
+# joined by newlines (CR stripped; "" when there is none), ERR with CR
+# stripped, ERR1 := the first line of stderr.
+es_run() {
+  run_sn "$@"
+  OUTS=""; [ "$NOUT" -gt 0 ] && OUTS="$(printf '%s\n' "${OL[@]}")"
+  ERR="${ERR//$'\r'/}"; ERR1="${ERR%%$'\n'*}"
+}
+
+# nlines <text>   How many lines <text> holds: 0 for "", else newlines + 1.
+nlines() {
+  local t="$1" n=0
+  [ -n "$t" ] || { printf 0; return; }
+  n=1; t="${t//[!$'\n']/}"; printf '%s' $((n + ${#t}))
+}
+
+# expect_suites <label> <rc> <stdout> <errmode> <err> [args...]
+# From the fixture root and from src/: the exit status, the WHOLE stdout and
+# its line count, and stderr - <errmode> `whole`: stderr is exactly <err>;
+# `first`: stderr's first line is exactly <err>. Four assertions per
+# directory, eight per call, unconditionally.
+expect_suites() {
+  local label="$1" rc="$2" want="$3" mode="$4" werr="$5" where cwd
+  shift 5
+  for where in root subdir; do
+    cwd="$d"; [ "$where" = subdir ] && cwd="$d/$SUBDIR"
+    es_run "$cwd" "$@"
+    assert_eq "$label [from $where]: exits $rc" "$rc" "$RC"
+    assert_eq "$label [from $where]: stdout is exactly the pinned list" "$want" "$OUTS"
+    assert_eq "$label [from $where]: stdout has exactly $(nlines "$want") line(s)" "$(nlines "$want")" "$NOUT"
+    if [ "$mode" = whole ]; then
+      assert_eq "$label [from $where]: stderr is exactly the pinned text" "$werr" "$ERR"
+    else
+      assert_eq "$label [from $where]: stderr's first line is exactly the pinned header" "$werr" "$ERR1"
+    fi
+  done
+  return 0
+}
+
+# reason_lines <name> <path> <rule>   How many lines of the last run's stderr
+# are `  <name>`, one or more spaces, then exactly `<path> (<rule>)`.
+reason_lines() {
+  awk -v n="$1" -v t="$2 ($3)" '
+    substr($0, 1, 2 + length(n)) == "  " n {
+      s = substr($0, 3 + length(n))
+      if (s ~ /^ +/) { sub(/^ +/, "", s); if (s == t) c++ }
+    }
+    END { print c + 0 }' <<REASON_ERR
+$ERR
+REASON_ERR
+}
+
+# out_has <line>   How many lines of the last run's stdout are exactly <line>.
+out_has() {
+  awk -v l="$1" '$0 == l { c++ } END { print c + 0 }' <<OUT_LINES
+$OUTS
+OUT_LINES
+}
+
+# hdr <k> <m> <paths> [base]   The pinned --suites header for a list.
+hdr() {
+  local b="${4:-main}"
+  printf 'selftest-needed: suites %s %s of %s selected from %s harness path(s) changed against %s (merge-base %s)' \
+    "$D" "$1" "$2" "$3" "$b" "$(short "$b")"
+}
+SUITES_ALL="selftest-needed: suites $D all: "
+SUITES_FB_PRE="${SUITES_ALL}cannot compute the diff: "
+SUITES_FB_SUF="; defaulting to every suite"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-094 AC-1: --suites prints the suites whose source mentions a changed path"
+
+suites_fixture
+put .claude/harness/n.conf 'n'; commit_all "n.conf"
+expect_suites "a committed .claude/harness/n.conf, mentioned only by beta, prints beta" 0 \
+  "beta" first "$(hdr 1 9 1)" --suites
+assert_eq "the control: alpha, whose source mentions m.conf but not n.conf, is not printed" 0 "$(out_has alpha)"
+assert_eq "the control: gamma, whose source mentions no path, is not printed" 0 "$(out_has gamma)"
+
+suites_fixture
+put .claude/harness/m.conf 'm'; gitc add .claude/harness/m.conf >/dev/null 2>&1
+put .claude/harness/n.conf 'n'
+expect_suites "a STAGED m.conf and an UNTRACKED n.conf print alpha and beta, sorted, beta once" 0 \
+  "alpha
+beta" first "$(hdr 2 9 2)" --suites
+assert_eq "stderr names alpha's first selecting path and the rule: (mentioned)" 1 \
+  "$(reason_lines alpha .claude/harness/m.conf mentioned)"
+assert_eq "stderr names beta's FIRST path in sort order, m.conf, not n.conf" 1 \
+  "$(reason_lines beta .claude/harness/m.conf mentioned)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-094 AC-2: a changed suite selects itself; _lib.sh, _spawns.sh and selftest.sh select all"
+
+suites_fixture
+put .claude/tests/gamma.test.sh '# fixture suite gamma, edited'
+expect_suites "an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners)" 0 \
+  "gamma
+grep-count
+sigpipe" first "$(hdr 3 9 1)" --suites
+assert_eq "stderr names gamma's path and the rule: (itself)" 1 \
+  "$(reason_lines gamma .claude/tests/gamma.test.sh itself)"
+
+suites_fixture
+put .claude/tests/delta.test.sh '# a new suite'
+expect_suites "a NEW untracked .claude/tests/delta.test.sh prints delta, and the count of suites is the tree's (10)" 0 \
+  "delta
+grep-count
+sigpipe" first "$(hdr 3 10 1)" --suites
+
+suites_fixture
+put .claude/tests/_lib.sh '# a library'; put .claude/harness/n.conf 'n'
+expect_suites "a changed .claude/tests/_lib.sh beside a mapped n.conf prints all, and says why" 0 \
+  "all" whole "${SUITES_ALL}.claude/tests/_lib.sh is read by every suite" --suites
+
+suites_fixture
+put .claude/tests/_spawns.sh '# a tracer'
+expect_suites "a changed .claude/tests/_spawns.sh prints all, and says why" 0 \
+  "all" whole "${SUITES_ALL}.claude/tests/_spawns.sh is read by every suite" --suites
+
+suites_fixture
+printf '# edited on the story branch\n' >> "$d/scripts/selftest.sh"
+expect_suites "an edited scripts/selftest.sh prints all, and says why" 0 \
+  "all" whole "${SUITES_ALL}scripts/selftest.sh is read by every suite" --suites
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-094 AC-3: a path no rule maps, or a diff that cannot be computed, prints all"
+
+suites_fixture
+put .claude/harness/x.conf 'x'; put .claude/harness/m.conf 'm'
+expect_suites "the control: a new .claude/harness/x.conf that no rule maps, beside a mapped m.conf, prints all and names x.conf" 0 \
+  "all" whole "${SUITES_ALL}.claude/harness/x.conf is mapped by no rule; defaulting to every suite" --suites
+
+suites_fixture
+put .claude/harness/m.conf 'm'
+expect_suites "the control for the control: m.conf alone, which R3 maps, prints the list, not all" 0 \
+  "alpha
+beta" first "$(hdr 2 9 1)" --suites
+
+new_fixture; SN="$d/scripts/selftest-needed.sh"
+gitc branch -M trunk >/dev/null 2>&1; story_branch
+put .claude/harness/m.conf 'm'; commit_all "m"
+expect_suites "neither origin/main nor main resolves: all, with the existing reason" 0 \
+  "all" whole "${SUITES_FB_PRE}no origin/main or main to compare against${SUITES_FB_SUF}" --suites
+
+new_fixture; SN="$d/scripts/selftest-needed.sh"
+gitc branch -M story/T-1-fixture >/dev/null 2>&1
+put .claude/harness/m.conf 'm'; commit_all "m"
+empty_tree="$(gitc mktree </dev/null 2>/dev/null)"
+unrelated="$(gitc commit-tree "$empty_tree" -m unrelated 2>/dev/null)"
+gitc update-ref refs/heads/main "$unrelated" >/dev/null 2>&1
+assert_eq "precondition: main exists and shares no history with the story branch" \
+  "1:1" "$(gitc rev-parse --verify -q main >/dev/null 2>&1 && printf 1):$(gitc merge-base main HEAD >/dev/null 2>&1 || printf 1)"
+expect_suites "main resolves but has no merge base: all, with the existing reason" 0 \
+  "all" whole "${SUITES_FB_PRE}no merge base with main${SUITES_FB_SUF}" --suites
+
+nd="$(mktemp -d 2>/dev/null || mktemp -d -t harness.XXXXXX)"; FIXES+=("$nd")
+mkdir -p "$nd/.claude" "$nd/$SUBDIR"
+cp -r "$REPO_ROOT/scripts" "$nd/scripts"
+cp -r "$REPO_ROOT/.claude/hooks" "$nd/.claude/hooks"
+cp -r "$REPO_ROOT/.claude/harness" "$nd/.claude/harness"
+CEIL="$(dirname "$nd")"
+assert_eq "precondition: the directory is not inside any git checkout" \
+  "no" "$(cd "$nd" && GIT_CEILING_DIRECTORIES="$CEIL" git rev-parse --show-toplevel >/dev/null 2>&1 && printf yes || printf no)"
+d="$nd"; SN="$d/scripts/selftest-needed.sh"
+expect_suites "outside any git checkout: all, with the existing reason" 0 \
+  "all" whole "${SUITES_FB_PRE}not a git checkout${SUITES_FB_SUF}" --suites
+CEIL=""
+
+# fb_lines   How many lines of the last run's stderr begin SUITES_FB_PRE and
+# end SUITES_FB_SUF - the fallback's line, whatever reason sits between.
+fb_lines() {
+  awk -v p="$SUITES_FB_PRE" -v s="$SUITES_FB_SUF" '
+    length($0) >= length(p) + length(s) && substr($0, 1, length(p)) == p &&
+    substr($0, length($0) - length(s) + 1) == s { c++ }
+    END { print c + 0 }' <<FB_ERR
+$ERR
+FB_ERR
+}
+
+suites_fixture
+put .claude/harness/m.conf 'm'; commit_all "m"
+FLIB="$d/.claude/hooks/lib.sh"
+awk 'NR == 2 { print "echo \"$NOPE_UNSET\"" } { print }' "$FLIB" > "$WORK/lib.sh" && cat "$WORK/lib.sh" > "$FLIB"
+assert_eq "precondition: sourcing the fixture's lib.sh under \`set -u\` in a subshell fails" \
+  "fails" "$( ( set -u; . "$FLIB" ) >/dev/null 2>&1 && printf loads || printf fails)"
+for where in root subdir; do
+  cwd="$d"; [ "$where" = subdir ] && cwd="$d/$SUBDIR"
+  es_run "$cwd" --suites
+  assert_eq "a lib.sh that will not load [from $where]: exits 0" 0 "$RC"
+  assert_eq "a lib.sh that will not load [from $where]: stdout is exactly all" "all" "$OUTS"
+  assert_eq "a lib.sh that will not load [from $where]: stdout is exactly one line" 1 "$NOUT"
+  assert_eq "a lib.sh that will not load [from $where]: stderr carries the fallback line once" 1 "$(fb_lines)"
+done
+
+suites_fixture
+put .claude/harness/m.conf 'm'; commit_all "m"
+rm -f "$d/.claude/harness/paths.conf"
+assert_eq "precondition: the fixture's .claude/harness/paths.conf is gone" \
+  "gone" "$([ -e "$d/.claude/harness/paths.conf" ] && printf present || printf gone)"
+for where in root subdir; do
+  cwd="$d"; [ "$where" = subdir ] && cwd="$d/$SUBDIR"
+  es_run "$cwd" --suites
+  assert_eq "paths.conf missing [from $where]: exits 0" 0 "$RC"
+  assert_eq "paths.conf missing [from $where]: stdout is exactly all" "all" "$OUTS"
+  assert_eq "paths.conf missing [from $where]: stdout is exactly one line" 1 "$NOUT"
+  assert_eq "paths.conf missing [from $where]: stderr carries the fallback line once" 1 "$(fb_lines)"
+done
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-094 AC-4: the scanner rows select suites that read the tree by glob"
+
+suites_fixture
+put scripts/probes/x.sh '#!/usr/bin/env bash'
+expect_suites "a new scripts/probes/x.sh (a deeper scripts/*.sh) prints grep-count, lib and sigpipe" 0 \
+  "grep-count
+lib
+sigpipe" first "$(hdr 3 9 1)" --suites
+assert_eq "stderr names lib's path and the pattern that matched: (scans scripts/*.sh)" 1 \
+  "$(reason_lines lib scripts/probes/x.sh 'scans scripts/*.sh')"
+
+suites_fixture
+put .claude/hooks/x.sh '#!/usr/bin/env bash'
+expect_suites "a new .claude/hooks/x.sh prints grep-count, lib and sigpipe" 0 \
+  "grep-count
+lib
+sigpipe" first "$(hdr 3 9 1)" --suites
+
+suites_fixture
+put .claude/foo/x.sh '#!/usr/bin/env bash'
+expect_suites "a new .claude/foo/x.sh prints grep-count and sigpipe" 0 \
+  "grep-count
+sigpipe" first "$(hdr 2 9 1)" --suites
+assert_eq "and not lib, whose rows are scripts/ and .claude/hooks/ only" 0 "$(out_has lib)"
+
+suites_fixture
+put .claude/skills/stack-profiles/reference/x.txt 'x'
+expect_suites "a file under .claude/skills/stack-profiles/reference/ prints profiles" 0 \
+  "profiles" first "$(hdr 1 9 1)" --suites
+
+suites_fixture
+put .claude/commands/x.md '# x'; put .claude/agents/x.md '# x'
+expect_suites "a .md under .claude/commands/ and one under .claude/agents/ print shipped-docs, not all" 0 \
+  "shipped-docs" first "$(hdr 1 9 2)" --suites
+
+suites_fixture
+put .claude/skills/bar/deep/notes.md '# notes'
+expect_suites "the control: a .md two levels under .claude/skills/ that no suite mentions prints shipped-docs, not all" 0 \
+  "shipped-docs" first "$(hdr 1 9 1)" --suites
+
+suites_fixture
+put .claude/skills/foo/SKILL.md '# a skill'
+expect_suites "a .md under .claude/skills/ that policy mentions prints policy and shipped-docs" 0 \
+  "policy
+shipped-docs" first "$(hdr 2 9 1)" --suites
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-094 AC-5: no harness path is exit 1 and nothing on stdout; a base ref is used; usage"
+
+suites_fixture
+put src/app.ts 'export const a = 1'; commit_all "source only"
+expect_suites "a source-only diff: nothing on stdout, exit 1, the existing skip line on stderr" 1 \
+  "" whole "selftest-needed: skip $D no harness path among 1 changed path(s) against main (merge-base $(short main))$CI_TAIL" --suites
+
+# main has moved past `release` with a harness commit; the story branch adds a
+# source file. Against release the harness commit is in the diff; against
+# main it is not.
+new_fixture; SN="$d/scripts/selftest-needed.sh"
+suites_stubs
+gitc branch release >/dev/null 2>&1
+put .claude/harness/n.conf 'n'; commit_all "n.conf on main"
+story_branch; put src/app.ts 'export const a = 1'; commit_all "source"
+expect_suites "\`--suites release\` diffs against release and prints beta" 0 \
+  "beta" first "$(hdr 1 9 1 release)" --suites release
+expect_suites "control: \`--suites\` on the same fixture resolves main and selects nothing" 1 \
+  "" whole "selftest-needed: skip $D no harness path among 1 changed path(s) against main (merge-base $(short main))$CI_TAIL" --suites
+
+suites_fixture
+for args in "--suites -x" "--suites main extra" "main --suites"; do
+  es_run "$d" $args   # split on purpose: each string is an argument list
+  assert_eq "\`$args\` exits 2" 2 "$RC"
+  assert_eq "\`$args\` prints nothing on stdout" 0 "$NOUT"
+  assert_eq "\`$args\` says why on stderr" yes "$([ -n "$ERR" ] && printf yes || printf no)"
+done
+
+suites_fixture
+put .claude/harness/m.conf 'm'; commit_all "m"
+expect "without --suites, a fixture holding suites still answers the unchanged run line" 0 \
+  "selftest-needed: run $D 1 harness path(s) changed against main (merge-base $(short main)): .claude/harness/m.conf" yes
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-094 A-1: a rule names a suite only when its file exists in the tree"
+
+# gamma.test.sh deleted on the branch: R1 would name gamma, which can no
+# longer run (selftest.sh --changed would say "No suites matched"). The
+# *.sh scanners still map the path, so it is not unmapped either.
+suites_fixture
+gitc rm -q .claude/tests/gamma.test.sh >/dev/null 2>&1; commit_all "drop gamma"
+expect_suites "a DELETED .claude/tests/gamma.test.sh prints grep-count and sigpipe, not gamma, and counts 8 suites" 0 \
+  "grep-count
+sigpipe" first "$(hdr 2 8 1)" --suites
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-094 AC-8: CLAUDE.md's command list names both, directly after the selftest-needed.sh line"
+
+CM="$REPO_ROOT/CLAUDE.md"
+CM_ANCHOR="bash scripts/selftest-needed.sh  # does this story's diff touch a harness path? exit 0 run / 1 skip"
+CM_L1='bash scripts/selftest-needed.sh --suites   # which suites that diff can break, one per line, or `all`'
+CM_L2='SELFTEST_JOBS=4 bash scripts/selftest.sh --changed   # run exactly those; the local self-test before a PR (HARNESS-095 switches the procedure to it)'
+CM_TEXT="$(tr -d '\r' < "$CM")"
+cm_count() {
+  awk -v l="$1" '$0 == l { c++ } END { print c + 0 }' <<CM_LINES
+$CM_TEXT
+CM_LINES
+}
+assert_eq "precondition: CLAUDE.md holds the existing selftest-needed.sh line exactly once" 1 "$(cm_count "$CM_ANCHOR")"
+assert_eq "the two lines directly after it are the --suites line, then the --changed line" "$CM_L1
+$CM_L2" "$(awk -v a="$CM_ANCHOR" 'f && n < 2 { print; n++ } $0 == a { f = 1 }' <<CM_AFTER
+$CM_TEXT
+CM_AFTER
+)"
+assert_eq "the --suites line appears exactly once" 1 "$(cm_count "$CM_L1")"
+assert_eq "the --changed line appears exactly once" 1 "$(cm_count "$CM_L2")"
+
 summary "selftest-needed"
