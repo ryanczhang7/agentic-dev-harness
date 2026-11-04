@@ -1784,8 +1784,9 @@ cf_new lots; cf_story
 printf 'm\n' > "$CF/.claude/harness/m.conf"
 cat > "$HW/golden.ac7-audit" <<'GOLDEN'
 FAIL .claude/tests/floors.conf:2  floor for 'beta' is not a number: 'lots'
+FAIL beta  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)
 
-1 fault(s) in .claude/tests/floors.conf. Nothing was run.
+2 fault(s) in .claude/tests/floors.conf. Nothing was run.
 GOLDEN
 crun - --changed
 ckeep ac7-audit

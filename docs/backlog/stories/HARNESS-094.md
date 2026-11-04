@@ -5,7 +5,7 @@ slug: the-pre-pr-self-test-runs-only-the-suite
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: RED
 branch: story/HARNESS-094-the-pre-pr-self-test-runs-only-the-suite
 depends_on: []      # nothing: this is the first of the pair; HARNESS-095 and HARNESS-089..093 wait for it
 touches: [scripts/selftest-needed.sh, scripts/selftest.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, CLAUDE.md, .claude/harness/VERSION]
@@ -736,7 +736,7 @@ not exist, so they are claims until GREEN runs them.
 | AC-6: unnamed beta's block | 0 | 0 (vacuous: one suite ran) |
 | AC-6: full run over the faulted floors file | exit 1, last `2 fault(s) in .claude/tests/floors.conf. Nothing was run.` | exit 1, that line (green) |
 | AC-7: beta block under `--changed` | 0 | 0 (vacuous) |
-| AC-7: audit with unselected beta `lots` | exit 1, stdout exactly the 3-line fault report | exit 1, empty stdout |
+| AC-7: audit with unselected beta `lots` | exit 1, stdout exactly the 4-line, 2-fault report (`not a number` for beta, `beta  no floor line ...`, blank, `2 fault(s) ...`); corrected under R-1, it said "the 3-line fault report", one fault, which is not what a full run's audit prints | exit 1, empty stdout |
 | AC-7: `alpha gamma` over that file | exit 0 | 0 (green) |
 | AC-7: `--changed` (no ref) on the release fixture | exit 1 | 1 (vacuous: unmatched name) |
 
@@ -790,6 +790,54 @@ run yet. Neither was attempted.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### R-1 (GREEN → RED, 2026-11-04): `golden.ac7-audit` expected one fault where the full-run audit reports two
+
+- **Which test:** `.claude/tests/selftest.test.sh`, describe "HARNESS-094 AC-7  --changed audits the whole floors file first". Its assertion "and its stdout is the full run's fault report and nothing else: no header, no suite" compares stdout with `golden.ac7-audit`.
+- **What it asserted:** a non-numeric floor for the unselected `beta` gives a one-fault report: `floor for 'beta' is not a number: 'lots'`, then `1 fault(s) in .claude/tests/floors.conf. Nothing was run.`
+- **What was wrong:** a full run's audit has always reported two faults in that case. A floor that is not a number is not loaded, so the every-suite loop also reports `beta  no floor line ...`. AC-7 asks for "the whole-file floors audit of a full run", so the golden contradicted its own criterion.
+- **How it was found:** GREEN's feature-developer measured it against `HEAD`'s `selftest.sh`. The orchestrator reproduced it independently on a clone of `main`, with a different suite (`doctor`) and value (`many`); `## Notes` holds both. The failing assertion, from `.claude/state/attest-logs/20261104T224009Z.19729.log`:
+
+      FAIL and its stdout is the full run's fault report and nothing else: no header, no suite
+           expected: identical
+           actual:   differ:
+           1a2
+           > FAIL beta  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)
+           3c4
+           < 1 fault(s) in .claude/tests/floors.conf. Nothing was run.
+           ---
+           > 2 fault(s) in .claude/tests/floors.conf. Nothing was run.
+
+- **What it asserts now:** (test-developer, claude-opus-5-5) `golden.ac7-audit` is the full run's two-fault report, the text `selftest.sh`'s audit prints at lines 212 and 379 and the summary at 402: `FAIL .claude/tests/floors.conf:2  floor for 'beta' is not a number: 'lots'`, then `FAIL beta  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)`, a blank line, then `2 fault(s) in .claude/tests/floors.conf. Nothing was run.` The assertion, its label and its comparison (`h_same`, byte-identical) are unchanged; only the expected value moved. The handoff's control-table row for this case is corrected in place to match. No assertion was added or removed, so the count stays 309 and neither `floors.conf` nor `selftest.test.sh`'s floor table changed.
+- **What earns it:** one `mutate.sh` probe of the behaviour the corrected golden pins and the old one denied, the every-suite missing-floor report for a suite that already has a fault. The mutation reintroduces exactly the one-fault-per-suite behaviour the old golden described: line 377 of `scripts/selftest.sh`, the audit loop's `floor_of "$name"`, is preceded by a skip for any suite already named in `$FAULTS`. Against the corrected test file it turns exactly this one assertion red (308 passed, 1 failed; the floor line is the consequence of that failure, not a second one), and the restore is verified byte-for-byte. Command: `bash scripts/mutate.sh scripts/selftest.sh '377s/^    floor_of "\$name"$/    case "$FAULTS" in *"$name$US"*) continue ;; esac; floor_of "$name"/' -- bash scripts/selftest.sh selftest`, exit 1. Output, with the passing describes elided:
+
+    === mutate: scripts/selftest.sh (1 line(s) changed by 377s/^    floor_of "\$name"$/    case "$FAULTS" in *"$name$US"*) continue ;; esac; floor_of "$name"/) ===
+      377 -     floor_of "$name"
+      377 +     case "$FAULTS" in *"$name$US"*) continue ;; esac; floor_of "$name"
+
+    === mutate: running bash scripts/selftest.sh selftest ===
+    ...
+        FAIL and its stdout is the full run's fault report and nothing else: no header, no suite
+             expected: identical
+             actual:   differ:
+             2d1
+             < FAIL beta  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)
+             4c3
+             < 2 fault(s) in .claude/tests/floors.conf. Nothing was run.
+             ---
+             > 1 fault(s) in .claude/tests/floors.conf. Nothing was run.
+    ...
+    selftest: 308 passed, 1 failed
+    FAIL selftest  did 308 units of work, below the floor of 309 in .claude/tests/floors.conf
+
+    assertion floors: 0 of 1 suite(s) met their declared floor.
+    1 of 1 harness suite(s) FAILED.
+
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261104T232537Z.64949.bak) ===
+      377:     floor_of "$name"
+
+  Afterwards `bash scripts/mutate.sh --check` printed `mutate: no stranded mutation; nothing of a previous run is in the tree.` An observation, not acted on (outside this remit): no other assertion in `selftest` went red under this mutation, including the AC-6 full-run case whose control row expects `2 fault(s) ...`, so that case's two faults evidently do not come from one suite carrying both a value fault and a missing-floor fault.
+- **GREEN after the return:** (orchestrator)
 
 ## Gate results
 
