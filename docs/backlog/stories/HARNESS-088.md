@@ -4,8 +4,8 @@ title: gates.sh refuses a duplicate gate id and an empty evidence regex, and a l
 slug: gates-sh-refuses-a-duplicate-gate-id-and
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-088-gates-sh-refuses-a-duplicate-gate-id-and
 depends_on: []      # HARNESS-083 is DONE (PR #171); nothing else is needed first
 touches: [scripts/gates.sh, scripts/check-boundaries.sh, .claude/tests/gates.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, .claude/skills/quality-gates/SKILL.md, .claude/tests/sigpipe.test.sh]
@@ -1020,3 +1020,5 @@ The verdict, at log line 17 of
 `.claude/state/attest-logs/20261104T012754Z.372179.log`, is
 `All required gates passed (0 ran, 7 unconfigured, 0 known).`
 - Follow-up, not this story (diff review round 1, Should fix 1, PO decision 9): add a `gates --list` assertion on a manifest with a duplicated id and an empty regex (both lines present, rc 0), earned by dropping one `LIST` guard with `mutate.sh`. It needs a failing test first.
+- Self-test at GATES → REVIEW (2026-11-04), dispatched to a feature-developer (resolved to claude-opus-5-5): `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh` answered `fresh`, `exit: 1`, `last: 1 of 34 harness suite(s) FAILED.`, `duration: 11419s`, log `.claude/state/attest-logs/20261104T014702Z.396343.log`. The only failure is `mutate`, with 306 passed and 2 failed: HARNESS-030 AC-6 C-1 (`--check` with `HARNESS_MUTATION` naming a live sentinel, expected exit 0, got 1). The floor shortfall 306/308 is the same two failures. This branch does not change `scripts/mutate.sh` or `.claude/tests/mutate.test.sh` (`git diff --stat main...HEAD` over both is empty). The orchestrator re-ran `bash .claude/tests/mutate.test.sh` alone on the same tree: `mutate: 308 passed, 0 failed` in 236 s. Cause not shown. One candidate the log does not confirm: C-1's "live" process is a `sleep 30` planted at AC-4, and the run's 11,419 s suggests heavy host load. Under that load the window may close before C-1 runs. The control just before C-1 still saw the process RUNNING.
+- PO decision 10 (2026-11-04, user's choice "Open the PR"): go to REVIEW without a second local self-test. CI's self-test on the PR runs every suite and is the confirmation for `mutate` HARNESS-030 AC-6 C-1. If it fails there too, the story returns to GATES.
