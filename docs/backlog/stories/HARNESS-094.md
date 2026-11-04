@@ -5,7 +5,7 @@ slug: the-pre-pr-self-test-runs-only-the-suite
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-094-the-pre-pr-self-test-runs-only-the-suite
 depends_on: []      # nothing: this is the first of the pair; HARNESS-095 and HARNESS-089..093 wait for it
 touches: [scripts/selftest-needed.sh, scripts/selftest.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, CLAUDE.md, .claude/harness/VERSION]
@@ -831,3 +831,33 @@ run yet. Neither was attempted.
   - `bash scripts/selftest.sh selftest`: exit 1, 288 passed and 21 failed. The log `20261104T205957Z.184706.log` shows 0 FAILs before the first HARNESS-094 describe. The failures are a multi-name run running only one suite.
   - `bash scripts/gates.sh --fast`: exit 0, 0 ran.
   - None ran directly.
+- **GREEN finding (feature-developer, claude-opus-5-5, 2026-11-04): one frozen golden contradicts the full-run audit it names.** `selftest.test.sh`, describe "HARNESS-094 AC-7  --changed audits the whole floors file first", pins `golden.ac7-audit` as one fault (`floor for 'beta' is not a number: 'lots'`, then `1 fault(s) ...`). A full run's audit over that floors file reports **two**: a non-numeric floor is not loaded, so the audit's every-suite loop also reports `beta  no floor line ...`. Measured against `selftest.sh` as it stands on `HEAD` (before this story), full run over `alpha 3 / beta lots / gamma 1`:
+
+      FAIL .claude/tests/floors.conf:2  floor for 'beta' is not a number: 'lots'
+      FAIL beta  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)
+
+      2 fault(s) in .claude/tests/floors.conf. Nothing was run.
+      rc=1
+
+  AC-7 and the Contract both say `--changed` performs "the whole-file floors audit of a full run", and the assertion's own label says "the full run's fault report", so the shipped code prints those two faults and the golden's expected value is the thing that is wrong. Not worked around: making `--changed`'s audit differ from a full run's would contradict AC-7. The one failing assertion, from `.claude/state/attest-logs/20261104T224009Z.19729.log`:
+
+      FAIL and its stdout is the full run's fault report and nothing else: no header, no suite
+           expected: identical
+           actual:   differ:
+           1a2
+           > FAIL beta  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)
+           3c4
+           < 1 fault(s) in .claude/tests/floors.conf. Nothing was run.
+           ---
+           > 2 fault(s) in .claude/tests/floors.conf. Nothing was run.
+
+  The control the handoff table records ("AC-7: audit with unselected beta `lots` | exit 1, stdout exactly the 3-line fault report") therefore measured exit 1 (as expected) and a 4-line, 2-fault report (diverges). Every other assertion in both suites passes.
+- **Orchestrator's independent reproduction of the GREEN finding (2026-11-04).** I used different inputs and none of the developer's fixture: a `--no-hardlinks` clone of `main` (scratchpad `repro`), with the real `floors.conf` line `floor | doctor        | 69` changed to `many`, and a plain full run `bash scripts/selftest.sh`:
+
+      FAIL .claude/tests/floors.conf:45  floor for 'doctor' is not a number: 'many'
+      FAIL doctor  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)
+
+      2 fault(s) in .claude/tests/floors.conf. Nothing was run.
+      rc=1
+
+  The full run's audit has always reported two faults for one non-numeric floor, so `golden.ac7-audit` is wrong and the code is right. Decision: return to RED (Regressions R-1). A first attempt at this reproduction ran in the real worktree because the clone failed. It changed nothing: `git status` and `git diff -- .claude/tests/floors.conf` were clean afterwards, and no run.lock was left. Its timed-out `selftest.sh` produced no record.

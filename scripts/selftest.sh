@@ -3,6 +3,10 @@
 #
 #   bash scripts/selftest.sh            every suite in .claude/tests
 #   bash scripts/selftest.sh phase-guard one suite, by name
+#   bash scripts/selftest.sh a b ...    several suites, by name, in glob order
+#   bash scripts/selftest.sh --changed [base-ref]
+#                                       the suites this branch's diff can break,
+#                                       as `selftest-needed.sh --suites` names them
 #   VERBOSE=1 bash scripts/selftest.sh  name every assertion, not just failures
 #   SELFTEST_JOBS=4 bash scripts/selftest.sh   up to 4 suites at once
 #
@@ -93,7 +97,10 @@
 
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ONLY="${1:-}"
+# ONLY is the one name of a one-name run, for its no-match message; the set of
+# suites a run selects is WANT, built below (HARNESS-094).
+ONLY=""
+[ "$#" -eq 1 ] && ONLY="$1"
 
 # SELFTEST_JOBS, read before anything else so that a bad value is refused
 # before the floors audit, the lock and any suite (HARNESS-036 C-3). Unset and
@@ -252,23 +259,117 @@ $2
 SUITE_OUTPUT
 }
 
+# --- which suites (HARNESS-094) ----------------------------------------------
+# WANT holds the selected names, each between newlines; empty means every
+# suite. Names come from the arguments, or - for `--changed [base-ref]` - from
+# `selftest-needed.sh --suites [base-ref]`, asked here, before the floors audit
+# and the lock: it takes no lock and is seconds. Its answer decides the run:
+#   names     the full-run floors audit (every suite floored, the file well
+#             formed), a header line, then exactly those suites, as a
+#             several-name run runs them
+#   `all`     a header line, then a full run
+#   nothing   (exit 1) one line saying so, the skip text appended; exit 1, no
+#             lock, nothing run
+#   else      `cannot select` on stderr, exit 2
+# A several-name run (two or more) applies the single-suite floor rule to each
+# named suite and audits nothing else; a name that matches no suite stops it
+# before the lock. One name is the one-name run it always was.
+NL='
+'
+D='—'
+WANT=""
+AUDIT=0          # 1: audit the whole floors file, as a full run does
+CHANGED_HDR=""   # --changed: the stdout line printed before the first suite
+CHECK_NAMES=0    # 1: refuse, before the lock, a selected name that is no suite
+selected() {
+  [ -z "$WANT" ] && return 0
+  case "$WANT" in *"$NL$1$NL"*) return 0 ;; esac
+  return 1
+}
+
+if [ "${1-}" = --changed ]; then
+  # stdout and stderr both captured without a temporary file, which no shipped
+  # script may depend on: stderr streams into the outer capture through fd 3,
+  # then one US, the status, a newline and stdout follow it, and a closing US
+  # so that the substitution cannot strip the newline after an empty stdout.
+  SEL="$( { o="$(cd "$ROOT" && bash scripts/selftest-needed.sh --suites "${@:2}" 2>&3)"; r=$?
+            printf '%s%s\n%s%s' "$US" "$r" "$o" "$US"; } 3>&1 )"
+  sel_err="${SEL%%"$US"*}"; sel_err="${sel_err%"$NL"}"
+  rest="${SEL#*"$US"}"; rest="${rest%"$US"}"
+  sel_rc="${rest%%"$NL"*}"; sel_out="${rest#*"$NL"}"
+  if [ "$sel_rc" = 0 ] && [ "$sel_out" = all ]; then
+    [ -z "$sel_err" ] || printf '%s\n' "$sel_err" >&2
+    line1="${sel_err%%"$NL"*}"
+    CHANGED_HDR="selftest: --changed $D every suite: ${line1#*all: }"
+    AUDIT=1
+  elif [ "$sel_rc" = 0 ] && [ -n "$sel_out" ]; then
+    [ -z "$sel_err" ] || printf '%s\n' "$sel_err" >&2
+    WANT="$NL$sel_out$NL"
+    AUDIT=1; CHECK_NAMES=1
+    CHANGED_HDR=list   # completed once the suites are counted, below
+  elif [ "$sel_rc" = 1 ] && [ -z "$sel_out" ]; then
+    printf 'selftest: --changed selected no suite %s %s\n' "$D" "$sel_err"
+    exit 1
+  else
+    printf 'selftest: --changed cannot select: %s\n' "$sel_err" >&2
+    exit 2
+  fi
+else
+  for a in "$@"; do
+    [ -n "$a" ] && WANT="${WANT:-$NL}$a$NL"
+  done
+  [ -n "$WANT" ] || AUDIT=1
+  [ "$#" -ge 2 ] && CHECK_NAMES=1
+fi
+
 # --- what this run is going to run ------------------------------------------
 # Names by parameter expansion rather than `basename`, for the reason above: a
 # fork per suite, twice over, is the whole cost of this mechanism on Windows.
 SUITES=""
+ALL_SUITES=""
+NALL=0
 for suite in "$TESTS_DIR"/*.test.sh; do
   [ -e "$suite" ] || continue
   name="${suite##*/}"; name="${name%.test.sh}"
-  [ -n "$ONLY" ] && [ "$ONLY" != "$name" ] && continue
+  ALL_SUITES="$ALL_SUITES$name
+"
+  NALL=$((NALL+1))
+  selected "$name" || continue
   SUITES="$SUITES$name
 "
 done
 
+if [ "$CHECK_NAMES" = 1 ]; then
+  unknown=0
+  while IFS= read -r a; do
+    [ -n "$a" ] || continue
+    case "$NL$ALL_SUITES" in
+      *"$NL$a$NL"*) ;;
+      *) printf "No suites matched '%s'. Looked in .claude/tests/*.test.sh\n" "$a" >&2
+         unknown=1 ;;
+    esac
+  done <<WANT_NAMES
+$WANT
+WANT_NAMES
+  [ "$unknown" = 0 ] || exit 1
+fi
+if [ "$CHANGED_HDR" = list ]; then
+  k=0; names=""
+  while IFS= read -r a; do
+    [ -n "$a" ] || continue
+    k=$((k+1)); names="${names:+$names }$a"
+  done <<WANT_COUNT
+$WANT
+WANT_COUNT
+  CHANGED_HDR="selftest: --changed $D $k of $NALL suite(s) selected: $names"
+fi
+
 # AC-6, on a full run only: a suite with no floor is a suite that can be
 # emptied. Reported before anything executes - a floors file that is wrong is
 # worth knowing about in a second rather than after the whole suite has run.
-if [ -z "$ONLY" ]; then
-  [ -f "$FLOORS_FILE" ] || [ -z "$SUITES" ] || \
+# `--changed` audits as a full run does, whatever it selected.
+if [ "$AUDIT" = 1 ]; then
+  [ -f "$FLOORS_FILE" ] || [ -z "$ALL_SUITES" ] || \
     FAULTS="$FAULTS$US$FLOORS_REL  does not exist; every suite must declare its assertion floor there
 "
   while IFS= read -r name; do
@@ -278,7 +379,7 @@ if [ -z "$ONLY" ]; then
       FAULTS="$FAULTS$name$US$name  no floor line in $FLOORS_REL or $PROJECT_FLOORS_REL; every suite must declare one (a project's own suites go in project-floors.conf)
 "
   done <<SUITE_NAMES
-$SUITES
+$ALL_SUITES
 SUITE_NAMES
 fi
 
@@ -289,7 +390,7 @@ fi
 faulted=0
 while IFS="$US" read -r fname fmsg; do
   [ -n "$fmsg" ] || continue
-  [ -n "$ONLY" ] && [ "$ONLY" != "$fname" ] && continue
+  [ "$AUDIT" = 1 ] || selected "$fname" || continue
   printf 'FAIL %s\n' "$fmsg"
   faulted=$((faulted+1))
 done <<FAULT_LINES
@@ -301,6 +402,7 @@ if [ "$faulted" -gt 0 ]; then
   printf '\n%d fault(s) in %s. Nothing was run.\n' "$faulted" "$where"
   exit 1
 fi
+[ -z "$CHANGED_HDR" ] || printf '%s\n' "$CHANGED_HDR"
 
 # --- the run lock (HARNESS-034) ----------------------------------------------
 # A self-test beside gates.sh, or beside another self-test, in one tree is how
@@ -408,7 +510,7 @@ if [ "$JOBS" -lt 2 ] || [ "$NSUITES" -lt 2 ]; then
   for suite in "$TESTS_DIR"/*.test.sh; do
     [ -e "$suite" ] || continue
     name="${suite##*/}"; name="${name%.test.sh}"
-    [ -n "$ONLY" ] && [ "$ONLY" != "$name" ] && continue
+    selected "$name" || continue
     suite_header "$name"
 
     # Captured rather than streamed, because the count is read back out of it -

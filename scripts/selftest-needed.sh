@@ -29,18 +29,59 @@
 # missing `paths.conf` or a failing classify step answers `run` too (HARNESS-077).
 # Known limit: a name holding a newline still splits into two paths that name
 # no file, and is misread.
+#
+# --- `--suites [base-ref]`: WHICH suites (HARNESS-094) ------------------------
+#
+#   bash scripts/selftest-needed.sh --suites [base-ref]
+#
+#   stdout  the names of the suites in .claude/tests/*.test.sh that the changed
+#           harness paths can break, sorted, one per line; or the one line
+#           `all`; or nothing
+#   exit 0  a list, or `all` - including every fallback above, which in this
+#           mode answers `all`
+#   exit 1  no harness path changed (stdout empty, the skip line on stderr)
+#   exit 2  usage
+#   stderr  a header, then one line per selected suite: the first path, in sort
+#           order, that selected it, and the rule
+#
+# The same enumeration as the run/skip mode. Then, for each harness path, every
+# rule that matches contributes, and `all` wins over everything:
+#   R1 itself    .claude/tests/<name>.test.sh selects <name>
+#   R2 every     .claude/tests/_lib.sh, .claude/tests/_spawns.sh and
+#                scripts/selftest.sh are read by every suite: `all`
+#   R3 mentioned a suite whose source holds the path as a fixed substring,
+#                comments included (over-selects, never under-selects)
+#   R4 scans     a row of the SCANS table below
+#   R5 unmapped  a path R1-R4 all miss: `all`, naming the path. A path the
+#                mapping cannot place selects more, never fewer.
+# A rule names a suite only when its .claude/tests/<name>.test.sh exists in
+# this tree (amendment A-1), so a deleted suite, or a row whose suite is
+# absent, contributes nothing - and a path left with no existing suite is R5's.
+#
+# Known limit: a suite that exercises a changed script only through another
+# script, and never names it, is not selected. Transitive selection was
+# measured and rejected (one level from gates.sh selects nearly every suite);
+# CI's full run is the backstop.
 
 set -uo pipefail
 
 usage() {
   printf 'usage: bash scripts/selftest-needed.sh [base-ref]\n' >&2
+  printf '       bash scripts/selftest-needed.sh --suites [base-ref]\n' >&2
   exit 2
 }
+MODE=run
+if [ "${1-}" = --suites ]; then MODE=suites; shift; fi
 [ "$#" -le 1 ] || usage
 case "${1-}" in -*) usage ;; esac
 
 D='—'
 fallback() {
+  if [ "$MODE" = suites ]; then
+    printf 'selftest-needed: suites %s all: cannot compute the diff: %s; defaulting to every suite\n' "$D" "$1" >&2
+    printf 'all\n'
+    exit 0
+  fi
   printf 'selftest-needed: run %s cannot compute the diff: %s; defaulting to run\n' "$D" "$1"
   exit 0
 }
@@ -96,9 +137,116 @@ harness="$(printf '%s\n' "$changed" | classify_stdin | awk -F'\t' '$1 == "harnes
   || fallback "cannot classify the changed paths: classify_stdin failed"
 
 if [ -z "$harness" ]; then
+  if [ "$MODE" = suites ]; then
+    printf 'selftest-needed: skip %s no harness path among %s changed path(s) against %s (merge-base %s); CI runs the self-test on the PR\n' \
+      "$D" "$n" "$base" "$short" >&2
+    exit 1
+  fi
   printf 'selftest-needed: skip %s no harness path among %s changed path(s) against %s (merge-base %s); CI runs the self-test on the PR\n' \
     "$D" "$n" "$base" "$short"
   exit 1
+fi
+
+if [ "$MODE" = suites ]; then
+  # R4. One row per suite that reads the tree by GLOB rather than by name, so
+  # that R3 cannot see what it reads. A row is a declaration, like a floor: a
+  # new suite that globs the tree adds its row here; nothing checks that it did.
+  # Patterns are bash `case` patterns over the whole repo-relative path, so `*`
+  # crosses `/`: `.claude/skills/*.md` is any depth. Evidence, per row:
+  #   lib           lib.test.sh, `shipped="$(ls .../scripts/*.sh .../.claude/hooks/*.sh)"`
+  #                 - its portability block reads every one
+  #   sigpipe       sigpipe.test.sh, shell_files: `classify.sh --list harness`
+  #                 filtered to `.sh`
+  #   grep-count    grep-count.test.sh, run_guard over the real tree, which
+  #                 scans the same `.sh` list
+  #   profiles      profiles.test.sh, PROFILE_DIR: the reference directory
+  #   shipped-docs  shipped-docs.test.sh: .claude/commands/*.md,
+  #                 .claude/agents/*.md, and every .md under .claude/skills
+  SCANS='lib          scripts/*.sh .claude/hooks/*.sh
+sigpipe      *.sh
+grep-count   *.sh
+profiles     .claude/skills/stack-profiles/reference/*
+shipped-docs .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
+  SC_NAME=(); SC_PAT=()
+  while read -r sc_suite sc_pats; do
+    [ -f ".claude/tests/$sc_suite.test.sh" ] || continue   # A-1
+    read -ra sc_arr <<<"$sc_pats"   # `read -a` splits without globbing
+    for sc_pat in "${sc_arr[@]}"; do
+      SC_NAME[${#SC_NAME[@]}]="$sc_suite"; SC_PAT[${#SC_PAT[@]}]="$sc_pat"
+    done
+  done <<<"$SCANS"
+
+  m=0
+  for f in .claude/tests/*.test.sh; do [ -e "$f" ] && m=$((m+1)); done
+
+  # R3, one process for every (path, suite) pair: the paths first, then each
+  # suite file. Prints "<path index><TAB><suite>" for every path a suite's
+  # source holds as a fixed substring (`index`, never a regex).
+  mentions=""
+  if [ "$m" -gt 0 ]; then
+    mentions="$(printf '%s\n' "$harness" | awk '
+      FNR == NR { if (length($0)) { np++; p[np] = $0 }; next }
+      FILENAME != cur {
+        cur = FILENAME; split("", hit)
+        s = FILENAME; sub(/.*\//, "", s); sub(/\.test\.sh$/, "", s)
+      }
+      {
+        for (j = 1; j <= np; j++)
+          if (!(j in hit) && index($0, p[j])) { hit[j] = 1; print j "\t" s }
+      }' - .claude/tests/*.test.sh)"
+  fi
+
+  # Every path, in sort order; every rule, in order. A record is
+  # "<suite><TAB><path> (<rule>)", and the first per suite is its reason.
+  TAB=$(printf '\t')
+  NL='
+'
+  recs=""; why_all=""; i=0; np=0
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    i=$((i+1)); np=$i; hit=0
+    case "$p" in
+      .claude/tests/_lib.sh|.claude/tests/_spawns.sh|scripts/selftest.sh)
+        [ -n "$why_all" ] || why_all="$p is read by every suite"
+        continue ;;
+    esac
+    case "$p" in
+      .claude/tests/*/*) ;;
+      .claude/tests/*.test.sh)
+        s="${p#.claude/tests/}"; s="${s%.test.sh}"
+        if [ -f "$p" ]; then recs="$recs$s$TAB$p (itself)$NL"; hit=1; fi ;;
+    esac
+    while IFS="$TAB" read -r mi ms; do
+      [ "$mi" = "$i" ] || continue
+      recs="$recs$ms$TAB$p (mentioned)$NL"; hit=1
+    done <<<"$mentions"
+    k=0
+    while [ "$k" -lt "${#SC_PAT[@]}" ]; do
+      # Unquoted on purpose: the row is a pattern, not a string.
+      case "$p" in ${SC_PAT[$k]}) recs="$recs${SC_NAME[$k]}$TAB$p (scans ${SC_PAT[$k]})$NL"; hit=1 ;; esac
+      k=$((k+1))
+    done
+    [ "$hit" = 1 ] || [ -n "$why_all" ] || why_all="$p is mapped by no rule; defaulting to every suite"
+  done <<<"$harness"
+
+  if [ -n "$why_all" ]; then
+    printf 'selftest-needed: suites %s all: %s\n' "$D" "$why_all" >&2
+    printf 'all\n'
+    exit 0
+  fi
+
+  # The first record per suite is its reason; then by name, which is the order
+  # of stdout.
+  sel="$(printf '%s' "$recs" | awk -F'\t' 'length($1) && !($1 in seen) { seen[$1] = 1; print }' \
+    | sort -t "$TAB" -k1,1)"
+  k="$(printf '%s\n' "$sel" | awk 'length { c++ } END { print c + 0 }')"
+  printf 'selftest-needed: suites %s %s of %s selected from %s harness path(s) changed against %s (merge-base %s)\n' \
+    "$D" "$k" "$m" "$np" "$base" "$short" >&2
+  printf '%s\n' "$sel" | awk -F'\t' '
+    length($1) { c++; n[c] = $1; r[c] = $2; if (length($1) > w) w = length($1) }
+    END { for (i = 1; i <= c; i++) printf "  %-" w "s  %s\n", n[i], r[i] }' >&2
+  printf '%s\n' "$sel" | awk -F'\t' 'length($1) { print $1 }'
+  exit 0
 fi
 
 list="$(printf '%s\n' "$harness" | awk '
