@@ -3504,4 +3504,82 @@ done
 
 git -C "$FIX" checkout -q main 2>/dev/null
 
+# ---------------------------------------------------------------------------
+describe "HARNESS-088: a repeated threshold flag is judged by four statistics, and the refusal names the pair that fell"
+
+# C-2, restated whole by HARNESS-088: per gate and flag name, the FIRST, LAST,
+# LOWEST and HIGHEST numbers on each side; a finding when any one is lower
+# after, printing `<B> -> <A>` of the first statistic that fell, in that order.
+# Every row here is a row of C-2's settled table, its printed pair read off it.
+# Each fixture is HARNESS-083's: GL_BASE with one gate line swapped, a GREEN
+# commit, gl_refused for a refusal (one whole line, rc 1, the run's only FAIL)
+# and gl_clean for a control (rc 0 and the project.conf commit counted judged).
+
+# AC-5. The `lint` gate, its real eslint line replaced by a command that repeats
+# `--threshold` three times. Only the MIDDLE value is lowered: first, last and
+# lowest are 60 on both sides, so only the highest (90 -> 70) falls. Today
+# silent.
+gl_lint='gate | lint      | required | . | pnpm exec eslint .'
+gl_t3='gate | lint      | required | . | a --threshold 60 && b --threshold 90 && c --threshold 60'
+gl_b3="$(gl_swap "$GL_BASE" "$gl_lint" "$gl_t3")"
+conf_story GREEN "$gl_b3" "$(gl_swap "$gl_b3" "$gl_t3" 'gate | lint      | required | . | a --threshold 60 && b --threshold 70 && c --threshold 60')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-088 AC-5: --threshold 60 90 60 -> 60 70 60 (only the highest falls)" GREEN 'lint: threshold lowered --threshold 90 -> 70'
+
+# AC-5 controls: the middle value RAISED (only the highest moves, upward), and
+# the command unchanged but for an added -q.
+conf_story GREEN "$gl_b3" "$(gl_swap "$gl_b3" "$gl_t3" 'gate | lint      | required | . | a --threshold 60 && b --threshold 95 && c --threshold 60')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-088 AC-5 control: --threshold 60 90 60 -> 60 95 60 (the middle raised)"
+
+conf_story GREEN "$gl_b3" "$(gl_swap "$gl_b3" "$gl_t3" 'gate | lint      | required | . | a -q --threshold 60 && b --threshold 90 && c --threshold 60')" </dev/null
+run_boundaries </dev/null
+gl_clean "HARNESS-088 AC-5 control: --threshold 60 90 60 unchanged, -q added"
+
+# AC-6. The python profile's coverage gate with `=10 =90` -> `=10 =80`: the last
+# falls (90 -> 80) and so does the highest; the first and lowest do not. The
+# refusal names 90 -> 80, the numbers the commit moved; today it prints the
+# highest before against the lowest after, `90 -> 10`.
+gl_py='gate | coverage  | required | . | uv run pytest --cov=src --cov-report=term-missing'
+gl_b2="$(gl_swap "$GL_BASE" "$GL_COV" "$gl_py --cov-fail-under=10 --cov-fail-under=90")"
+conf_story GREEN "$gl_b2" "$(gl_swap "$gl_b2" "$gl_py --cov-fail-under=10 --cov-fail-under=90" "$gl_py --cov-fail-under=10 --cov-fail-under=80")" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-088 AC-6: --cov-fail-under=10 =90 -> =10 =80 names the pair that moved" GREEN 'coverage: threshold lowered --cov-fail-under 90 -> 80'
+
+# AC-7. `=90 =10` -> `=80 =10`: the first falls (90 -> 80), and so does the
+# highest; last and lowest are 10 on both sides. HARNESS-083's named case.
+gl_b9="$(gl_swap "$GL_BASE" "$GL_COV" "$gl_py --cov-fail-under=90 --cov-fail-under=10")"
+conf_story GREEN "$gl_b9" "$(gl_swap "$gl_b9" "$gl_py --cov-fail-under=90 --cov-fail-under=10" "$gl_py --cov-fail-under=80 --cov-fail-under=10")" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-088 AC-7: --cov-fail-under=90 =10 -> =80 =10 (first and highest fall)" GREEN 'coverage: threshold lowered --cov-fail-under 90 -> 80'
+
+# AC-7, the first arm ALONE. `=90 =10 =95` -> `=80 =10 =95`: last 95, lowest 10
+# and highest 95 are unchanged; only the first falls. This is the fixture DV-2
+# deletes the first-value disjunct against, and the one that must go red then.
+gl_b95="$(gl_swap "$GL_BASE" "$GL_COV" "$gl_py --cov-fail-under=90 --cov-fail-under=10 --cov-fail-under=95")"
+conf_story GREEN "$gl_b95" "$(gl_swap "$gl_b95" "$gl_py --cov-fail-under=90 --cov-fail-under=10 --cov-fail-under=95" "$gl_py --cov-fail-under=80 --cov-fail-under=10 --cov-fail-under=95")" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-088 AC-7: --cov-fail-under=90 =10 =95 -> =80 =10 =95 (only the first falls)" GREEN 'coverage: threshold lowered --cov-fail-under 90 -> 80'
+
+# C-2's two rows marked "HARNESS-083's C-2 check, unchanged", which no fixture
+# above carried. PASS ON ARRIVAL: today's `<highest before> -> <lowest after>`
+# happens to name the same pair here. Earned in RED by one mutate.sh run that
+# makes the printed pair `<highest before> -> <highest after>` (## Test plan).
+# `=90` -> `=90 =10`: the last falls (90 -> 10), and the lowest; first and
+# highest stay 90.
+gl_b1="$(gl_swap "$GL_BASE" "$GL_COV" "$gl_py --cov-fail-under=90")"
+conf_story GREEN "$gl_b1" "$(gl_swap "$gl_b1" "$gl_py --cov-fail-under=90" "$gl_py --cov-fail-under=90 --cov-fail-under=10")" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-088 C-2 row: --cov-fail-under=90 -> =90 =10 (the last falls)" GREEN 'coverage: threshold lowered --cov-fail-under 90 -> 10'
+
+# `80` -> `80 30 90`: first stays 80, the last RISES to 90, the lowest falls to
+# 30 - the lowest arm, printing 80 -> 30.
+gl_l1='gate | lint      | required | . | a --threshold 80'
+gl_bl="$(gl_swap "$GL_BASE" "$gl_lint" "$gl_l1")"
+conf_story GREEN "$gl_bl" "$(gl_swap "$gl_bl" "$gl_l1" 'gate | lint      | required | . | a --threshold 80 && b --threshold 30 && c --threshold 90')" </dev/null
+run_boundaries </dev/null
+gl_refused "HARNESS-088 C-2 row: --threshold 80 -> 80 30 90 (the lowest falls)" GREEN 'lint: threshold lowered --threshold 80 -> 30'
+
+git -C "$FIX" checkout -q main 2>/dev/null
+
 summary "boundaries"

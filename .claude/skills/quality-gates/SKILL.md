@@ -226,6 +226,8 @@ A gate with no `evidence` line behaves exactly as before, so this is safe to
 adopt late; once `BOOTSTRAPPED=yes`, a required gate without one is reported as
 a warning. `bash scripts/gates.sh --audit` lists what is missing without running
 anything. Canonical regexes per ecosystem are in the `stack-profiles` skill.
+`--audit` and a run both refuse an `evidence` line with an **empty** regex (it
+matches every line) and a gate id declared twice.
 
 ### The gate that shrank
 
@@ -610,8 +612,9 @@ probe before moving on, and say in the story that you did.
 5a. **CI refuses it, too.** A GREEN or GATES commit that loosens a gate in
    `.claude/harness/project.conf` - an `evidence`, `floor`, `covers` or
    `discovery` line removed (an evidence regex replaced by `-` or emptied
-   counts, and so does an emptied floor), a floor or a threshold flag's number lowered (a lower
-   repeat of the flag counts, on either side) or the flag deleted, `required`
+   counts, and so does an emptied floor), a floor or a threshold flag's number lowered (any
+   repeat of the flag lowered counts - first, last, lowest or highest - and the
+   refusal names the one that fell) or the flag deleted, `required`
    turned into any other severity, a gate removed, `BOOTSTRAPPED=yes` turned
    off (to `no`, emptied or the line removed), or a `slow`, `ondemand` or
    `waiver` line added on a gate that was required - is refused by

@@ -503,7 +503,22 @@ while IFS= read -r line; do
   [ "$kind" = "gate" ] || continue
   field 2 "$line" id
   case "$fault_lose" in *" $id "*) continue ;; esac
+  # A second `gate` line for an id already reached is a manifest fault: this
+  # loop would run both, and check-boundaries.sh judges only the first. Tested
+  # before the append, which still happens so that the accounting against
+  # GATE_IDS after the loop pays off both lines; and before --gate and
+  # --required, so that a filtered run on a duplicated id reports it too.
+  is_dup=1
+  case "$reached " in *" $id "*) is_dup=0 ;; esac
   reached="$reached $id"
+  if [ "$is_dup" = 0 ] && [ "$LIST" = 0 ]; then
+    if [ "$AUDIT" = 1 ]; then
+      printf 'FAIL %-12s %s\n' "$id" 'declared twice: a second `gate` line for one id; gates.sh would run both and check-boundaries.sh judges only the first - keep one'
+    else
+      results="$results\nFAIL         $id (declared twice: a second \`gate\` line for one id in project.conf; keep one)"
+    fi
+    fails=$((fails+1)); continue
+  fi
   field 3 "$line" req
   field 4 "$line" cwd
   rest  5 "$line" cmd
@@ -578,6 +593,19 @@ while IFS= read -r line; do
   fi
 
   table_get exp "$EVIDENCE" "$id" || exp="<none>"
+  # An evidence line whose regex is empty is a fault of the file, not of the
+  # run: an empty regex matches every log line, so the gate would pass having
+  # checked nothing. Judged on every gate line, optional and unconfigured ones
+  # included, as a broken floor is. table_get returns the FIRST evidence line,
+  # which is the one a run would match with.
+  if [ -z "$exp" ] && [ "$LIST" = 0 ]; then
+    if [ "$AUDIT" = 1 ]; then
+      printf 'FAIL %-12s %s\n' "$id" "evidence regex is empty: an empty regex matches every log line, so the gate would pass having checked nothing. Write the regex, or \`evidence | $id | -\` to declare that no evidence exists"
+    else
+      results="$results\nFAIL         $id (evidence regex is empty in project.conf; an empty regex matches every log line)"
+    fi
+    fails=$((fails+1)); continue
+  fi
   table_get waiver "$WAIVERS" "$id" || waiver=""
   table_get slowwhy "$SLOWS" "$id"; is_slow=$?
   table_get floor "$FLOORS" "$id" || floor=""

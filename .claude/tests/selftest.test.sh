@@ -528,14 +528,14 @@ while read -r n v; do
   [ "$got" = "$v" ] || wrong="$wrong $n=${got:-<none>}(want $v)"
 done <<'COUNTS'
 attest 179
-boundaries 502
+boundaries 518
 briefs 31
 ci-local 32
 classify 55
 dispatch 67
 doctor 69
 gate-reminder 32
-gates 920
+gates 972
 grep-count 38
 host-load 72
 lib 324
