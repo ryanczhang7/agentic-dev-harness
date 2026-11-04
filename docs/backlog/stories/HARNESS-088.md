@@ -841,6 +841,63 @@ Unmutated, attested: `bash scripts/attest.sh -- bash scripts/selftest.sh sigpipe
 `6c6ae27deb7d064c69fa20e7e196c497907c8b74`. `attest.sh check` on that command
 reports `fresh` after this section was written.
 
+## Diff review
+
+Round 1 (2026-11-04). A fresh feature-developer ran the review with the `diff-review` skill. It resolved to claude-opus-5-5, with no override, and changed no file. Its report, as returned:
+
+What this change does: `scripts/gates.sh` now refuses a project.conf in two new cases: an id with a second `gate` line, and an `evidence` line with an empty regex. It refuses them both under `--audit` and on a run, in the same shape as the existing manifest faults. `scripts/check-boundaries.sh` block 3j now judges four values of a repeated threshold flag (first, last, lowest, highest), and the refusal prints the before and after of the first one that fell. The SKILL.md text, VERSION 107, the floors and one sigpipe line pin are updated to match.
+
+What I checked:
+- Read the whole `git diff main...HEAD`, the main loop of gates.sh (lines 480-650), the post-loop audit checks, the lost-gate accounting (lines 1105-1117), and the awk function with its only consumer (check-boundaries.sh lines 1090-1110).
+- Ran the awk function from the branch on scratch fixtures under gawk, `gawk --posix` and `gawk --traditional`. There is no mawk on this host.
+- Ran `gates.sh --list` and `--audit` from the branch in a scratch repo, on a manifest with a duplicated id and an empty regex.
+
+On the orchestrator's points:
+
+1. **`is_dup`.** The logic is right. The test runs before the append, so the first line is never a duplicate and the second is. The 0-means-yes value follows the convention the same loop already uses: `is_skip=0` (line 549) and `is_slow=$?` / `is_ondemand=$?` (shell exit status, 0 = true). The name is consistent with its neighbours, so it is not a defect and not worth a change.
+
+2. **Placement of the empty-regex check.** It contradicts the letter of C-1's "every gate line" on a run. It does not matter in practice:
+   - A gate skipped on a run (on request, slow under `--fast`, `--gate`/`--required`/`--skip` filtered) runs no command, so there is no vacuous pass to stop.
+   - `--audit` reaches the check for every line, because the on-request and slow skips are guarded by `AUDIT=0`. The fixture shows it.
+   - The existing broken-floor fault, which C-1 names as its model, sits after the same filters, so the placement matches that precedent.
+   - One small side effect: a gate whose `ondemand` line is itself broken reports only that fault until it is fixed. That is C-1's "one fault per gate".
+
+3. **Interactions.**
+   - `--list`: both checks are guarded by `LIST=0`. The probe printed both `unit` lines and an empty `evidence:`, as C-1 requires.
+   - Lost-gate accounting: the duplicate is still added to `reached` before the `continue`. `GATE_IDS` lists the id twice and `reached` lists it twice, so both entries are paid off and no "never accounted for" line appears.
+   - `GATES_FAULT_LOSE`: a lost id is skipped before the duplicate test and before `reached`, so it is never a duplicate. A lost id declared twice gives two "never accounted for" lines, as before.
+   - `--gate`/`--required`: the duplicate test is before both filters. So a filtered run on any duplicated id fails, even when that id is not the one asked for. This matches the "filtered or not" stance of the lost-gate accounting. The empty-regex check is after the filters (see 2).
+
+4. **awk.**
+   - `fb = fa = ""` (chained assignment) and the `if / else if` chain are POSIX awk. Both ran correctly under `--posix` and `--traditional`.
+   - `fb` is always a non-empty number string when a value fell, so `fb != ""` is a sound test, including for `0`.
+   - The `out()` pair (fields 3 and 4) equals the `B -> A` in the message. The only consumer reads only `sup_gid` and `sup_what`.
+   - `threshold removed`, floor, evidence, covers, discovery and severity findings are unchanged. Probes: `60 90 60 -> 60 70 60` printed `90 -> 70`, and `60 90 -> 60.5 89.9` printed `90 -> 89.9`.
+
+5. **Other pins.** I grepped `.claude/tests/` for `gates.sh:N` and `check-boundaries.sh:N`.
+   - Every pin in gates.sh is below line 503, except the moved 801, which I confirmed holds `why="could not launch: $(`.
+   - The check-boundaries.sh pins (144-626) are all above the change at about line 910.
+   - No test reads the changed SKILL.md wording, the check-boundaries.sh comment or VERSION.
+
+Should fix:
+
+1. **The `--list` exemption of both new faults has no test** (`scripts/gates.sh:514`, `:601`)
+   - **What this is:** The `[ "$LIST" = 0 ]` guard on each new check. It makes `--list` print a duplicated id's two lines and an empty `evidence:`, as C-1 requires.
+   - **Problem:** No `gates --list` test uses a duplicate or an empty regex. If either guard is dropped, `--list` stops printing the second line, or the empty-regex gate entirely: the check `continue`s and `--list` exits 0 before results are printed. Every test stays green.
+   - **Fix:** One `--list` assertion on the manifest from the C-1 "two faults meet" case: both `unit` lines present, rc 0. This is a return to RED, and the test must be earned with one `mutate.sh` run that drops a guard.
+   - **If we skip it:** `--list` can silently stop describing the manifest it is asked to show, with no failure. The impact is low: `--list` is descriptive and judges nothing.
+
+Not checked: mawk 1.3.4 itself (it is not installed here; I used gawk's `--posix` and `--traditional` modes instead). I ran neither scratch subset, nor the full gates or boundaries suites.
+
+Model: Opus 5.5 (claude-opus-5-5), as the feature-developer definition declares. I was not dispatched with an override.
+
+Verdict: Ship.
+
+**PO decisions on round 1.**
+- **PO decision 8, on points 1 and 2: accepted as built.** `is_dup` follows the loop's own 0-means-yes convention. The empty-regex check's placement on a run matches the broken-floor precedent C-1 names; a skipped gate runs nothing that could pass vacuously; and `--audit`, which CI runs, judges every line. C-1's "every gate line" is read as "every line `--audit` judges".
+- **PO decision 9, on Should fix 1: declined for this story, filed as a follow-up.** `--list` judges nothing. The test means a return to RED and another 18-minute `gates` run for a descriptive path. The reviewer's probe showed `--list` printing both lines and the empty `evidence:` on this tree. The follow-up is one `--list` assertion on the both-faults manifest, earned by dropping one `LIST` guard with `mutate.sh`.
+- mawk 1.3.4 is not on this host. CI runs the `boundaries` suite under it, so the PR's CI run is the mawk check.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -962,3 +1019,4 @@ were dispatched to a feature-developer, which resolved to claude-opus-5-5.
 The verdict, at log line 17 of
 `.claude/state/attest-logs/20261104T012754Z.372179.log`, is
 `All required gates passed (0 ran, 7 unconfigured, 0 known).`
+- Follow-up, not this story (diff review round 1, Should fix 1, PO decision 9): add a `gates --list` assertion on a manifest with a duplicated id and an empty regex (both lines present, rc 0), earned by dropping one `LIST` guard with `mutate.sh`. It needs a failing test first.
