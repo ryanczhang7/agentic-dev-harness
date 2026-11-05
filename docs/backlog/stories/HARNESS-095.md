@@ -5,7 +5,7 @@ slug: gates-to-review-runs-the-changed-suite-s
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-095-gates-to-review-runs-the-changed-suite-s
 depends_on: [HARNESS-094]      # the command this step names exists only once 094 merges; DV-2 there measures whether it is cheaper
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/tests/procedure.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -238,6 +238,47 @@ mutations, one per guard, each against the one suite that holds the
 assertion. These are the only probes that show the guards see the real
 files and not only their fixtures.
 
+**DV-1 result (2026-11-05, GATES, orchestrator).** Both guards go red on
+the real files, and every file was restored and verified. `mutate.sh --check`
+is clean.
+
+1. `advance-story.md:277`, the step's dispatch-command span:
+
+       bash scripts/mutate.sh .claude/commands/advance-story.md '277s/selftest.sh --changed`/selftest.sh`/' -- bash scripts/selftest.sh procedure
+       actual:   .claude/commands/advance-story.md: its step 2 does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+       procedure: 148 passed, 1 failed
+       === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261105T221741Z.2147.bak) ===
+
+   This is the exact line DV-1 names.
+2. `lead-po.md:130`, the same expression:
+
+       bash scripts/mutate.sh .claude/agents/lead-po.md '130s/selftest.sh --changed`/selftest.sh`/' -- bash scripts/selftest.sh dispatch
+       actual:   .claude/agents/lead-po.md: does not dispatch long runs
+       dispatch: 82 passed, 1 failed
+       === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_agents_lead-po.md.20261105T221752Z.3382.bak) ===
+
+   Red, but on the general `L_LONG` line rather than `L_LONG_CHANGED`.
+   - Reason: `dispatch.test.sh:356-367` picks `L_LONG_CHANGED` only for a
+     paragraph that holds the full run and no `--changed` anywhere. Line 137's
+     check span still says `--changed`.
+   - The `lead-regressed` fixture removes every `--changed`, so it is not the
+     same mutation as the single-line one on the real file. The handoff's
+     claim that it "is DV-1's lead-po mutation" holds only for the
+     every-occurrence form, run here as a third probe.
+3. `lead-po.md`, every `--changed` (2 lines):
+
+       bash scripts/mutate.sh .claude/agents/lead-po.md 's/selftest.sh --changed/selftest.sh/g' -- bash scripts/selftest.sh dispatch
+       actual:   .claude/agents/lead-po.md: its long-run paragraph does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+       dispatch: 82 passed, 1 failed
+       === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_agents_lead-po.md.20261105T221822Z.4829.bak) ===
+       mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+Finding, for diff review. A paragraph that dispatches the full run but still
+mentions `--changed` in its check gets the less specific "does not dispatch
+long runs" message. The guard is still red, so it discriminates; only the
+message is imprecise. AC-4 is about the fixture with `--changed` absent
+throughout, and it holds.
+
 ## Amendments
 
 <!-- none yet -->
@@ -268,6 +309,7 @@ name, below the table.
 - PLANNED, `lead-po`: `fable` (Fable 5.1, `claude-fable-5-1`), the agent's own `model:`; no override was reported to the dispatch. 2026-11-04.
 - RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override was reported. 2026-11-05.
 - GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override was reported. 2026-11-05.
+- GATES, `feature-developer` (full gates): `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-05.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -550,10 +592,21 @@ paragraphs) and `story.test.sh`. Run
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-05T22:21:27Z
+    commit: 0d3f352
+    tree:   6e0e011ccc46fd7fe0cf8e53d639f0df4e1c04d7
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -605,3 +658,9 @@ paragraphs) and `story.test.sh`. Run
     against HARNESS-086..088.
   - `gates.sh --fast` was run after that test run finished. No gate is
     configured.
+- GATES, 2026-11-05.
+  - The orchestrator ran DV-1. Its result is in `## Deferred verifications`.
+  - A feature-developer ran the full gates through attest:
+    `All required gates passed (0 ran, 7 unconfigured, 0 known)`, exit 0,
+    log `.claude/state/attest-logs/20261105T222126Z.7848.log`.
+  - `attest.sh check` said `fresh`.
