@@ -2,7 +2,7 @@
 description: Move one story forward by exactly one phase
 model: fable
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(bash scripts/story.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(bash scripts/story.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -274,33 +274,58 @@ Then, **in this order**:
    `- Self-test skipped at GATES → REVIEW (<date>): selftest-needed: skip — ...`
    and go on to step 3. CI runs the self-test on the PR either way, so a
    skipped run is deferred to CI, not lost. On `run`,
-   `SELFTEST_JOBS=4 bash scripts/selftest.sh` — the whole harness self-test,
-   every suite, once, while the story is still at GATES. CI runs every
+   `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` — the suites this
+   story's diff can break, once, while the story is still at GATES.
+   `selftest-needed.sh --suites` chooses them: a suite that mentions a
+   changed path, a changed suite itself, the five tree-scanning suites for
+   the paths they scan, and every suite when a path cannot be placed or the
+   library changed; the full run's floors audit runs first. CI runs every
    suite, and one the story never touched can still fail on its change: a
    line number another suite pins, a floor, a value an upstream suite
    asserts. Dispatch it to a `feature-developer` on the GATES row, with the
    GREEN → GATES brief: it runs
-   `bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh`
+   `bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
    detached (the Bash tool's `run_in_background` with its longest timeout,
    or `nohup` from a shell), so that a tool timeout cannot kill it, and
    alone: nothing else runs in this worktree until it exits, not
    `gates.sh`, not a second self-test, nothing of yours. It returns the
    verdict, and you check it with
-   `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh`,
+   `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`,
    requiring `fresh`. Give it the expectation: CI's whole job takes about 2-4
-   minutes. On the Windows host this harness is developed on, the self-test
-   took 336 s at `SELFTEST_JOBS=4` against 1,135 s serial (HARNESS-036), and
-   2,894-17,015 s serial while other test runs shared the host
-   (HARNESS-050..068). A slow run is slower, not wrong, most often because
+   minutes. On the Windows host this harness is developed on, the full
+   self-test took 336 s at `SELFTEST_JOBS=4` against 1,135 s serial
+   (HARNESS-036), 2,894-17,015 s serial while other test runs shared the
+   host (HARNESS-050..068), and 3,845-11,419 s in HARNESS-086..088.
+   HARNESS-094 measured `--changed` once: it selected
+   21 of 34 suites and took 6,444 s, where the full run had taken 12,502 s
+   just before it on the same loaded host. That is one observation, not a
+   ratio to plan by. A slow run is slower, not wrong, most often because
    other test runs share the host: keep the value, do not swap in named
    suites. If a run
    goes far past the last duration a story recorded, look for an orphaned
    self-test or gate run before blaming the host; one run stalled past an
    hour beside an orphan and passed alone. Judge it by the record's `exit:`
    and its `last:` line, `N harness suite(s) passed.`, and paste both, with
-   the `duration:`, into `## Notes`. A failure takes GATES' own routes: the
-   feature-developer, or RED if a test is wrong. A fix changes the tree, so
-   `bash scripts/gates.sh` runs again and these steps start over.
+   the `duration:` and the header line the run prints first,
+   `selftest: --changed — ...` (either `every suite: <reason>` or
+   `<k> of <n> suite(s) selected: <names>`), into `## Notes`. A failure
+   takes GATES' own routes: the feature-developer, or RED if a test is
+   wrong. A fix changes the tree, so `bash scripts/gates.sh` runs again and
+   these steps start over.
+   The full run, `SELFTEST_JOBS=4 bash scripts/selftest.sh`, is still the
+   option, dispatched, attested and checked the same way in place of the
+   `--changed` run, in exactly three cases. (a) The `--changed` header says
+   `every suite`: the run already is the full one, and there is nothing to
+   decide. (b) The story changed a script that other scripts invoke, and
+   you cannot name the suite that exercises the caller: `--suites` places a
+   path by the suites that mention it, not by who calls it, which is
+   HARNESS-094's declared limit. (c) CI's self-test failed on the PR in a
+   suite the local `--changed` run had not selected: the fix round runs the
+   full self-test before pushing again, and records in `## Notes` which
+   suite the selection missed. The orphan and host-load advice above
+   applies to it unchanged. CI runs every suite on the PR either way; its
+   `gates` check is not required on `main`, so the merge is where the user
+   reads CI's full run.
 3. `bash scripts/phase.sh set $1 REVIEW`
 4. Commit, with a message that names the story and what it does.
 5. `bash scripts/check-boundaries.sh` — the second script CI runs, and the one

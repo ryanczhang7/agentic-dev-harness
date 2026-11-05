@@ -127,11 +127,15 @@ from memory. Your messages to the user follow `rules.md`, "Reporting to the user
 story files and handoffs do not, and stay complete.
 
 The two long runs, the full `bash scripts/gates.sh` and
-`SELFTEST_JOBS=4 bash scripts/selftest.sh`, are not yours to wait on: a wait of
+`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` (or the full
+`SELFTEST_JOBS=4 bash scripts/selftest.sh`, in the three cases
+`/advance-story` names), are not yours to wait on: a wait of
 hours outlasts the prompt cache, and the turn after it re-reads your whole
 context uncached. Each goes to a `feature-developer` on the GATES row, with the
 brief `/advance-story` gives, and comes back as a verdict you check with
-`bash scripts/attest.sh check`. `bash scripts/check-boundaries.sh` takes
+`bash scripts/attest.sh check` - for the self-test,
+`bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`.
+`bash scripts/check-boundaries.sh` takes
 seconds and stays your own run.
 
 Verification is a ladder, and every rung is something you run, or have run

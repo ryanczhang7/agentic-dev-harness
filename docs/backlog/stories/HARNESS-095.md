@@ -5,7 +5,7 @@ slug: gates-to-review-runs-the-changed-suite-s
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-095-gates-to-review-runs-the-changed-suite-s
 depends_on: [HARNESS-094]      # the command this step names exists only once 094 merges; DV-2 there measures whether it is cheaper
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/tests/procedure.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -267,6 +267,7 @@ name, below the table.
 
 - PLANNED, `lead-po`: `fable` (Fable 5.1, `claude-fable-5-1`), the agent's own `model:`; no override was reported to the dispatch. 2026-11-04.
 - RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override was reported. 2026-11-05.
+- GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override was reported. 2026-11-05.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -591,3 +592,16 @@ paragraphs) and `story.test.sh`. Run
     `.claude/state/attest-logs/20261105T172228Z.24979.log`).
   - `selftest.sh selftest`: exit 0, 309 passed.
   - Gates were not run, because none is configured (BOOTSTRAPPED=no).
+- GREEN verified by the orchestrator, 2026-11-05.
+  - The feature-developer ran the 20 suites that `--suites` selected,
+    through attest: exit 0, `20 harness suite(s) passed.`, 9,299 s, log
+    `.claude/state/attest-logs/20261105T175944Z.62799.log`. procedure scored
+    149/149 and dispatch 83/83, and every suite met its floor. `attest.sh
+    check` said `fresh`, so the orchestrator did not run it again.
+  - While that run was going, the developer also ran `procedure.test.sh`
+    once in the same worktree. That run only reads files, and the tree hash
+    is the same before and after.
+  - The orchestrator read the diff, and checked the 3,845-11,419 s figures
+    against HARNESS-086..088.
+  - `gates.sh --fast` was run after that test run finished. No gate is
+    configured.
