@@ -246,18 +246,22 @@ is clean.
 
 1. `advance-story.md:277`, the step's dispatch-command span:
 
-       bash scripts/mutate.sh .claude/commands/advance-story.md '277s/selftest.sh --changed`/selftest.sh`/' -- bash scripts/selftest.sh procedure
-       actual:   .claude/commands/advance-story.md: its step 2 does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
-       procedure: 148 passed, 1 failed
-       === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261105T221741Z.2147.bak) ===
+```
+   bash scripts/mutate.sh .claude/commands/advance-story.md '277s/selftest.sh --changed`/selftest.sh`/' -- bash scripts/selftest.sh procedure
+   actual:   .claude/commands/advance-story.md: its step 2 does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+   procedure: 148 passed, 1 failed
+   === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261105T221741Z.2147.bak) ===
+```
 
    This is the exact line DV-1 names.
 2. `lead-po.md:130`, the same expression:
 
-       bash scripts/mutate.sh .claude/agents/lead-po.md '130s/selftest.sh --changed`/selftest.sh`/' -- bash scripts/selftest.sh dispatch
-       actual:   .claude/agents/lead-po.md: does not dispatch long runs
-       dispatch: 82 passed, 1 failed
-       === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_agents_lead-po.md.20261105T221752Z.3382.bak) ===
+```
+   bash scripts/mutate.sh .claude/agents/lead-po.md '130s/selftest.sh --changed`/selftest.sh`/' -- bash scripts/selftest.sh dispatch
+   actual:   .claude/agents/lead-po.md: does not dispatch long runs
+   dispatch: 82 passed, 1 failed
+   === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_agents_lead-po.md.20261105T221752Z.3382.bak) ===
+```
 
    Red, but on the general `L_LONG` line rather than `L_LONG_CHANGED`.
    - Reason: `dispatch.test.sh:356-367` picks `L_LONG_CHANGED` only for a
@@ -269,11 +273,13 @@ is clean.
      every-occurrence form, run here as a third probe.
 3. `lead-po.md`, every `--changed` (2 lines):
 
-       bash scripts/mutate.sh .claude/agents/lead-po.md 's/selftest.sh --changed/selftest.sh/g' -- bash scripts/selftest.sh dispatch
-       actual:   .claude/agents/lead-po.md: its long-run paragraph does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
-       dispatch: 82 passed, 1 failed
-       === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_agents_lead-po.md.20261105T221822Z.4829.bak) ===
-       mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+   bash scripts/mutate.sh .claude/agents/lead-po.md 's/selftest.sh --changed/selftest.sh/g' -- bash scripts/selftest.sh dispatch
+   actual:   .claude/agents/lead-po.md: its long-run paragraph does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+   dispatch: 82 passed, 1 failed
+   === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_agents_lead-po.md.20261105T221822Z.4829.bak) ===
+   mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 Finding, for diff review. A paragraph that dispatches the full run but still
 mentions `--changed` in its check gets the less specific "does not dispatch
