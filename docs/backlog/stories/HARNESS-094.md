@@ -4,8 +4,8 @@ title: The pre-PR self-test runs only the suites the story's diff can break
 slug: the-pre-pr-self-test-runs-only-the-suite
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-094-the-pre-pr-self-test-runs-only-the-suite
 depends_on: []      # nothing: this is the first of the pair; HARNESS-095 and HARNESS-089..093 wait for it
 touches: [scripts/selftest-needed.sh, scripts/selftest.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, CLAUDE.md, .claude/harness/VERSION]
