@@ -5,7 +5,7 @@ slug: the-pre-pr-self-test-runs-only-the-suite
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-094-the-pre-pr-self-test-runs-only-the-suite
 depends_on: []      # nothing: this is the first of the pair; HARNESS-095 and HARNESS-089..093 wait for it
 touches: [scripts/selftest-needed.sh, scripts/selftest.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, CLAUDE.md, .claude/harness/VERSION]
@@ -1261,15 +1261,82 @@ Both findings are confirmed. `grep -lE 'hooks/lib\.sh' scripts/*.sh
 
 Finding 2 contradicts AC-4's control as written: a scanner match is "not
 `all`". That makes it the user's decision under `## Amendments`, and it is
-put to them before anything changes.
+put to them before anything changes. The user chose "Fix both", which became
+AM-1 and AM-2 and the R-2 return.
+
+### Second review, after R-2 (2026-11-04)
+
+The reviewer was a fresh `feature-developer` using `diff-review`: Opus 5.5,
+`claude-opus-5-5`, with no override. The report is condensed below; its
+reproductions and numbers are kept whole.
+
+- **What the fix does, and whether it is correct.**
+  - `.claude/hooks/lib.sh` is in R2. `lib`, `sigpipe` and `grep-count` are
+    `add` rows and set no `hit`; `profiles` and `shipped-docs` stay `map`
+    rows.
+  - `[ "${SC_MAP[$k]}" = map ] && hit=1` is safe under `set -uo pipefail`
+    with no `-e`. `SC_MAP` stays in step with `SC_PAT`, and the A-1 skip
+    drops all three arrays together.
+  - The new needles can fail. AM-1 pins all of stderr, so reaching `all`
+    through R5 would fail. The AM-2 control goes red if `&& hit=1` returns
+    for every row, and `profiles` and `.md` go red if a `map` row becomes
+    `add`.
+  - Both changes only move a list toward `all`, so neither can remove a
+    suite.
+- **Real-tree selections, merged PRs #165 to #177** (old and new script,
+  replayed in clones `rv2` and `rvold`):
+  - unchanged, 9 of 11: #177 23/34, #176 18, #174 21, #171 16, #170 15,
+    #169 24, #167 8, #166 22, #165 22;
+  - now `all`, through AM-1 (both edit `.claude/hooks/lib.sh`): #175 (29
+    before) and #173 (31 before);
+  - none changed through AM-2.
+  - Tracked harness `.sh` files that no suite names by full path:
+    `.claude/hooks/statusline.sh` and `scripts/dev.sh`.
+- **Should fix 1, a mention counts when a suite names a longer path that
+  starts with it** (the R3 awk, `index($0, p[j])`).
+  - Reproduced: an untracked `scripts/new` gave 8 of 34 `(mentioned)`, from
+    suites that name `scripts/new-story.sh`.
+  - A committed comment `# leftover: scripts/newtool.sh.bak` in `tidy.test.sh`
+    made a new `scripts/newtool.sh` select `tidy`.
+  - Today: no tracked harness path (158 of them, against 34 suites) is
+    mentioned only as the start of a longer path.
+  - Proposed fix: count a match only when the next character is not a path
+    character (`[A-Za-z0-9_/-]`, or `.` followed by an alphanumeric).
+- **Should fix 2, the AM-2 control's own input selects 3 of 34 on the real
+  tree.**
+  - `selftest-needed.test.sh` names `.claude/tests/_helpers.sh` as fixture
+    data, so R3 maps the real file of that name to `selftest-needed`.
+  - The same is true of any fixture path any suite names (for example
+    `scripts/newtool.sh`). The header's "over-selects, never under-selects"
+    is false wherever a mention is the only thing keeping a path from R5.
+  - GREEN confirmed the control in the fixture only. Proposed: declare the
+    limit, probe AM-2 on the real tree with an unmentioned name, and
+    optionally rename the fixture paths.
+- Verdict: Ship.
+
+**Orchestrator's reproduction**, in my own clone at `9bf37f0`, with inputs
+different from the reviewer's:
+
+```
+untracked scripts/plan                  -> selftest-needed: suites — 8 of 34 selected from 1 harness path(s) changed against 9bf37f0 (merge-base 9bf37f0)
+untracked .claude/tests/_helpers.sh     -> selftest-needed: suites — 3 of 34 selected from 1 harness path(s) changed against 9bf37f0 (merge-base 9bf37f0)
+untracked .claude/tests/_zz_probe_helper.sh -> selftest-needed: suites — all: .claude/tests/_zz_probe_helper.sh is mapped by no rule; defaulting to every suite
+```
+
+Both findings are confirmed. The third line is the real-tree probe of AM-2
+that finding 2 asks for: a helper that no suite mentions is `all` on the real
+tree. Finding 1's fix changes AC-1 ("as a literal repo-relative substring"),
+so it is put to the user. CI runs every suite on every PR whatever
+`--changed` chose, so an under-selection costs a CI round trip, not a broken
+`main`.
 
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-05T03:10:27Z
-    commit: de27810
-    tree:   aa37e34f242d1171ec4dc67e87343d5c4be188c5
+    run:    2026-11-05T04:17:33Z
+    commit: 9bf37f0
+    tree:   3719b603889977da079cce634d95567cf04e661f
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1344,3 +1411,17 @@ put to them before anything changes.
       rc=1
 
   The full run's audit has always reported two faults for one non-numeric floor, so `golden.ac7-audit` is wrong and the code is right. Decision: return to RED (Regressions R-1). A first attempt at this reproduction ran in the real worktree because the clone failed. It changed nothing: `git status` and `git diff -- .claude/tests/floors.conf` were clean afterwards, and no run.lock was left. Its timed-out `selftest.sh` produced no record.
+- **PO decision (2026-11-04, the user: "Ship, file follow-up").** The second
+  diff review's two Should-fix findings (an R3 mention that matches as a
+  prefix of a longer path, and a fixture mention that keeps a real file of
+  the same name from R5) are not fixed in this story. They are filed as
+  HARNESS-096. Reason: neither affects any tracked path today. The
+  real-tree probe with an unmentioned helper name gives `all` (`## Diff
+  review`, second review). CI runs every suite on every PR, so an
+  under-selection costs a CI round trip, not a broken `main`. A third loop
+  through RED would cost about an hour on this host.
+- Gates after R-2 (GATES, `feature-developer`, Opus 5.5 `claude-opus-5-5`, no
+  override): `attest.sh check -- bash scripts/gates.sh` returned `fresh` with
+  `exit: 0` and `All required gates passed (0 ran, 7 unconfigured, 0 known).`
+- Second diff review: `feature-developer`, Opus 5.5 `claude-opus-5-5`, no
+  override. `Verdict: Ship.`
