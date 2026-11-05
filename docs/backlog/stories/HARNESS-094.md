@@ -5,7 +5,7 @@ slug: the-pre-pr-self-test-runs-only-the-suite
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-094-the-pre-pr-self-test-runs-only-the-suite
 depends_on: []      # nothing: this is the first of the pair; HARNESS-095 and HARNESS-089..093 wait for it
 touches: [scripts/selftest-needed.sh, scripts/selftest.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, CLAUDE.md, .claude/harness/VERSION]
@@ -837,7 +837,11 @@ run yet. Neither was attempted.
       377:     floor_of "$name"
 
   Afterwards `bash scripts/mutate.sh --check` printed `mutate: no stranded mutation; nothing of a previous run is in the tree.` An observation, not acted on (outside this remit): no other assertion in `selftest` went red under this mutation, including the AC-6 full-run case whose control row expects `2 fault(s) ...`, so that case's two faults evidently do not come from one suite carrying both a value fault and a missing-floor fault.
-- **GREEN after the return:** (orchestrator)
+- **GREEN after the return:** a no-op. No source changed after the return: the code was committed at 950aa5e, before it. The orchestrator verified it on the GREEN tree (f385c38). `bash scripts/attest.sh check -- bash scripts/selftest.sh selftest` answered `fresh`, `exit: 0`, `last: 1 harness suite(s) passed.`, for 309 of 309, from the test-developer's attested run on the corrected tree. The orchestrator ran `bash scripts/selftest.sh selftest-needed` and `bash scripts/gates.sh --fast` directly (the record was stale after the test edit):
+
+      selftest-needed: 458 passed, 0 failed
+      1 harness suite(s) passed.
+      All required gates passed (0 ran, 5 unconfigured, 0 known).
 
 ## Gate results
 
