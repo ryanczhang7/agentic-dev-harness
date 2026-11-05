@@ -5,7 +5,7 @@ slug: gates-to-review-runs-the-changed-suite-s
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-095-gates-to-review-runs-the-changed-suite-s
 depends_on: [HARNESS-094]      # the command this step names exists only once 094 merges; DV-2 there measures whether it is cheaper
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/tests/procedure.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -356,7 +356,7 @@ live in the test files; the "production" they judge is the three prose files.
 | AC-1 run named | procedure | real tree; `changed-regressed-step`, `changed-unclosed`, `changed-only-in-attest`, `changed-in-prose`, `changed-in-later-step`; HARNESS-072 `old-spelling-step`, `other-value-step`, `targeted-new-spelling` (now against the `--changed` span) |
 | AC-1 run/check through attest | dispatch | real tree; `st-without-*` loop (now 6 needles incl. run + check spans), `st-full-094`, `st-bare-full`, `st-run-full`, `st-check-full`, `st-check-targeted`, `st-check-without-jobs` |
 | AC-1 words + header + order | procedure | `word-*` loops, `words-in-next-step`, `word-skip`, `changed-no-header`, `changed-header-no-dash`; every HARNESS-032/068 order case (`selftest-after-phase`, `review-after-selftest`, ...) |
-| AC-2 full run + three conditions | procedure | `full-missing`, `full-other-step`, `full-in-prose`, `full-targeted`, `full-no-condition` (control: three lines), `full-reworded` (control: three lines), `full-without-1..3`, `full-every-suite-before-only`, `full-condition-next-step`, `full-condition-wrapped` |
+| AC-2 full run + three conditions | procedure | `full-missing`, `full-other-step`, `full-in-prose`, `full-targeted`, `full-no-condition` (control: three lines), `full-reworded` (control: three lines), `full-without-1..3`, `full-every-suite-before-only`, `full-condition-next-step`, `full-condition-wrapped`; R-1 `full-every-suite-only-in-closing` (control: the (a) line); AM-1 `full-no-route-back` (control: the route-back line), `full-route-back-before-only`, `full-route-back-expanded` |
 | AC-3 bullet names `--changed` | procedure | `changed-regressed-bullet`, `changed-bullet-review-after`, `changed-bullet-needed-after`, `changed-bullet-full-before`; HARNESS-068/075 bullet cases |
 | AC-3 bullet dispatch, GATES row, check | dispatch | `bullet-without-*` loop (4 needles), `bullet-094`, `bullet-check-full`, `bullet-today`, `bullet-next`, `bullet-none` |
 | AC-3 lead-po long-run paragraph | dispatch | `lead-094`, `lead-regressed`, `lead-check-full`, `lead-no-gates-row`, `lead-full-undispatched`, `lead-no-selftest`, `lead-no-fd`, `lead-split-paragraphs`, `lead-no-check`, `lead-no-check-elsewhere` |
@@ -579,6 +579,59 @@ paragraphs) and `story.test.sh`. Run
 `.claude/tests/selftest.test.sh`, this story (`## Contract` amendment block,
 `## Test plan`, this handoff).
 
+### R-1 addendum (return to RED from GATES, 2026-11-05)
+
+**GREEN must:** add the route-back clause to condition (c) in
+`.claude/commands/advance-story.md` step 2, containing the literal span
+`` `bash scripts/phase.sh set $1 GATES` `` (`$1` as text, not expanded) after
+the first `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` `` span, inside
+step 2 (no blank line before it, not in step 3 or later). Keep condition
+(a)'s backticked `` `every suite` `` after that span too. Nothing else.
+
+**What changed in the guard** (`procedure.test.sh`):
+- `FULL_WHEN[0]` is now `` '`every suite`' `` (backticks in the needle). The
+  fault line is unchanged: `<file>: its full-run option does not say when:
+  `every suite`` (the printf strips the needle's own backticks).
+- New `STEP_BACK='`bash scripts/phase.sh set $1 GATES`'`, read by
+  `full_option` from the same region (squashed text after the first full-run
+  span), with its own line:
+  `.claude/commands/advance-story.md: its full-run option does not say how to get back: `bash scripts/phase.sh set $1 GATES``.
+  It is not a `FULL_WHEN` entry, so "three conditions" stays true in every
+  description and in the count wording.
+- Fixtures: `REST` gains, after condition (c), the route back on its own
+  lines and the real step's closing sentence "CI runs every suite on the PR
+  either way."; `CLAUSE` backticks `every suite` and appends the route back.
+- New cases (+5 assertions): `full-every-suite-only-in-closing` (precondition
+  + control, exactly the (a) line), `full-no-route-back` (control, in prose
+  elsewhere, exactly the AM-1 line), `full-route-back-before-only`,
+  `full-route-back-expanded` (`HARNESS-095` in place of `$1`). Floor
+  procedure 149 -> 154 in `floors.conf` and `selftest.test.sh`.
+
+**Command:** `bash scripts/selftest.sh procedure selftest`
+
+**Observed failure** (attested; local run, two `gates.sh --fast` runs from
+other sessions on the host):
+
+    exit:     1
+    duration: 105s
+    last:     1 of 2 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261105T223240Z.18813.log
+
+        FAIL procedure_problems over the real tree prints nothing: ...
+             expected: 
+             actual:   .claude/commands/advance-story.md: its full-run option does not say how to get back: `bash scripts/phase.sh set $1 GATES`
+    procedure: 153 passed, 1 failed
+    FAIL procedure  did 153 units of work, below the floor of 154 in .claude/tests/floors.conf
+    selftest: 309 passed, 0 failed
+
+Every fixture case passes; the one red is the real-tree assertion, on the
+AM-1 line alone. `gates.sh --fast` skipped: gates are unconfigured
+(BOOTSTRAPPED=no).
+
+**Files touched in this return:** `.claude/tests/procedure.test.sh`,
+`.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, this story
+(`## Regressions` R-1, this addendum).
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -630,6 +683,34 @@ paragraphs) and `story.test.sh`. Run
 - **What earns it:** the same mutation, run against the corrected test, must
   turn `procedure` red with the "does not say when" line for
   `` `every suite` ``. RED pastes it here.
+
+RED (R-1) earned: line 318 was checked first (`sed -n 318p` gives
+`` `every suite`: the run already is the full one, and there is nothing to ``),
+so the line number stands. The corrected test, same mutation, `procedure`
+red with the (a) line for advance-story.md. The AM-1 line beside it is
+expected: GREEN has not written the route back yet. The floor line is the
+same red seen as a count (153 passed against a floor of 154). Then
+`mutate.sh --check` was clean:
+
+    $ bash scripts/mutate.sh .claude/commands/advance-story.md '318s/`every suite`: the run already is the full one/the selection was everything/' -- bash scripts/selftest.sh procedure
+    === mutate: .claude/commands/advance-story.md (1 line(s) changed by 318s/`every suite`: the run already is the full one/the selection was everything/) ===
+    === mutate: running bash scripts/selftest.sh procedure ===
+        FAIL procedure_problems over the real tree prints nothing: ...
+             expected: 
+             actual:   .claude/commands/advance-story.md: its full-run option does not say when: `every suite`
+             .claude/commands/advance-story.md: its full-run option does not say how to get back: `bash scripts/phase.sh set $1 GATES`
+    procedure: 153 passed, 1 failed
+    FAIL procedure  did 153 units of work, below the floor of 154 in .claude/tests/floors.conf
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261105T223227Z.18262.bak) ===
+    $ bash scripts/mutate.sh --check
+    mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+Unmutated, the same suite reports only the AM-1 line (attested run in the
+handoff's R-1 addendum), so the (a) line above comes from the mutation alone.
+The fixture case `full-every-suite-only-in-closing` reproduces the defect
+without the real tree: (a) reworded away, the closing sentence kept, exactly
+the (a) line.
 
 ## Diff review
 

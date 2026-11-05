@@ -73,7 +73,17 @@ TOOL_CILOCAL='Bash(bash scripts/ci-local.sh:*)'
 # (STEP_FULL), its three conditions (FULL_WHEN) and the tool patterns.
 STEP_SELFTEST='`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`'
 STEP_FULL='`SELFTEST_JOBS=4 bash scripts/selftest.sh`'
-FULL_WHEN=('every suite' 'cannot name the suite' 'had not selected')
+#
+# R-1 (return to RED from GATES): condition (a)'s needle is the backticked
+# code span `` `every suite` ``, backticks included. The bare words were
+# satisfied by the step's closing sentence "CI runs every suite on the PR
+# either way", which comes after the full-run span, so (a) could be deleted
+# and the guard stayed silent. The fault line still prints `every suite`
+# once-backticked, as before. AM-1 adds STEP_BACK, (c)'s route back to this
+# step from REVIEW, read from the same region. It is not one of AC-2's "three
+# conditions", so it is its own needle with its own line, not a FULL_WHEN entry.
+FULL_WHEN=('`every suite`' 'cannot name the suite' 'had not selected')
+STEP_BACK='`bash scripts/phase.sh set $1 GATES`'
 TOOL_FULL='Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*)'
 TOOL_CHANGED='Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*)'
 STEP_PHASE='`bash scripts/phase.sh set $1 REVIEW`'
@@ -280,7 +290,7 @@ squash() {
 # whole step, is what lets `every suite` fail: the `--changed` description
 # before it says `every suite` too (when a path cannot be placed).
 full_option() {
-  local c post
+  local c n post
   case "$1" in
     *"$STEP_FULL"*) ;;
     *) printf '%s: its step 2 does not name the full run %s as an option\n' "$2" "$STEP_FULL"; return 0 ;;
@@ -290,9 +300,15 @@ full_option() {
   for c in "${FULL_WHEN[@]}"; do
     case "$Q" in
       *"$c"*) ;;
-      *) printf '%s: its full-run option does not say when: `%s`\n' "$2" "$c" ;;
+      *) n="${c#\`}"; n="${n%\`}"
+         printf '%s: its full-run option does not say when: `%s`\n' "$2" "$n" ;;
     esac
   done
+  # AM-1: case (c) is seen at REVIEW, so the option says how to get back.
+  case "$Q" in
+    *"$STEP_BACK"*) ;;
+    *) printf '%s: its full-run option does not say how to get back: %s\n' "$2" "$STEP_BACK" ;;
+  esac
   return 0
 }
 
@@ -486,7 +502,10 @@ with_review() { printf '%s\n%s' "$RV" "$1"; }
 # the `--changed` description BEFORE the full-run span, once as condition (a)
 # after it; only the second may satisfy the condition. `cannot name the suite`
 # is reflowed across a line break, so a condition read without squashing would
-# miss it.
+# miss it. R-1 adds the real step's closing sentence, "CI runs every suite on
+# the PR either way", AFTER the full-run span and without backticks: it is the
+# text that satisfied the bare needle when (a) was gone. AM-1 adds (c)'s route
+# back, `bash scripts/phase.sh set $1 GATES`, after the full-run span too.
 REST="$(cat <<'EOF'
 2. `bash scripts/selftest-needed.sh` — on `run` (a harness path changed),
    `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` — the suites the diff
@@ -499,6 +518,9 @@ REST="$(cat <<'EOF'
    says `every suite`, when you cannot name
    the suite that exercises a changed script's caller, or when CI failed a
    suite the local run had not selected.
+   That last is seen at REVIEW; `bash scripts/phase.sh set $1 GATES`
+   brings you back here.
+   CI runs every suite on the PR either way.
 3. `bash scripts/phase.sh set $1 REVIEW`
 4. Commit.
 5. `bash scripts/check-boundaries.sh` — the second script CI runs.
@@ -521,7 +543,7 @@ EOF
 # and none of the other STEP_WORDS, so a case that removes one of those still
 # removes it. A bullet written by write_complete gets the bare span.
 PH='{{SELFTEST}}'
-CLAUSE="$STEP_SELFTEST (paste the header \`selftest: --changed — ...\`; the full $STEP_FULL instead when the header says every suite, when you cannot name the suite, or when CI failed a suite it had not selected)"
+CLAUSE="$STEP_SELFTEST (paste the header \`selftest: --changed — ...\`; the full $STEP_FULL instead when the header says \`every suite\`, when you cannot name the suite, or when CI failed a suite it had not selected, then \`bash scripts/phase.sh set \$1 GATES\` to come back)"
 
 # The skill (HARNESS-068). Every C-3 needle appears exactly once, and no needle
 # is a substring of another's occurrence, so removing one removes only it.
@@ -632,7 +654,7 @@ assert_eq "both commands that reach REVIEW exist in this repository" "" "$missin
 assert_eq "the diff-review skill exists in this repository (HARNESS-068 AC-4)" \
   "" "$([ -f "$REPO_ROOT/$SKILL" ] || printf '%s' "$SKILL")"
 
-assert_eq "procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, the diff-review step comes before the full self-test, which comes before the phase change, complete-story names the review before the self-test, and the diff-review skill carries its rules; and (HARNESS-075 AC-4) both commands permit selftest-needed.sh, step 2 names it before the self-test and says \`skip\`, and complete-story's bullet names it before the self-test; and (HARNESS-095) step 2 and the bullet name the \`--changed\` run, step 2 names the full run with its three conditions and the header line, and both commands permit the \`--changed\` pattern beside the full-run one" \
+assert_eq "procedure_problems over the real tree prints nothing: both commands permit selftest.sh and ci-local.sh, the diff-review step comes before the full self-test, which comes before the phase change, complete-story names the review before the self-test, and the diff-review skill carries its rules; and (HARNESS-075 AC-4) both commands permit selftest-needed.sh, step 2 names it before the self-test and says \`skip\`, and complete-story's bullet names it before the self-test; and (HARNESS-095) step 2 and the bullet name the \`--changed\` run, step 2 names the full run with its three conditions, the backticked \`every suite\` (R-1) and its route back \`bash scripts/phase.sh set \$1 GATES\` (AM-1) and the header line, and both commands permit the \`--changed\` pattern beside the full-run one" \
   "" "$(procedure_problems "$REPO_ROOT")"
 
 # ---------------------------------------------------------------------------
@@ -1527,6 +1549,37 @@ s="${GOOD_STEPS//"says \`every suite\`, when"/says so, when}"
 write_advance "$d" "$GOOD_TOOLS" "$s"
 assert_eq "\`every suite\` only BEFORE the full-run span (in the \`--changed\` description) does not say when to take the full run: one line" \
   "$CH_WHEN_A" "$(procedure_problems "$d")"
+
+CH_BACK='.claude/commands/advance-story.md: its full-run option does not say how to get back: `bash scripts/phase.sh set $1 GATES`'
+
+describe "HARNESS-095 R-1: condition (a) is the backticked \`every suite\`, not the closing sentence's bare words"
+
+fresh_case full-every-suite-only-in-closing
+s="${GOOD_STEPS//"says \`every suite\`, when"/selects all of them, when}"
+assert_eq "precondition: the reworded step still carries the bare closing sentence after the full-run span" \
+  "kept" "$(case "${s#*"$STEP_FULL"}" in *"CI runs every suite on the PR either way."*) printf kept ;; esac)"
+write_advance "$d" "$GOOD_TOOLS" "$s"
+assert_eq "control (R-1, the defect): condition (a) reworded away, \"CI runs every suite on the PR either way\" kept after the full-run span, gives exactly the (a) line" \
+  "$CH_WHEN_A" "$(procedure_problems "$d")"
+
+describe "HARNESS-095 AM-1: the full-run option says how to get back to this step"
+
+fresh_case full-no-route-back
+write_advance "$d" "$GOOD_TOOLS" "${GOOD_STEPS//"$STEP_BACK"/the phase command}" "Prose outside the steps: $STEP_BACK."
+assert_eq "control (AM-1): the full-run option without \`bash scripts/phase.sh set \$1 GATES\`, present elsewhere in the file, gives exactly the one \"how to get back\" line" \
+  "$CH_BACK" "$(procedure_problems "$d")"
+
+fresh_case full-route-back-before-only
+s="${GOOD_STEPS//"$STEP_BACK"/the phase command}"
+s="${s//"can break, every suite when"/can break (from REVIEW, $STEP_BACK), every suite when}"
+write_advance "$d" "$GOOD_TOOLS" "$s"
+assert_eq "\`bash scripts/phase.sh set \$1 GATES\` only BEFORE the full-run span is not the full-run option's route back: one line" \
+  "$CH_BACK" "$(procedure_problems "$d")"
+
+fresh_case full-route-back-expanded
+write_advance "$d" "$GOOD_TOOLS" "${GOOD_STEPS//"$STEP_BACK"/\`bash scripts/phase.sh set HARNESS-095 GATES\`}"
+assert_eq "an expanded id (\`bash scripts/phase.sh set HARNESS-095 GATES\`) is not the literal \`\$1\` span: one line" \
+  "$CH_BACK" "$(procedure_problems "$d")"
 
 fresh_case full-condition-next-step
 s="${GOOD_STEPS//"suite the local run had not selected."/suite the local run skipped.}"
