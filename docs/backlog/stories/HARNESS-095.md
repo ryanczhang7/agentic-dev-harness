@@ -852,6 +852,32 @@ start over", and the new (c) clause bypasses that. It is fixed in GATES as
 the completion of the user's "Fix both" (AM-1's intent). Nice-to-have 2 is
 not taken.
 
+
+**Third review, after the (c) fix (2026-11-05).** A fresh
+`feature-developer`, Opus 5.5 (`claude-opus-5-5`), no override, using
+`diff-review`. It reviewed `61bac13` and changed no file.
+
+- (c) can now be followed end to end. It matches step 1 and step 2's
+  "gates.sh runs again and these steps start over". Starting over passes
+  through step 3, `set $1 REVIEW`, before step 4's commit, so the
+  REVIEW-return ordering rule holds, and `check-boundaries.sh` no longer sees
+  a stale gate hash.
+- Each needle occurs exactly once on the real file, in its own clause:
+  `` `every suite` `` on line 318, `cannot name the suite` on 320,
+  `had not selected` on 323, `` `bash scripts/phase.sh set $1 GATES` `` on
+  325.
+- `selftest.sh procedure` 154/0 and `dispatch` 83/0.
+- Probe: `$1` was removed from the way-back span on the real line. procedure
+  went red (153 passed, 1 failed), the file was restored, and
+  `mutate.sh --check` was clean.
+
+Nice to have: (c) could add "(or return to RED, as below, if a test is
+wrong)". It was not taken, because step 2's "RED if a test is wrong" and the
+REVIEW-return paragraph already cover it, and taking it would restart the
+loop for prose.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
