@@ -972,3 +972,19 @@ Verdict: Ship.
     `6 harness suite(s) passed.`, 554/554 against the floors, log
     `.claude/state/attest-logs/20261105T225849Z.9615.log`. `attest.sh check`
     said `fresh`.
+- Self-test at GATES → REVIEW, 2026-11-05. `selftest-needed.sh` gave `run`.
+  - Following this story's own step 2, the orchestrator ran the `--changed`
+    self-test. None of the three full-run cases applied: the header listed 20
+    suites, not `every suite`; no script is changed; and CI has not run yet.
+  - A feature-developer, Opus 5.5 (`claude-opus-5-5`), ran it in the
+    background. `attest.sh check` said `fresh`.
+
+        selftest: --changed — 20 of 34 suite(s) selected: attest boundaries dispatch doctor gate-reminder grep-count host-load lib phase policy procedure refresh reporting run-lock security-audit selftest shipped-docs sigpipe story worktree
+        exit:     0
+        last:     20 harness suite(s) passed.
+        duration: 653s
+
+    Log: `.claude/state/attest-logs/20261105T230456Z.1645.log`. All 2576
+    assertions met their floors.
+  - The run was launched with a 600,000 ms tool timeout rather than `nohup`.
+    It finished in 653 s and exited normally.
