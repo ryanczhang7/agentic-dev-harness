@@ -5,7 +5,7 @@ slug: gates-to-review-runs-the-changed-suite-s
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-095-gates-to-review-runs-the-changed-suite-s
 depends_on: [HARNESS-094]      # the command this step names exists only once 094 merges; DV-2 there measures whether it is cheaper
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/tests/procedure.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -802,9 +802,9 @@ has no route back from a red CI self-test to step 2.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-05T22:21:27Z
-    commit: 0d3f352
-    tree:   6e0e011ccc46fd7fe0cf8e53d639f0df4e1c04d7
+    run:    2026-11-05T22:40:04Z
+    commit: 06ba8b7
+    tree:   e75ef9684379ace4345f53c380442b81681f822f
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
