@@ -8,7 +8,7 @@ status: todo
 phase: PLANNED
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
-touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
+touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
 required_gates: []  # every gate is unconfigured here; the artifact is judged by selftest (see Context)
 ---
 
@@ -79,6 +79,14 @@ in full on the PR.
   bound. *Control:* a holder started by the suite itself, whose parent is
   still running, is still alive at the moment the orphaned one is observed
   gone - so "gone" is tied to the parent exiting, not to time passing.
+- **AC-4 (run-lock's live holders, added 2026-11-05)** — Given `run-lock.test.sh`
+  starts its two live-holder stand-ins (`LIVE1`, `LIVE2`, today `sleep 600 &`
+  at lines 225-226) with the AC-2 helper instead of a timed `sleep`, when the
+  suite reaches AC-6 "the markers are not a bypass", then an assertion named
+  as that block's precondition checks that both are still alive. *Control:*
+  with the stand-ins shortened to `sleep 45` through `scripts/mutate.sh`
+  (the mutation HARNESS-094 `## Notes` records), the precondition is the
+  block's first red line.
 
 ## Contract
 
@@ -331,3 +339,11 @@ name, below the table.
 
 ## Notes
 
+
+- 2026-11-05: scope widened to `run-lock.test.sh` (AC-4, `touches:`), at the
+  user's decision while HARNESS-094 was at GATES. That story's full self-test
+  failed 7 assertions in run-lock's AC-6 block, and its `## Notes` holds the
+  evidence: the suite passes alone (140/140, 87 s), and shortening the
+  `sleep 600` stand-ins to 45 s reproduces exactly those 7 failures. The cause
+  is not measured. The fix is the same as AC-1..3, and the Contract and DV
+  blocks need a line for it when this story is started.

@@ -530,6 +530,38 @@ starts, and this story still merges: the mechanism is correct whether or
 not it is cheap, and the number is what decides the next story, not this
 one.
 
+**DV-2 result (2026-11-05).** Claim met: 21 of 34 suites, 6,444 s against
+12,502 s. Both runs at `SELFTEST_JOBS=4`, attested.
+
+- The full run, in this worktree, on the tree of `c1b6b1b`:
+
+      duration: 12502s
+      last:     1 of 34 harness suite(s) FAILED.
+
+  The one failure is `run-lock`, which is recorded under `## Notes`.
+- The `--changed` run was made in the scratch clone `dv1`, on branch `dv2`, at
+  `d138f67`, whose tree equals `c1b6b1b`. Its base was the synthetic C1
+  `eb23e6cb18c3332854b8e2dd1419ce5d1efb0384`, as in DV-1, because the named
+  base commit does not exist. Attest record and header line:
+
+      command:  SELFTEST_JOBS=4 bash scripts/selftest.sh --changed eb23e6cb18c3332854b8e2dd1419ce5d1efb0384
+      exit:     0
+      duration: 6444s
+      last:     21 harness suite(s) passed.
+      selftest-needed: suites — 21 of 34 selected from 6 harness path(s) changed against eb23e6cb18c3332854b8e2dd1419ce5d1efb0384 (merge-base eb23e6c)
+
+  Selected: attest boundaries dispatch doctor grep-count host-load lib mutate
+  phase-guard plan procedure refresh reporting rules-trim run-lock
+  selftest-needed selftest shipped-docs sigpipe story worktree.
+- The conditions were not the same. The two runs were made one after the
+  other, in different checkouts, and the host load was not measured for
+  either. The ratio, about 0.52, is therefore one observation, not a rate.
+- `run-lock` was selected, and it passed in this run. The stand-in starts
+  inside the suite, so what matters is how long the suite itself took, and the
+  log does not record that. This pass neither confirms nor rules out the
+  explanation in `## Notes`.
+- HARNESS-095 does not need re-planning.
+
 ## Amendments
 
 - **AM-1 (AC-2), 2026-11-04, approved by the user ("Fix both").**
@@ -1425,3 +1457,51 @@ so it is put to the user. CI runs every suite on every PR whatever
   `exit: 0` and `All required gates passed (0 ran, 7 unconfigured, 0 known).`
 - Second diff review: `feature-developer`, Opus 5.5 `claude-opus-5-5`, no
   override. `Verdict: Ship.`
+- **Full self-test at GATES → REVIEW (2026-11-05).** Run by a `feature-developer`
+  (Opus 5.5, `claude-opus-5-5`, no override), detached and alone in the
+  worktree, on tree `bdeac60`:
+
+      exit:     1
+      duration: 12502s
+      last:     1 of 34 harness suite(s) FAILED.
+      log:      .claude/state/attest-logs/20261105T045201Z.1004.log
+
+  33 of the 34 suites met their floors. `run-lock` failed 7 assertions, all in
+  "AC-6  the markers are not a bypass", with 133 executed against a floor of
+  140. The planted holder (pid 128074) was not refused: `selftest.sh` exited
+  0, the suite ran, and the lock was gone afterwards.
+- **Orchestrator's check of the `run-lock` failure.** `run-lock.test.sh:225-226`
+  makes its "live" holder pids with `sleep 600 &`. Three pieces of evidence:
+  - Run alone on the same tree, with a quiet host, it passes. Directly, not
+    attested: `rc=0`, 87 s, `140 assertions executed, 140 declared`, and
+    AC-6 reached 69 s in.
+  - With the stand-ins shortened to `sleep 45`
+    (`bash scripts/mutate.sh .claude/tests/run-lock.test.sh '225,226s/sleep 600/sleep 45/' -- bash scripts/selftest.sh run-lock`),
+    the AC-6 "not a bypass" block fails with exactly the 7 assertions of the
+    full run. AC-3's live-holder control fails too, because at 45 s the pid
+    has already expired there. In the full run that control passed, so the
+    pid was still alive at AC-3 and gone by AC-6.
+
+        FAIL right lock path, another live pid: selftest.sh exits 2
+        FAIL AC-6 wrong-pid marker: refusal line 1 names this run (scripts/selftest.sh tiny)
+        FAIL AC-6 wrong-pid marker: refusal line 2 names the holder (pid 184560, scripts/gates.sh --gate unit)
+        FAIL AC-6 wrong-pid marker: refusal line 3 gives the remedy for pid 184560
+        FAIL no suite runs
+        FAIL the lock is byte-identical afterwards
+        FAIL and the parent's lock is byte-identical afterwards, not released by the child
+        === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_run-lock.test.sh.20261105T082419Z.184426.bak) ===
+        mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+  - The failure is consistent with the 600 s stand-in expiring partway
+    through a 3.5-hour run. No timestamp in the log shows when it expired,
+    so that remains the explanation the evidence fits, not a measured cause.
+  - HARNESS-094 changes neither `run-lock.test.sh` nor the lock code.
+  - It is the same class as HARNESS-091, which bounds the stand-in in
+    `mutate.test.sh` (`hold_until_killed` in `_lib.sh`). HARNESS-091 does not
+    name `run-lock.test.sh` yet.
+- **PO decision (2026-11-05), user "Yes, open the PR".** The story goes to
+  REVIEW with the full self-test at 33 of 34. The `run-lock` failure is
+  recorded above as the test's own stand-in, not this story's change, and CI
+  runs every suite in about 4 minutes, well inside the stand-in's 600 s. The
+  fix was folded into HARNESS-091 as AC-4, which adds `run-lock.test.sh` to
+  its `touches:`.
