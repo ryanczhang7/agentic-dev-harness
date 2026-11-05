@@ -552,8 +552,8 @@ reporting 27
 rules-trim 30
 run-lock 140
 security-audit 51
-selftest 268
-selftest-needed 216
+selftest 309
+selftest-needed 482
 settings 70
 shipped-docs 14
 sigpipe 91
@@ -1575,5 +1575,284 @@ printf '%s\n' '  wait -n' '# wait -n, mapfile and coproc, in a comment' 'x=1  # 
   '  local -A seen' > "$HW/__probe_forbidden.sh"
 assert_eq "control: the same reader flags them on code lines and not in comments" "1: wait -n
 4: local -A" "$(forbidden "$HW/__probe_forbidden.sh")"
+
+# ===========================================================================
+# HARNESS-094: several suites by name (AC-6), and `--changed [base-ref]`
+# (AC-7), which asks `scripts/selftest-needed.sh --suites` what to run.
+#
+# AC-6 runs in $FIX with passing_suite and jrun, as the cases above do. AC-7
+# needs a git history the selection can diff - `main`, a story branch, a
+# change - and $FIX's working tree is full of untracked run artefacts (mk/,
+# w/, .claude/state), each of which would be a changed harness path. So every
+# AC-7 case builds its own fixture with cf_new: three passing suites committed
+# on main, .claude/state/ ignored, and the run's output kept in $HW, outside
+# it. In that fixture alpha and gamma mention .claude/harness/m.conf and beta
+# mentions nothing, so a new m.conf selects exactly alpha and gamma (R3).
+#
+# THE RED SHAPE. Today a second name is ignored (ONLY is $1) and `--changed`
+# is a suite name that matches nothing, so the multi-name cases run one suite
+# and every `--changed` run exits 1 with `No suites matched '--changed'`.
+# Nothing hangs, every assertion below is unconditional, and the executed
+# count is the same in RED and GREEN.
+# ===========================================================================
+
+CFS=""
+trap 'selftest_cleanup; for c in $CFS; do rm -rf "$c"; done' EXIT
+
+# cf_suite <name> <n> [path]   A passing suite in $CF, n assertions, whose
+# source mentions [path] in a comment when given.
+cf_suite() {
+  {
+    printf '#!/usr/bin/env bash\n'
+    [ -n "${3:-}" ] && printf '# reads %s\n' "$3"
+    printf '. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"\n'
+    printf 'i=0\n'
+    printf 'while [ $i -lt %d ]; do\n' "$2"
+    printf '  assert_eq "case $i" x x\n'
+    printf '  i=$((i+1))\n'
+    printf 'done\n'
+    printf 'summary "%s"\n' "$1"
+  } > "$CF/.claude/tests/$1.test.sh"
+}
+
+cfgit() { git -C "$CF" -c user.email=t@t -c user.name=t "$@"; }
+
+# cf_new [beta-floor]   CF := a fresh project fixture on `main` holding the
+# real _lib.sh and alpha (3, mentions m.conf), beta (2) and gamma (1, mentions
+# m.conf), floored at 3, [beta-floor] (default 2) and 1, committed. Not yet on
+# a story branch: cf_story does that.
+cf_new() {
+  CF="$(make_project_fixture)"; CFS="$CFS $CF"
+  mkdir -p "$CF/.claude/tests"
+  cp "$REPO_ROOT/.claude/tests/_lib.sh" "$CF/.claude/tests/_lib.sh"
+  cf_suite alpha 3 .claude/harness/m.conf
+  cf_suite beta  2
+  cf_suite gamma 1 .claude/harness/m.conf
+  printf 'floor | alpha | 3\nfloor | beta  | %s\nfloor | gamma | 1\n' "${1:-2}" \
+    > "$CF/.claude/tests/floors.conf"
+  printf '.claude/state/\n' >> "$CF/.gitignore"
+  cfgit branch -M main >/dev/null 2>&1
+  cfgit add -A >/dev/null 2>&1
+  cfgit commit -qm "three suites" >/dev/null 2>&1
+}
+cf_story() { cfgit checkout -q -b story/T-1-fixture >/dev/null 2>&1; }
+
+# crun <jobs> [args]   $CF's selftest.sh, SELFTEST_JOBS=<jobs> or removed with
+# `-`, VERBOSE empty. stdout to $HW/c.out, stderr to $HW/c.err, status CRC.
+CRC=""
+crun() {
+  local j="$1"
+  shift
+  if [ "$j" = - ]; then
+    ( cd "$CF" && env -u SELFTEST_JOBS VERBOSE= bash scripts/selftest.sh "$@" ) > "$HW/c.out" 2> "$HW/c.err"
+  else
+    ( cd "$CF" && SELFTEST_JOBS="$j" VERBOSE= bash scripts/selftest.sh "$@" ) > "$HW/c.out" 2> "$HW/c.err"
+  fi
+  CRC=$?
+}
+ckeep() { cp "$HW/c.out" "$HW/c.out.$1"; cp "$HW/c.err" "$HW/c.err.$1"; }
+
+# c_reason <name> <path> <rule>   How many lines of $HW/c.err are `  <name>`,
+# spaces, then exactly `<path> (<rule>)` - a --suites reason line passed through.
+c_reason() {
+  awk -v n="$1" -v t="$2 ($3)" '
+    { sub(/\r$/, "") }
+    substr($0, 1, 2 + length(n)) == "  " n {
+      s = substr($0, 3 + length(n))
+      if (s ~ /^ +/) { sub(/^ +/, "", s); if (s == t) c++ }
+    }
+    END { print c + 0 }' "$HW/c.err"
+}
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-094 AC-6  two names run exactly those two, in glob order, with no whole-file audit"
+
+# beta has no floor line and the file holds a line that is not a floor line:
+# a full run fails on both before anything runs (the control below), and a
+# run naming alpha and gamma answers for neither.
+reset_suites
+passing_suite alpha 3
+passing_suite beta  7
+passing_suite gamma 1
+floors <<'FLOORS'
+floor | alpha | 3
+this is not a floor
+floor | gamma | 1
+FLOORS
+cat > "$HW/golden.ac6" <<'GOLDEN'
+
+=== alpha ===
+
+alpha: 3 passed, 0 failed
+
+=== gamma ===
+
+gamma: 1 passed, 0 failed
+
+assertion floors: all 2 suite(s) met their declared floor (4 assertions executed, 4 declared).
+2 harness suite(s) passed.
+GOLDEN
+mk_reset
+jrun - gamma alpha
+assert_eq "\`selftest.sh gamma alpha\` exits 0" 0 "$JRC"
+assert_eq "and its stdout is alpha's block then gamma's (glob order, not argument order), one floors line, 2 passed" \
+  identical "$(h_same "$HW/golden.ac6" "$HW/out")"
+assert_eq "and nothing on stderr: both named suites have a floor" "" "$(cat "$HW/err")"
+assert_eq "the control: beta, the suite not named, did not run" 0 "$(h_exact '=== beta ===' "$HW/out")"
+jrun -
+keep ac6-full
+assert_eq "the control: a full run over the same floors file exits 1" 1 "$JRC"
+assert_eq "because it audits the whole file: 2 faults, nothing run" \
+  "2 fault(s) in .claude/tests/floors.conf. Nothing was run." "$(h_last ac6-full)"
+
+describe "HARNESS-094 AC-6  each named suite gets the single-suite floor rule"
+
+jrun - alpha beta
+keep ac6-nofloor
+assert_eq "\`selftest.sh alpha beta\`, beta unfloored, exits 0" 0 "$JRC"
+assert_eq "stderr is exactly the single-suite WARNING for beta, and nothing else" \
+  "WARNING: no floor line for beta in .claude/tests/floors.conf or .claude/tests/project-floors.conf, so this run cannot tell
+WARNING: whether that suite did any work. Declare one before the full run." "$(cat "$HW/err")"
+assert_eq "the floors line counts the one floored suite" 1 \
+  "$(h_exact 'assertion floors: all 1 suite(s) met their declared floor (3 assertions executed, 3 declared).' "$HW/out")"
+assert_eq "and the last line counts both suites that ran" "2 harness suite(s) passed." "$(h_last ac6-nofloor)"
+
+floors <<'FLOORS'
+floor | alpha | 4
+floor | beta  | 7
+floor | gamma | 2
+FLOORS
+jrun - alpha gamma
+keep ac6-short
+assert_eq "\`selftest.sh alpha gamma\`, both below their floors, exits 1" 1 "$JRC"
+assert_eq "alpha's floor is enforced" 1 \
+  "$(h_exact 'FAIL alpha  did 3 units of work, below the floor of 4 in .claude/tests/floors.conf' "$HW/out")"
+assert_eq "and so is gamma's, the second name" 1 \
+  "$(h_exact 'FAIL gamma  did 1 units of work, below the floor of 2 in .claude/tests/floors.conf' "$HW/out")"
+assert_eq "and the last line counts both failures out of the two that ran" \
+  "2 of 2 harness suite(s) FAILED." "$(h_last ac6-short)"
+
+describe "HARNESS-094 AC-6  a name that matches nothing, among several, runs nothing"
+
+mk_reset
+jrun - alpha nosuch
+assert_eq "\`selftest.sh alpha nosuch\` exits 1" 1 "$JRC"
+assert_eq "with the shipped No suites matched line naming nosuch, alone, on stderr" \
+  "No suites matched 'nosuch'. Looked in .claude/tests/*.test.sh" "$(cat "$HW/err")"
+assert_eq "and nothing on stdout: alpha, which does exist, did not run" "" "$(cat "$HW/out")"
+assert_eq "and no run.lock or selftest.* is left" "" "$(h_left)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-094 AC-7  --changed runs the selected suites after one header line"
+
+cf_new; cf_story
+printf 'm\n' > "$CF/.claude/harness/m.conf"
+cat > "$HW/golden.ac7" <<'GOLDEN'
+selftest: --changed — 2 of 3 suite(s) selected: alpha gamma
+
+=== alpha ===
+
+alpha: 3 passed, 0 failed
+
+=== gamma ===
+
+gamma: 1 passed, 0 failed
+
+assertion floors: all 2 suite(s) met their declared floor (4 assertions executed, 4 declared).
+2 harness suite(s) passed.
+GOLDEN
+crun - --changed
+ckeep ac7-1
+assert_eq "\`selftest.sh --changed\` with a new m.conf exits 0" 0 "$CRC"
+assert_eq "its stdout is the header line, then alpha's and gamma's blocks, the floors line and 2 passed" \
+  identical "$(h_same "$HW/golden.ac7" "$HW/c.out.ac7-1")"
+assert_eq "the control: beta, which does not mention m.conf, did not run" 0 \
+  "$(h_exact '=== beta ===' "$HW/c.out.ac7-1")"
+assert_eq "stderr passes through --suites' reason line for alpha" 1 \
+  "$(c_reason alpha .claude/harness/m.conf mentioned)"
+crun 3 --changed
+assert_eq "at SELFTEST_JOBS=3 it exits 0 too" 0 "$CRC"
+assert_eq "and its stdout is byte-identical to the serial run's" identical \
+  "$(h_same "$HW/c.out.ac7-1" "$HW/c.out")"
+
+describe "HARNESS-094 AC-7  --changed audits the whole floors file first"
+
+# beta's floor is not a number, and beta is NOT selected: the audit still
+# fails the run before any suite. The fault is committed on main, so the
+# story branch's only change is m.conf and the selection is a list, not all.
+cf_new lots; cf_story
+printf 'm\n' > "$CF/.claude/harness/m.conf"
+cat > "$HW/golden.ac7-audit" <<'GOLDEN'
+FAIL .claude/tests/floors.conf:2  floor for 'beta' is not a number: 'lots'
+FAIL beta  no floor line in .claude/tests/floors.conf or .claude/tests/project-floors.conf; every suite must declare one (a project's own suites go in project-floors.conf)
+
+2 fault(s) in .claude/tests/floors.conf. Nothing was run.
+GOLDEN
+crun - --changed
+ckeep ac7-audit
+assert_eq "the control: \`--changed\` over a floors fault in an UNSELECTED suite exits 1" 1 "$CRC"
+assert_eq "and its stdout is the full run's fault report and nothing else: no header, no suite" identical \
+  "$(h_same "$HW/golden.ac7-audit" "$HW/c.out.ac7-audit")"
+crun - alpha gamma
+assert_eq "while naming the same two suites does not audit, and exits 0" 0 "$CRC"
+
+describe "HARNESS-094 AC-7  --changed that resolves to all is a full run under one header line"
+
+cf_new; cf_story
+printf 'x\n' > "$CF/.claude/harness/x.conf"
+crun - --changed
+ckeep ac7-all; rc_all="$CRC"
+crun -
+ckeep ac7-full; rc_full="$CRC"
+awk 'NR > 1' "$HW/c.out.ac7-all" > "$HW/c.out.ac7-all-tail"
+assert_eq "precondition: a plain full run of the fixture exits 0" 0 "$rc_full"
+assert_eq "\`--changed\` with an unmapped x.conf exits 0" 0 "$rc_all"
+assert_eq "its first line is the every-suite header carrying --suites' reason" \
+  "selftest: --changed — every suite: .claude/harness/x.conf is mapped by no rule; defaulting to every suite" \
+  "$(awk 'NR == 1' "$HW/c.out.ac7-all")"
+assert_eq "and everything after it is byte for byte the full run's stdout" identical \
+  "$(h_same "$HW/c.out.ac7-full" "$HW/c.out.ac7-all-tail")"
+
+describe "HARNESS-094 AC-7  --changed with no harness change runs nothing, exit 1"
+
+cf_new; cf_story
+mkdir -p "$CF/src"; printf 'export const a = 1\n' > "$CF/src/app.ts"
+cfgit add -A >/dev/null 2>&1; cfgit commit -qm "source only" >/dev/null 2>&1
+crun - --changed
+assert_eq "\`--changed\` over a source-only diff exits 1" 1 "$CRC"
+assert_eq "and stdout is exactly the selected-no-suite line, the skip line appended" \
+  "selftest: --changed selected no suite — selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base $(cfgit rev-parse --short main 2>/dev/null)); CI runs the self-test on the PR" \
+  "$(tr -d '\r' < "$HW/c.out")"
+assert_eq "and no run.lock was left in the fixture" absent "$(present "$CF/.claude/state/run.lock")"
+
+describe "HARNESS-094 AC-7  --changed <ref> passes the base through"
+
+# release is main before a harness commit; the story branch, cut after it,
+# adds a source file. Against main nothing is selected; against release m.conf is.
+cf_new
+cfgit branch release >/dev/null 2>&1
+printf 'm\n' > "$CF/.claude/harness/m.conf"
+cfgit add -A >/dev/null 2>&1; cfgit commit -qm "m.conf on main" >/dev/null 2>&1
+cf_story
+mkdir -p "$CF/src"; printf 'export const a = 1\n' > "$CF/src/app.ts"
+cfgit add -A >/dev/null 2>&1; cfgit commit -qm "source" >/dev/null 2>&1
+crun - --changed release
+ckeep ac7-ref
+assert_eq "\`--changed release\` exits 0" 0 "$CRC"
+assert_eq "and its first line selects alpha and gamma" \
+  "selftest: --changed — 2 of 3 suite(s) selected: alpha gamma" "$(awk 'NR == 1' "$HW/c.out.ac7-ref")"
+assert_eq "and its last line counts the two that ran" "2 harness suite(s) passed." \
+  "$(awk 'END { print }' "$HW/c.out.ac7-ref")"
+crun - --changed
+assert_eq "control: \`--changed\` with no ref resolves main and selects nothing, exit 1" 1 "$CRC"
+
+describe "HARNESS-094 AC-7  --changed whose selection fails is exit 2"
+
+cf_new; cf_story
+crun - --changed -x
+assert_eq "\`--changed -x\` (a usage error from --suites) exits 2" 2 "$CRC"
+assert_eq "and prints nothing on stdout" "" "$(cat "$HW/c.out")"
+assert_eq "and stderr's first line says it cannot select" "selftest: --changed cannot select: " \
+  "$(awk 'NR == 1 { print substr($0, 1, length("selftest: --changed cannot select: ")) }' "$HW/c.err")"
 
 summary "selftest"

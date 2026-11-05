@@ -158,6 +158,8 @@ Never guess a build command. Every project-specific command lives in
 bash scripts/doctor.sh           # is the toolchain installed?
 bash scripts/selftest.sh         # the harness's own tests (bash + git only)
 bash scripts/selftest-needed.sh  # does this story's diff touch a harness path? exit 0 run / 1 skip
+bash scripts/selftest-needed.sh --suites   # which suites that diff can break, one per line, or `all`
+SELFTEST_JOBS=4 bash scripts/selftest.sh --changed   # run exactly those; the local self-test before a PR (HARNESS-095 switches the procedure to it)
 bash scripts/gates.sh            # all gates
 bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and GREEN
 bash scripts/gates.sh --gate unit
