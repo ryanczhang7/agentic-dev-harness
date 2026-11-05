@@ -310,6 +310,7 @@ name, below the table.
 - RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override was reported. 2026-11-05.
 - GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override was reported. 2026-11-05.
 - GATES, `feature-developer` (full gates): `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-05.
+- GATES, `feature-developer` (diff review): `opus` (Opus 5.5, `claude-opus-5-5`), no override. 2026-11-05.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -589,6 +590,92 @@ paragraphs) and `story.test.sh`. Run
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+## Diff review
+
+First review, 2026-11-05: a fresh `feature-developer`, Opus 5.5
+(`claude-opus-5-5`), no override, using the `diff-review` skill. It changed
+no file. The report, as returned:
+
+**What this change does.** The local self-test before a PR changes from the
+full `SELFTEST_JOBS=4 bash scripts/selftest.sh` to
+`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`, which runs only the
+suites the diff can break. The full run is kept for three named cases. The
+change touches advance-story step 2, the complete-story bullet, lead-po's
+long-run paragraph and both allowed-tools lines. procedure.test.sh and
+dispatch.test.sh are retargeted to the `--changed` spelling, and their floors
+are raised to 149 and 83.
+
+**What it checked:**
+- The whole diff against main.
+- `scripts/selftest.sh` lines 290-370: the header text, that the floors audit
+  runs first under `--changed`, and the `every suite` wording.
+- HARNESS-094's DV-2 numbers (21 of 34 suites, 6,444 s against 12,502 s),
+  against HARNESS-094.md lines 533-551.
+- The 3,845 s and 11,419 s durations, against HARNESS-086 and HARNESS-088.
+- Which suites read the three files:
+  - GREEN's attested run covered attest, reporting, story and shipped-docs,
+    all green.
+  - `selftest-needed.test.sh`'s CM_L2 pins CLAUDE.md, which the diff does not
+    touch.
+  - plan.test.sh reads only the commands' `model:` line, which did not
+    change.
+- The HARNESS-068/072/075 fixtures keep their expected lines. Only the
+  targeted/prose/other-paragraph message moved, from "GATES → REVIEW steps do
+  not name" to "step 2 does not name", as the Contract asks.
+- HARNESS-085's `today` case keeps its six lines, and `lead-no-check` expects
+  two, as RED's amendment records.
+- `bash scripts/selftest.sh procedure dispatch`: 149 and 83 passed, both
+  floors met.
+
+**Should fix**
+
+1. **Condition (a)'s needle cannot fail on the real tree**
+   (`procedure.test.sh` `FULL_WHEN`, `full_option`; `advance-story.md:318`
+   and `:326`).
+   - The check reads the text from the first full-run span onward. The
+     step's last sentence, "CI runs every suite on the PR either way"
+     (line 326), comes after that span, so it satisfies the `every suite`
+     needle whether or not condition (a) exists.
+   - Probe:
+     `bash scripts/mutate.sh .claude/commands/advance-story.md '318s/`every suite`/`all suites`/' -- bash scripts/selftest.sh procedure`
+     gave `procedure: 149 passed, 0 failed`, and the file was restored.
+   - Fix: a backticked needle, `` '`every suite`' ``. That is a test change,
+     so it means a return to RED, earned by this mutation. Rewording line 326
+     alone leaves the trap for the next edit.
+2. **Case (c) is in a step the orchestrator is no longer running when it
+   applies** (`advance-story.md:322-325`).
+   - CI's failure is seen at REVIEW, and nothing says to go back to GATES and
+     through this step again.
+   - Fix: one clause in (c), "set the phase back with
+     `bash scripts/phase.sh set $1 GATES`, fix, and at this step dispatch the
+     full run". Prose only, so it can be fixed in GATES.
+
+**Nice to have**
+
+3. The dispatch guard's "does not name `--changed`" message appears only
+   when every `--changed` in the paragraph is gone (`dispatch.test.sh:356-367`).
+   This is the same as DV-1's finding. The guard is still red; only the
+   message is imprecise.
+4. "its `gates` check is not required on `main`" (`advance-story.md:326-328`)
+   is a fact about this repository, but it ships to consumer projects.
+   Qualify it as "in this repository".
+
+Not checked: the full self-test, which was out of its brief.
+
+Verdict: Ship.
+
+**Orchestrator's reproduction of finding 1, with a different edit.**
+Condition (a)'s own words on line 318 were replaced, and the guard stayed
+silent:
+
+    bash scripts/mutate.sh .claude/commands/advance-story.md '318s/`every suite`: the run already is the full one/the selection was everything/' -- bash scripts/selftest.sh procedure
+    procedure: 149 passed, 0 failed
+    === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261105T222525Z.11085.bak) ===
+    mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+Finding 2 was confirmed by reading: advance-story's REVIEW → DONE paragraph
+has no route back from a red CI self-test to step 2.
 
 ## Gate results
 
