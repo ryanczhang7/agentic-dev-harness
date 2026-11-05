@@ -936,3 +936,13 @@ not taken.
     exit 0, `6 harness suite(s) passed.`, procedure 154/154. `attest.sh check`
     said `fresh`.
   - `gates.sh --fast` passed, with no gate configured.
+- GATES fix for the second review's finding 1, 2026-11-05.
+  - A feature-developer, Opus 5.5 (`claude-opus-5-5`), reworded case (c):
+    after `phase.sh set $1 GATES` it now says "fix, run
+    `bash scripts/gates.sh`, and start these steps over from the review of
+    the fix, with the full run in place of `--changed`". It then reflowed the
+    clause to the file's width.
+  - The six suites passed through attest: exit 0,
+    `6 harness suite(s) passed.`, 554/554 against the floors, log
+    `.claude/state/attest-logs/20261105T225849Z.9615.log`. `attest.sh check`
+    said `fresh`.
