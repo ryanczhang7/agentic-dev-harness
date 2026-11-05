@@ -476,12 +476,19 @@ esac
 # a fixed string; R4 the five scanner rows; R5 a harness path no rule maps
 # selects `all`. Amendment A-1 (RED): a rule contributes a name only when
 # .claude/tests/<name>.test.sh exists in the tree - see the deleted-suite case.
+# Amendments at GATES: AM-1 / A-4, R2 also names .claude/hooks/lib.sh; AM-2 /
+# A-5, the *.sh scanner rows (lib, sigpipe, grep-count) ADD their suite but do
+# not map a path, so a *.sh that only they match is R5's `all`.
 #
 # THE FIXTURE. suites_stubs writes nine throwaway suites into the fixture's
 # .claude/tests and commits them on `main`, so every list below is read out,
 # not derived: alpha and beta mention .claude/harness/m.conf, beta also
-# .claude/harness/n.conf, policy mentions .claude/skills/foo/SKILL.md, and
-# gamma and the five scanner suites mention no path at all. The stubs are
+# .claude/harness/n.conf, alpha also the three shell files the AC-4 scanner
+# cases change (scripts/probes/x.sh, .claude/hooks/x.sh, .claude/foo/x.sh -
+# AM-2: a *.sh that only the *.sh rows match is `all`, so the cases that pin
+# those rows need R3 to map the path), policy mentions
+# .claude/skills/foo/SKILL.md, and gamma and the five scanner suites mention
+# no path at all. The stubs are
 # never executed - R3 reads source - so they are one comment line each. Every
 # name is lowercase letters and at most one `-`, chosen so that `sort` gives
 # the same order in the C locale and in en_US (gamma < grep-count, policy <
@@ -507,6 +514,7 @@ suites_stubs() {
   local s
   for s in $SUITE_STUBS; do put ".claude/tests/$s.test.sh" "# fixture suite $s"; done
   printf '# reads .claude/harness/m.conf\n' >> "$d/.claude/tests/alpha.test.sh"
+  printf '# runs scripts/probes/x.sh, .claude/hooks/x.sh and .claude/foo/x.sh\n' >> "$d/.claude/tests/alpha.test.sh"
   printf '# reads .claude/harness/m.conf and .claude/harness/n.conf\n' >> "$d/.claude/tests/beta.test.sh"
   printf '# reads .claude/skills/foo/SKILL.md\n' >> "$d/.claude/tests/policy.test.sh"
   commit_all "stub suites"
@@ -611,7 +619,7 @@ assert_eq "stderr names beta's FIRST path in sort order, m.conf, not n.conf" 1 \
   "$(reason_lines beta .claude/harness/m.conf mentioned)"
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-094 AC-2: a changed suite selects itself; _lib.sh, _spawns.sh and selftest.sh select all"
+describe "HARNESS-094 AC-2: a changed suite selects itself; _lib.sh, _spawns.sh, hooks/lib.sh and selftest.sh select all"
 
 suites_fixture
 put .claude/tests/gamma.test.sh '# fixture suite gamma, edited'
@@ -643,6 +651,15 @@ suites_fixture
 printf '# edited on the story branch\n' >> "$d/scripts/selftest.sh"
 expect_suites "an edited scripts/selftest.sh prints all, and says why" 0 \
   "all" whole "${SUITES_ALL}scripts/selftest.sh is read by every suite" --suites
+
+# AM-1 / Contract A-4: the harness library that 11 scripts source is R2's,
+# not merely a scripts-or-hooks *.sh for the scanner rows (which gave 15 of 34
+# on the real tree, `## Diff review` finding 1). The needle is the WHOLE
+# stderr, so `... is mapped by no rule` (R5, the same stdout) does not pass.
+suites_fixture
+printf '# edited on the story branch\n' >> "$d/.claude/hooks/lib.sh"
+expect_suites "AM-1: an edited .claude/hooks/lib.sh prints all, and says it is read by every suite" 0 \
+  "all" whole "${SUITES_ALL}.claude/hooks/lib.sh is read by every suite" --suites
 
 # ---------------------------------------------------------------------------
 describe "HARNESS-094 AC-3: a path no rule maps, or a diff that cannot be computed, prints all"
@@ -731,28 +748,48 @@ done
 # ---------------------------------------------------------------------------
 describe "HARNESS-094 AC-4: the scanner rows select suites that read the tree by glob"
 
+# AM-2 / Contract A-5: the *.sh rows are ADDITIVE. Each path below is
+# mentioned by alpha (R3), which maps it; the rows add their suites beside it.
 suites_fixture
 put scripts/probes/x.sh '#!/usr/bin/env bash'
-expect_suites "a new scripts/probes/x.sh (a deeper scripts/*.sh) prints grep-count, lib and sigpipe" 0 \
-  "grep-count
+expect_suites "a new scripts/probes/x.sh (a deeper scripts/*.sh) that alpha mentions prints alpha, and grep-count, lib and sigpipe beside it" 0 \
+  "alpha
+grep-count
 lib
-sigpipe" first "$(hdr 3 9 1)" --suites
+sigpipe" first "$(hdr 4 9 1)" --suites
 assert_eq "stderr names lib's path and the pattern that matched: (scans scripts/*.sh)" 1 \
   "$(reason_lines lib scripts/probes/x.sh 'scans scripts/*.sh')"
 
 suites_fixture
 put .claude/hooks/x.sh '#!/usr/bin/env bash'
-expect_suites "a new .claude/hooks/x.sh prints grep-count, lib and sigpipe" 0 \
-  "grep-count
+expect_suites "a new .claude/hooks/x.sh that alpha mentions prints alpha, and grep-count, lib and sigpipe beside it" 0 \
+  "alpha
+grep-count
 lib
-sigpipe" first "$(hdr 3 9 1)" --suites
+sigpipe" first "$(hdr 4 9 1)" --suites
 
 suites_fixture
 put .claude/foo/x.sh '#!/usr/bin/env bash'
-expect_suites "a new .claude/foo/x.sh prints grep-count and sigpipe" 0 \
-  "grep-count
-sigpipe" first "$(hdr 2 9 1)" --suites
+expect_suites "a new .claude/foo/x.sh that alpha mentions prints alpha, and grep-count and sigpipe beside it" 0 \
+  "alpha
+grep-count
+sigpipe" first "$(hdr 3 9 1)" --suites
 assert_eq "and not lib, whose rows are scripts/ and .claude/hooks/ only" 0 "$(out_has lib)"
+
+# AM-2's control: a *.sh that ONLY the *.sh rows match is mapped by no rule.
+# A helper suites source by relative name ("$HERE/_helpers.sh") is never
+# mentioned by its repo path, so R3 cannot see it (`## Diff review` finding
+# 2: 2 of 34 on the real tree, while _helpers.conf gave all). The needle is
+# the WHOLE stderr, so R2's `is read by every suite` does not pass either.
+suites_fixture
+put .claude/tests/_helpers.sh 'helper() { :; }'
+expect_suites "AM-2 control: an untracked .claude/tests/_helpers.sh that no suite mentions prints all, and names it as mapped by no rule" 0 \
+  "all" whole "${SUITES_ALL}.claude/tests/_helpers.sh is mapped by no rule; defaulting to every suite" --suites
+
+suites_fixture
+put scripts/newtool.sh '#!/usr/bin/env bash'
+expect_suites "AM-2: a new scripts/newtool.sh that no suite mentions prints all, though lib, sigpipe and grep-count scan it" 0 \
+  "all" whole "${SUITES_ALL}scripts/newtool.sh is mapped by no rule; defaulting to every suite" --suites
 
 suites_fixture
 put .claude/skills/stack-profiles/reference/x.txt 'x'
@@ -813,13 +850,14 @@ expect "without --suites, a fixture holding suites still answers the unchanged r
 describe "HARNESS-094 A-1: a rule names a suite only when its file exists in the tree"
 
 # gamma.test.sh deleted on the branch: R1 would name gamma, which can no
-# longer run (selftest.sh --changed would say "No suites matched"). The
-# *.sh scanners still map the path, so it is not unmapped either.
+# longer run (selftest.sh --changed would say "No suites matched"). Under A-5
+# (AM-2) the *.sh scanner rows no longer map a path, and no suite mentions
+# gamma's, so nothing maps it: R5's `all`, naming it. Before A-5 this case
+# expected `grep-count sigpipe` and a count of 8 suites.
 suites_fixture
 gitc rm -q .claude/tests/gamma.test.sh >/dev/null 2>&1; commit_all "drop gamma"
-expect_suites "a DELETED .claude/tests/gamma.test.sh prints grep-count and sigpipe, not gamma, and counts 8 suites" 0 \
-  "grep-count
-sigpipe" first "$(hdr 2 8 1)" --suites
+expect_suites "a DELETED .claude/tests/gamma.test.sh prints all, not gamma, and names it as mapped by no rule" 0 \
+  "all" whole "${SUITES_ALL}.claude/tests/gamma.test.sh is mapped by no rule; defaulting to every suite" --suites
 
 # ---------------------------------------------------------------------------
 describe "HARNESS-094 AC-8: CLAUDE.md's command list names both, directly after the selftest-needed.sh line"

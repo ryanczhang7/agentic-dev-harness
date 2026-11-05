@@ -5,7 +5,7 @@ slug: the-pre-pr-self-test-runs-only-the-suite
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-094-the-pre-pr-self-test-runs-only-the-suite
 depends_on: []      # nothing: this is the first of the pair; HARNESS-095 and HARNESS-089..093 wait for it
 touches: [scripts/selftest-needed.sh, scripts/selftest.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, CLAUDE.md, .claude/harness/VERSION]
@@ -636,7 +636,9 @@ a bash script. Everything is mechanical, so there are no thresholds.
 **`.claude/tests/selftest-needed.test.sh`**, seven describes marked
 `HARNESS-094` before `summary`. Fixture: `suites_stubs` writes nine one-line
 stub suites into the fixture's `.claude/tests` and commits them on `main`:
-alpha and beta mention `.claude/harness/m.conf`, beta also `n.conf`, policy
+alpha and beta mention `.claude/harness/m.conf`, beta also `n.conf`, alpha also
+`scripts/probes/x.sh`, `.claude/hooks/x.sh` and `.claude/foo/x.sh` (added on
+the return from GATES, R-2), policy
 mentions `.claude/skills/foo/SKILL.md`, and gamma, grep-count, lib, profiles,
 shipped-docs and sigpipe mention nothing. `expect_suites` runs from the root
 and from `src/`, four assertions each.
@@ -650,13 +652,16 @@ and from `src/`, four assertions each.
 | AC-2 | `_lib.sh` beside a mapped `n.conf` (all wins) | `all` + whole stderr |
 | AC-2 | `_spawns.sh` | `all` + whole stderr |
 | AC-2 | edited `scripts/selftest.sh` | `all` + whole stderr |
+| AC-2 | **AM-1**: edited `.claude/hooks/lib.sh` | `all` + whole stderr `... is read by every suite` |
 | AC-3 | **control**: unmapped `x.conf` beside mapped `m.conf` | `all`, stderr names x.conf |
 | AC-3 | **control for the control**: `m.conf` alone | `alpha` `beta` |
 | AC-3 | no origin/main or main; no merge base; not a git checkout | `all`, whole stderr line |
 | AC-3 | lib.sh trips `set -u`; paths.conf missing (prefix+suffix of the fallback line) | `all` |
-| AC-4 | `scripts/probes/x.sh` (depth); `(scans scripts/*.sh)` reason line | `grep-count` `lib` `sigpipe` |
-| AC-4 | `.claude/hooks/x.sh` | `grep-count` `lib` `sigpipe` |
-| AC-4 | `.claude/foo/x.sh`; control: lib absent | `grep-count` `sigpipe` |
+| AC-4 | `scripts/probes/x.sh` (depth), which alpha mentions (AM-2 rework); `(scans scripts/*.sh)` reason line | `alpha` `grep-count` `lib` `sigpipe` |
+| AC-4 | `.claude/hooks/x.sh`, which alpha mentions (AM-2 rework) | `alpha` `grep-count` `lib` `sigpipe` |
+| AC-4 | `.claude/foo/x.sh`, which alpha mentions (AM-2 rework); control: lib absent | `alpha` `grep-count` `sigpipe` |
+| AC-4 | **AM-2 control**: untracked `.claude/tests/_helpers.sh`, no mention | `all`, whole stderr `... is mapped by no rule; ...` |
+| AC-4 | **AM-2**: new `scripts/newtool.sh`, no mention | `all`, whole stderr `... is mapped by no rule; ...` |
 | AC-4 | `.claude/skills/stack-profiles/reference/x.txt` | `profiles` |
 | AC-4 | `.claude/commands/x.md` + `.claude/agents/x.md` | `shipped-docs` |
 | AC-4 | **control**: `.claude/skills/bar/deep/notes.md`, no mention | `shipped-docs` (not `all`) |
@@ -665,7 +670,7 @@ and from `src/`, four assertions each.
 | AC-5 | `--suites release`; control: `--suites` on the same fixture | `beta`; empty, exit 1 |
 | AC-5 | `--suites -x`, `--suites main extra`, `main --suites` | exit 2, empty, stderr non-empty |
 | AC-5 | no `--suites`, a fixture with suites: the unchanged run line (existing `expect`) | the run line |
-| A-1 | committed DELETION of `gamma.test.sh`; header counts 8 | `grep-count` `sigpipe` |
+| A-1 | committed DELETION of `gamma.test.sh` (changed by A-5: was `grep-count` `sigpipe`, 8 suites) | `all`, whole stderr `... gamma.test.sh is mapped by no rule; ...` |
 | AC-8 | the two lines directly after the existing `selftest-needed.sh` line of the real `CLAUDE.md`, each exactly once | - |
 
 **`.claude/tests/selftest.test.sh`**, seven describes marked `HARNESS-094`
@@ -924,6 +929,45 @@ run yet. Neither was attempted.
   exist, so under A-1 a `.sh` change there would be R5's `all`. No case relies
   on that.
 
+**Addendum, return from GATES (R-2, AM-1 / AM-2, 2026-11-05).** RED ran on
+Opus 5.5 (`claude-opus-5-5`), the agent's own `model:`; no override was
+reported. Only `selftest-needed.test.sh` changed (plus the floor, 482, in
+`floors.conf` and `selftest.test.sh`'s table); `selftest.sh` and its suite are
+unaffected. Command: `bash scripts/selftest.sh selftest-needed`. RED state:
+`selftest-needed: 458 passed, 24 failed`, log
+`.claude/state/attest-logs/20261105T033336Z.21603.log` (record: `exit: 1`,
+`last: 1 of 1 harness suite(s) FAILED.`); the failing output is in
+`## Regressions`, R-2. GREEN changes `scripts/selftest-needed.sh` only:
+
+1. **R2 (`case` near line 207):** add `.claude/hooks/lib.sh` to the
+   alternatives, so its reason is `.claude/hooks/lib.sh is read by every suite`
+   (the whole stderr line is pinned; reaching `all` via R5 fails). Update the
+   header comment that lists R2's files.
+2. **R4 loop (near line 222):** a match on a row whose suite is `lib`,
+   `sigpipe` or `grep-count` still appends its record but must **not** set
+   `hit=1`; `profiles` and `shipped-docs` matches still do. Then a harness
+   `.sh` matched by nothing else falls to the existing R5 line,
+   `<p> is mapped by no rule; defaulting to every suite`. Any way of telling
+   the rows apart is GREEN's choice (a flag column in `SCANS`, or the suite
+   name); the tests do not see it. Update the R4 comment to say the `*.sh`
+   rows are additive (A-5).
+3. Nothing else. The deleted-`gamma.test.sh` case then gives `all` with no
+   further change (R1 contributes nothing for an absent file, per A-1).
+
+Expected after GREEN: `selftest-needed: 482 passed, 0 failed`. The cases
+pinned: `.claude/hooks/lib.sh` → `all` (R2 reason); untracked
+`.claude/tests/_helpers.sh`, new `scripts/newtool.sh`, deleted
+`gamma.test.sh` → `all` (R5 reason, naming the path); `scripts/probes/x.sh`
+and `.claude/hooks/x.sh`, mentioned by `alpha` → `alpha grep-count lib
+sigpipe`; `.claude/foo/x.sh`, mentioned by `alpha` → `alpha grep-count
+sigpipe`; a changed `gamma.test.sh` / new `delta.test.sh` (R1) still add
+`grep-count sigpipe`. Negative controls, exact values: `_helpers.sh` gives
+`all` and not `grep-count sigpipe` (old code measured: `grep-count`
+`sigpipe`, `2 of 9`); the `.md` control still gives `shipped-docs`, not
+`all` (unchanged, passes today). Note for DV-1: on the real tree the A-5
+change makes any `.sh` path no suite names by full path `all`, so DV-1's
+expected selections for a diff that touches such a file change with it.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -1000,6 +1044,100 @@ run yet. Neither was attempted.
       selftest-needed: 458 passed, 0 failed
       1 harness suite(s) passed.
       All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+### R-2 (GATES → RED, 2026-11-04/05): AM-1 and AM-2 change AC-2 and AC-4
+
+- **Why the story returned:** the GATES diff review (`## Diff review`, findings 1 and 2, both reproduced by the orchestrator) led to two criteria amendments the user approved ("Fix both"): **AM-1** adds `.claude/hooks/lib.sh` to AC-2's `all` list (Contract A-4); **AM-2** makes the `*.sh` scanner rows (`lib`, `sigpipe`, `grep-count`) additive, so a `*.sh` that only they match is R5's `all` (Contract A-5). No test was *wrong* against the criteria as they stood; the criteria moved, and four existing expectations moved with them. The source (`scripts/selftest-needed.sh`) was not touched in this phase.
+- **What changed in `.claude/tests/selftest-needed.test.sh`** (test-developer, claude-opus-5-5):
+  - **Fixture:** `suites_stubs` appends one comment line to the `alpha` stub mentioning `scripts/probes/x.sh`, `.claude/hooks/x.sh` and `.claude/foo/x.sh`. Nothing else in the fixture changed: still nine stubs, so every `hdr ... 9 ...` count elsewhere is unchanged, and no other case changes any of those three paths.
+  - **Added (AC-2, AM-1):** "AM-1: an edited `.claude/hooks/lib.sh` prints all, and says it is read by every suite" - stdout exactly `all`, exit 0, whole stderr `selftest-needed: suites — all: .claude/hooks/lib.sh is read by every suite`. 8 assertions.
+  - **Added (AC-4, AM-2, the new control):** "AM-2 control: an untracked `.claude/tests/_helpers.sh` that no suite mentions prints all, and names it as mapped by no rule" - whole stderr `... all: .claude/tests/_helpers.sh is mapped by no rule; defaulting to every suite`. 8 assertions.
+  - **Added (AC-4, AM-2):** "a new `scripts/newtool.sh` that no suite mentions prints all, though lib, sigpipe and grep-count scan it" - whole stderr `... all: scripts/newtool.sh is mapped by no rule; ...`. 8 assertions.
+  - **Changed (AC-4, reworked so R3 maps the path):** `scripts/probes/x.sh` and `.claude/hooks/x.sh` now expect `alpha grep-count lib sigpipe`, header `4 of 9`; `.claude/foo/x.sh` expects `alpha grep-count sigpipe`, header `3 of 9`, and still asserts no `lib`. The `(scans scripts/*.sh)` reason-line assertion is unchanged. Under the old code each of these passes on arrival (the old code also prints `alpha` by R3); earned by the mutation below.
+  - **Changed (A-1, per Contract A-5):** a committed deletion of `gamma.test.sh` expects stdout `all` and whole stderr `... all: .claude/tests/gamma.test.sh is mapped by no rule; defaulting to every suite`, where it expected `grep-count sigpipe` and `2 of 8`. Same 8 assertions.
+  - **Unchanged:** the `.md`, `profiles` and `shipped-docs` cases, the `.md` control, the `gamma`/`delta` R1 cases (R1 maps them, so the `*.sh` rows stay additive beside it).
+  - **Floor:** 458 → 482 (+24) in `.claude/tests/floors.conf` and in `selftest.test.sh`'s hand-copied table, with a note at the foot of `floors.conf`.
+- **The failing run, which earns the added and changed expectations.** `bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed`, against the unchanged source:
+
+      exit:     1
+      duration: 498s
+      last:     1 of 1 harness suite(s) FAILED.
+      log:      .claude/state/attest-logs/20261105T033336Z.21603.log
+
+  Exactly 24 failures, all in the four cases above, six per case (the two `exits 0` assertions per case pass: the old code also exits 0). Every other assertion, including the three reworked `*.sh` cases, passed. Excerpt (the `[from subdir]` twins and the two `newtool`/`DELETED` blocks have the same shape and are elided):
+
+      HARNESS-094 AC-2: a changed suite selects itself; _lib.sh, _spawns.sh, hooks/lib.sh and selftest.sh select all
+        FAIL AM-1: an edited .claude/hooks/lib.sh prints all, and says it is read by every suite [from root]: stdout is exactly the pinned list
+             expected: all
+             actual:   grep-count
+             lib
+             sigpipe
+        FAIL AM-1: an edited .claude/hooks/lib.sh prints all, and says it is read by every suite [from root]: stdout has exactly 1 line(s)
+             expected: 1
+             actual:   3
+        FAIL AM-1: an edited .claude/hooks/lib.sh prints all, and says it is read by every suite [from root]: stderr is exactly the pinned text
+             expected: selftest-needed: suites — all: .claude/hooks/lib.sh is read by every suite
+             actual:   selftest-needed: suites — 3 of 9 selected from 1 harness path(s) changed against main (merge-base 2f2aeec)
+               grep-count  .claude/hooks/lib.sh (scans *.sh)
+               lib         .claude/hooks/lib.sh (scans .claude/hooks/*.sh)
+               sigpipe     .claude/hooks/lib.sh (scans *.sh)
+      HARNESS-094 AC-4: the scanner rows select suites that read the tree by glob
+        FAIL AM-2 control: an untracked .claude/tests/_helpers.sh that no suite mentions prints all, and names it as mapped by no rule [from root]: stdout is exactly the pinned list
+             expected: all
+             actual:   grep-count
+             sigpipe
+        FAIL AM-2 control: an untracked .claude/tests/_helpers.sh that no suite mentions prints all, and names it as mapped by no rule [from root]: stderr is exactly the pinned text
+             expected: selftest-needed: suites — all: .claude/tests/_helpers.sh is mapped by no rule; defaulting to every suite
+             actual:   selftest-needed: suites — 2 of 9 selected from 1 harness path(s) changed against main (merge-base 83aa67f)
+               grep-count  .claude/tests/_helpers.sh (scans *.sh)
+               sigpipe     .claude/tests/_helpers.sh (scans *.sh)
+        FAIL AM-2: a new scripts/newtool.sh that no suite mentions prints all, though lib, sigpipe and grep-count scan it [from root]: stdout is exactly the pinned list
+        FAIL a DELETED .claude/tests/gamma.test.sh prints all, not gamma, and names it as mapped by no rule [from subdir]: stderr is exactly the pinned text
+             expected: selftest-needed: suites — all: .claude/tests/gamma.test.sh is mapped by no rule; defaulting to every suite
+             actual:   selftest-needed: suites — 2 of 8 selected from 1 harness path(s) changed against main (merge-base 909f7cf)
+               grep-count  .claude/tests/gamma.test.sh (scans *.sh)
+               sigpipe     .claude/tests/gamma.test.sh (scans *.sh)
+
+      selftest-needed: 458 passed, 24 failed
+      FAIL selftest-needed  did 458 units of work, below the floor of 482 in .claude/tests/floors.conf
+      1 of 1 harness suite(s) FAILED.
+
+  The right failure in each: the old code answers with the `*.sh` scanner list where `all` is now required, and for `lib.sh` the reason is `(scans ...)`, not `is read by every suite`. Because stderr is compared whole, an implementation that reached `all` for `lib.sh` through R5 (`is mapped by no rule`) would still fail the AM-1 case.
+- **What earns the reworked `*.sh` cases** (they pass on arrival): one `mutate.sh` probe that drops the `sigpipe *.sh` row by making its pattern match nothing, run once against the suite. Command: `bash scripts/mutate.sh scripts/selftest-needed.sh '166s/^sigpipe      \*\.sh$/sigpipe      *.nomatch/' -- bash scripts/selftest.sh selftest-needed`, exit 1. All three reworked cases go red, on the missing `sigpipe` (excerpt; the other two cases and the `[from subdir]` twins are the same shape):
+
+      === mutate: scripts/selftest-needed.sh (1 line(s) changed by 166s/^sigpipe      \*\.sh$/sigpipe      *.nomatch/) ===
+        166 - sigpipe      *.sh
+        166 + sigpipe      *.nomatch
+
+      === mutate: running bash scripts/selftest.sh selftest-needed ===
+      ...
+        HARNESS-094 AC-4: the scanner rows select suites that read the tree by glob
+          FAIL a new scripts/probes/x.sh (a deeper scripts/*.sh) that alpha mentions prints alpha, and grep-count, lib and sigpipe beside it [from root]: stdout is exactly the pinned list
+               expected: alpha
+               grep-count
+               lib
+               sigpipe
+               actual:   alpha
+               grep-count
+               lib
+          FAIL a new scripts/probes/x.sh (a deeper scripts/*.sh) that alpha mentions prints alpha, and grep-count, lib and sigpipe beside it [from root]: stdout has exactly 4 line(s)
+               expected: 4
+               actual:   3
+          FAIL a new scripts/probes/x.sh (a deeper scripts/*.sh) that alpha mentions prints alpha, and grep-count, lib and sigpipe beside it [from root]: stderr's first line is exactly the pinned header
+               expected: selftest-needed: suites — 4 of 9 selected from 1 harness path(s) changed against main (merge-base 9a9f9d0)
+               actual:   selftest-needed: suites — 3 of 9 selected from 1 harness path(s) changed against main (merge-base 9a9f9d0)
+          FAIL a new .claude/hooks/x.sh that alpha mentions prints alpha, and grep-count, lib and sigpipe beside it [from root]: stdout is exactly the pinned list
+          FAIL a new .claude/foo/x.sh that alpha mentions prints alpha, and grep-count and sigpipe beside it [from root]: stdout is exactly the pinned list
+      ...
+      selftest-needed: 432 passed, 50 failed
+      FAIL selftest-needed  did 432 units of work, below the floor of 482 in .claude/tests/floors.conf
+      1 of 1 harness suite(s) FAILED.
+
+      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261105T034224Z.27807.bak) ===
+        166: sigpipe      *.sh
+
+  `bash scripts/mutate.sh --check` afterwards: `mutate: no stranded mutation; nothing of a previous run is in the tree.` The 50 failures are the 24 above (20 of them: under the mutation `_helpers.sh` and the deleted `gamma.test.sh` give the one line `grep-count`, so their `1 line(s)` assertions pass by coincidence; their stdout and stderr assertions still fail) plus 30 from the mutation: the three reworked cases (18) and the R1 `gamma`/`delta` cases (12), which also pin `sigpipe`.
+- **GREEN after the return:** not a no-op this time. See the handoff's R-2 addendum.
 
 ## Diff review
 

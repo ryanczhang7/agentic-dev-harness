@@ -553,7 +553,7 @@ rules-trim 30
 run-lock 140
 security-audit 51
 selftest 309
-selftest-needed 458
+selftest-needed 482
 settings 70
 shipped-docs 14
 sigpipe 91
