@@ -4,8 +4,8 @@ title: GATES to REVIEW runs the changed-suite self-test, and says when the full 
 slug: gates-to-review-runs-the-changed-suite-s
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-095-gates-to-review-runs-the-changed-suite-s
 depends_on: [HARNESS-094]      # the command this step names exists only once 094 merges; DV-2 there measures whether it is cheaper
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/tests/procedure.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -176,6 +176,51 @@ the step says so rather than quoting a ratio. The `--changed` header that
 (`scripts/selftest.sh:303` and `:364`). AC-2(a)'s needle `every suite` is
 therefore what the header really says.
 
+**Amended in RED (2026-11-05, test-developer).** Each item adds to or sharpens
+a block above; none changes an acceptance criterion. GREEN builds this.
+
+- *procedure: where the conditions are read.* The three `FULL_WHEN` needles
+  are read from step 2's text **from the first `` `SELFTEST_JOBS=4 bash
+  scripts/selftest.sh` `` span on**, with every run of whitespace (newlines
+  included) squashed to one space. Reason: the `--changed` description that
+  comes before the full-run sentence says `every suite` too ("every suite when
+  a path cannot be placed"), and today's step already says "every suite"; read
+  over the whole step, condition (a)'s needle could not fail. So GREEN puts the
+  full-run sentence **after** the `--changed` description, and the three
+  conditions after the full-run span. A condition may wrap across a
+  continuation line; the other words may not.
+- *procedure: the header line is a word.* `STEP_WORDS` gains
+  `selftest: --changed —` (em dash, as `selftest.sh` prints it). Reason: AC-1
+  requires the step to say the header line is pasted into `## Notes`, and no
+  needle in the block above pinned it. Fault line:
+  `` <file>: its `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` step does not say `selftest: --changed —` ``.
+- *procedure: the full-run tool pattern stays, checked.* `TOOL_FULL='Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*)'`
+  joins `TOOL_CHANGED`, with the same "allowed-tools lacks" fault line. Reason:
+  AC-3 says the existing full-run pattern stays, and nothing pinned it.
+- *procedure: no blank line inside step 2.* Not a change, a consequence GREEN
+  must know: `gates_steps` ends a step at a blank line, so the full-run
+  "paragraph" is continuation lines of step 2, not a separate paragraph.
+- *dispatch: the needles.* `SELFTEST_NEEDLES` gains the run span
+  `` bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `` (AC-1 names it) beside the
+  `--changed` check. `BULLET_NEEDLES` gains `GATES row` and
+  `` bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `` (AC-3 says the bullet names
+  the long run on the GATES row and its check). lead-po's long-run paragraph
+  must hold, in ONE paragraph of `## Orchestrating`, all of
+  `` `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `` (both backticks),
+  `feature-developer`, `GATES row` and the `--changed` check span (AC-3).
+- *dispatch: the fault lines.* A self-test step that names
+  `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` `` and no `--changed` span gets
+  `` .claude/commands/advance-story.md: the self-test step does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``;
+  a lead-po paragraph naming the full run, dispatched to a feature-developer,
+  with no `--changed` in it gets
+  `` .claude/agents/lead-po.md: its long-run paragraph does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``.
+  Every other failure keeps HARNESS-085's lines.
+- *dispatch: `S2_TODAY`'s spelling.* Moved to the `--changed` span, so it stays
+  the "does not dispatch" control; the full-run spelling is the new `S2_FULL`
+  control. `lead-no-check` now expects two lines (`L_LONG` then `L_CHECK`):
+  removing every `attest.sh check` from the section necessarily removes the
+  `--changed` check the long-run paragraph now needs.
+
 **RED may amend any block above in place, with a reason; GREEN builds what the amended block says.**
 
 ## Deferred verifications
@@ -221,6 +266,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po`: `fable` (Fable 5.1, `claude-fable-5-1`), the agent's own `model:`; no override was reported to the dispatch. 2026-11-04.
+- RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override was reported. 2026-11-05.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -242,8 +288,23 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+Level: structural guards over prose (`tdd-cycle`, "code no machine you have
+can execute: grep for the shape"). Two suites, each a guard function run over
+the real tree (must be silent) and over fixtures compliant by construction
+with one thing regressed (must print exactly the pinned lines). The guards
+live in the test files; the "production" they judge is the three prose files.
+
+| AC | Suite | Cases (fresh_case names) |
+|---|---|---|
+| AC-1 run named | procedure | real tree; `changed-regressed-step`, `changed-unclosed`, `changed-only-in-attest`, `changed-in-prose`, `changed-in-later-step`; HARNESS-072 `old-spelling-step`, `other-value-step`, `targeted-new-spelling` (now against the `--changed` span) |
+| AC-1 run/check through attest | dispatch | real tree; `st-without-*` loop (now 6 needles incl. run + check spans), `st-full-094`, `st-bare-full`, `st-run-full`, `st-check-full`, `st-check-targeted`, `st-check-without-jobs` |
+| AC-1 words + header + order | procedure | `word-*` loops, `words-in-next-step`, `word-skip`, `changed-no-header`, `changed-header-no-dash`; every HARNESS-032/068 order case (`selftest-after-phase`, `review-after-selftest`, ...) |
+| AC-2 full run + three conditions | procedure | `full-missing`, `full-other-step`, `full-in-prose`, `full-targeted`, `full-no-condition` (control: three lines), `full-reworded` (control: three lines), `full-without-1..3`, `full-every-suite-before-only`, `full-condition-next-step`, `full-condition-wrapped` |
+| AC-3 bullet names `--changed` | procedure | `changed-regressed-bullet`, `changed-bullet-review-after`, `changed-bullet-needed-after`, `changed-bullet-full-before`; HARNESS-068/075 bullet cases |
+| AC-3 bullet dispatch, GATES row, check | dispatch | `bullet-without-*` loop (4 needles), `bullet-094`, `bullet-check-full`, `bullet-today`, `bullet-next`, `bullet-none` |
+| AC-3 lead-po long-run paragraph | dispatch | `lead-094`, `lead-regressed`, `lead-check-full`, `lead-no-gates-row`, `lead-full-undispatched`, `lead-no-selftest`, `lead-no-fd`, `lead-split-paragraphs`, `lead-no-check`, `lead-no-check-elsewhere` |
+| AC-3 allowed-tools | procedure | `changed-tool-advance`, `changed-tool-complete`, `changed-tool-no-star`, `changed-tool-in-body`, `full-tool-advance`, `full-tool-complete`, `changed-tool-replaces-full` |
+| AC-4 discrimination | both | `changed-regressed-step` and `changed-regressed-bullet` (procedure), `st-full-094` and `lead-regressed` (dispatch): exactly one line each; `changed-all-absent` (procedure) and `today-094` (dispatch): the HARNESS-094 text gives exactly the lines the real tree gives in RED; every HARNESS-032/068/072/075/085 case kept its verdict |
 
 ## Handoff: RED -> GREEN
 
@@ -264,6 +325,202 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**Model.** RED ran on `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own
+`model:`; the dispatch reported no override.
+
+**Command.**
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh procedure dispatch
+    bash scripts/attest.sh -- bash scripts/selftest.sh selftest
+
+Each suite alone: `bash .claude/tests/procedure.test.sh`,
+`bash .claude/tests/dispatch.test.sh` (about 25 s and 20 s on this host).
+`gates.sh --fast` was not run: gates are unconfigured in this repository
+(`BOOTSTRAPPED=no`), so it has nothing to judge.
+
+**The red, from the attest record** (`exit: 1`,
+`last: 2 of 2 harness suite(s) FAILED.`, log
+`.claude/state/attest-logs/20261105T172228Z.24979.log`, duration 150 s):
+
+```
+    FAIL dispatch_problems over the real tree prints nothing: ...
+         expected:
+         actual:   .claude/commands/advance-story.md: the self-test step does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+         .claude/commands/complete-story.md: its GATES → REVIEW bullet does not name the dispatch
+         .claude/agents/lead-po.md: its long-run paragraph does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+dispatch: 82 passed, 1 failed
+FAIL dispatch  did 82 units of work, below the floor of 83 in .claude/tests/floors.conf
+    FAIL procedure_problems over the real tree prints nothing: ...
+         expected:
+         actual:   .claude/commands/advance-story.md: allowed-tools lacks `Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*)`
+         .claude/commands/advance-story.md: its step 2 does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+         .claude/commands/complete-story.md: allowed-tools lacks `Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*)`
+         .claude/commands/complete-story.md: its GATES → REVIEW bullet does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+procedure: 148 passed, 1 failed
+FAIL procedure  did 148 units of work, below the floor of 149 in .claude/tests/floors.conf
+assertion floors: 0 of 2 suite(s) met their declared floor.
+2 of 2 harness suite(s) FAILED.
+```
+
+**Why it is the right red.** In each suite the ONLY failing assertion is the
+real-tree one, and every line it prints is a Contract fault line naming a real
+file and the `--changed` text it lacks. Every fixture case passes, including
+`changed-all-absent` (procedure) and `today-094` (dispatch), which build the
+HARNESS-094 text by hand and expect exactly these four and three lines - so
+the real tree fails for the reason the fixtures say it should, not for an
+unrelated one. The floor lines are the expected consequence of floors
+counting passes: each suite sits one below its new floor until GREEN.
+
+**Floors** (`floors.conf` with a comment, and `selftest.test.sh`'s table):
+procedure 118 -> 149 (148 passed + 1 failed = 149 executed), dispatch
+67 -> 83 (82 + 1 = 83). Measured locally, this run. Every assertion is
+unconditional and every loop a fixed list. The selftest suite's own run:
+`exit: 0`, `last: 1 harness suite(s) passed.`, duration 649 s (host
+shared with another worktree's gates run), log
+`.claude/state/attest-logs/20261105T172524Z.28055.log`;
+`selftest: 309 passed, 0 failed`, floor met. Both records report `fresh`
+under `attest.sh check` (tree `63c528081154ccfb8c57b00418df48e3b26b4299`).
+
+**What GREEN writes.** Prose only, in three files (plus VERSION). Every needle
+below is matched as a fixed string; the ones in code spans include BOTH
+backticks unless marked.
+
+`.claude/commands/advance-story.md`
+- `allowed-tools:` keeps every entry it has (`Bash(bash scripts/selftest.sh:*)`,
+  `Bash(bash scripts/ci-local.sh:*)`, `Bash(bash scripts/selftest-needed.sh:*)`,
+  `Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*)`, `Bash(bash scripts/attest.sh check:*)`)
+  and adds the entry `Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*)`
+  (comma-separated, compared after trimming, must be EQUAL).
+- `**GATES → REVIEW.**` steps: review is step 1, the self-test step 2, phase
+  set 3, `Commit` 4, check-boundaries 5 (unchanged). Step 2 is ONE numbered
+  step: every line after `2. ` is an indented continuation line, and **no
+  blank line** inside it (a blank line ends the step for both guards).
+- Step 2 must contain, read from the step's own lines:
+  `` `bash scripts/selftest-needed.sh` `` before the first
+  `` `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``;
+  the words `detached`, `Windows`, `## Notes`, `other test runs`, `skip`,
+  `selftest: --changed —` (each on one line; the em dash is U+2014);
+  `feature-developer`, `alone`, `verdict` (reflow allowed);
+  `` bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `` and
+  `` bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``
+  (each ending in its closing backtick; reflow across lines allowed for dispatch);
+  then, AFTER the `--changed` description, the full run
+  `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` `` and, after that span, the
+  three conditions `every suite`, `cannot name the suite`, `had not selected`
+  (these may wrap).
+- Do not write the bare full-run span `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` ``
+  anywhere in step 2 before the full-run sentence (for instance in the
+  expectation numbers): the guard reads the conditions from its FIRST
+  occurrence on, and an early one would let the `--changed` description's
+  `every suite` satisfy condition (a). Say "the full run" in words there.
+
+`.claude/commands/complete-story.md`
+- `allowed-tools:` gains `Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*)`, keeps the rest.
+- The `- **GATES → REVIEW` bullet (ends at the next `- ` line or a blank line)
+  names `` `diff-review` `` and `` `bash scripts/selftest-needed.sh` ``, each
+  before the first `` `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``;
+  and, anywhere in it, `feature-developer`, `verdict` (lower case), `GATES row`,
+  and `` bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``.
+  The full-run clause pointing at advance-story is not pinned.
+
+`.claude/agents/lead-po.md`, `## Orchestrating`
+- ONE paragraph (a run of non-blank lines) holds all of
+  `` `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``, `feature-developer`,
+  `GATES row`, and `` bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``.
+  The parenthesis naming the full run is not pinned. The section must still
+  say `bash scripts/attest.sh check` (it will, via that span) and must not say
+  `every rung is something you run, not`.
+
+**Not constrained:** wording around the needles, the expectation numbers
+(3,845-11,419 s, 6,444 s against 12,502 s), the orphan/host-load sentences,
+the `gates` check not being required on `main`, and the bullet's full-run
+clause. Those are the Contract's, not the guards'; DV-1 and the diff review
+judge them.
+
+**Every needle, and the region it is read from.**
+
+| Suite | Needle | Region |
+|---|---|---|
+| procedure | `` `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `` | advance-story GATES → REVIEW numbered steps (first step holding it = "the self-test step"); complete-story bullet |
+| procedure | `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` `` | the self-test step |
+| procedure | `every suite`, `cannot name the suite`, `had not selected` | the self-test step from its first full-run span on, whitespace squashed |
+| procedure | `detached`, `Windows`, `## Notes`, `other test runs`, `skip`, `selftest: --changed —` | the self-test step, unsquashed |
+| procedure | `` `bash scripts/selftest-needed.sh` `` | the self-test step (before the run); the bullet (before the run) |
+| procedure | `` `bash scripts/phase.sh set $1 REVIEW` ``, `` `bash scripts/check-boundaries.sh` ``, `` the `diff-review` skill `` | steps, by number (unchanged) |
+| procedure | `` `diff-review` `` | the bullet, before the run (unchanged) |
+| procedure | `Bash(bash scripts/selftest.sh:*)`, `Bash(bash scripts/ci-local.sh:*)`, `Bash(bash scripts/selftest-needed.sh:*)`, `Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*)`, `Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*)` | each command's frontmatter `allowed-tools:` entries, equal after trim |
+| dispatch | `` `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `` / `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` `` | advance-story steps (locates the self-test step / the HARNESS-094 step) |
+| dispatch | `feature-developer`, `detached`, `alone`, `verdict`, `` bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``, `` bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `` | the self-test step, flattened |
+| dispatch | `feature-developer`, `verdict`, `GATES row`, the `--changed` check span | complete-story bullet, flattened |
+| dispatch | the `--changed` span, `feature-developer`, `GATES row`, the `--changed` check span | one paragraph of lead-po `## Orchestrating`, flattened |
+| dispatch | `` `SELFTEST_JOBS=4 bash scripts/selftest.sh` `` + `feature-developer` + no `--changed` | one paragraph of lead-po `## Orchestrating` (the HARNESS-094 line) |
+| dispatch | GG_NEEDLES, RUN_NEEDLES, `every rung is something you run, not`, `bash scripts/attest.sh check` | unchanged (HARNESS-085) |
+
+**Negative controls** (each a fixture run through the guard in the test file;
+these did execute in RED - the guards are in the test files, so nothing failed
+at import - and each passed, i.e. printed exactly the expected lines):
+
+| Control | Expected output | Measured in RED |
+|---|---|---|
+| procedure `changed-regressed-step` | 1 line, `its step 2 does not name ...--changed` | that 1 line |
+| procedure `changed-regressed-bullet` | 1 line, bullet does not name `--changed` | that 1 line |
+| procedure `changed-unclosed` (`--changed origin/main`) | 1 line | that 1 line |
+| procedure `full-no-condition` | 3 lines, one per condition | 3 lines |
+| procedure `full-reworded` | 3 lines | 3 lines |
+| procedure `full-every-suite-before-only` | 1 line, `every suite` | that 1 line |
+| procedure `full-missing` | 1 line, no full-run option | that 1 line |
+| procedure `changed-all-absent` (HARNESS-094 text) | 4 lines = the real tree's RED output | 4 lines, identical to the real tree's |
+| dispatch `st-full-094` | 1 line, step does not name `--changed` | that 1 line |
+| dispatch `lead-regressed` (every `--changed` deleted) | 1 line, long-run paragraph does not name `--changed` | that 1 line |
+| dispatch `st-check-full` / `st-run-full` | 1 line, does not dispatch | that 1 line each |
+| dispatch `today-094` (HARNESS-094 text) | 3 lines = the real tree's RED output | 3 lines, identical to the real tree's |
+
+There is no threshold in this story; the controls are exact-output.
+
+**Passed on arrival.** Every fixture case passes in RED by construction (the
+guard and the fixtures are both in the test file); what earns them is that
+the controls above produce exactly the fault lines and the compliant fixture
+produces none. The one assertion that judges the real files is red. No
+assertion against the real files passed on arrival.
+
+**DV-1 is declined in RED.** It mutates the real `advance-story.md` and
+`lead-po.md` after GREEN has written the `--changed` text; that text does not
+exist yet, so there is nothing to delete. Owner GATES. Expected red lines:
+procedure prints exactly
+`` .claude/commands/advance-story.md: its step 2 does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``
+and nothing else, provided the expression removes ` --changed` from
+the bare span (procedure locates the step by it; the attest spans do not
+contain it, lacking the opening backtick). Add `g` if GREEN puts two spans on
+one line. Dispatch, for the same expression on advance-story, prints exactly
+`` .claude/commands/advance-story.md: the self-test step does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``;
+for the lead-po mutation it prints exactly
+`` .claude/agents/lead-po.md: its long-run paragraph does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` ``
+(fixture `lead-regressed` is that mutation, and it gave that line in RED).
+The expression `s/selftest.sh --changed`/selftest.sh`/` does not touch the
+`allowed-tools` entry (`--changed:*)`), so no "lacks" line joins it.
+
+**Callers checked.** `rg 'SELFTEST_JOBS=4 bash scripts/selftest.sh'` over
+`.claude`, `scripts`, `.github` and `CLAUDE.md` (state logs aside): the three
+files above and the two guards; `scripts/attest.sh:22` (comment, stays, as the
+Contract says); `scripts/selftest-needed.sh:13` and `scripts/selftest.sh:11`
+(comments describing the full run, both still true, stay - the Contract's
+Callers list did not name these two; no change needed); `CLAUDE.md:162`
+already carries the `--changed` line - **do not edit it**:
+`.claude/tests/selftest-needed.test.sh:868` (`CM_L2`) pins that whole line,
+"(HARNESS-095 switches the procedure to it)" included.
+
+**Discovered.** Other suites read these three files and must stay green after
+GREEN: `attest.test.sh` (advance-story and lead-po must keep
+`bash scripts/attest.sh check` and `Bash(bash scripts/attest.sh check:*)`),
+`reporting.test.sh` (lead-po `## Orchestrating`, the commands' last
+paragraphs) and `story.test.sh`. Run
+`bash scripts/selftest.sh procedure dispatch attest reporting story` in GREEN.
+
+**Files touched in RED.** `.claude/tests/procedure.test.sh`,
+`.claude/tests/dispatch.test.sh`, `.claude/tests/floors.conf`,
+`.claude/tests/selftest.test.sh`, this story (`## Contract` amendment block,
+`## Test plan`, this handoff).
 
 ## Regressions
 
@@ -325,3 +582,12 @@ name, below the table.
 
 ## Notes
 
+- RED verified by the orchestrator, 2026-11-05. `attest.sh check` said
+  `fresh` for both runs at tree `63c5280`, so the orchestrator ran neither
+  again.
+  - `selftest.sh procedure dispatch`: exit 1. Each suite has exactly one red
+    assertion, the real-tree one. Its actual output is the Contract's fault
+    lines naming the three real files (log
+    `.claude/state/attest-logs/20261105T172228Z.24979.log`).
+  - `selftest.sh selftest`: exit 0, 309 passed.
+  - Gates were not run, because none is configured (BOOTSTRAPPED=no).
