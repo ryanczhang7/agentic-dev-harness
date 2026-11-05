@@ -165,6 +165,17 @@ comment and stays. `CLAUDE.md`'s command list already carries the
 `--changed` line from HARNESS-094; the `ci-local.sh` step list is derived
 from the workflows and does not change.
 
+**The measured numbers to read out (HARNESS-094, merged as #179).** Its DV-2 ran
+`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` against a synthetic base
+on this host. It selected 21 of 34 suites, all of which passed, and took
+6,444 s. The full run took 12,502 s just before it, on the same loaded host,
+with `run-lock` failing (see HARNESS-091 AC-4). That is one observation, and
+the step says so rather than quoting a ratio. The `--changed` header that
+`selftest.sh` prints begins `selftest: --changed — ` and continues with either
+`every suite: <reason>` or `<k> of <n> suite(s) selected: <names>`
+(`scripts/selftest.sh:303` and `:364`). AC-2(a)'s needle `every suite` is
+therefore what the header really says.
+
 **RED may amend any block above in place, with a reason; GREEN builds what the amended block says.**
 
 ## Deferred verifications
