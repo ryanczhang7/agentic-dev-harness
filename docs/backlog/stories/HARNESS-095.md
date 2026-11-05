@@ -798,6 +798,60 @@ silent:
 Finding 2 was confirmed by reading: advance-story's REVIEW → DONE paragraph
 has no route back from a red CI self-test to step 2.
 
+
+**Second review, after R-1 (2026-11-05).** A fresh `feature-developer`,
+Opus 5.5 (`claude-opus-5-5`), no override, using `diff-review`. It changed no
+file, and `mutate.sh --check` was clean.
+
+It ran ten mutation probes on `advance-story.md` against `selftest.sh
+procedure`, and every file was restored.
+- Red:
+  - P1: (a) reworded with the closing "every suite" kept, which was green at
+    the first review;
+  - P8: (a) removed, with a bare `` `every suite` `` appended at the step's
+    end;
+  - P5, P4: (b) and (c) reworded;
+  - P2, P3: the way back removed, or left without its backticks;
+  - P6b, P9: the way back moved into step 3, or before the full-run span.
+- Green:
+  - P6, P7: the way back moved elsewhere inside the region after the
+    full-run span.
+
+So the needles are matched within the region, not within each clause. Each
+needle occurs exactly once on the real tree, in its own clause, so no text
+present today satisfies one from the wrong clause. The reviewer calls this a
+design limit, not a finding.
+
+The new (c) clause is consistent with the REVIEW-return ordering rule. No
+earlier fixture case changed its verdict: 149 + 5 = 154, all passing. Other
+readers checked: `dispatch reporting attest story policy plan`, 6 suites,
+687/687.
+
+**Should fix**
+
+1. **Case (c) skips the gate rerun and the review of the fix**
+   (`advance-story.md:323-327`).
+   - It says "fix, and dispatch the full run here before pushing again".
+     But a fix changes the tree, so `gates.sh` runs again and the steps start
+     over, beginning with a review of the fix.
+   - Followed word for word, `check-boundaries.sh` refuses (the gate record
+     no longer matches the tree), and no review of the fix is required.
+   - Fix (prose, GATES): "fix, run `bash scripts/gates.sh`, and start these
+     steps over, with the full run in place of `--changed` at this step".
+
+**Nice to have**
+
+2. Step 6, "Push the branch and open a PR", reads oddly when the PR already
+   exists under (c).
+
+Verdict: Ship.
+
+**Orchestrator:** finding 1 was confirmed by reading. Step 2 already says "A
+fix changes the tree, so `bash scripts/gates.sh` runs again and these steps
+start over", and the new (c) clause bypasses that. It is fixed in GATES as
+the completion of the user's "Fix both" (AM-1's intent). Nice-to-have 2 is
+not taken.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
