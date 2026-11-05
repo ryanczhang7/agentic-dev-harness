@@ -47,13 +47,16 @@
 # The same enumeration as the run/skip mode. Then, for each harness path, every
 # rule that matches contributes, and `all` wins over everything:
 #   R1 itself    .claude/tests/<name>.test.sh selects <name>
-#   R2 every     .claude/tests/_lib.sh, .claude/tests/_spawns.sh and
-#                scripts/selftest.sh are read by every suite: `all`
+#   R2 every     .claude/tests/_lib.sh, .claude/tests/_spawns.sh,
+#                scripts/selftest.sh and .claude/hooks/lib.sh are read by
+#                every suite: `all` (A-4)
 #   R3 mentioned a suite whose source holds the path as a fixed substring,
 #                comments included (over-selects, never under-selects)
-#   R4 scans     a row of the SCANS table below
-#   R5 unmapped  a path R1-R4 all miss: `all`, naming the path. A path the
-#                mapping cannot place selects more, never fewer.
+#   R4 scans     a row of the SCANS table below; an `add` row adds its suite
+#                but does not map the path (A-5)
+#   R5 unmapped  a path R1-R3 and R4's `map` rows all miss: `all`, naming the
+#                path. A path the mapping cannot place selects more, never
+#                fewer.
 # A rule names a suite only when its .claude/tests/<name>.test.sh exists in
 # this tree (amendment A-1), so a deleted suite, or a row whose suite is
 # absent, contributes nothing - and a path left with no existing suite is R5's.
@@ -162,17 +165,22 @@ if [ "$MODE" = suites ]; then
   #   profiles      profiles.test.sh, PROFILE_DIR: the reference directory
   #   shipped-docs  shipped-docs.test.sh: .claude/commands/*.md,
   #                 .claude/agents/*.md, and every .md under .claude/skills
-  SCANS='lib          scripts/*.sh .claude/hooks/*.sh
-sigpipe      *.sh
-grep-count   *.sh
-profiles     .claude/skills/stack-profiles/reference/*
-shipped-docs .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
-  SC_NAME=(); SC_PAT=()
-  while read -r sc_suite sc_pats; do
+  # The second column is the row's kind (A-5). A `map` row maps the path: a
+  # match counts as placing it. An `add` row only adds its suite: the `*.sh`
+  # scanners match every shell file, so letting them map would mean no shell
+  # file could ever reach R5, and a new helper would select only the scanners.
+  SCANS='lib          add scripts/*.sh .claude/hooks/*.sh
+sigpipe      add *.sh
+grep-count   add *.sh
+profiles     map .claude/skills/stack-profiles/reference/*
+shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
+  SC_NAME=(); SC_PAT=(); SC_MAP=()
+  while read -r sc_suite sc_kind sc_pats; do
     [ -f ".claude/tests/$sc_suite.test.sh" ] || continue   # A-1
     read -ra sc_arr <<<"$sc_pats"   # `read -a` splits without globbing
     for sc_pat in "${sc_arr[@]}"; do
       SC_NAME[${#SC_NAME[@]}]="$sc_suite"; SC_PAT[${#SC_PAT[@]}]="$sc_pat"
+      SC_MAP[${#SC_MAP[@]}]="$sc_kind"
     done
   done <<<"$SCANS"
 
@@ -206,7 +214,7 @@ shipped-docs .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
     [ -n "$p" ] || continue
     i=$((i+1)); np=$i; hit=0
     case "$p" in
-      .claude/tests/_lib.sh|.claude/tests/_spawns.sh|scripts/selftest.sh)
+      .claude/tests/_lib.sh|.claude/tests/_spawns.sh|scripts/selftest.sh|.claude/hooks/lib.sh)
         [ -n "$why_all" ] || why_all="$p is read by every suite"
         continue ;;
     esac
@@ -223,7 +231,11 @@ shipped-docs .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
     k=0
     while [ "$k" -lt "${#SC_PAT[@]}" ]; do
       # Unquoted on purpose: the row is a pattern, not a string.
-      case "$p" in ${SC_PAT[$k]}) recs="$recs${SC_NAME[$k]}$TAB$p (scans ${SC_PAT[$k]})$NL"; hit=1 ;; esac
+      # An `add` row records its suite and leaves `hit` alone (A-5).
+      case "$p" in ${SC_PAT[$k]})
+        recs="$recs${SC_NAME[$k]}$TAB$p (scans ${SC_PAT[$k]})$NL"
+        [ "${SC_MAP[$k]}" = map ] && hit=1 ;;
+      esac
       k=$((k+1))
     done
     [ "$hit" = 1 ] || [ -n "$why_all" ] || why_all="$p is mapped by no rule; defaulting to every suite"

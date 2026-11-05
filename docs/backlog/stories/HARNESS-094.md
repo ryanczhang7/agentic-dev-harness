@@ -5,7 +5,7 @@ slug: the-pre-pr-self-test-runs-only-the-suite
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-094-the-pre-pr-self-test-runs-only-the-suite
 depends_on: []      # nothing: this is the first of the pair; HARNESS-095 and HARNESS-089..093 wait for it
 touches: [scripts/selftest-needed.sh, scripts/selftest.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, CLAUDE.md, .claude/harness/VERSION]
@@ -1138,6 +1138,7 @@ expected selections for a diff that touches such a file change with it.
 
   `bash scripts/mutate.sh --check` afterwards: `mutate: no stranded mutation; nothing of a previous run is in the tree.` The 50 failures are the 24 above (20 of them: under the mutation `_helpers.sh` and the deleted `gamma.test.sh` give the one line `grep-count`, so their `1 line(s)` assertions pass by coincidence; their stdout and stderr assertions still fail) plus 30 from the mutation: the three reworked cases (18) and the R1 `gamma`/`delta` cases (12), which also pin `sigpipe`.
 - **GREEN after the return:** not a no-op this time. See the handoff's R-2 addendum.
+- **GREEN after R-2 (2026-11-05, Opus 5.5, `claude-opus-5-5`):** only `scripts/selftest-needed.sh` changed. `.claude/hooks/lib.sh` joins R2's `case`. `SCANS` gains a kind column, `add` for `lib`/`sigpipe`/`grep-count` (they record their suite and leave `hit` alone) and `map` for `profiles`/`shipped-docs`. `selftest-needed: 482 passed, 0 failed` (attested, `exit: 0`, log `.claude/state/attest-logs/20261105T040215Z.1605.log`); `selftest: 309 passed, 0 failed` (attested, `exit: 0`, log `.claude/state/attest-logs/20261105T041020Z.638.log`); `gates.sh --fast` `exit: 0`, but it ran no gate (5 unconfigured, BOOTSTRAPPED=no). Negative controls are confirmed by the green suite: `_helpers.sh` now gives `all` (RED measured `grep-count sigpipe`, `2 of 9`, on the old code), and the `.md` control still gives `shipped-docs`.
 
 ## Diff review
 
