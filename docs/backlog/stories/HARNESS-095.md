@@ -4,8 +4,8 @@ title: GATES to REVIEW runs the changed-suite self-test, and says when the full 
 slug: gates-to-review-runs-the-changed-suite-s
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-095-gates-to-review-runs-the-changed-suite-s
 depends_on: [HARNESS-094]      # the command this step names exists only once 094 merges; DV-2 there measures whether it is cheaper
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/tests/procedure.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
