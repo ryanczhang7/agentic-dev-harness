@@ -856,8 +856,8 @@ not taken.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-05T22:40:04Z
-    commit: 06ba8b7
+    run:    2026-11-05T23:02:59Z
+    commit: 61bac13
     tree:   e75ef9684379ace4345f53c380442b81681f822f
     result: pass (0 ran, 7 unconfigured, 0 known)
 
