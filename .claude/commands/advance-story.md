@@ -320,12 +320,15 @@ Then, **in this order**:
    you cannot name the suite that exercises the caller: `--suites` places a
    path by the suites that mention it, not by who calls it, which is
    HARNESS-094's declared limit. (c) CI's self-test failed on the PR in a
-   suite the local `--changed` run had not selected: the fix round runs the
-   full self-test before pushing again, and records in `## Notes` which
-   suite the selection missed. The orphan and host-load advice above
-   applies to it unchanged. CI runs every suite on the PR either way; its
-   `gates` check is not required on `main`, so the merge is where the user
-   reads CI's full run.
+   suite the local `--changed` run had not selected. That failure is seen
+   at REVIEW, so go back to this step with
+   `bash scripts/phase.sh set $1 GATES`, fix, and dispatch the full run
+   here before pushing again; leaving REVIEW follows the ordering rule
+   below. Record in `## Notes` which suite the selection missed. The
+   orphan and host-load advice above applies to it unchanged. CI runs
+   every suite on the PR either way; in this repository its `gates` check
+   is not required on `main`, so the merge is where the user reads CI's
+   full run.
 3. `bash scripts/phase.sh set $1 REVIEW`
 4. Commit, with a message that names the story and what it does.
 5. `bash scripts/check-boundaries.sh` — the second script CI runs, and the one

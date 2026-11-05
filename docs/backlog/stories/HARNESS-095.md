@@ -5,7 +5,7 @@ slug: gates-to-review-runs-the-changed-suite-s
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-095-gates-to-review-runs-the-changed-suite-s
 depends_on: [HARNESS-094]      # the command this step names exists only once 094 merges; DV-2 there measures whether it is cheaper
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/tests/procedure.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -872,3 +872,13 @@ has no route back from a red CI self-test to step 2.
     `All required gates passed (0 ran, 7 unconfigured, 0 known)`, exit 0,
     log `.claude/state/attest-logs/20261105T222126Z.7848.log`.
   - `attest.sh check` said `fresh`.
+- GREEN after R-1, 2026-11-05.
+  - A feature-developer, Opus 5.5 (`claude-opus-5-5`), made two edits to
+    `advance-story.md` step 2: case (c)'s way back, via
+    `bash scripts/phase.sh set $1 GATES`, and the qualifier "in this
+    repository" on the branch-protection sentence.
+  - It ran six suites through attest:
+    `selftest.sh procedure dispatch attest reporting story shipped-docs` gave
+    exit 0, `6 harness suite(s) passed.`, procedure 154/154. `attest.sh check`
+    said `fresh`.
+  - `gates.sh --fast` passed, with no gate configured.
