@@ -68,7 +68,9 @@ regions, in the style the two guards already use (see the Contract).
   exercises the caller - HARNESS-094's declared limit; (c) CI's self-test
   failed on the PR in a suite the local `--changed` run had not selected,
   in which case the fix round runs the full self-test before pushing again
-  and records which suite the selection missed in `## Notes`. The control:
+  and records which suite the selection missed in `## Notes`; that failure
+  is seen at REVIEW, so (c) says how to get back to this step:
+  `` `bash scripts/phase.sh set $1 GATES` `` (AM-1). The control:
   a step that names the full run with no condition, or with the three
   reworded away, is reported.
 - **AC-3 (the bullet and the agent)** — Given `complete-story.md`'s
@@ -281,7 +283,18 @@ throughout, and it holds.
 
 ## Amendments
 
-<!-- none yet -->
+- **AM-1 (AC-2, case (c) says how to get back to the step).**
+  - **What it said:** "(c) ... the fix round runs the full self-test before
+    pushing again and records which suite the selection missed in
+    `## Notes`. The control: ..."
+  - **What it says now:** the same, plus "; that failure is seen at REVIEW,
+    so (c) says how to get back to this step:
+    `` `bash scripts/phase.sh set $1 GATES` ``".
+  - **Why:** finding 2 of the first diff review (`## Diff review`). CI's
+    failure is seen at REVIEW, and no step led back to step 2, so case (c)
+    would have been skipped in exactly the situation it exists for. This was
+    confirmed by reading advance-story's REVIEW → DONE paragraph.
+  - **Approved by** the user, "Fix both", 2026-11-05.
 
 ## Suppressions
 
@@ -590,6 +603,33 @@ paragraphs) and `story.test.sh`. Run
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+**R-1 (from GATES, 2026-11-05): condition (a)'s needle cannot fail on the real tree.**
+
+- **Which test:** `procedure.test.sh`, `full_option`, with
+  `FULL_WHEN=('every suite' ...)`. It asserted that the text from the first
+  full-run span onward says `every suite`.
+- **What was wrong:** the step's closing sentence, "CI runs every suite on
+  the PR either way", comes after that span. So the bare `every suite` is
+  satisfied whether or not condition (a) exists. A needle that cannot fail is
+  a test that cannot fail (`rules.md`).
+- **How it was found:** finding 1 of the first diff review. The orchestrator
+  reproduced it with a different edit, which rewrote line 318's
+  `` `every suite`: the run already is the full one `` as
+  `the selection was everything`:
+
+      bash scripts/mutate.sh .claude/commands/advance-story.md '318s/`every suite`: the run already is the full one/the selection was everything/' -- bash scripts/selftest.sh procedure
+      procedure: 149 passed, 0 failed
+      === mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261105T222525Z.11085.bak) ===
+
+- **What it must assert now:** condition (a)'s needle is the backticked code
+  span `` `every suite` ``. The closing sentence writes it without backticks,
+  and a later reword of it will too. AM-1 also adds a needle for (c)'s route
+  back, `` `bash scripts/phase.sh set $1 GATES` ``, read from the same region.
+  That one fails on the real tree today, because GREEN has not written it.
+- **What earns it:** the same mutation, run against the corrected test, must
+  turn `procedure` red with the "does not say when" line for
+  `` `every suite` ``. RED pastes it here.
 
 ## Diff review
 
