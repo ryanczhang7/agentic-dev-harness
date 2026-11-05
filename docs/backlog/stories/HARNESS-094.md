@@ -5,7 +5,7 @@ slug: the-pre-pr-self-test-runs-only-the-suite
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-094-the-pre-pr-self-test-runs-only-the-suite
 depends_on: []      # nothing: this is the first of the pair; HARNESS-095 and HARNESS-089..093 wait for it
 touches: [scripts/selftest-needed.sh, scripts/selftest.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, CLAUDE.md, .claude/harness/VERSION]
@@ -80,9 +80,10 @@ criterion depends on it.
 - **AC-2 (a suite selects itself; the library selects everything)** — Given
   a changed `.claude/tests/<name>.test.sh`, when `--suites` runs, then
   `<name>` is printed whether or not any suite mentions that path. Given a
-  changed `.claude/tests/_lib.sh`, `.claude/tests/_spawns.sh` or
-  `scripts/selftest.sh`, then stdout is exactly the one line `all` and
-  stderr says which path made it so.
+  changed `.claude/tests/_lib.sh`, `.claude/tests/_spawns.sh`,
+  `.claude/hooks/lib.sh` or `scripts/selftest.sh`, then stdout is exactly
+  the one line `all` and stderr says which path made it so. *[Amended at
+  GATES, AM-1: `.claude/hooks/lib.sh` added.]*
 - **AC-3 (fail safe)** — Given a changed harness path that no rule of the
   Contract maps to any suite (the control: a new `.claude/harness/x.conf`),
   when `--suites` runs, then stdout is exactly `all`, exit 0, and stderr
@@ -93,15 +94,21 @@ criterion depends on it.
   never widens the answer to `all` (the control for the control).
 - **AC-4 (scanners)** — Given a changed path matched by a row of the
   Contract's scanner table, when `--suites` runs, then that row's suite is
-  printed even though its source never mentions the path: any `*.sh` under
-  `scripts/` or `.claude/hooks/` prints `lib`, `sigpipe` and `grep-count`;
-  any `*.sh` elsewhere under `.claude/` prints `sigpipe` and `grep-count`
-  and not `lib`; any path under `.claude/skills/stack-profiles/reference/`
-  prints `profiles`; any `*.md` under `.claude/commands/`, `.claude/agents/`
-  or `.claude/skills/` prints `shipped-docs`. A changed `.md` under
+  printed even though its source never mentions the path: a `*.sh` under
+  `scripts/` or `.claude/hooks/` that R1 or R3 also maps prints `lib`,
+  `sigpipe` and `grep-count` beside what R1 or R3 selected; such a `*.sh`
+  elsewhere under `.claude/` prints `sigpipe` and `grep-count` and not
+  `lib`; any path under `.claude/skills/stack-profiles/reference/` prints
+  `profiles`; any `*.md` under `.claude/commands/`, `.claude/agents/` or
+  `.claude/skills/` prints `shipped-docs`. A changed `.md` under
   `.claude/skills/` that no suite mentions prints `shipped-docs` (and
-  `policy` if mentioned there) and **not** `all` (the control: the table is a
-  mapping, so the path is not unmapped).
+  `policy` if mentioned there) and **not** `all` (the control: those rows
+  are a mapping, so the path is not unmapped). A changed `*.sh` that only
+  the `*.sh` rows match (the control: a new `.claude/tests/_helpers.sh`
+  that no suite mentions) prints exactly `all`, with stderr naming it as
+  mapped by no rule: those rows are additive, a portability scan that says
+  nothing about who runs the file. *[Amended at GATES, AM-2: the `*.sh`
+  rows no longer count as mapping a path.]*
 - **AC-5 (nothing to run, and usage)** — Given a changed set with no harness
   path, when `--suites` runs, then stdout is empty, exit 1, and stderr
   carries the existing `selftest-needed: skip — ...` line. `--suites` with a
@@ -232,7 +239,28 @@ existing one-argument form is unchanged in every byte and status.
     `gamma.test.sh` prints `grep-count` and `sigpipe` (R4 `*.sh`, both
     present), not `gamma`, and counts 8 suites. The scanner-row half (a row
     whose suite is absent) follows from the same sentence and has no case of
-    its own.
+    its own. *[Superseded in part by A-5: under it, that deletion is
+    `all`, because only the additive `*.sh` rows match it.]*
+  - **A-4, the harness library is read by every suite** *[amended at
+    GATES, AM-1]*. R2 also names `.claude/hooks/lib.sh`. It is sourced by 11
+    files in `scripts/` and `.claude/hooks/` (`gates.sh`, `phase.sh`,
+    `plan.sh`, `story.sh`, `classify.sh`, `check-boundaries.sh` among them),
+    and most suites run one of those. Before this amendment, one comment line
+    added to it selected 15 of 34 suites (`## Diff review`, finding 1).
+  - **A-5, the `*.sh` scanner rows are additive** *[amended at GATES,
+    AM-2]*. The rows `lib`, `sigpipe` and `grep-count` still add their suite
+    for every path they match, but they no longer count as mapping the
+    path. A harness `p` that R1, R3 and the remaining rows (`profiles`,
+    `shipped-docs`) all miss is R5's `all`, whatever the `*.sh` rows added.
+    `profiles` and `shipped-docs` stay mapping rows: each one names the one
+    suite that reads its directory. Reason: the `*.sh` rows are portability
+    scans over every shell file and say nothing about which suite runs the
+    file. Before this amendment, a new `.claude/tests/_helpers.sh` sourced
+    by relative name selected 2 of 34 suites, while `_helpers.conf` in the
+    same place selected `all` (`## Diff review`, finding 2). The `A-1` case
+    (a committed deletion of `gamma.test.sh`) is now `all`. Its old
+    expectation was a consequence of the `*.sh` rows mapping, and it changes
+    with them.
 - *Output.* stdout: the sorted unique suite names, one per line, or the
   single line `all`. stderr, one header line then one line per selected
   suite with the first path and rule that selected it, in these shapes:
@@ -388,6 +416,107 @@ or about the prototype, and is written up, not adjusted away. Then put the defec
 cases stay green; paste the red lines and `mutate.sh`'s restore lines. One
 mutation, one run, one restore.
 
+**DV-1 result (GATES, 2026-11-04, orchestrator).**
+
+1. Real tree, branch tip `de27810` plus this story file:
+
+```
+$ bash scripts/selftest-needed.sh --suites
+selftest-needed: suites — all: scripts/selftest.sh is read by every suite
+all
+exit=0
+```
+
+2. Narrow base. **Finding: the commit DV-1 asks for does not exist on this
+branch.** GREEN changed `scripts/selftest.sh` in the same commit (`950aa5e`)
+as `selftest-needed.sh`, `CLAUDE.md` and `VERSION`. `--suites` diffs against
+`git merge-base <base> HEAD`, so the base must be an ancestor. I built one in
+a throwaway `--no-hardlinks` clone in the session scratchpad, not in this
+worktree:
+
+- C1 `c967d65` = merge-base `cb6a5cb` + the tip's `scripts/selftest.sh` only;
+- C2 `5cd48b3` = C1 + the rest of the tip.
+
+`git diff de27810 C2` was empty: C2's tree is the branch tip's.
+
+```
+$ git diff --name-only C1 C2
+.claude/harness/VERSION
+.claude/tests/floors.conf
+.claude/tests/selftest-needed.test.sh
+.claude/tests/selftest.test.sh
+CLAUDE.md
+docs/backlog/stories/HARNESS-094.md
+scripts/selftest-needed.sh
+$ bash scripts/selftest-needed.sh --suites c967d652dd579f2909a4fb4c99c45d2aa828ce66
+selftest-needed: suites — 21 of 34 selected from 6 harness path(s) changed against c967d652dd579f2909a4fb4c99c45d2aa828ce66 (merge-base c967d65)
+  attest           CLAUDE.md (mentioned)
+  boundaries       .claude/harness/VERSION (mentioned)
+  dispatch         scripts/selftest-needed.sh (mentioned)
+  doctor           .claude/harness/VERSION (mentioned)
+  grep-count       .claude/tests/selftest-needed.test.sh (scans *.sh)
+  host-load        .claude/tests/floors.conf (mentioned)
+  lib              CLAUDE.md (mentioned)
+  mutate           CLAUDE.md (mentioned)
+  phase-guard      CLAUDE.md (mentioned)
+  plan             CLAUDE.md (mentioned)
+  procedure        scripts/selftest-needed.sh (mentioned)
+  refresh          .claude/harness/VERSION (mentioned)
+  reporting        CLAUDE.md (mentioned)
+  rules-trim       CLAUDE.md (mentioned)
+  run-lock         .claude/tests/floors.conf (mentioned)
+  selftest         .claude/tests/floors.conf (mentioned)
+  selftest-needed  .claude/tests/selftest-needed.test.sh (itself)
+  shipped-docs     CLAUDE.md (mentioned)
+  sigpipe          .claude/tests/selftest-needed.test.sh (scans *.sh)
+  story            CLAUDE.md (mentioned)
+  worktree         .claude/harness/VERSION (mentioned)
+(stdout: the same 21 names, one per line; exit=0)
+```
+
+Every expected suite is in the list: `selftest-needed`, `selftest`, `lib`,
+`sigpipe`, `grep-count`, and the Baseline's eight `CLAUDE.md` suites. A suite
+selected by several rules is shown with the first reason found.
+
+**Finding: the prototype under-counted the `CLAUDE.md` mentions.** It listed
+`attest lib mutate refresh reporting selftest-needed shipped-docs story`.
+`grep -lF CLAUDE.md .claude/tests/*.test.sh` on this tree also finds:
+
+- `phase-guard`, `plan`, `rules-trim`, `sigpipe` and `worktree`;
+- every one of them a mention in a comment (for example `phase-guard.test.sh:8`,
+  `plan.test.sh:2129`, `rules-trim.test.sh:4`).
+
+R3 is a fixed-string mention by contract, so comments count. That is the safe
+direction: it over-selects, it never under-selects. This is not adjusted away.
+It is recorded as a cost that DV-2 will measure.
+
+3. Defect put back. R5 is line 229, as GREEN wrote it:
+`[ "$hit" = 1 ] || [ -n "$why_all" ] || why_all="$p is mapped by no rule; defaulting to every suite"`.
+
+```
+$ bash scripts/mutate.sh scripts/selftest-needed.sh '229s/.*/    : # R5 removed/' -- bash scripts/selftest.sh selftest-needed
+=== mutate: scripts/selftest-needed.sh (1 line(s) changed by 229s/.*/    : # R5 removed/) ===
+    FAIL the control: a new .claude/harness/x.conf that no rule maps, beside a mapped m.conf, prints all and names x.conf [from root]: stdout is exactly the pinned list
+    FAIL the control: a new .claude/harness/x.conf that no rule maps, beside a mapped m.conf, prints all and names x.conf [from root]: stdout has exactly 1 line(s)
+    FAIL the control: a new .claude/harness/x.conf that no rule maps, beside a mapped m.conf, prints all and names x.conf [from root]: stderr is exactly the pinned text
+    FAIL the control: a new .claude/harness/x.conf that no rule maps, beside a mapped m.conf, prints all and names x.conf [from subdir]: stdout is exactly the pinned list
+    FAIL the control: a new .claude/harness/x.conf that no rule maps, beside a mapped m.conf, prints all and names x.conf [from subdir]: stdout has exactly 1 line(s)
+    FAIL the control: a new .claude/harness/x.conf that no rule maps, beside a mapped m.conf, prints all and names x.conf [from subdir]: stderr is exactly the pinned text
+selftest-needed: 452 passed, 6 failed
+FAIL selftest-needed  did 452 units of work, below the floor of 458 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261105T024435Z.1403.bak) ===
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+Only AC-3's unmapped control went red, from the repository root and from a
+subdirectory. The other 452 assertions passed, AC-1's cases among them.
+
+The run took about 25 minutes, against 71 to 676 s before. A
+`manga-translator` gate run under pytest coverage was sharing the host at the
+time. DV-1 is discharged.
+
 **DV-2 (the number the procedure switch will rest on). Owner: GATES.** After
 the full `SELFTEST_JOBS=4 bash scripts/selftest.sh` that GATES → REVIEW
 still requires has been attested, and alone on the host as that run is, run
@@ -403,7 +532,35 @@ one.
 
 ## Amendments
 
-<!-- none yet -->
+- **AM-1 (AC-2), 2026-11-04, approved by the user ("Fix both").**
+  - **What changes:** AC-2's list of paths that give `all` gains
+    `.claude/hooks/lib.sh`.
+  - **Before:** "Given a changed `.claude/tests/_lib.sh`,
+    `.claude/tests/_spawns.sh` or `scripts/selftest.sh`, then stdout is
+    exactly the one line `all` ..."
+  - **After:** the same sentence, with `.claude/hooks/lib.sh` added to the
+    list.
+  - **Why:** the GATES diff review, finding 1, reproduced by the
+    orchestrator. A change to the library that 11 harness scripts source
+    selected 15 of 34 suites, which would let a `lib.sh` change that breaks
+    `plan.sh` pass `--changed`. Contract A-4.
+- **AM-2 (AC-4), 2026-11-04, approved by the user ("Fix both").**
+  - **What changes:** the `*.sh` scanner rows (`lib`, `sigpipe`,
+    `grep-count`) become additive: they add their suite but do not map a
+    path.
+  - **Before:** "any `*.sh` under `scripts/` or `.claude/hooks/` prints
+    `lib`, `sigpipe` and `grep-count`; any `*.sh` elsewhere under `.claude/`
+    prints `sigpipe` and `grep-count` and not `lib`; ... (the control: the
+    table is a mapping, so the path is not unmapped)."
+  - **After:** those prints hold for a `*.sh` that R1 or R3 also maps. A
+    `*.sh` matched only by the `*.sh` rows is `all`, with a new control (an
+    unmentioned `.claude/tests/_helpers.sh`). The `.md` and `profiles`
+    clauses, and the `.md` control, are unchanged.
+  - **Why:** the GATES diff review, finding 2, reproduced by the
+    orchestrator. No shell file could ever reach R5, so a new helper sourced
+    by relative name selected 2 of 34 suites. The user chose this over
+    filing it as a separate story because HARNESS-095 makes `--changed` the
+    pre-PR run. Contract A-5.
 
 ## Suppressions
 
@@ -429,6 +586,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po`: `fable` (Fable 5.1, `claude-fable-5-1`), the agent's own `model:`; no override was reported to the dispatch. 2026-11-04.
+- GATES, `feature-developer` (full `gates.sh`): `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-04. `attest.sh check` returned `fresh` with exit 0 and `All required gates passed (0 ran, 7 unconfigured, 0 known).` This repository has `BOOTSTRAPPED=no`, so the self-test is the verification that counts.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -843,12 +1001,146 @@ run yet. Neither was attempted.
       1 harness suite(s) passed.
       All required gates passed (0 ran, 5 unconfigured, 0 known).
 
+## Diff review
+
+The reviewer was a fresh `feature-developer` using the `diff-review` skill:
+Opus 5.5, `claude-opus-5-5`, the GATES row's `opus`, with no override.
+2026-11-04. The report is pasted below, edited only for line wrapping.
+
+> What this change does: `selftest-needed.sh --suites [base]` turns the
+> branch's changed harness paths into a list of the test suites that could
+> break, using five rules:
+>
+> - R1: the suite itself;
+> - R2: shared files that give `all`;
+> - R3: suites that mention the path;
+> - R4: a table of suites that scan the tree;
+> - R5: `all` for any path no rule maps.
+>
+> `selftest.sh` now takes several suite names, and `--changed [base]`, which
+> asks `--suites` and runs what it names. If the answer is `all` it does a full
+> run; if it is nothing, it exits 1.
+>
+> What I checked:
+>
+> - Every caller of `selftest.sh`. `gates.yml:79` and `:111` call it with no
+>   arguments, and `ci-local.sh`, `attest.sh`, `doctor.sh` and
+>   `refresh-harness.sh` only name it in comments or messages. With no
+>   arguments the code keeps the old full-run path: `AUDIT=1`, an empty
+>   `WANT`, and an audit over `ALL_SUITES`, which equals the old `SUITES`. The
+>   fault filter passes everything. Nothing changes for CI.
+> - A one-name run: the floors audit is still skipped, faults are still
+>   filtered to that one name, and the no-match message is unchanged. A single
+>   empty argument (`selftest.sh ""`) still gives a full run, as before.
+> - Parsing:
+>   - `--suites` must come first. `--suites --suites`, `--suites a b` and
+>     `a --suites` each give exit 2.
+>   - `--changed a b` passes the extra argument through. `--suites` refuses
+>     it, and the caller exits 2 with `cannot select`.
+>   - `SELFTEST_JOBS` is still checked before the selection runs.
+>   - `run_lock_acquire` still records the full argument list.
+> - The fd-3 capture in `--changed` that splits stderr, exit code and stdout.
+>   The unit separator cannot appear in that output, and an exit 0 with empty
+>   stdout falls through to exit 2.
+> - In `--suites`, the path counter `i` and the awk counter `np` count the
+>   same non-empty lines, so R3's mentions line up with the right path.
+> - I reproduced the two findings below on the real tree, in a throwaway
+>   clone at `de27810` in the scratchpad.
+> - I assumed the load the repository states: one developer per worktree, and
+>   a diff of tens of paths. Nothing here is a scale problem at that size.
+>
+> **Should fix:**
+>
+> 1. **A change to the main harness library selects fewer than half the
+>    suites** (`scripts/selftest-needed.sh:207-211`, the R2 `case`).
+>    - **What this is:** R2 is the list of files that "every suite reads", and
+>      changing any of them gives `all`. It names `_lib.sh`, `_spawns.sh` and
+>      `scripts/selftest.sh`.
+>    - **Problem:** `.claude/hooks/lib.sh` is missing from that list, although
+>      15 harness scripts source it, including `gates.sh`, `phase.sh`,
+>      `plan.sh`, `story.sh`, `classify.sh` and `check-boundaries.sh`.
+>      Reproduced: appending one comment line to `.claude/hooks/lib.sh` and
+>      running `--suites HEAD` printed `15 of 34 selected`, and `plan`,
+>      `doctor`, `refresh`, `worktree` and 15 other suites were left out.
+>      `plan.test.sh` runs `plan.sh`, which sources `lib.sh`, so a `lib.sh`
+>      change that breaks `plan.sh` passes `--changed` locally.
+>    - **Fix:** Add `.claude/hooks/lib.sh` to the R2 `case` and to the header
+>      comment, plus one AC-2-style case in `selftest-needed.test.sh`, which
+>      makes this a short return to RED. R2's list is written in the
+>      Contract, so the change needs a Contract amendment. It contradicts no
+>      acceptance criterion.
+>    - **If we skip it:** This falls under the declared "Known limit"
+>      (reaching a file through another script), but it is the worst instance
+>      of that limit: the one file under R2's own reason, "read by every
+>      suite". Once HARNESS-095 makes `--changed` the pre-PR run, a `lib.sh`
+>      story reaches CI with about half its suites unrun locally.
+> 2. **No shell file can ever trigger the "unmapped, so run all" safety net**
+>    (`scripts/selftest-needed.sh:162-163` and `:225-229`).
+>    - **What this is:** The scanner table rows `sigpipe *.sh` and
+>      `grep-count *.sh` match every harness `.sh` path, so R5 can never fire
+>      for a shell file.
+>    - **Problem:** The same kind of new file gets opposite answers depending
+>      on its extension. Reproduced: an untracked
+>      `.claude/tests/_helpers.conf` gives `all` ("mapped by no rule"), but
+>      `.claude/tests/_helpers.sh` gives `grep-count` and `sigpipe` only, 2 of
+>      34. A new helper that suites source by a relative name
+>      (`"$HERE/_helpers.sh"`, the way they source `_lib.sh`) is never
+>      mentioned by its full repo path, so R3 cannot see it. The same is true
+>      of a new `.sh` fixture under `.claude/tests/fixtures/`. Shell files are
+>      the files most often used through another script, and they are exactly
+>      the ones the fail-safe never covers.
+>    - **Fix:** Do not let the two `*.sh` rows set `hit`, so they add their
+>      suites but a `.sh` path matched by nothing else still falls to R5. This
+>      conflicts with AC-3's control ("a path the rules can map never widens
+>      the answer to all") as AC-4 reads for `.sh`. So it is a question for
+>      the product owner under `## Amendments`, not a GATES fix. The smaller
+>      option is to add the `.claude/tests/*` helpers (anything outside
+>      `*.test.sh`) to R2.
+>    - **If we skip it:** Today the only shell helpers under `.claude/tests`
+>      are `_lib.sh` and `_spawns.sh`, both in R2, so nothing is
+>      under-selected yet. The first story that adds a third helper will be
+>      under-selected without any warning.
+>
+> Not checked: whether R3's plain substring match lets a path count as
+> "mapped" only because it is the start of a longer path that a suite
+> mentions, which would also keep R5 from firing. My real-tree scan for this
+> used a broken regular expression and its output is not usable.
+>
+> Verdict: Ship.
+
+**Orchestrator's reproduction (2026-11-04).** I ran this in my own scratch
+clone at C2 (`5cd48b3`, the branch tip's tree), with different inputs from
+the reviewer's:
+
+- inserting `# probe` after line 1 of `.claude/hooks/lib.sh` gave `15 of 34 selected`;
+- an untracked `.claude/tests/_helpers.sh` holding a function gave
+  `2 of 34 selected` (`grep-count`, `sigpipe`);
+- an untracked `.claude/tests/_helpers.conf` gave `all: ... mapped by no rule`.
+
+Both findings are confirmed. `grep -lE 'hooks/lib\.sh' scripts/*.sh
+.claude/hooks/*.sh` names 11 files. The clone's tree was clean afterwards.
+
+Finding 2 contradicts AC-4's control as written: a scanner match is "not
+`all`". That makes it the user's decision under `## Amendments`, and it is
+put to them before anything changes.
+
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-05T03:10:27Z
+    commit: de27810
+    tree:   aa37e34f242d1171ec4dc67e87343d5c4be188c5
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
