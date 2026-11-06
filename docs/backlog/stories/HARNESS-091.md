@@ -5,7 +5,7 @@ slug: the-running-stand-in-in-mutate-test-sh-l
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -249,6 +249,111 @@ wait under one second); RED may raise it with a reason, never lower it.
   are the same defect put back in two suites, and DV-2 is the law's own
   requirement for AC-3, an assertion written against a helper that exists by
   the time it runs.
+
+**Results (GATES, this host, 2026-11-06, after merging `main` at `c291e14`).**
+Every run went through `scripts/mutate.sh`, every file was restored byte for
+byte, and `mutate.sh --check` was clean after each.
+
+**DV-1.** Two runs. The second is the one that decides AC-1.
+
+- **As written** (`sleep 0 &` in place of the holder). The block goes red,
+  but not line for line as predicted above.
+  - The AC-4 precondition passed: a `sleep 0` is still alive for the
+    instant of that check.
+  - An unpredicted "and not as GONE" line went red.
+  - The AC-6 control went red on one line, not two.
+  - The C-1 precondition went red ahead of C-1's two assertions. But in the
+    AC-6 describe it is not the *first* red line: the AC-6 control fails
+    before it.
+  - That is because this mutation kills the stand-in before AC-4 uses it,
+    which is earlier than the field's defect, in which the AC-6 control
+    passed. The prediction above, which listed the AC-6 control red too,
+    was inconsistent with AC-1's "first red line of the block". That was
+    the PO's error, not the test's.
+
+```
+=== mutate: .claude/tests/mutate.test.sh (1 line(s) changed by s/^hold_until_killed H30_SLEEP$/sleep 0 \& H30_SLEEP=$!/) ===
+  HARNESS-030 AC-4: --check names a stranded mutation, says GONE, and prints the exact remedy
+  HARNESS-030 AC-4: both remedies hold for a target given as an absolute path
+  HARNESS-030 AC-4: a sentinel whose process is alive is RUNNING
+    FAIL AC-4: as RUNNING
+    FAIL AC-4: and not as GONE
+  HARNESS-030 AC-6: --check run as a mutation's own command counts its own sentinel out, and nothing else
+    FAIL AC-6 control: the other one is reported RUNNING
+    FAIL C-1 precondition: the stand-in planted at AC-4 is still alive
+    FAIL C-1: HARNESS_MUTATION naming a live sentinel in this tree counts it out, exit 0
+    FAIL C-1: and says the one in flight is that command's own
+mutate: 309 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_mutate.test.sh.20261106T153630Z.188306.bak) ===
+```
+
+- **In the field's shape: decisive for AC-1.** The holder is killed and
+  reaped on a line inserted immediately before the C-1 precondition, so the
+  window closes between the AC-6 control and C-1, as on 2026-11-04. The C-1
+  precondition is the first red line of the block, followed by C-1's two
+  assertions, which are the two from the 2026-11-04 log. Nothing else went
+  red.
+
+```
+=== mutate: .claude/tests/mutate.test.sh (1 line(s) changed by /^assert_eq "C-1 precondition: the stand-in planted at AC-4 is still alive"/i kill "$H30_SLEEP" 2>/dev/null; wait "$H30_SLEEP" 2>/dev/null) ===
+  HARNESS-030 AC-4: --check names a stranded mutation, says GONE, and prints the exact remedy
+  HARNESS-030 AC-4: both remedies hold for a target given as an absolute path
+  HARNESS-030 AC-4: a sentinel whose process is alive is RUNNING
+  HARNESS-030 AC-6: --check run as a mutation's own command counts its own sentinel out, and nothing else
+    FAIL C-1 precondition: the stand-in planted at AC-4 is still alive
+    FAIL C-1: HARNESS_MUTATION naming a live sentinel in this tree counts it out, exit 0
+    FAIL C-1: and says the one in flight is that command's own
+mutate: 312 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_mutate.test.sh.20261106T154200Z.204292.bak) ===
+```
+
+**DV-2.** As written. Only AC-3's "orphaned holder is gone" went red; AC-2
+and the control stayed green, and the describe's cleanup killed the survivor.
+
+```
+=== mutate: .claude/tests/_lib.sh (1 line(s) changed by s/while kill -0 "\$parent" 2>\/dev\/null; do/while :; do/) ===
+  HARNESS-030 AC-4: --check names a stranded mutation, says GONE, and prints the exact remedy
+  HARNESS-030 AC-4: both remedies hold for a target given as an absolute path
+  HARNESS-030 AC-4: a sentinel whose process is alive is RUNNING
+  HARNESS-030 AC-6: --check run as a mutation's own command counts its own sentinel out, and nothing else
+    FAIL AC-3: a holder whose shell exited without killing it is gone within 10 s
+mutate: 314 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests__lib.sh.20261106T153803Z.192220.bak) ===
+```
+
+**DV-3.** Two runs. The second is the one that decides AC-4.
+
+- **As written** (`sleep 45`). Green: `run-lock: 141 passed, 0 failed`.
+  This host was quiet enough that the suite reached AC-6 inside 45 s. A
+  timed mutation is subject to the same unchosen window this story removes,
+  as RED's handoff warned.
+
+```
+=== mutate: .claude/tests/run-lock.test.sh (2 line(s) changed by s/^hold_until_killed LIVE\([12]\); BG=/sleep 45 \& LIVE\1=$!; BG=/) ===
+  AC-6  the markers are not a bypass: the pid must be the one the lock records
+run-lock: 141 passed, 0 failed
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_run-lock.test.sh.20261106T153943Z.197356.bak) ===
+```
+
+- **With `sleep 1`: decisive for AC-4.** The stand-ins are certainly gone by
+  AC-6. In the "not a bypass" block, the AC-6 precondition is the first red
+  line, ahead of the seven assertions HARNESS-094's `## Notes` records for
+  this defect. Earlier blocks that use the live holders (AC-3's controls)
+  went red too, as they did in HARNESS-094's run.
+
+```
+=== mutate: .claude/tests/run-lock.test.sh (2 line(s) changed by s/^hold_until_killed LIVE\([12]\); BG=/sleep 1 \& LIVE\1=$!; BG=/) ===
+    FAIL AC-6 precondition: the two live holders planted at the top are still alive
+    FAIL right lock path, another live pid: selftest.sh exits 2
+    FAIL AC-6 wrong-pid marker: refusal line 1 names this run (scripts/selftest.sh tiny)
+    FAIL AC-6 wrong-pid marker: refusal line 2 names the holder (pid 201128, scripts/gates.sh --gate unit)
+    FAIL AC-6 wrong-pid marker: refusal line 3 gives the remedy for pid 201128
+    FAIL no suite runs
+    FAIL the lock is byte-identical afterwards
+    FAIL and the parent's lock is byte-identical afterwards, not released by the child
+run-lock: 119 passed, 22 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_run-lock.test.sh.20261106T154106Z.201003.bak) ===
+```
 
 ## Amendments
 
