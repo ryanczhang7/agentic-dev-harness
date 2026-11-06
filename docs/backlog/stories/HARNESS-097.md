@@ -4,8 +4,8 @@ title: check-boundaries refuses to run without its scratch directory, and cleans
 slug: check-boundaries-refuses-to-run-without
 epic: 
 type: bug
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-097-check-boundaries-refuses-to-run-without
 depends_on: [HARNESS-089]      # this story edits the lines HARNESS-089 wrote; merged as #181, DONE on main at dd97d6b
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, docs/backlog/stories/HARNESS-097.md]
@@ -476,6 +476,8 @@ name, below the table.
 - GREEN, feature-developer, claude-opus-5-5 (Opus 5.5; as planned, no override)
 - GATES (DV-2), orchestrator lead-po, claude-fable-5-1 (Fable 5.1; ran DV-2 itself with mutate.sh)
 - GATES (full gates), feature-developer, claude-opus-5-5 (Opus 5.5; as planned, no override)
+- GATES (diff review), feature-developer (fresh), claude-opus-5-5 (Opus 5.5; as planned, no override)
+- GATES (self-test --changed), feature-developer, claude-opus-5-5 (Opus 5.5; as planned, no override)
 
 ## Out of scope
 
@@ -754,13 +756,54 @@ did execute):
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Fresh `feature-developer` dispatch (claude-opus-5-5, Opus 5.5, as declared; no
+override), `diff-review` skill, 2026-11-06, over `git diff origin/main...HEAD`
+after main (HARNESS-090, #182) was merged in as `fdb9e51`. It changed no file.
+
+What this change does: `note`/`problem`/`ok` move above the scratch-directory
+`mkdir -p`, which now refuses on failure (a `FAIL  ` line naming
+`.claude/state/check-boundaries`, exit 1) instead of judging the criteria
+against an empty baseline; the `criteria_baseline` comment is corrected and the
+dead `txt`/`crit_txt` dropped. One new describe pins the refusal, its twin and
+an empty scratch directory. Floors 538 -> 545; VERSION -> 112.
+
+Checked, no findings:
+
+- Helpers defined in time: nothing between `. lib.sh` (line 24) and lines
+  27-29 calls `note`/`problem`/`ok`; `lib.sh` neither defines nor calls them.
+- The `exit 1` path: no trap set and no scratch file written yet, so nothing
+  to clean up; the script is `set -uo pipefail` without `-e`, so the `||`
+  branch is the only reaction; `mkdir`'s own stderr line still prints, harmless.
+- Normal CI runs: `.claude/state/.gitkeep` and `README.md` are committed, and
+  `mkdir -p` creates parents anyway; the refusal fires only when something is
+  in the way or the filesystem is read-only, where refusing is correct.
+- The needle `^FAIL  .*\.claude/state/check-boundaries` matches only
+  `problem`'s prefix, never `mkdir`'s stderr or bash's redirect error (DV-2's
+  red shows it); the message contains no "acceptance criteria" in any case.
+- Fixture cleanup: `_bad`/`assert_eq` carry on and the suite is not `set -e`,
+  so the `rm -f` of the plain file always runs before the twin; `reset --hard`
+  would not remove an untracked file, which is why the explicit `rm -f` matters.
+- sigpipe pins: net zero lines above 399; 399/438/630 still hold
+  `res=$(printf`, `rec=$(printf`, `ph_at="$(git show`. R-1 not needed.
+- floors.conf merge keeps HARNESS-090's block and appends HARNESS-097's;
+  `boundaries 545` matches `selftest.test.sh`; `selftest 366` unchanged.
+- VERSION 112 is right: 111 is HARNESS-090's on main.
+- The new comment matches the code; neither `txt` nor `crit_txt` is read.
+- `.claude/state/README.md`'s `check-boundaries/*` row says "scratch for a
+  `git show` result", narrower than what the directory holds (story copies,
+  `diff-*`); pre-existing and out of scope, not raised as a finding.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-06T14:33:06Z
-    commit: 07d121e
-    tree:   6c5a3176cd7d20bfefb863f142b5e84b8ac3fe35
+    run:    2026-11-06T14:44:26Z
+    commit: fdb9e51
+    tree:   a7b1aec694c4a50e773ad60df50fca70a12c2026
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -919,3 +962,21 @@ did execute):
   run includes the two `slow` gates (integration, build); every gate is
   unconfigured while BOOTSTRAPPED=no. Nothing in the tree was changed by the
   run but `## Gate results`.
+- **main merged in at GATES (2026-11-06).** HARNESS-090 (#182) landed on main
+  while this story ran; merged as `fdb9e51` via the app's base-branch sync.
+  One conflict, `.claude/tests/floors.conf`'s trailing comment blocks: both
+  kept, HARNESS-090's first. VERSION taken to 112 (111 is HARNESS-090's).
+  Because the tree changed, the full gates were re-recorded after the diff
+  review, by the orchestrator directly (every gate is unconfigured; the run
+  takes a second): `attest.sh check -- bash scripts/gates.sh` -> `fresh`,
+  exit 0. The self-test at GATES -> REVIEW runs on the merged tree.
+- **Self-test at GATES -> REVIEW (2026-11-06), on the merged tree
+  `deb74be`.** `selftest-needed.sh`: run. Dispatched; `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` -> `fresh`.
+
+      selftest: --changed — 15 of 34 suite(s) selected: boundaries ci-local dispatch doctor grep-count host-load lib plan procedure refresh run-lock selftest sigpipe story worktree
+      exit:     0
+      last:     15 harness suite(s) passed.
+      duration: 1519s
+
+  `boundaries: 545 passed, 0 failed`, `sigpipe: 91 passed, 0 failed`,
+  `selftest: 366 passed, 0 failed`; all 15 suites met their floors.
