@@ -5,7 +5,7 @@ slug: the-running-stand-in-in-mutate-test-sh-l
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -291,6 +291,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
+- GREEN: no dispatch. A verified no-op plus the VERSION bump, by the orchestrator (Fable 5.1, `claude-fable-5-1`), as C-3 plans. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -602,3 +603,23 @@ the full self-test on the PR and is the first Linux observation.
 - Follow-up candidate from RED: `.claude/tests/gates.test.sh:2794` plants
   `sleep 30 &` behind a RUNNING sentinel for one fixture `gates.sh` run. It
   is not reused across blocks, but it is the same unchosen 30 s window.
+- GREEN verified by the orchestrator as a no-op, 2026-11-06. Not dispatched
+  (C-3). Run directly, not through `attest.sh`, because the orchestrator
+  runs a no-op's checks itself.
+  - `git diff --stat main...HEAD` before the bump named exactly the five
+    test-side paths and this story; nothing under `scripts/` changed.
+  - `VERSION`: `111` → `113 (2026-11-06)`. HARNESS-097 merged as #183
+    with `112` while this story was in RED, so 112 was taken.
+
+```
+mutate: 315 passed, 0 failed
+run-lock: 141 passed, 0 failed
+assertion floors: all 2 suite(s) met their declared floor (456 assertions executed, 456 declared).
+2 harness suite(s) passed.
+All required gates passed (0 ran, 5 unconfigured, 0 known).
+```
+
+  - **For GATES:** `origin/main` now carries HARNESS-097 (`066c049`), which
+    also changed `VERSION`, `floors.conf` and `boundaries.test.sh`. Merge
+    `main` into this branch at the start of GATES, before the DVs and the
+    gate run, so the records are made on the tree the PR will merge.
