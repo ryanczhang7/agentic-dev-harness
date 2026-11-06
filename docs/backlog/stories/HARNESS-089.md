@@ -5,7 +5,7 @@ slug: check-boundaries-never-deadlocks-on-a-st
 epic: 
 type: bug
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-089-check-boundaries-never-deadlocks-on-a-st
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]
@@ -262,7 +262,6 @@ Planned by `bash scripts/plan.sh write HARNESS-089` from `.claude/harness/models
 A PLAN, not a record: a session setting or an explicit override can beat both
 this and the agent's own `model:` field, and nothing here can see which won.
 The orchestrator still writes down the model each dispatch **resolved** to, by
-- PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 name, below the table.
 
 | Phase | Agent | Planned | Why |
@@ -275,6 +274,8 @@ name, below the table.
 | SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
 **Resolved:**
+
+- PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
