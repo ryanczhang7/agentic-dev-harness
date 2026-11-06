@@ -397,6 +397,7 @@ name, below the table.
 
 - PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 - GREEN: no dispatch. A verified no-op plus the VERSION bump, by the orchestrator (Fable 5.1, `claude-fable-5-1`), as C-3 plans. 2026-11-06.
+- GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -616,10 +617,21 @@ the full self-test on the PR and is the first Linux observation.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-06T15:43:46Z
+    commit: 833d071
+    tree:   4b88fd84d58e932740ba61317105b9d47918a8b3
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -728,3 +740,7 @@ All required gates passed (0 ran, 5 unconfigured, 0 known).
     also changed `VERSION`, `floors.conf` and `boundaries.test.sh`. Merge
     `main` into this branch at the start of GATES, before the DVs and the
     gate run, so the records are made on the tree the PR will merge.
+- GATES, 2026-11-06. Merged `origin/main` (HARNESS-097, #183) at
+  `c291e14` before the DVs. There were two conflicts, both additive: `VERSION`
+  kept this story's `113`, and `floors.conf` kept both stories' dated notes.
+  The DVs and the gate run were made on the merged tree.
