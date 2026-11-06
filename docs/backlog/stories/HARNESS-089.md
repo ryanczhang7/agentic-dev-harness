@@ -4,8 +4,8 @@ title: check-boundaries never deadlocks on a story copy near 64 KiB
 slug: check-boundaries-never-deadlocks-on-a-st
 epic: 
 type: bug
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-089-check-boundaries-never-deadlocks-on-a-st
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]
@@ -283,8 +283,30 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All in `.claude/tests/boundaries.test.sh`, two describes marked HARNESS-089
+right after the HARNESS-033 block. Level: integration for AC-1 (the real
+`check-boundaries.sh`, copied into the suite's fixture repository, run over a
+built git history); a static guard for AC-2 (an awk over the script's text,
+because what AC-2 pins is the shape of a line, not a behaviour any run on
+Linux can show). 20 assertions, every one unconditional.
+
+| AC | Case | Assertions | Today, this host |
+|---|---|---|---|
+| AC-1 | small-copy twin T-40 (PLANNED, RED, GREEN, no padding): not 124; exact criteria line with its PLANNED c7 | 2 | green (the reference) |
+| AC-1 | T-41, RED copy exactly 65,566 bytes: two size preconditions (`wc -c` on disk, `git cat-file -s` committed); not 124; same status as T-40; exact criteria line with T-41's PLANNED c7 | 5 | preconditions green, the three run assertions RED (status 124) |
+| AC-1 | T-42, RED copy exactly 135,000 bytes: the same five | 5 | green on arrival (outside the hang window); earned by a probe, see Handoff |
+| AC-2 | real tree: `here_string_sources scripts/check-boundaries.sh` prints nothing | 1 | RED (seven fault lines, see Handoff - the AC says six) |
+| AC-2 | fixture: `x="$(git show a:b)"` + `cmd <<< "$x"` refused on line 2, naming `x`, `git show` | 1 | green |
+| AC-2 | fixture: the same from `git rev-parse HEAD` accepted (empty) | 1 | green |
+| AC-2 | fixture: `<<< "$a"$'\n'"$b"`, only `b` from `git show`: one line naming `b` | 1 | green |
+| AC-2 | fixture: `x="$(< story.md)"` refused, `assigned from <` | 1 | green |
+| AC-2 | fixture: `x=$(cat story.md)` (unquoted) refused, `assigned from cat` | 1 | green |
+| AC-2 | fixture: `if ! x="$(git cat-file -p HEAD:f)"` + `<<< "${x}"` refused, `assigned from git cat-file` | 1 | green |
+| AC-2 | fixture: assignment after the use, plus a clean `<<<` line: only line 1 refused | 1 | green |
+| AC-3 | - (DV-1 at GATES, this host; AC-1's T-41 case is its assertion) | 0 | declined in RED |
+
+Every AC-2 fixture compares the guard's WHOLE output with `assert_eq`, so a
+wrong line number, a wrong name, a second line or a missing line all fail.
 
 ## Handoff: RED -> GREEN
 
@@ -305,6 +327,219 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by test-developer (RED, first pass), 2026-11-06. Model: opus
+(`claude-opus-5-5`), as declared; no override in the dispatch.
+
+### Command
+
+    bash scripts/selftest.sh boundaries
+
+Run through attest, on this Windows host (`GNU bash 5.3.15
+x86_64-pc-cygwin`), against `scripts/check-boundaries.sh` unchanged since
+`3b9f531`:
+
+    command:  bash scripts/selftest.sh boundaries
+    tree:     9538551fbac3f68f61036d2c9bef783755984b87
+    status:   ok
+    exit:     1
+    duration: 2861s
+    last:     1 of 1 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261106T012052Z.218419.log
+
+    command:  bash scripts/selftest.sh selftest
+    tree:     9538551fbac3f68f61036d2c9bef783755984b87
+    status:   ok
+    exit:     0
+    duration: 226s
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261106T020835Z.340549.log
+
+`gates.sh --fast` was not run: every gate in this repository's `project.conf`
+is unconfigured (BOOTSTRAPPED=no), so it has nothing to judge; the
+`boundaries` suite is what CI runs.
+
+### The red, verbatim from the log
+
+```
+    FAIL AC-1: a 65566-byte RED copy does not hang check-boundaries.sh (status 124 under timeout 120)
+         expected: no
+         actual:   yes, status 124
+    FAIL AC-1: a 65566-byte RED copy exits with the small-copy history's status
+         expected: 1
+         actual:   124
+    FAIL AC-1: a 65566-byte RED copy reports the same criteria line as the small-copy history
+         expected: 1
+         actual:   0
+
+  no here-string carries a story copy or a git show result (HARNESS-089)
+    FAIL AC-2: no here-string in scripts/check-boundaries.sh carries a story copy or a git show result
+         expected: 
+         actual:   scripts/check-boundaries.sh:330: here-string carries txt, assigned from git show
+         scripts/check-boundaries.sh:336: here-string carries txt, assigned from git show
+         scripts/check-boundaries.sh:372: here-string carries crit_txt, assigned from git show
+         scripts/check-boundaries.sh:373: here-string carries before, assigned from git show
+         scripts/check-boundaries.sh:1077: here-string carries sup_story, assigned from git show
+         scripts/check-boundaries.sh:1086: here-string carries sup_pstory, assigned from git show
+         scripts/check-boundaries.sh:1113: here-string carries sup_diff, assigned from git show
+
+boundaries: 534 passed, 4 failed
+FAIL boundaries  did 534 units of work, below the floor of 538 in .claude/tests/floors.conf
+```
+
+Why these are the right failures: the 65,566-byte history is killed by
+`timeout 120` (status 124, no criteria line) while the same history with a
+small RED copy prints `ok    acceptance criteria unchanged since the last
+committed PLANNED state (<c7>)` and exits 1 (3e refuses every fixture story:
+no `## Gate results`). Its two size preconditions pass, so the fixture is
+inside the window rather than near it. The AC-2 red is the guard over the
+real file. Every other case in the suite, all 518 earlier assertions
+included, passes.
+
+**The AC-2 real-tree red is SEVEN lines, not the six AC-2's text names.**
+Line 373 (`before="$(sed 's/[[:space:]]*$//' <<< "$before")"`) is refused
+because `before` is also assigned at line 637,
+`before="$(git show "$c^:$f" 2>/dev/null | manifest_strip_dev ...)"` - a
+different block reusing the same global name. AC-2's rule is name-keyed over
+"any assignment anywhere in the script", so by its own letter 373 is
+refused; its control sentence ("exactly six lines") disagrees. The guard
+implements the rule as written and asserts silence, which holds under either
+reading after GREEN, because the Contract already replaces line 373 (the
+`before=` pair becomes one `section "$cp" ... | sed` line with no
+here-string). The AC text is frozen and was not touched; this is put to the
+orchestrator (an `## Amendments` entry correcting "six" to "seven, 373
+through the reuse of `before`", or a ruling).
+
+### Floor
+
+`boundaries` 518 -> **538** in `.claude/tests/floors.conf` (comment added)
+and in `.claude/tests/selftest.test.sh`'s table. 518 executed before; the
+run above executed 538 (534 + 4). `selftest` passes with the new table.
+Until GREEN lands, boundaries sits below its floor (534 < 538): expected.
+
+### Tests, one line each
+
+| Test | Asserts | AC |
+|---|---|---|
+| small-copy history is not killed by the timeout | T-40 status is not 124 | AC-1 (reference) |
+| small-copy history reports its criteria unchanged | whole line `ok    acceptance criteria unchanged since the last committed PLANNED state (<T-40 PLANNED c7>)` | AC-1 (reference) |
+| precondition: RED copy exactly N bytes on disk / as committed | `wc -c` and `git cat-file -s` = 65566 (T-41), 135000 (T-42) | AC-1 |
+| a N-byte RED copy does not hang | status is not 124 under `timeout 120` | AC-1, AC-3 |
+| a N-byte RED copy exits with the small-copy status | rc = T-40's rc | AC-1 |
+| a N-byte RED copy reports the same criteria line | whole line, own PLANNED c7, exactly once | AC-1 |
+| no here-string in check-boundaries.sh carries ... | guard output over the real file is empty | AC-2 |
+| seven fixture cases | guard output equals exactly the expected fault line(s) | AC-2 |
+
+### Files touched
+
+- `.claude/tests/boundaries.test.sh` - two describes after the HARNESS-033
+  block; new helpers `crit_pad`, `crit_size_history`,
+  `run_boundaries_against_timed`, `here_string_sources`, `hs_fix`. No
+  existing helper or case edited.
+- `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh` - floor.
+- this story: `## Test plan`, this section.
+- `.claude/tests/sigpipe.test.sh` - NOT touched (R-1 is a later pass).
+
+### What GREEN must change (Contract, confirmed against the tree)
+
+Confirmed at `3b9f531`/working tree: the `<<<` lines of
+`scripts/check-boundaries.sh` are 234, 235, 330, 336, 372, 373, 392, 467,
+469, 1038, 1077, 1086, 1105, 1113, 1118. GREEN changes these and nothing else:
+
+| Line(s) | Today | Becomes |
+|---|---|---|
+| 26 (after `fail=0`) | - | `mkdir -p` of `.claude/state/check-boundaries/`, `cp`/`dp` paths `copy-$$.md`, `diff-$$.txt`, and the `trap 'rm -rf ...*-$$.*' EXIT` |
+| 329-330 | `txt="$(git show "$BASE:$f" ...)"` + `frontmatter_value - phase <<< "$txt"` | `git show "$BASE:$f" > "$cp" 2>/dev/null`; `frontmatter_value "$cp" phase` |
+| 335-336 | `txt="$(git show "$rev:$f" 2>/dev/null)" \|\| continue` + `<<< "$txt"` | `git show "$rev:$f" > "$cp" 2>/dev/null \|\| continue`; `frontmatter_value "$cp" phase` |
+| 371-373 | `crit_txt=...`, `before="$(section - ... <<< "$crit_txt")"`, `before="$(sed ... <<< "$before")"` | `git show "$crit_rev:$sfile" > "$cp"`; `before="$(section "$cp" "Acceptance criteria" \| sed 's/[[:space:]]*$//')"` |
+| 1076-1077 | `if ! sup_story="$(git show "$c:$sfile" ...)"` + `<<< "$sup_story"` | `if ! git show "$c:$sfile" > "$cp" 2>/dev/null; then note ...; continue; fi`; `frontmatter_value "$cp" phase` |
+| 1085-1086 | `if sup_pstory="$(git show "$c^:$sfile" ...)"` + `<<< "$sup_pstory"` | `if git show "$c^:$sfile" > "$cp" 2>/dev/null; then sup_pph="$(frontmatter_value "$cp" phase)"; ...` |
+| 1108-1113 | `if ! sup_diff="$(git show --format= --unified=0 ...)"` + `suppression_hits <<< "$sup_table"$'\n'"--8<-- diff"$'\n'"$sup_diff"` | `if ! git show --format= --unified=0 "$c" -- "$f" > "$dp" 2>/dev/null; then` (existing `sup_refused` branch); `{ printf '%s\n--8<-- diff\n' "$sup_table"; cat "$dp"; } > "$cp"`; `sup_hits="$(suppression_hits < "$cp")"` |
+| `.claude/state/README.md` | - | a `check-boundaries/*` row (Contract) |
+
+Callers checked: `grep -n 'frontmatter_value - \|section - '
+scripts/check-boundaries.sh` finds exactly 330, 336, 372, 1077, 1086 (plus
+the comment on line 32); `suppression_hits` is called only at 1113. No
+signature changes; `section` and `frontmatter_value` already take a path.
+
+**Do not introduce a new `<<<` whose variable name is ever assigned from
+`$(git show`, `$(git cat-file`, `$(cat ` or `$(<` anywhere in the file** -
+the guard is name-keyed over the whole script. The surviving here-strings
+(234-235, 392, 467, 469, 1038, 1105, 1118) are clean today; note that
+`ph_at` (626) and `before` (637) ARE assigned from `git show`, so neither may
+appear after a `<<<` on any line GREEN writes.
+
+### Export shape the tests pin
+
+Nothing is imported. The tests pin: `scripts/check-boundaries.sh <base>` run
+from the fixture root; its criteria line text, unchanged; that its status for
+an oversized history equals the small history's; and the guard's view of the
+file's text. They do NOT constrain the scratch file names, the trap, or the
+README row (the Contract does; `settings.test.sh` reads the README table).
+
+### Passed on arrival, and what earns it
+
+The T-42 (135,000-byte) case is green today: 135,000 is outside the hang
+window (Contract: 66,000-140,000 return; re-measured here, 135,000 rc 0,
+65,536 and 65,565 rc 124). It is the half of AC-1 that says size does not
+matter at all. Earned with a size-sensitive mutation through `mutate.sh`, on
+the subset of the suite holding the HARNESS-033 helpers and both new
+describes (`sub089.sh` in the RED session's scratchpad):
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 336s/^    cph=/    [ "${#txt}" -lt 100000 ] || exit 3; cph=/) ===
+  336 -     cph="$(frontmatter_value - phase <<< "$txt")"; cph="${cph//[[:space:]]/}"
+  336 +     [ "${#txt}" -lt 100000 ] || exit 3; cph="$(frontmatter_value - phase <<< "$txt")"; cph="${cph//[[:space:]]/}"
+    FAIL AC-1: a 135000-byte RED copy reports the same criteria line as the small-copy history
+         expected: 1
+         actual:   0
+boundaries-089: 15 passed, 5 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261106T011729Z.215590.bak) ===
+```
+
+(The other four reds in that run were the unmutated ones above.) The
+status assertion stayed green under that mutation because `exit 3` leaves
+only the `$(criteria_baseline ...)` subshell; the criteria-line assertion is
+the one that discriminates. The AC-2 fixtures are new code in the test file
+and passed on first execution; their discrimination is the real-tree red
+above (same function, seven fault lines) plus the `rev-parse` and
+`two-vars` cases, which fail if the guard keys on the `<<<` alone.
+
+### Negative controls: expected values
+
+| Control | Threshold | Measured (RED, this host) | GREEN must see |
+|---|---|---|---|
+| T-40 small history, status | not 124 | 1 | 1 |
+| T-40 criteria line | whole line, once | present once | present once |
+| T-41 RED copy size | = 65,566 | 65,566 disk, 65,566 blob | same |
+| T-42 RED copy size | = 135,000 | 135,000 disk, 135,000 blob | same |
+| bare here-string, payload n bytes, `timeout 15` | - | 65,535 rc 0; 65,536 rc 124; 65,565 rc 124; 135,000 rc 0 | (not in suite) |
+| guard on today's real file | silent | 7 lines (330, 336, 372, 373, 1077, 1086, 1113) | 0 lines |
+
+These ran inside the suite (nothing fails at import here), so they are
+measured, not claimed.
+
+### Deferred verifications
+
+- **DV-1 (AC-3)**: declined in RED - it needs GREEN's fix in the tree to put
+  the defect back into. Owner GATES, this host. Its assertion is T-41: the
+  three `65566-byte` assertions above must go red with status 124 under the
+  mutation, and T-42 must stay green.
+- **DV-2**: declined in RED for the same reason. Expect exactly one fault
+  line, naming the restored line. Caution: if the restored line is written
+  as `txt="$(git show ...)"` plus `frontmatter_value - phase <<< "$txt"`,
+  the guard names the `<<<` line (the assignment line has no `<<<`).
+
+### For GREEN and GATES
+
+- **On Linux CI today's code passes AC-1** - the hang is Cygwin's. A green
+  CI `boundaries` job is not evidence of the fix; this host is.
+- The suite takes about 48 minutes here; T-41 costs 120 s while the defect
+  is present.
+- **`sigpipe.test.sh` will fail after GREEN** on its three line pins
+  (`DISCARDED`, lines 574-576: `:395:`, `:434:`, `:626:`), because GREEN's
+  edits above line 395 move them. Expected: R-1 returns to RED to re-pin
+  them; do not touch it in GREEN.
 
 ## Regressions
 
@@ -386,3 +621,19 @@ name, below the table.
      unchanged, couples the fix to line arithmetic and is not taken.
   4. `touches:` confirmed and widened: `sigpipe.test.sh`,
      `selftest.test.sh` (its floor table), `.claude/state/README.md`.
+- RED verified by the orchestrator, 2026-11-06. `attest.sh check` said
+  `fresh` for both runs at tree `9538551`, so neither was re-run.
+  - `selftest.sh boundaries`: exit 1, `boundaries: 534 passed, 4 failed`.
+    The four failures are the three 65,566-byte AC-1 assertions (status 124
+    under `timeout 120`) and the AC-2 real-tree assertion. That fails on
+    seven lines: 330, 336, 372, 373, 1077, 1086, 1113.
+  - `selftest.sh selftest`: exit 0.
+- **AC-2 six versus seven, reproduced by the orchestrator.**
+  `check-boundaries.sh:637` assigns `before="$(git show "$c^:$f" ... )"`.
+  By AC-2's own rule (a variable whose assignment anywhere opens with
+  `git show`), line 373's `<<< "$before"` is refused too. So AC-2's "exactly
+  six lines" contradicts its rule. That count is the PO's error at PLANNED,
+  and it is put to the user as an amendment.
+- The 135,000-byte case passes on today's code, as the Contract's
+  measurement says. The orchestrator's RED brief, which said it would hang,
+  was wrong. RED earned it with one mutation (in the handoff).

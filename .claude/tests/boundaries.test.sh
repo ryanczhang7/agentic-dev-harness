@@ -520,6 +520,199 @@ git -C "$FIX" reset -q --hard "$crit_main_before" 2>/dev/null
 
 
 # ---------------------------------------------------------------------------
+describe "a story copy of any size gets its criteria line (HARNESS-089)"
+
+# The FWB field case: on Git for Windows (bash 5.3.15, cygwin) a here-string
+# whose payload falls in a narrow window just above 64 KiB blocks forever, and
+# criteria_baseline fed every committed story copy through one. A story whose
+# first non-PLANNED copy was 65,566 bytes hung check-boundaries.sh for five
+# hours. Measured on that shell, 2026-11-05: payloads up to 65,535 return,
+# 65,536 to 65,566 block, 66,000 to 140,000 return. `$(git show)` strips the
+# file's trailing newline and the here-string appends one, so a 65,566-byte
+# FILE is a 65,566-byte write: inside the window. On Linux nothing here hangs,
+# so a green Linux run says nothing about the fix; the window is this host's.
+#
+# Three histories, one shape - PLANNED small, RED, GREEN - built with the
+# HARNESS-033 helpers. Only the RED copy's size differs: small, exactly 65,566
+# bytes, and 135,000 bytes (outside the window today: it pins that size does
+# not matter at all, not merely that one size was fixed). Each run is under
+# `timeout 120`, because the defect is a hang and a hung suite holds the run
+# lock. The oversized histories must print what the small one prints: the same
+# status and the same criteria line, with their own PLANNED commit's c7.
+
+# crit_pad <id> <bytes>   Appends a ## Notes section of fixed-width lines to
+# the working-tree story so the FILE is exactly <bytes> long: 64-byte lines,
+# then one short line for the remainder. One awk, no loop in bash.
+crit_pad() {
+  local f="$FIX/docs/backlog/stories/$1.md" have
+  printf '\n## Notes\n\n' >> "$f"
+  have="$(wc -c < "$f")"; have="${have//[[:space:]]/}"
+  awk -v r="$(( $2 - have ))" 'BEGIN {
+    w = "padding line: fixed width, so the file size is exact. ";
+    while (length(w) < 63) w = w "x";
+    w = substr(w, 1, 63);
+    for (i = 0; i < int(r / 64); i++) print w;
+    if (r % 64 > 0) print substr(w, 1, r % 64 - 1);
+  }' >> "$f"
+}
+# crit_size_history <id> <bytes>   PLANNED small, then RED and GREEN padded to
+# <bytes> (0: no padding). Sets $p7 to the PLANNED commit's c7, and $red_size
+# and $red_blob to the RED copy's size on disk and as committed.
+crit_size_history() {
+  crit_branch "$1"
+  crit_commit "$1" PLANNED "criteria v1"; p7="$c7"
+  crit_write "$1" RED "criteria v1"
+  [ "$2" -gt 0 ] && crit_pad "$1" "$2"
+  red_size="$(wc -c < "$FIX/docs/backlog/stories/$1.md")"; red_size="${red_size//[[:space:]]/}"
+  commit_all "$1 at RED"
+  red_blob="$(git -C "$FIX" cat-file -s "HEAD:docs/backlog/stories/$1.md" 2>/dev/null)"
+  crit_write "$1" GREEN "criteria v1"
+  [ "$2" -gt 0 ] && crit_pad "$1" "$2"
+  commit_all "$1 at GREEN"
+}
+# run_boundaries_against_timed <base-ref>   run_boundaries_against under
+# `timeout 120`. Sets $out and $rc; a hang is rc 124 with whatever was printed
+# before it.
+run_boundaries_against_timed() {
+  out="$( cd "$FIX" && GITHUB_HEAD_REF= PR_HEAD_SHA= timeout 120 bash scripts/check-boundaries.sh "$1" 2>&1 )"
+  rc=$?
+}
+
+# The small twin: the reference every oversized history is compared with.
+crit_size_history T-40 0
+run_boundaries_against_timed main
+small_rc="$rc"
+assert_eq "AC-1: the small-copy history is not killed by the timeout (status 124)" \
+  no "$([ "$rc" -eq 124 ] && echo "yes, status 124" || echo no)"
+whole_line "AC-1: the small-copy history reports its criteria unchanged since its PLANNED commit" \
+  "ok    acceptance criteria unchanged since the last committed PLANNED state ($p7)"
+
+for crit_bytes in 65566 135000; do
+  crit_id="T-41"; [ "$crit_bytes" = 135000 ] && crit_id="T-42"
+  crit_size_history "$crit_id" "$crit_bytes"
+  assert_eq "AC-1 precondition: the RED copy is exactly $crit_bytes bytes on disk" "$crit_bytes" "$red_size"
+  assert_eq "AC-1 precondition: the RED copy is exactly $crit_bytes bytes as committed" "$crit_bytes" "$red_blob"
+  run_boundaries_against_timed main
+  assert_eq "AC-1: a $crit_bytes-byte RED copy does not hang check-boundaries.sh (status 124 under timeout 120)" \
+    no "$([ "$rc" -eq 124 ] && echo "yes, status 124" || echo no)"
+  assert_eq "AC-1: a $crit_bytes-byte RED copy exits with the small-copy history's status" "$small_rc" "$rc"
+  whole_line "AC-1: a $crit_bytes-byte RED copy reports the same criteria line as the small-copy history" \
+    "ok    acceptance criteria unchanged since the last committed PLANNED state ($p7)"
+done
+
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" reset -q --hard "$crit_main_before" 2>/dev/null
+
+
+# ---------------------------------------------------------------------------
+describe "no here-string carries a story copy or a git show result (HARNESS-089)"
+
+# The rule AC-2 states, mechanically, over any script: for each line holding
+# `<<<`, every `$name` or `${name` token in the text after `<<<` names a
+# variable, and the line is refused if any assignment to that variable
+# anywhere in the script (`name=$(` or `name="$(`) opens with `git show`,
+# `git cat-file`, `cat ` or `<` (the `$(< file)` form). One fault line per
+# offending line, naming the first such variable on it:
+#   <path>:<n>: here-string carries <name>, assigned from <command>
+# <command> is the opener as matched: `git show`, `git cat-file`, `cat` or `<`.
+# <path> is printed as given. One awk reading the file twice: the first pass
+# collects the assignments by name, the second enumerates the `<<<` lines.
+# Nothing is skipped: a comment holding `<<<` is a line holding `<<<`.
+here_string_sources() { # <script>
+  awk -v path="$1" '
+    FNR == NR {
+      s = $0
+      while (match(s, /[A-Za-z_][A-Za-z0-9_]*="?\$\(/)) {
+        name = substr(s, RSTART, RLENGTH); sub(/="?\$\($/, "", name)
+        s = substr(s, RSTART + RLENGTH)
+        rest = s; sub(/^[ \t]+/, "", rest)
+        cmd = ""
+        if (index(rest, "git show") == 1) cmd = "git show"
+        else if (index(rest, "git cat-file") == 1) cmd = "git cat-file"
+        else if (index(rest, "cat ") == 1) cmd = "cat"
+        else if (index(rest, "<") == 1) cmd = "<"
+        if (cmd != "" && !(name in src)) src[name] = cmd
+      }
+      next
+    }
+    {
+      i = index($0, "<<<"); if (!i) next
+      s = substr($0, i + 3)
+      while (match(s, /\$\{?[A-Za-z_][A-Za-z0-9_]*/)) {
+        name = substr(s, RSTART, RLENGTH); sub(/^\$\{?/, "", name)
+        s = substr(s, RSTART + RLENGTH)
+        if (name in src) {
+          printf "%s:%d: here-string carries %s, assigned from %s\n", path, FNR, name, src[name]
+          break
+        }
+      }
+    }' "$1" "$1"
+}
+
+# The real tree. At 3b9f531 this prints six lines - 330, 336, 372, 1077, 1086
+# and 1113 - and the story pastes them; after the fix it prints nothing.
+assert_eq "AC-2: no here-string in scripts/check-boundaries.sh carries a story copy or a git show result" \
+  "" "$(cd "$REPO_ROOT" && here_string_sources scripts/check-boundaries.sh)"
+
+# The fixtures: the defect put back on one line, and the shapes around it.
+# hs_fix <name>   Writes the body on stdin to $FIX/hs/<name>.sh; sets $hs_p.
+hs_fix() { mkdir -p "$FIX/hs"; hs_p="$FIX/hs/$1.sh"; cat > "$hs_p"; }
+
+hs_fix one-git-show <<'SH'
+x="$(git show a:b)"
+cmd <<< "$x"
+SH
+assert_eq "AC-2: a here-string fed from \`git show\` is refused on that one line" \
+  "$hs_p:2: here-string carries x, assigned from git show" "$(here_string_sources "$hs_p")"
+
+hs_fix rev-parse <<'SH'
+x="$(git rev-parse HEAD)"
+cmd <<< "$x"
+SH
+assert_eq "AC-2: a here-string fed from \`git rev-parse\` is accepted" \
+  "" "$(here_string_sources "$hs_p")"
+
+hs_fix two-vars <<'SH'
+a="$(git rev-parse HEAD)"
+b="$(git show a:b)"
+cmd <<< "$a"$'\n'"$b"
+SH
+assert_eq "AC-2: a here-string of two variables names the one assigned from \`git show\`, not the other" \
+  "$hs_p:3: here-string carries b, assigned from git show" "$(here_string_sources "$hs_p")"
+
+hs_fix redirect-read <<'SH'
+x="$(< story.md)"
+cmd <<< "$x"
+SH
+assert_eq "AC-2: a here-string fed from \`\$(< file)\` is refused" \
+  "$hs_p:2: here-string carries x, assigned from <" "$(here_string_sources "$hs_p")"
+
+hs_fix cat-unquoted <<'SH'
+x=$(cat story.md)
+cmd <<< "$x"
+SH
+assert_eq "AC-2: a here-string fed from \`cat\`, unquoted assignment, is refused" \
+  "$hs_p:2: here-string carries x, assigned from cat" "$(here_string_sources "$hs_p")"
+
+hs_fix cat-file-braced <<'SH'
+if ! x="$(git cat-file -p HEAD:f)"; then exit 1; fi
+cmd <<< "${x}"
+SH
+assert_eq "AC-2: a \${name} here-string fed from \`git cat-file\` inside an \`if !\` is refused" \
+  "$hs_p:2: here-string carries x, assigned from git cat-file" "$(here_string_sources "$hs_p")"
+
+hs_fix assigned-later <<'SH'
+f() { cmd <<< "$x"; }
+y="$(git rev-parse HEAD)"
+cmd <<< "$y"
+x="$(git show a:b)"
+SH
+assert_eq "AC-2: an assignment anywhere in the script counts, and only the line using it is refused" \
+  "$hs_p:1: here-string carries x, assigned from git show" "$(here_string_sources "$hs_p")"
+rm -rf "$FIX/hs"
+
+
+# ---------------------------------------------------------------------------
 describe "a BLOCKED gate can reach REVIEW, but only with the decision written down"
 
 # H16's third state. A required gate that the environment would not launch has
