@@ -5,7 +5,7 @@ slug: the-running-stand-in-in-mutate-test-sh-l
 epic: 
 type: fix
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -399,6 +399,7 @@ name, below the table.
 - GREEN: no dispatch. A verified no-op plus the VERSION bump, by the orchestrator (Fable 5.1, `claude-fable-5-1`), as C-3 plans. 2026-11-06.
 - GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
 - GATES diff review, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
+- R-1 RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -593,28 +594,101 @@ the full self-test on the PR and is the first Linux observation.
 
 ## Regressions
 
-<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
-     otherwise. A test that is wrong is never edited into passing, and the
-     return is not a footnote - it is the story failing to be one clean cycle,
-     and the next person needs to know why. One block per return:
-       * which test, what it asserted, and what was wrong with it
-       * how the defect was found
-       * what it asserts now
-       * what earns it, since "watched it fail" cannot apply once the
-         implementation exists - the corrected assertion passes on its first
-         run and every run after, whether or not it asserts anything: either a
-         PROBE (mutate the specific behaviour the test pins, paste the red,
-         confirm the revert) or, where the defect was cost rather than
-         correctness, a BEFORE/AFTER measurement taken under the gate command -
-         not the plain test command, which is the faster one.
-         PASTE THE OUTPUT. check-boundaries.sh refuses a PR whose Regressions
-         or Gate probes section describes a failure without showing one.
-         A result counts only as a block: a line beginning with three
-         backticks or three tildes (a fence), or a line indented by exactly
-         four spaces. Prose does not count, nor inline code in backticks, nor
-         a tab, nor anything inside an HTML comment
-       * whether GREEN was a no-op, and the command output proving the source
-         was untouched and still passes -->
+### R-1 (from GATES, diff review, 2026-11-06): the AC-2/AC-3 cleanup signalled pids it no longer owned.
+
+**Which lines.** `.claude/tests/mutate.test.sh`, the end of the HARNESS-091
+AC-2/AC-3 describe (lines 1009-1011 before the fix, 1017-1019 after). The
+cleanup was
+
+    for h91 in $H91_KILLED $H91_CTL $H91_ORPHAN; do kill "$h91" 2>/dev/null; done
+    for h91 in $H91_KILLED $H91_CTL; do wait "$h91" 2>/dev/null; done
+
+**What was wrong.** On a passing run `H91_KILLED` has already been killed
+and reaped (line 991) and `H91_ORPHAN` has just been observed gone, so the
+loop sent TERM to two freed pids. Windows reuses a freed pid quickly, so
+under `SELFTEST_JOBS=4` that TERM could reach another suite's process and
+fail it with nothing pointing back here. No assertion was wrong; the
+defect was in the cleanup only.
+
+**How it was found.** The GATES diff review (`## Diff review`, should-fix 1).
+
+**What the cleanup does now.** Each `gone_within` is called once and its
+result captured (`H91_KILLED_SEEN`, `H91_ORPHAN_SEEN`). A holder observed
+`gone` has its variable cleared on the spot - the shape HARNESS-030's block
+uses with `H30_SLEEP=""` - so the cleanup loop names only holders it still
+owns. `H91_CTL` is still killed and waited for. On a red run a holder not
+seen gone keeps its pid and is killed (and, if a child, waited for) as
+before, so nothing is stranded.
+
+**No assertion changed.** Names, expected values and the count are
+identical; the two AC-2/AC-3 `gone` assertions read the captured variable
+instead of an inline `$( )` of the same call. Executed count of `mutate`
+stays 315, against a declared floor of 315.
+
+**Evidence.** Nothing to earn by mutation, since no assertion changed. The
+probe replays the block, extracted by awk from each version of the file,
+with `kill`/`wait` stubbed to print, holders at fixed pids
+(KILLED=1000, CTL=1001, ORPHAN=1002) and `gone_within` returning what a
+passing run observes (gone for 1000 and 1002, alive for 1001). The first
+`kill 1000` / `wait 1000` in each is AC-2's own deliberate kill; everything
+after it is the cleanup. Script:
+`C:\Users\ryanc\AppData\Local\Temp\claude\4cfd7d19cf4ea1ee\13cff595-70f1-48a0-9b4b-07e8e971562b\scratchpad\probe.sh`.
+
+```
+== before (committed) ==
+pids: H91_KILLED=1000 H91_CTL=1001 H91_ORPHAN=1002
+kill 1000
+wait 1000
+kill 1000
+kill 1001
+kill 1002
+wait 1000
+wait 1001
+== after (working tree) ==
+pids: H91_KILLED=1000 H91_CTL=1001 H91_ORPHAN=1002
+kill 1000
+wait 1000
+kill 1001
+wait 1001
+```
+
+Red-run path of the new cleanup (`gone_within` stubbed to `alive` for every
+holder): every holder is still killed, so a failing run strands nothing.
+
+```
+== after, red run (no holder seen gone) ==
+pids: H91_KILLED=1000 H91_CTL=1001 H91_ORPHAN=1002
+kill 1000
+wait 1000
+kill 1000
+kill 1001
+kill 1002
+wait 1000
+wait 1001
+```
+
+Suite, under attest (`bash scripts/attest.sh -- bash scripts/selftest.sh mutate`):
+
+```
+mutate: 315 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (315 assertions executed, 315 declared).
+status:   ok
+exit:     0
+last:     1 harness suite(s) passed.
+log:      .claude/state/attest-logs/20261106T155016Z.217103.log
+```
+
+Fast gates, under attest (`bash scripts/attest.sh -- bash scripts/gates.sh --fast`):
+
+```
+status:   ok
+exit:     0
+last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+log:      .claude/state/attest-logs/20261106T155306Z.222248.log
+```
+
+**GREEN on re-entry is a no-op.** No production file changed; the
+orchestrator verifies that at re-entry.
 
 ## Diff review
 

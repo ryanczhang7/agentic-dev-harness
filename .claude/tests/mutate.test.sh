@@ -989,8 +989,12 @@ assert_eq "AC-2 precondition: hold_until_killed puts a pid in the variable it is
   "$(count_re_m '^[0-9]+$' "$H91_KILLED")"
 assert_eq "AC-2 control: the holder is alive when hold_until_killed returns" "alive" "$(is_alive "$H91_KILLED")"
 kill "$H91_KILLED" 2>/dev/null; wait "$H91_KILLED" 2>/dev/null
+# Observed once; a holder seen gone is reaped and its pid no longer ours, so
+# the cleanup must not name it (Windows reuses a freed pid quickly).
+H91_KILLED_SEEN="$(gone_within "$H91_KILLED" "$H91_POLL")"
+if [ "$H91_KILLED_SEEN" = gone ]; then H91_KILLED=""; fi
 assert_eq "AC-2: sent kill and waited for, the holder is gone within ${H91_POLL} s" "gone" \
-  "$(gone_within "$H91_KILLED" "$H91_POLL")"
+  "$H91_KILLED_SEEN"
 
 # AC-3: a holder whose shell exits without killing it - the shape of a suite
 # killed before its EXIT trap runs - goes on its own. The control is a holder
@@ -1001,14 +1005,18 @@ hold_until_killed H91_CTL
 H91_ORPHAN="$(bash -c '. "$1"; hold_until_killed p; printf %s "$p"' h91 "$TESTS_DIR/_lib.sh")"
 assert_eq "AC-3 precondition: the child shell started a holder and printed its pid" 1 \
   "$(count_re_m '^[0-9]+$' "$H91_ORPHAN")"
+H91_ORPHAN_SEEN="$(gone_within "$H91_ORPHAN" "$H91_POLL")"
+if [ "$H91_ORPHAN_SEEN" = gone ]; then H91_ORPHAN=""; fi
 assert_eq "AC-3: a holder whose shell exited without killing it is gone within ${H91_POLL} s" "gone" \
-  "$(gone_within "$H91_ORPHAN" "$H91_POLL")"
+  "$H91_ORPHAN_SEEN"
 assert_eq "AC-3 control: the suite's own holder, whose shell is still running, is alive at that moment" "alive" \
   "$(is_alive "$H91_CTL")"
 
+# Signal only holders still owned: a variable cleared above was observed gone.
+# On a red run a holder not seen gone keeps its pid and is killed here.
 for h91 in $H91_KILLED $H91_CTL $H91_ORPHAN; do kill "$h91" 2>/dev/null; done
 for h91 in $H91_KILLED $H91_CTL; do wait "$h91" 2>/dev/null; done
-H91_KILLED=""; H91_CTL=""; H91_ORPHAN=""
+H91_KILLED=""; H91_CTL=""; H91_ORPHAN=""; H91_KILLED_SEEN=""; H91_ORPHAN_SEEN=""
 
 # ===========================================================================
 # HARNESS-059: mutate.sh leaves the tree as it found it. --check sees a
