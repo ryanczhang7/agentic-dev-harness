@@ -5,7 +5,7 @@ slug: a-self-test-that-cannot-start-a-process
 epic: 
 type: bug
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-090-a-self-test-that-cannot-start-a-process
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -288,6 +288,52 @@ restore line. RED cannot run this: there is no handler to put back.
 status assertion (1) and its `1 of 4 harness suite(s) FAILED.` assertion
 must go red, and the control (hook empty, exit 0) must stay green. Paste the
 red lines and the restore line.
+
+**DV-1 result (GATES, this host, 2026-11-06).** Release 110's handler was put
+back through `mutate.sh`. Lines 471-499 (the handler's print-and-name code)
+were deleted, and line 501's `rm -rf "$BUF"` was made unconditional. The run
+was against `bash scripts/selftest.sh selftest`.
+
+- Exactly the 9 early-end assertions went red, as RED predicted: the
+  case-1 blocks and trailer, case 1's byte-for-byte compare, and case 2's
+  blocks, trailer and kept directory.
+- HARNESS-036 AC-5's TERM case (status 143, `h_left` empty) stayed green.
+  It is not among the failures.
+- The file was restored byte for byte.
+
+```
+=== mutate: scripts/selftest.sh (30 line(s) changed by 471,499d;501s/^  \[ "\$kept" = 1 \] || rm -rf/  rm -rf/) ===
+    FAIL AC-1: every started suite's block is printed, once each, in glob order
+    FAIL AC-1: e1-held's block carries its own summary line
+    FAIL AC-1: e2-done's block carries its own summary line
+    FAIL AC-1: e3-held's block carries its own summary line
+    FAIL AC-2: the run ends with an empty line, the ended-before line and the never-started line
+    FAIL AC-1: the block the early end printed for e2-done is byte for byte the summary run's
+    FAIL AC-1: the other started suites' blocks are printed, in glob order, and k3-later has none
+    FAIL AC-2 AC-4: the run ends with the ended-before, never-started, unreported and buffers-kept lines
+    FAIL AC-4: the buffer directory is still there after the run exits
+selftest: 337 passed, 9 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261106T064502Z.110758.bak) ===
+```
+
+**DV-2 result (GATES, this host, 2026-11-06).** `report_unstarted`'s
+`fails=$((fails+1))` (line 571, matched anchored) was deleted, and the run
+was against `bash scripts/selftest.sh selftest`.
+
+- AC-3's exit status, `1 of 4 ... FAILED.` and no-passed-line assertions
+  went red.
+- The control (hook empty: exit 0, `4 harness suite(s) passed.`) stayed
+  green.
+- The file was restored byte for byte.
+
+```
+=== mutate: scripts/selftest.sh (1 line(s) changed by 571{/^  fails=\$((fails+1))$/d}) ===
+    FAIL AC-3: a suite whose start failed makes the run exit 1
+    FAIL AC-3: it counts as one failure among four suites
+    FAIL AC-3: and the run does not say the suites passed
+selftest: 343 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261106T064657Z.116462.bak) ===
+```
 
 ## Amendments
 
@@ -762,3 +808,13 @@ These are claims until run against the shipped handler.
     printed" reads that way; no test pins it); a kept directory may hold
     `.start` files; a TERM mid-`report_suite` could print a block twice
     (release 110 had the same window).
+- RED's one predicted mutation, run by the orchestrator at GATES (2026-11-06):
+  `s/selftest: buffers kept:/selftest: buffers held:/`. Predicted: exactly case 2's trailer
+  assertion red, `345 passed, 1 failed`. Observed: the same.
+
+```
+=== mutate: scripts/selftest.sh (1 line(s) changed by s/selftest: buffers kept:/selftest: buffers held:/) ===
+    FAIL AC-2 AC-4: the run ends with the ended-before, never-started, unreported and buffers-kept lines
+selftest: 345 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261106T064851Z.121292.bak) ===
+```
