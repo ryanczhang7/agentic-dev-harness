@@ -4,8 +4,8 @@ title: GATES to REVIEW runs the changed-suite self-test, and says when the full 
 slug: gates-to-review-runs-the-changed-suite-s
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-095-gates-to-review-runs-the-changed-suite-s
 depends_on: [HARNESS-094]      # the command this step names exists only once 094 merges; DV-2 there measures whether it is cheaper
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/tests/procedure.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -994,3 +994,6 @@ Verdict: Ship.
     assertions met their floors.
   - The run was launched with a 600,000 ms tool timeout rather than `nohup`.
     It finished in 653 s and exited normally.
+- Merged as #180, 2026-11-06T00:22:28Z. CI on the PR: `gates` (every
+  suite) passed in 4 m 43 s, 23:17:34 to 23:22:17; `boundaries` passed in 7 s.
+  Nothing ran near a limit.
