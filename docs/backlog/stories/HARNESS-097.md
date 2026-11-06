@@ -4,8 +4,8 @@ title: check-boundaries refuses to run without its scratch directory, and cleans
 slug: check-boundaries-refuses-to-run-without
 epic: 
 type: bug
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-097-check-boundaries-refuses-to-run-without
 depends_on: [HARNESS-089]      # this story edits the lines HARNESS-089 wrote; merged as #181, DONE on main at dd97d6b
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, docs/backlog/stories/HARNESS-097.md]
@@ -237,6 +237,46 @@ sigpipe run that shows it. The comment headers at `sigpipe.test.sh` 1127,
 shapes; moving their definitions up changes no call. `section`,
 `frontmatter_value`, `suppression_hits`, `has_content` are untouched.
 
+**RED's amendments to this block (2026-11-06, test-developer), with reasons.**
+GREEN builds what this paragraph says where it differs from the fixture
+sequence above.
+
+- **The AC-1 needle is a whole `FAIL  ` line, not `refused` with the bare
+  path.** On release 110 bash's own redirect error,
+  `scripts/check-boundaries.sh: line 334: <FIX>/.claude/state/check-boundaries/copy-<pid>.md: Not a directory`,
+  goes to stderr, which `run_boundaries` captures (`2>&1`). So
+  `refused "..." ".claude/state/check-boundaries"` has its needle satisfied by
+  the defect itself; and after the fix `mkdir`'s own `cannot create directory
+  '<FIX>/.claude/state/check-boundaries': File exists` would satisfy it too.
+  The assertion is `grep -E '^FAIL  .*\.claude/state/check-boundaries'` on
+  `$out`, non-empty, which only `problem`'s prefix can produce. Observed on
+  this host, in the red pasted in the handoff.
+- **The non-zero exit is its own assertion, on a fixture whose ordinary exit
+  is 0.** Every `story_on_branch`/`crit_commit` fixture exits 1 whatever the
+  scratch directory does: a feature story at REVIEW is refused by 3e (no
+  `## Gate results`), and at any other phase by "a PR should be opened from
+  REVIEW or DONE" (observed: a GREEN fixture printed that FAIL and exited 1).
+  So the fixture is a **spike at REVIEW** that changes no source (HARNESS-081's
+  device): base copy `T-43` at PLANNED on main via `crit_base`, branch
+  `story/T-43-fixture` via `crit_branch`, the branch's story written directly
+  as `type: spike`, `phase: REVIEW`, the same `- **AC-1** - criteria v1.` and
+  an `## Amendments` entry. The twin asserts that fixture exits 0, so the
+  non-zero exit with the plain file in place is the refusal's own. On release
+  110 the plain-file run exits **0** with `ok    acceptance criteria changed,
+  with an ## Amendments entry` - the reviewer's observation, reproduced.
+- **"No line containing `acceptance criteria`" is matched case-insensitively**
+  (`grep -i`), so the `## Acceptance criteria differ` refusal counts too, as
+  the AC says. GREEN's refusal text must therefore not contain "acceptance
+  criteria" in any case; the wording proposed above does not.
+- **The twin's ordinary line is `ok    acceptance criteria unchanged since
+  main`**, pinned as a whole line (`whole_line`), and its exit 0.
+- **DV-2 reads against these three AC-1 assertions**, where its text says
+  `refused` and `assert_not_contains`: "a FAIL line names that path", "the
+  run exits non-zero" (red as `actual: 0`) and "no line mentions acceptance
+  criteria" (red naming the `ok    acceptance criteria changed, with an
+  ## Amendments entry` line). The red RED pasted in the handoff is exactly
+  that shape.
+
 **RED may amend any block above in place, with a reason; GREEN builds what the amended block says.**
 
 ## Deferred verifications
@@ -283,6 +323,63 @@ begins, so the assertion is green on its first run and would be green if it
 asserted nothing; `mutate.sh` is sanctioned in every phase; and the handoff
 has to list this assertion as passed-on-arrival with the probe that earns it.
 Paste the red line, the restore line, and the green after.
+
+*Result (RED, 2026-11-06, test-developer, this Windows host, local).* Run as
+`VERBOSE=1 bash scripts/mutate.sh scripts/check-boundaries.sh '/^trap .*check-boundaries.*EXIT$/d' -- bash .claude/state/harness-097-subset.sh`.
+The expression matches exactly one line (line 31; `grep -n` found only it).
+The output below is mutate.sh's verbatim, with the indented echo of the
+fixture's own check-boundaries lines inside AC-1's first `actual:` filtered
+out (`grep -v`) for length; nothing else removed. AC-2's emptiness assertion
+goes red naming `copy-4385.md`; the three AC-1 reds are RED's ordinary red
+(the fix does not exist yet), not caused by the mutation.
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by /^trap .*check-boundaries.*EXIT$/d) ===
+  31 - trap 'rm -rf "$ROOT/.claude/state/check-boundaries/"*-$$.*' EXIT
+
+=== mutate: running bash .claude/state/harness-097-subset.sh ===
+
+  no scratch directory, no verdict; the scratch directory is left empty (HARNESS-097)
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, a FAIL line names that path
+         expected a line starting 'FAIL  ' that names .claude/state/check-boundaries
+         actual:   mkdir: cannot create directory '/tmp/tmp.dOSw4bNb4W/.claude/state/check-boundaries': File exists
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, the run exits non-zero
+         expected: non-zero
+         actual:   0
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, no line mentions acceptance criteria
+         expected: 
+         actual:   ok    acceptance criteria changed, with an ## Amendments entry
+    ok   AC-1 twin: with the plain file gone, the same fixture reports its criteria unchanged since main
+    ok   AC-1 twin: with the plain file gone, the same fixture exits 0
+    ok   AC-2: after a run, .claude/state/check-boundaries exists as a directory
+    FAIL AC-2: after a run, .claude/state/check-boundaries is empty
+         expected: 
+         actual:   copy-4385.md
+
+boundaries-097-subset: 3 passed, 4 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/zealous-hermann-1ed224/.claude/state/mutations/scripts_check-boundaries.sh.20261106T062130Z.4213.bak) ===
+  31: trap 'rm -rf "$ROOT/.claude/state/check-boundaries/"*-$$.*' EXIT
+```
+
+The green after, same subset, file restored (`git status --short scripts/`
+printed nothing): AC-2 is green again; AC-1 stays red until GREEN.
+
+```
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, a FAIL line names that path
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, the run exits non-zero
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, no line mentions acceptance criteria
+    ok   AC-1 twin: with the plain file gone, the same fixture reports its criteria unchanged since main
+    ok   AC-1 twin: with the plain file gone, the same fixture exits 0
+    ok   AC-2: after a run, .claude/state/check-boundaries exists as a directory
+    ok   AC-2: after a run, .claude/state/check-boundaries is empty
+boundaries-097-subset: 4 passed, 3 failed
+```
+
+Only `copy-<pid>.md` is left behind, not `diff-<pid>.txt`: this fixture's
+run never writes `$dp` (no RED-phase manifest or GREEN/GATES source commit
+to diff). AC-2 asserts "empty", so a stray `diff-*.txt` would fail it too;
+the mutation simply cannot show one on this fixture.
 
 **DV-2 (AC-1, defect put back; the story's central claim). Owner: GATES.**
 With the exit check removed from the `mkdir -p` line, restoring release 110's
@@ -344,6 +441,8 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+- RED, test-developer, claude-opus-5-5 (Opus 5.5; as planned, no override)
+
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -378,6 +477,37 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One describe, `no scratch directory, no verdict; the scratch directory is left
+empty (HARNESS-097)`, in `.claude/tests/boundaries.test.sh` after the two
+HARNESS-089 describes and before "a BLOCKED gate can reach REVIEW". Level:
+integration - the real `scripts/check-boundaries.sh`, copied into a real
+two-branch fixture repository by `make_project_fixture`, run through
+`run_boundaries`. That is the cheapest level that can see either criterion:
+both are about what the whole script prints and leaves on disk.
+
+Fixture: `T-43`, base copy at PLANNED on main (`crit_base`), branch
+`story/T-43-fixture` (`crit_branch`) holding the story as a **spike at
+REVIEW** with the same criteria and an `## Amendments` entry - the one shape
+whose ordinary exit is 0 and whose empty-baseline verdict is the reviewer's
+`ok ... changed`. See the Contract's RED amendments for why not
+`story_on_branch`.
+
+| # | Assertion | AC | On release 110 |
+|---|---|---|---|
+| 1 | with a plain file at the path, a line matching `^FAIL  .*\.claude/state/check-boundaries` exists | AC-1 | red |
+| 2 | with the plain file, `$rc` is non-zero | AC-1 | red (`actual: 0`) |
+| 3 | with the plain file, `grep -i 'acceptance criteria'` over `$out` is empty | AC-1 | red (names the `ok ... changed` line) |
+| 4 | plain file gone: `ok    acceptance criteria unchanged since main` is a whole line, once | AC-1 twin | green |
+| 5 | plain file gone: `$rc` is 0 | AC-1 twin | green |
+| 6 | after that run `.claude/state/check-boundaries` is a directory | AC-2 | green |
+| 7 | after that run `ls -A` on it is empty (`assert_eq ""`) | AC-2 | green on arrival; earned by DV-1 |
+
+Edges: the "cannot create" edge is the plain file (the only one portable to a
+Windows host); "any status" in AC-2 is covered by the twin's exit-0 run, and
+the trap is `EXIT` so a non-zero run takes the same path. Finding 2 has no
+test (Out of scope). The plain file is removed before the twin run and before
+the describe ends, with a comment saying why.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -397,6 +527,173 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the test-developer (claude-opus-5-5), 2026-11-06, on this Windows
+host (Git for Windows bash). Every timing below is local; nothing here came
+from CI.
+
+**Commands.**
+
+- Narrowest, for iterating and for DV-1/DV-2: `bash .claude/state/harness-097-subset.sh`
+  (about 5 s). It is gitignored and never committed: lines 1-108 of
+  `boundaries.test.sh` (preamble and helpers through `whole_line`, with the
+  `_lib.sh` source path rewritten to `../tests/_lib.sh`), lines 335-375 (the
+  `crit_*` helpers and `crit_main_before`), the HARNESS-097 describe verbatim,
+  and `summary boundaries-097-subset`. Rebuild it the same way if it is gone:
+
+      W=$PWD; T=.claude/tests/boundaries.test.sh
+      s=$(grep -n 'describe "no scratch directory' $T | cut -d: -f1); e=$(grep -n 'describe "a BLOCKED gate' $T | cut -d: -f1)
+      { sed -n 1,108p $T | awk '{ if ($0 == ". \"$(dirname \"${BASH_SOURCE[0]}\")/_lib.sh\"") print ". \"$(dirname \"${BASH_SOURCE[0]}\")/../tests/_lib.sh\""; else print }'
+        sed -n 335,375p $T; sed -n "$((s-1)),$((e-2))p" $T; printf '\nsummary boundaries-097-subset\n'; } > .claude/state/harness-097-subset.sh
+
+- Full suite, once: `bash scripts/attest.sh -- bash scripts/selftest.sh boundaries`
+  (1049 s here this time - faster than the 45 min HARNESS-089 saw).
+- `bash scripts/attest.sh -- bash scripts/gates.sh --fast`.
+
+**Attest records.**
+
+    run:      2026-11-06T06:24:37Z
+    command:  bash scripts/selftest.sh boundaries
+    tree:     2162a2172b6fe75dfe6d5f8d68219e62c890dcd8
+    after:    2162a2172b6fe75dfe6d5f8d68219e62c890dcd8
+    status:   ok
+    exit:     1
+    duration: 1049s
+    last:     1 of 1 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261106T062437Z.14898.log
+
+    run:      2026-11-06T06:42:38Z
+    command:  bash scripts/gates.sh --fast
+    tree:     2162a2172b6fe75dfe6d5f8d68219e62c890dcd8
+    after:    2162a2172b6fe75dfe6d5f8d68219e62c890dcd8
+    status:   ok
+    exit:     0
+    duration: 1s
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261106T064238Z.104884.log
+
+`gates.sh --fast` ran nothing: every gate in `project.conf` is UNCONFIGURED
+(BOOTSTRAPPED=no) and `mutation` is ON REQUEST, so its exit 0 says nothing
+about these tests, as HARNESS-089 recorded. The suite that judges this story
+is `selftest.sh boundaries`, above.
+
+**The red, verbatim from the full-suite log** (lines 27-46; line 40 is
+`           spike story; gate record not required`, part of the first
+`actual:`). These are the only FAIL lines in the whole suite:
+
+```
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, a FAIL line names that path
+         expected a line starting 'FAIL  ' that names .claude/state/check-boundaries
+         actual:   mkdir: cannot create directory '/tmp/tmp.OSjvx12gPt/.claude/state/check-boundaries': File exists
+         ok    story files validated
+         ok    harness state not tracked
+         ok    source changes accompanied by test changes (0 source, 0 test)
+         ok    story T-43 is in REVIEW
+         ok    branch matches the story's frontmatter
+         scripts/check-boundaries.sh: line 334: /tmp/tmp.OSjvx12gPt/.claude/state/check-boundaries/copy-23590.md: Not a directory
+         awk: fatal: cannot open file `/tmp/tmp.OSjvx12gPt/.claude/state/check-boundaries/copy-23590.md' for reading: Not a directory
+         scripts/check-boundaries.sh: line 376: /tmp/tmp.OSjvx12gPt/.claude/state/check-boundaries/copy-23590.md: Not a directory
+         awk: fatal: cannot open file `/tmp/tmp.OSjvx12gPt/.claude/state/check-boundaries/copy-23590.md' for reading: Not a directory
+         ok    acceptance criteria changed, with an ## Amendments entry
+           spike story; gate record not required
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, the run exits non-zero
+         expected: non-zero
+         actual:   0
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, no line mentions acceptance criteria
+         expected: 
+         actual:   ok    acceptance criteria changed, with an ## Amendments entry
+...
+boundaries: 542 passed, 3 failed
+FAIL boundaries  did 542 units of work, below the floor of 545 in .claude/tests/floors.conf
+```
+
+Why it is the right failure: the run reaches every check, the `mkdir -p`
+failure is ignored, both `git show > "$cp"` redirects fail with `Not a
+directory`, and the criteria are judged against an empty baseline - the
+reviewer's `ok    acceptance criteria changed, with an ## Amendments entry`,
+with exit **0**: a PR CI would have merged on evidence it never read. The
+twin (same fixture, directory creatable) prints `ok    acceptance criteria
+unchanged since main` and exits 0, so the red is the directory's.
+542 + 3 = **545 executed** = 538 before + 7 new; the floor is raised to
+545, and boundaries sits 3 below it until GREEN, as expected in RED.
+
+**Files touched.**
+
+- `.claude/tests/boundaries.test.sh` - the HARNESS-097 describe (7 assertions;
+  AC-1 3, AC-1 twin 2, AC-2 2 - see `## Test plan` for one line each).
+- `.claude/tests/floors.conf` - `floor | boundaries | 538` -> `545`, with the
+  HARNESS-097 comment at the end of the file.
+- `.claude/tests/selftest.test.sh` - the table row `boundaries 538` -> `545`.
+- `docs/backlog/stories/HARNESS-097.md` - Contract (RED's amendments), DV-1's
+  result, Model guidance Resolved line, Test plan, this Handoff.
+- Not touched: `scripts/check-boundaries.sh` (only through `mutate.sh`,
+  restored and verified), `.claude/tests/sigpipe.test.sh` (R-1, as planned).
+- Scratch, ignored: `.claude/state/harness-097-subset.sh`.
+
+**What the tests pin, exactly (GREEN's surface - there are no exports; this
+is a script's output).**
+
+- With a plain file at `$ROOT/.claude/state/check-boundaries`, at least one
+  stdout/stderr line must match the ERE `^FAIL  .*\.claude/state/check-boundaries`
+  - i.e. printed by `problem` (prefix `FAIL` + two spaces) and containing the
+  repository-relative path `.claude/state/check-boundaries`. The absolute
+  `$ROOT/...` path also matches, since it contains the relative one.
+- That run exits non-zero.
+- That run prints **no line containing `acceptance criteria` in any case**.
+  So the refusal message must not say "acceptance criteria" (the Contract's
+  proposed wording says "the criteria", which is fine), and the script must
+  stop before 3d - the Contract's `exit 1` does.
+- Directory creatable: the run prints the whole line
+  `ok    acceptance criteria unchanged since main` exactly once and exits 0 on
+  this spike fixture - so nothing GREEN adds may print a `FAIL` or change the
+  status on an ordinary run.
+- After that run `.claude/state/check-boundaries/` exists and is empty.
+- **Not constrained:** the rest of the refusal wording; whether `mkdir`'s
+  own stderr line also appears; whether `note`/`problem`/`ok` move (the
+  Contract says they do); what else is printed before the refusal (lines from
+  checks before the mkdir would be allowed, though there are none today).
+
+**Passed on arrival, and what earns it.** Assertions 4-7 (the twin and AC-2)
+are green on release 110. AC-2's emptiness assertion (7) is the one that
+pins a pre-existing behaviour and is earned by **DV-1**, run in RED: with the
+`trap ... EXIT` line deleted by `mutate.sh`, it went red naming
+`copy-4385.md`; restored, verified byte for byte, green again. Output in
+`## Deferred verifications`, DV-1. Assertion 6 (is a directory) is a
+precondition of 7 and is not separately earned. The twin assertions 4-5 are
+controls, not claims about the fix: they are what makes 2 and 3 say
+something about the directory rather than the fixture.
+
+**Controls, measured** (by running the subset and the full suite against
+the shipped release-110 script; the suite does not fail at import, so these
+did execute):
+
+| Control | Expected after GREEN | Measured on release 110 |
+|---|---|---|
+| fixture's ordinary exit (twin, assertion 5) | 0 | 0 |
+| fixture's ordinary criteria line (twin, assertion 4) | `ok    acceptance criteria unchanged since main`, once | same, once |
+| plain-file run exit (assertion 2) | non-zero | 0 |
+| plain-file run, lines matching `acceptance criteria` (-i) (assertion 3) | none | 1: `ok    acceptance criteria changed, with an ## Amendments entry` |
+| plain-file run, lines matching `^FAIL  .*\.claude/state/check-boundaries` (assertion 1) | at least 1 | 0 (the path appears 5 times, all in `mkdir:`/bash/awk stderr lines, none a FAIL) |
+| DV-1: trap deleted, `ls -A` after run (assertion 7) | red, names `copy-<pid>.md` | `copy-4385.md` |
+
+**Discovered.**
+
+1. `refused` with the bare path, as the Contract first proposed, has a needle
+   the defect satisfies: bash's redirect error and awk's `cannot open file`
+   both print `.../.claude/state/check-boundaries/copy-<pid>.md` on stderr,
+   which `run_boundaries` captures. Hence the whole-`FAIL`-line needle
+   (Contract, RED's amendments).
+2. Every feature-story fixture exits 1 whatever this story does (3e at
+   REVIEW; "a PR should be opened from REVIEW or DONE" at GREEN, observed), so
+   the non-zero-exit half of AC-1 needed the spike-at-REVIEW fixture.
+3. The untracked plain file trips no other rule: `ok    harness state not
+   tracked` and every other pre-criteria check print `ok` with it in place.
+4. sigpipe: not run in RED (R-1 belongs to GREEN). Moving `note`,
+   `problem`, `ok` up nets zero lines; the `mkdir ... || { ...; }` refusal
+   adds lines above 399 unless it stays on the one line it replaces, and
+   finding 2 removes none (it edits lines in place), so expect R-1.
+5. `check-sigpipe.sh` and `check-grep-count.sh` are clean over the edited
+   suite (62 files, 0 findings).
 
 ## Regressions
 
@@ -484,3 +781,11 @@ name, below the table.
   six conflicts the same way; `--pairs` prints nothing, no `UNKNOWN`, no
   `DRIFT`. One story at a time, in the one worktree.
 
+- **RED verified by the orchestrator (2026-11-06, Opus 5.5).** Read the new
+  describe (`boundaries.test.sh` 716-797). `attest.sh check` answered `fresh`
+  for both `bash scripts/selftest.sh boundaries` (exit 1, 1049 s, log
+  `20261106T062437Z.14898.log`) and `bash scripts/gates.sh --fast` (exit 0,
+  0 ran, 5 unconfigured), so neither was re-run. The log's only `FAIL` lines
+  are AC-1's three assertions plus the expected floor line (`542 units of
+  work, below the floor of 545`); the twin and AC-2 are green.
+  `mutate.sh --check` is clean.

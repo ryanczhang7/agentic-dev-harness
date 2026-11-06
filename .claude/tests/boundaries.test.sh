@@ -713,6 +713,88 @@ rm -rf "$FIX/hs"
 
 
 # ---------------------------------------------------------------------------
+describe "no scratch directory, no verdict; the scratch directory is left empty (HARNESS-097)"
+
+# check-boundaries.sh writes every story copy and git show result to a scratch
+# file under .claude/state/check-boundaries/ (HARNESS-089). At release 110 the
+# `mkdir -p` that makes that directory ignored its status: with a plain file at
+# the path every `git show ... > "$cp"` failed with `Not a directory`, the
+# criteria were judged against an empty baseline, and the run printed a verdict
+# - `ok    acceptance criteria changed, with an ## Amendments entry` - read
+# from evidence it never had (HARNESS-089's diff review, finding 1). A run that
+# cannot read its evidence refuses instead.
+#
+# The fixture is the reviewer's: a base copy at PLANNED on main, the branch at
+# REVIEW with the SAME criteria and an ## Amendments entry. With the directory
+# the run says `unchanged since main`; without it the empty baseline differs
+# from everything, and the amendment turns that into `ok ... changed`. The
+# branch's story is a SPIKE, which is what makes $rc mean something: a feature
+# story at REVIEW needs a ## Gate results record only gates.sh can write, and at
+# any other phase is refused as "a PR should be opened from REVIEW", so every
+# feature fixture exits 1 whatever the scratch directory does. A spike at REVIEW
+# that changes no source exits 0 - checked by the twin below - so the non-zero
+# exit asserted with the plain file in place is the refusal's own.
+crit_base   T-43 PLANNED "criteria v1"
+crit_branch T-43
+{ printf -- '---\nid: T-43\ntitle: Fixture story\nslug: fixture\ntype: spike\nstatus: todo\nphase: REVIEW\nbranch: story/T-43-fixture\n---\n\n'
+  printf -- '## Acceptance criteria\n\n- **AC-1** - criteria v1.\n\n## Handoff: RED -> GREEN\n\nthe command, the failure, the export shape.\n'
+  printf -- '\n## Amendments\n\nAC-1 unchanged; this entry exists so that an empty baseline reads as an amended change.\n'
+} > "$FIX/docs/backlog/stories/T-43.md"
+commit_all "T-43 at REVIEW, a spike"
+
+# The precondition: a plain file where the directory goes. make_fixture made
+# $FIX/.claude/state, so the parent exists; `mkdir -p` over a plain file exits 1
+# with `File exists` on Git for Windows bash and on Linux alike.
+rm -rf "$FIX/.claude/state/check-boundaries"
+: > "$FIX/.claude/state/check-boundaries"
+run_boundaries
+
+# The needle is a whole FAIL line, never the bare path: at release 110 bash's
+# own redirect error - `.../.claude/state/check-boundaries/copy-<pid>.md: Not a
+# directory`, on stderr, which run_boundaries captures - already carries the
+# path, so `refused "..." ".claude/state/check-boundaries"` passes over the
+# defect. Only a line that starts `FAIL  ` (problem's prefix) counts.
+cb_fail_lines="$(grep -E '^FAIL  .*\.claude/state/check-boundaries' <<< "$out")"
+if [ -n "$cb_fail_lines" ]; then
+  _ok "AC-1: with a plain file at .claude/state/check-boundaries, a FAIL line names that path"
+else
+  _bad "AC-1: with a plain file at .claude/state/check-boundaries, a FAIL line names that path" \
+    "expected a line starting 'FAIL  ' that names .claude/state/check-boundaries
+actual:   $out"
+fi
+assert_eq "AC-1: with a plain file at .claude/state/check-boundaries, the run exits non-zero" \
+  non-zero "$([ "$rc" -ne 0 ] && echo non-zero || echo "$rc")"
+# No criteria verdict of any kind: neither `ok    acceptance criteria ...` nor
+# the `## Acceptance criteria differ` refusal, so the match ignores case.
+assert_eq "AC-1: with a plain file at .claude/state/check-boundaries, no line mentions acceptance criteria" \
+  "" "$(grep -i 'acceptance criteria' <<< "$out")"
+
+# The plain file goes BEFORE anything else runs: every later check-boundaries
+# run in this suite shares $FIX, and with the file in place each would be
+# refused for AC-1's reason rather than judged on its own.
+rm -f "$FIX/.claude/state/check-boundaries"
+run_boundaries
+
+# The twin: the same fixture, directory creatable, gets its ordinary verdict and
+# its ordinary status - so the refusal above is the directory's, not the
+# fixture's.
+whole_line "AC-1 twin: with the plain file gone, the same fixture reports its criteria unchanged since main" \
+  "ok    acceptance criteria unchanged since main"
+assert_eq "AC-1 twin: with the plain file gone, the same fixture exits 0" 0 "$rc"
+
+# AC-2: the run has exited, and its scratch files went with it. Passes on
+# arrival - the trap predates this story - and is earned by DV-1, which deletes
+# the trap and watches this name the copy-<pid>.md it leaves behind.
+assert_eq "AC-2: after a run, .claude/state/check-boundaries exists as a directory" \
+  directory "$([ -d "$FIX/.claude/state/check-boundaries" ] && echo directory || echo missing)"
+assert_eq "AC-2: after a run, .claude/state/check-boundaries is empty" \
+  "" "$(ls -A "$FIX/.claude/state/check-boundaries" 2>&1)"
+
+git -C "$FIX" checkout -q main 2>/dev/null
+git -C "$FIX" reset -q --hard "$crit_main_before" 2>/dev/null
+
+
+# ---------------------------------------------------------------------------
 describe "a BLOCKED gate can reach REVIEW, but only with the decision written down"
 
 # H16's third state. A required gate that the environment would not launch has
