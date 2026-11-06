@@ -173,7 +173,12 @@ release 77's. Every new behaviour is conditioned on `BUF_MADE=1`.
   `RCS[$printed]` is set (as today: `suite_header`, `out="$(cat ...)"`,
   `report_suite`) or `STARTERR[$printed]` is set (`report_unstarted`).
 - **`selftest_exit`**, in this order, with `st=$?` captured as its first
-  statement:
+  statement and `trap '' INT TERM` as its second (amended after the
+  first diff review, finding 2: a second signal during the drain must not
+  end the handler before it prints and releases the lock). "Every started
+  index" below means every index below `${#PIDS[@]}`, not below `started`
+  (finding 1: `started` moves only after `start_suite` returns, so a
+  signal during its last steps would hide a running suite):
   1. **Drain, collecting.** For each started index with a pid still
      recorded: `suite_status "$pid"; RCS[$i]=$?; PIDS[$i]=""`. Today's
      drain only waits; collecting here is what lets step 3 print, and a
@@ -709,6 +714,75 @@ These are claims until run against the shipped handler.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+## Diff review
+
+**First review (2026-11-06), against `main...88ac158`.** A fresh
+`feature-developer` ran it with the `diff-review` skill, on Opus 5.5
+(`claude-opus-5-5`) with no override. It changed no file, and
+`mutate.sh --check` was clean.
+
+**Must fix**
+
+1. **A signal shortly after a suite starts loses that suite**
+   (`selftest.sh:457`, `n="${started:-0}"`).
+   - `start_suite` records `PIDS[$i]` and then runs `rm -f .start`, a
+     separate process. Only after it returns does the scheduler increment
+     `started`.
+   - So a TERM or INT during that `rm` reaches the handler with `started`
+     one short. The handler never waits for suite `i`: it calls it "never
+     started", removes the buffers and releases `run.lock` while the suite
+     still runs. `main`'s handler looped over `${#PIDS[@]}` and waited for
+     it.
+   - The reviewer reproduced it in a scratch copy, with the window widened
+     by a `sleep 3`. HEAD gave `rc=143 at 4 s`,
+     `0 of 2 suite(s) reported`, `never started: a b`, and an empty state
+     directory while suite `a` was still running. `main` waited 6 s.
+   - Fix: `n="${#PIDS[@]}"`. `start_suite` blanks `PIDS[$i]` first, so the
+     array is dense.
+
+**Should fix**
+
+2. **A second signal during the handler's wait ends it** before it prints
+   anything or releases the lock (traps 507-508). Measured on HEAD and on
+   `main`: two TERMs 1.5 s apart give `rc=143`, empty stdout, and `run.lock`
+   and `selftest.<pid>/` left behind. The new comment says nothing may end
+   the handler before the lock is released. Fix: `trap '' INT TERM` right
+   after `st=$?`.
+3. **No test reaches the handler's failed-start branch** (476-478).
+   Replacing it with "mark unreported, keep buffers" survived:
+   `selftest: 346 passed, 0 failed`, restored byte for byte.
+
+**Checked and sound:**
+- every exit path, and the serial path is byte-identical;
+- `set -u` defaults;
+- the non-zero exit is kept.
+
+**Pid reuse:** 0 repeats in 400 back-to-back starts on this host, and Linux
+assigns pids in sequence. So the `LASTPID` test shows no false failure. A
+real fork failure is fatal to the shell, so that branch fires only on a
+failed `2> .start` redirect or the hook.
+
+**Callers:** CI, `ci-local.sh`, `attest.sh`, `selftest-needed.sh` and the
+suites read the exit status only. No test pins `selftest.sh` line numbers.
+
+**Not checked:** the handler's own `$(cat)` fork on a host whose fork is
+still failing (cannot be produced here).
+
+Verdict: fix 1 first.
+
+**Orchestrator:**
+- **Finding 1** was confirmed by reading lines 457 and 597-608 and the
+  scheduler at 659-665: `started` moves only after `start_suite` returns,
+  and the `rm` runs before that.
+- **All three are taken.** 2 and 3 each need a test, so the story returns to
+  RED once for both (R-1). GREEN then makes fixes 1 and 2.
+- **Fix 2 needs no amendment:** AC-1 says the run survives an end "for any
+  reason (a signal ...)", and a second signal is one.
+- **Fix 1 gets no test of its own.** Its window is the length of one `rm`,
+  which a portable test cannot hold open without a second hook in production
+  code. The reviewer's widened-window reproduction is its evidence, and
+  `main`'s behaviour, which the fix restores, is the reference.
 
 ## Gate results
 
