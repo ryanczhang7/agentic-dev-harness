@@ -4,11 +4,11 @@ title: a self-test that cannot start a process keeps every result it has and nam
 slug: a-self-test-that-cannot-start-a-process
 epic: 
 type: bug
-status: todo
-phase: PLANNED
+status: done
+phase: DONE
 branch: story/HARNESS-090-a-self-test-that-cannot-start-a-process
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
-touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]  # provisional, from the field report; the PO confirms at PLANNED
+touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
 required_gates: []  # every gate is unconfigured here; the artifact is judged by selftest (see Context)
 ---
 
@@ -59,97 +59,286 @@ The artifact is judged by `bash scripts/selftest.sh selftest`, which CI runs.
 
 ## Acceptance criteria
 
-<!-- Draft from the field report - the PO refines before RED. -->
+All four are **mechanical**: exact lines, exit statuses, and the presence or
+absence of files. Each applies to the parallel path only (`SELFTEST_JOBS` of
+2 or more, two or more suites); the one-at-a-time path is out of scope, and
+stays byte-identical to release 77 as HARNESS-036 AC-1 pins it.
 
-- **AC-1** — Given a parallel run (`SELFTEST_JOBS` ≥ 2) in which some suites
-  have finished but not yet been printed, when the run ends before its summary
-  for any reason (a signal, a failed fork, an error in the scheduler), then
-  every finished suite's block is printed before exit, in glob order, with its
-  pass/fail line. The negative control is the current `selftest_exit` put
-  back, which prints none of them.
-- **AC-2** — Given the same early end, then the last lines name each suite
-  that never started and each one still running or unreported. The exit
-  status is non-zero, and the output never contains `harness suite(s)
-  passed.`.
-- **AC-3** — Given a suite whose start fails (the `bash ... &` cannot fork),
-  then that suite is reported as **not started**, with the error, and counted
-  as a failure. The scheduler goes on filling free slots with the remaining
-  suites rather than stopping. The Contract chooses the injection, for example
-  a test hook that makes the Nth start fail; it must not depend on exhausting
-  the host's real process table.
-- **AC-4** — Given an early end, the buffer directory is kept if anything in
-  it was not printed, and its path is printed, so a result is never lost
-  silently. It is still removed on a run that printed everything.
+- **AC-1 (a finished suite is never lost)** — Given a parallel run in which
+  some suites have finished but not yet been printed, when the run ends
+  before its summary for any reason (a signal, a fork bash does not return
+  from, an error in the scheduler), then every started suite's block is
+  printed before exit, in glob order, exactly as a run that reached its
+  summary prints it: the `=== <name> ===` header, the suite's output, and the
+  same verdict lines. A suite still running when the end comes is waited for,
+  as today, and printed too. The negative control is release 110's
+  `selftest_exit` put back, which prints none of them (DV-1).
+- **AC-2 (what is missing is named, and nothing says "passed")** — Given the
+  same early end, then after the last block the run prints, on stdout, an
+  empty line and then `selftest: ended before its summary: <p> of <n>
+  suite(s) reported (status <s>).`, where `<p>` counts the blocks printed,
+  `<n>` the suites selected and `<s>` the status the run was ending with.
+  Then `selftest: never started: <names>` naming, in glob order, every
+  selected suite that was never started, and `selftest: unreported:
+  <names>` naming every started suite whose block could not be printed (its
+  status was not collected, or its buffer is not a readable file). Each
+  naming line is printed only when it names at least one suite. The exit
+  status is `<s>` when `<s>` is not zero (a TERM still exits 143), and 1
+  otherwise. The output never contains `harness suite(s) passed.` and never
+  an `assertion floors:` line.
+- **AC-3 (a start the scheduler sees fail is reported, and the run goes on)**
+  — Given a suite whose start fails in a way the scheduler can see — the
+  `&` reports failure, `$!` did not change, or the test hook
+  `SELFTEST_FAIL_START` names the suite — then that suite's block, at its
+  place in glob order, is its header and one line, `FAIL <name>  not
+  started: <error>`; it counts as one failure and one suite in `<f> of <r>
+  harness suite(s) FAILED.`, contributes nothing to the `assertion floors:`
+  line, and the exit status is 1. Every suite after it in glob order still
+  starts and is reported as usual. The injection is the hook: with
+  `SELFTEST_FAIL_START` holding the suite's name, its start is not attempted
+  and its error is `fork: simulated by SELFTEST_FAIL_START`. The test never
+  depends on exhausting the host's process table. A fork failure bash does
+  not return from ends the shell (measured below), and is covered by AC-1,
+  AC-2 and AC-4, not by this criterion.
+- **AC-4 (the buffers outlive a result that could not be printed)** — Given
+  an early end, when every started suite's block was printed, then the
+  buffer directory is removed as today; when any started suite is
+  unreported, then the directory is kept and `selftest: buffers kept:
+  .claude/state/selftest.<pid>/` is printed after the naming lines. A run
+  that reaches its summary removes it as today.
 
 ## Contract
 
-<!-- Written by the Lead PO BEFORE RED, and AMENDABLE BY RED IN PLACE with a
-     reason - GREEN then builds what the amended block says. This is where "RED
-     tested one shape and GREEN built another" is prevented, and it is not the
-     acceptance criteria: the criteria are frozen and change only through
-     ## Amendments; this is a working agreement RED is expected to sharpen.
-     One block per thing the story touches:
-       * the files it WRITES, on one line at column 0 that starts
-         `**Writes:**`, each path backticked and repository-relative:
-           **Writes:** `src/core/world.ts`, `tests/world.test.ts`
-         `bash scripts/plan.sh conflicts` compares it with `touches:` and prints
-         DRIFT for a written file `touches:` does not cover. Without the line
-         there is no DRIFT at all, and files the prose merely cites never count
-       * module paths and exported names, exactly
-       * exact signatures, and the types the assertions will destructure
-       * THE SEMANTICS BEHIND EACH NUMBER - not clamp(latitude) but "latitude
-         clamps at +/-85, and dragging DOWN brings the north into view". One
-         sentence per number settles a sign error in one line
-       * the accessible markup for anything user-facing: roles, labels, what is
-         a sibling of what
-       * the oracle partition of the criteria (settled / oracle-free /
-         mechanical - see story-authoring)
-       * baseline measurements the story may read out rather than re-derive,
-         each with what it was measured on
-       * TEST-ONLY DEPENDENCIES this story is likely to need, by name. RED
-         may add them itself, but only inside the dev block - so a library
-         production will ALSO use is a GREEN change and is better decided
-         here than discovered mid-phase. Where the ecosystem has no dev
-         block at all (go.mod, requirements.txt, *.csproj), RED cannot
-         declare one and the phase round trip is yours to plan for
-       * FOR EVERY EXISTING EXPORT WHOSE SIGNATURE THIS STORY CHANGES: every
-         caller, source and test, grep-listed here before dispatch. RED cannot
-         find these itself - the old signature still exists during RED, so a
-         caller of it still compiles and is absent from RED's typecheck. One
-         such file went missing and took 25 tests with it, silently, at GREEN. -->
+**Writes:** `scripts/selftest.sh`, `.claude/tests/selftest.test.sh`, `.claude/tests/floors.conf`, `.claude/harness/VERSION`
+
+**Oracle partition.** All four criteria are mechanical. The only measurement
+the story rests on, taken on this host on 2026-11-06 (Git for Windows,
+`GNU bash 5.3.15 x86_64-pc-cygwin`): a fatal error inside a top-level
+compound command of a non-interactive bash ends the shell rather than the
+command. `bash -c 'v="a-b"; while :; do echo in; echo "${!v}"; echo never;
+done; echo after'` printed `in`, the error, and nothing else, status 1. That
+is bash's `throw_to_top_level`, the same path a failed `fork` takes, so the
+field report's run (no summary, the EXIT handler ran, status 254) is an early
+end of the shell, not a scheduler that kept going. Everything the run can
+still do at that point happens in the EXIT handler. `ulimit -u` is not
+settable here (`cannot modify limit`), which is why the real fork failure is
+never produced in a test.
+
+**The defect, by line, at `dd97d6b`.** `scripts/selftest.sh` lines 427-435,
+`selftest_exit`: it waits for any suite still running, then `rm -rf "$BUF"`,
+then releases the lock. Nothing prints a block for a finished suite the main
+loop (lines 548-586) had not yet printed, nothing names the suites never
+started, and the buffer directory goes regardless. The script runs under
+`set -uo pipefail` (line 98), so every array element the handler reads must
+be initialised or read with a default.
+
+**The fix (GREEN), parallel path only.** The one-at-a-time path (lines
+506-519) does not change by a byte: HARNESS-036 AC-1 compares its output to
+release 77's. Every new behaviour is conditioned on `BUF_MADE=1`.
+
+- **`LOOP_DONE`.** A new variable, `LOOP_DONE=0`, set beside `BUF_MADE=0`,
+  and set to `1` immediately after the parallel loop's closing `done`,
+  before the summary. The handler treats `BUF_MADE=1` and `LOOP_DONE=0` as
+  the early end.
+- **`start_suite <index>`.** The inline start (lines 551-553) moves into one
+  function, called as `start_suite "$started"`, next to `suite_status`
+  (which stays one line, exactly: HARNESS-036 DV-1 targets it). It reads
+  `name="${NAMES[$i]}"`, and:
+  1. If `$name` is one of the words in `SELFTEST_FAIL_START` (read once at
+     start-up as `FAIL_START="${SELFTEST_FAIL_START-}"`; documented in the
+     script's header as a test hook, nothing more), it sets
+     `STARTERR[$i]="fork: simulated by SELFTEST_FAIL_START"` and returns 1
+     without starting anything.
+  2. Else it runs `{ bash "$TESTS_DIR/$name.test.sh" > "$BUF/$name.out" 2>&1 & } 2> "$BUF/$name.start"; rc=$?`
+     and reads `pid="${!-}"`. The group's stderr is where bash itself
+     prints a fork error; the child's own `2>&1` still sends the suite's
+     stderr into its `.out`.
+  3. The start failed when `rc` is not 0, or when `pid` is empty or equal to
+     `LASTPID` (the pid of the previous successful start; `$!` is not
+     updated by a failed fork). Then `STARTERR[$i]` is the first line of
+     `$BUF/$name.start`, or `start failed (status <rc>)` when that file is
+     empty, and the function returns 1.
+  4. Otherwise `PIDS[$i]=$pid`, `LASTPID=$pid`, `RCS[$i]=""`,
+     `STARTERR[$i]=""`, the `.start` file is removed, and it returns 0.
+
+  The scheduler increments `started` either way and `running` only on 0. A
+  failed start therefore refills the slot with the next name on the next
+  pass of the same inner loop, which is AC-3's "goes on".
+- **`report_unstarted <name> <error>`.** Beside `report_suite`, for both the
+  main loop and the handler: `suite_header "$name"`, then
+  `printf 'FAIL %s  not started: %s\n' "$name" "$err"`, then `ran=$((ran+1))`
+  and `fails=$((fails+1))`. It touches none of `floored`, `met`, `executed`,
+  `declared`.
+- **The print loop** (lines 568-574) prints index `printed` when either
+  `RCS[$printed]` is set (as today: `suite_header`, `out="$(cat ...)"`,
+  `report_suite`) or `STARTERR[$printed]` is set (`report_unstarted`).
+- **`selftest_exit`**, in this order, with `st=$?` captured as its first
+  statement and `trap '' INT TERM` as its second (amended after the
+  first diff review, finding 2: a second signal during the drain must not
+  end the handler before it prints and releases the lock). "Every started
+  index" below means every index below `${#PIDS[@]}`, not below `started`
+  (finding 1: `started` moves only after `start_suite` returns, so a
+  signal during its last steps would hide a running suite):
+  1. **Drain, collecting.** For each started index with a pid still
+     recorded: `suite_status "$pid"; RCS[$i]=$?; PIDS[$i]=""`. Today's
+     drain only waits; collecting here is what lets step 3 print, and a
+     second `wait` on the same pid would return 127.
+  2. If not the early end (`BUF_MADE` not 1, or `LOOP_DONE=1`): remove the
+     buffer directory if made and release the lock, exactly as today. Done.
+  3. **Print what it has.** For `i` from `printed` to `started-1`, in order:
+     a `STARTERR` entry gets `report_unstarted`; otherwise, if `RCS[$i]` is
+     set and `$BUF/$name.out` is a regular file that `cat` can read, the
+     block is printed as the main loop prints it (`suite_header`,
+     `out="$(cat ...)"`, `report_suite`) and `printed` advances; otherwise
+     the name is appended to `unreported` and `kept=1`.
+  4. **Name the rest.** `printf '\n'`, then
+     `selftest: ended before its summary: <printed> of <NSUITES> suite(s) reported (status <st>).`;
+     then `selftest: never started: <NAMES[started..NSUITES-1], space-separated>`
+     if any; then `selftest: unreported: <names>` if any; then, if
+     `kept=1`, `selftest: buffers kept: .claude/state/selftest.<pid>/`. All
+     on stdout.
+  5. `[ "$kept" = 1 ] || rm -rf "$BUF"`; `run_lock_release`; then
+     `exit "$st"` if `st` is not 0, else `exit 1`.
+
+  Printing goes through `report_suite`, so `ran` and `fails` move, but the
+  summary lines (`assertion floors:`, `N of M harness suite(s) FAILED.`,
+  `N harness suite(s) passed.`) are never printed from the handler.
+- **No change** to `suite_header`, `report_suite`, `suite_status`,
+  `executed_count`, `floor_of`, the lock, the host-load warning, or the
+  signal traps (`exit 130`/`exit 143` stay, which is how a TERM still exits
+  143 through step 5).
+- **VERSION** 110 → 111.
+
+**AC-3's hook, and why it is in production code.** The real event is a
+`fork` bash does not return from, and AC-1/2/4 cover it through the handler.
+A start the scheduler *can* see fail (a non-zero `&`, a stale `$!`) is a
+code path with no portable trigger: `ulimit -u` is refused on this host and
+is per-user on Linux. The hook is the only way to execute `start_suite`'s
+failure branch and the `report_unstarted` block in a test, and it enters at
+the top of `start_suite`, so the detection logic below it is shared.
+
+**Fixtures (RED), in `selftest.test.sh`, reusing HARNESS-036's helpers**
+(`held`, `floors`, `mk_reset`, `release`, `jstart`, `jrun`, `h_wait`,
+`h_left`, `present`): a new block after the HARNESS-036 AC-5 TERM case.
+
+- **AC-1 + AC-2 + AC-4 (removed):** five held suites at `SELFTEST_JOBS=2`:
+  `e1-held` and `e2-held` hold on release; `e3-done` must *finish* before
+  the TERM is sent — it needs a slot, so make `e1-held` hold and `e2-...`
+  finish quickly, or use three jobs; RED picks the arrangement and asserts
+  the precondition (`mk/finished/<name>` present, its block absent from
+  `$HW/out` before the TERM). Send TERM, release, wait. Expect: status 143;
+  `$HW/out` holds the blocks of every started suite in glob order, each
+  with its `<name>: N passed, 0 failed` line; then the empty line, the
+  `ended before its summary` line with the right counts and `(status 143)`;
+  `never started: <the queued names>`; no `unreported:` line; no `buffers
+  kept:` line; no `harness suite(s) passed.`; no `assertion floors:`;
+  `h_left` empty. Twin: the same run at `SELFTEST_JOBS=1`-equivalent is out
+  of scope; instead compare a block printed by the handler, byte for byte,
+  with the same suite's block from a run that reached its summary.
+- **AC-4 (kept) + AC-2 (unreported):** a started suite whose buffer is not
+  a readable file. Portable recipe: a held suite that, on start, does
+  `mkdir "$REPO_ROOT/.claude/state/selftest."*/<later>.out` for a suite
+  `<later>` that has not started yet; when `<later>` starts, its
+  redirection fails inside the child (`Is a directory`), the child exits
+  non-zero, and its buffer is a directory. Combined with a TERM while the
+  first suite still holds: expect `unreported: <later>`, the `buffers kept:`
+  line, the directory present after exit (`present`), and the handler's
+  other blocks still printed. The test removes the directory afterwards so
+  `h_left` of later cases is clean. If RED finds a simpler portable way to
+  make a buffer unreadable, it may amend this block.
+- **AC-3:** four suites at `SELFTEST_JOBS=2` with `SELFTEST_FAIL_START`
+  naming the second in glob order (`jrun` gains an environment pass-through,
+  or a sibling `jrun_env`). Expect: exit 1; the second's block is its header
+  and `FAIL <name>  not started: fork: simulated by SELFTEST_FAIL_START`;
+  the third and fourth started and finished (`mk/finished/`); the summary
+  is `assertion floors: all 3 suite(s) met their declared floor (...)` and
+  `1 of 4 harness suite(s) FAILED.`. Control: the same fixture with the hook
+  empty exits 0 with `4 harness suite(s) passed.`.
+- **Serial unchanged:** HARNESS-036 AC-1's byte-identity case already pins
+  it; RED adds nothing for it.
+- **Negative controls RED cannot run** are the two DVs below. The
+  fixtures above fail in RED because the handler prints nothing and names
+  nothing, and the hook does not exist; RED pastes that red.
+
+**Floors.** `selftest` rises from 309; RED records the measured count in
+`floors.conf` with a comment and in `selftest.test.sh`'s table (line 555).
+
+**Callers.** No existing function changes signature. `selftest_exit` is
+called only by the trap. The inline start moves into `start_suite`, which is
+new. `suite_status` keeps its one line. `procedure.test.sh` matches
+`Bash(... scripts/selftest.sh:*)` tool strings only, not the script's body.
+
+**RED may amend any block above in place, with a reason; GREEN builds what the amended block says.**
 
 ## Deferred verifications
 
-<!-- REQUIRED when a verification this story depends on provably cannot run in
-     the phase that wants it; omit the section otherwise. Written by the Lead PO
-     at PLANNED, and the phase that owns it pastes the result in.
-     The case this exists for: a negative control for a round trip, a threshold
-     or a codec has to break the real implementation to mean anything, and in
-     RED there is no implementation to break. RED naming the control and saying
-     it could not run it is the honest answer; RED claiming a verification it
-     did not do is the failure. One block per entry:
-       * what it verifies, as a falsifiable condition - "with one field dropped
-         from the encoder, AC-1's property test MUST fail"
-       * why the phase that wants it cannot run it
-       * THE PHASE THAT OWNS IT, declared as `Owner: GATES` (or RED, GREEN,
-         REVIEW). check-boundaries.sh refuses a PR
-         whose block names no phase
-       * the RESULT, pasted, once that phase runs it: what was mutated, what
-         failed, and that the file was restored - or the word WAIVED with the
-         reason. check-boundaries.sh refuses a PR that has neither. A result
-         counts only as a block: a line beginning with three backticks or
-         three tildes (a fence), or a line indented by exactly four spaces.
-         Prose does not count, nor inline code in backticks, nor a tab, nor
-         anything inside an HTML comment
-     Schedule it into GATES rather than RED where you can: source is writable
-     there, and a story that bounced back to RED mid-cycle gets its corrected
-     assertions earned by the same mutation, for free. How many entries is the
-     budget in rules.md, `Mutation work per story`: by default ONE
-     "defect put back" entry for the story's central claim, run against the one
-     suite that holds its assertion. A format or codec story may add one wrong VALUE
-     mutation - a codec that is uniformly wrong round-trips through itself
-     perfectly. Exhaustive earning of assertions that passed on arrival is not
-     an entry here; it goes to `/audit-mutations`. -->
+Two entries, one above the default budget in `rules.md`: AC-3 is a claim
+about a different mechanism (the scheduler's start) from the story's central
+claim (the EXIT handler), and the hook makes it one cheap run.
+
+**DV-1 (AC-1 and AC-4, defect put back; the story's central claim). Owner:
+GATES.** With GREEN's handler in the tree, put release 110's `selftest_exit`
+back through `scripts/mutate.sh`: one `sed` expression that deletes the
+handler's print-and-name lines and makes its `rm -rf "$BUF"` unconditional
+(name the lines GREEN wrote), run against `bash scripts/selftest.sh selftest`.
+AC-1's "every started suite's block is printed" assertions, AC-2's
+`ended before its summary` line and AC-4's `buffers kept` case must go red;
+HARNESS-036 AC-5's TERM case (status 143, `h_left` empty) must stay green,
+because the old handler satisfied it. Paste the red lines and `mutate.sh`'s
+restore line. RED cannot run this: there is no handler to put back.
+
+**DV-2 (AC-3, the failed start counts). Owner: GATES.** Through
+`scripts/mutate.sh`, delete the `fails=$((fails+1))` line of
+`report_unstarted`, against `bash scripts/selftest.sh selftest`. AC-3's exit
+status assertion (1) and its `1 of 4 harness suite(s) FAILED.` assertion
+must go red, and the control (hook empty, exit 0) must stay green. Paste the
+red lines and the restore line.
+
+**DV-1 result (GATES, this host, 2026-11-06).** Release 110's handler was put
+back through `mutate.sh`. Lines 471-499 (the handler's print-and-name code)
+were deleted, and line 501's `rm -rf "$BUF"` was made unconditional. The run
+was against `bash scripts/selftest.sh selftest`.
+
+- Exactly the 9 early-end assertions went red, as RED predicted: the
+  case-1 blocks and trailer, case 1's byte-for-byte compare, and case 2's
+  blocks, trailer and kept directory.
+- HARNESS-036 AC-5's TERM case (status 143, `h_left` empty) stayed green.
+  It is not among the failures.
+- The file was restored byte for byte.
+
+```
+=== mutate: scripts/selftest.sh (30 line(s) changed by 471,499d;501s/^  \[ "\$kept" = 1 \] || rm -rf/  rm -rf/) ===
+    FAIL AC-1: every started suite's block is printed, once each, in glob order
+    FAIL AC-1: e1-held's block carries its own summary line
+    FAIL AC-1: e2-done's block carries its own summary line
+    FAIL AC-1: e3-held's block carries its own summary line
+    FAIL AC-2: the run ends with an empty line, the ended-before line and the never-started line
+    FAIL AC-1: the block the early end printed for e2-done is byte for byte the summary run's
+    FAIL AC-1: the other started suites' blocks are printed, in glob order, and k3-later has none
+    FAIL AC-2 AC-4: the run ends with the ended-before, never-started, unreported and buffers-kept lines
+    FAIL AC-4: the buffer directory is still there after the run exits
+selftest: 337 passed, 9 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261106T064502Z.110758.bak) ===
+```
+
+**DV-2 result (GATES, this host, 2026-11-06).** `report_unstarted`'s
+`fails=$((fails+1))` (line 571, matched anchored) was deleted, and the run
+was against `bash scripts/selftest.sh selftest`.
+
+- AC-3's exit status, `1 of 4 ... FAILED.` and no-passed-line assertions
+  went red.
+- The control (hook empty: exit 0, `4 harness suite(s) passed.`) stayed
+  green.
+- The file was restored byte for byte.
+
+```
+=== mutate: scripts/selftest.sh (1 line(s) changed by 571{/^  fails=\$((fails+1))$/d}) ===
+    FAIL AC-3: a suite whose start failed makes the run exit 1
+    FAIL AC-3: it counts as one failure among four suites
+    FAIL AC-3: and the run does not say the suites passed
+selftest: 343 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261106T064657Z.116462.bak) ===
+```
 
 ## Amendments
 
@@ -174,38 +363,32 @@ The artifact is judged by `bash scripts/selftest.sh selftest`, which CI runs.
 
 ## Model guidance
 
-<!-- FILLED BY A TOOL, not by hand: `bash scripts/plan.sh write <id>`, as the
-     last step of PLANNED once the ## Contract exists. It renders the per-phase
-     plan from .claude/harness/models.conf with the reason for each row. Run it
-     again after amending the contract; it replaces the section rather than
-     appending to it.
+Planned by `bash scripts/plan.sh write HARNESS-090` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
 
-     Not at story creation: the plan depends on the contract, and the "no
-     contract, so RED stays on the stronger model" exception would be baked in
-     before anybody had a chance to write one.
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
 
-     What you add BY HAND is the other half - a departure from the plan, and
-     the model each dispatch RESOLVED to. Make a departure falsifiable rather
-     than folklore:
-       * which phase, which model, and why that phase specifically
-       * THE RESOLVED MODEL ACTUALLY DISPATCHED, by name - never the word
-         "default". An agent definition's `model:` field, or the session's
-         setting, or an override: the orchestrator cannot see which won unless
-         it records it. Two stories once compared "the default model" against a
-         stronger one, and neither could say what the default had resolved to,
-         so the comparison may have been the stronger model against itself
-       * what the orchestrator should stay on
-       * HOW to brief it differently - a model chosen for judgement wants the
-         criteria and the constraints, not a pre-decided test design
-       * the ORACLE PARTITION of the criteria: which are settled (read the
-         numbers out, do not calibrate), which are oracle-free (invent the
-         metric and demand a negative control that fires hard), which are
-         mechanical (pin exactly). Measured to matter more than the model
-       * a success condition that could come out either way
-     Then record the VERDICT against that condition when the phase ends, with
-     evidence. The verdict is the part that gets skipped, and without it a model
-     choice becomes a habit nobody can argue with. -->
+**Resolved:**
 
+- PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
+- GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
+- GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
+- GATES diff review (first), `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. R-1 RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
+- GREEN after R-1, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
+- GATES diff review (second), `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -225,60 +408,623 @@ The artifact is judged by `bash scripts/selftest.sh selftest`, which CI runs.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All in `.claude/tests/selftest.test.sh`, three describes marked HARNESS-090
+between HARNESS-036 AC-5's TERM case and HARNESS-036 AC-6. Integration level:
+each case runs the fixture's copy of `scripts/selftest.sh` over synthetic
+`held()` suites, because the contract under test is the script's output,
+exit status and the files it leaves.
+
+- **AC-1 AC-2 AC-4 (removed)** - TERM at `SELFTEST_JOBS=2` while `e2-done`
+  has finished unprinted behind the holding `e1-held` and `e3-held` holds in
+  its slot: status 143, blocks `e1-held e2-done e3-held` in glob order with
+  their summary lines, the exact three-line trailer naming `e4-queued
+  e5-queued` as never started, no unreported / buffers-kept / passed /
+  floors line, `h_left` empty; twin run to the summary, and the handler's
+  `e2-done` block compared with the twin's byte for byte.
+- **AC-4 (kept) AC-2 (unreported)** - `k1-held` makes `k3-later`'s buffer a
+  directory, so `k3-later` starts but its buffer is not a readable file;
+  TERM: status 143, blocks `k1-held k2-done k4-held`, the exact five-line
+  trailer ending in `unreported: k3-later` and `buffers kept:
+  .claude/state/selftest.<pid>/`, the directory present after exit, then
+  removed by the test and `h_left` empty.
+- **AC-3** - four suites at `SELFTEST_JOBS=2`, `SELFTEST_FAIL_START` naming
+  the second: exit 1, four headers in glob order, the second's block exactly
+  header + `FAIL g2-nostart  not started: fork: simulated by
+  SELFTEST_FAIL_START`, its start not attempted, the other three finished,
+  `assertion floors: all 3 ... (6 assertions executed, 6 declared).`, `1 of
+  4 harness suite(s) FAILED.`, no passed line. Control, hook empty: exit 0,
+  `4 harness suite(s) passed.`, the second started.
+- **Serial path** - nothing new; HARNESS-036 AC-1's byte-identity case pins it.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+Written by the test-developer, RED, 2026-11-06, on Opus 5.5
+(`claude-opus-5-5`), the agent file's `model: opus`; no override.
+
+**Command.** `bash scripts/selftest.sh selftest` (the whole `selftest`
+suite; the new cases cannot be run alone).
+
+**Attest records (local, this Windows host).**
+
+    run:      2026-11-06T06:26:11Z
+    command:  bash scripts/selftest.sh selftest
+    tree:     b6bd9fc9a5533f75a2ee6c62a5d8b2d3e739b093
+    exit:     1
+    duration: 143s
+    last:     1 of 1 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261106T062611Z.21520.log
+
+    command:  bash scripts/gates.sh --fast
+    exit:     0
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261106T062843Z.34969.log
+
+`gates.sh --fast` has no gate to run here (every gate is unconfigured), so
+its shape says nothing about these tests; `check-sigpipe.sh` and
+`check-grep-count.sh` both report 0 findings over the new code.
+
+**Files touched.**
+
+- `.claude/tests/selftest.test.sh` - lines 1538-1755 (the HARNESS-090 block:
+  helpers `jrun_env`, `h_block`, `h_heads`, `h_tail`, `h_names`,
+  `h_count_re`, then the three describes); line 555, the table row
+  `selftest 309` -> `selftest 346`.
+- `.claude/tests/floors.conf` - `floor | selftest | 309` -> `346`, with a
+  dated paragraph at the foot.
+- this story: `## Test plan`, this section.
+
+**Measured count.** `selftest: 330 passed, 16 failed` - 346 EXECUTED (309
+before, +37: 18 + 8 + 11). Every new assertion is unconditional; the one loop
+is a fixed list of three. selftest.sh floors on PASSED, so the run also
+prints `FAIL selftest  did 330 units of work, below the floor of 346` -
+expected until GREEN lands.
+
+**Red output, verbatim** (from the log above; the 16 FAIL lines are the only
+failures in the suite):
+
+```
+  HARNESS-090 AC-1 AC-2 AC-4  TERM with a finished, unprinted suite: every started block printed, the rest named, buffers removed
+    FAIL AC-1: every started suite's block is printed, once each, in glob order
+         expected: e1-held e2-done e3-held
+         actual:   
+    FAIL AC-1: e1-held's block carries its own summary line
+         expected: 1
+         actual:   0
+    FAIL AC-1: e2-done's block carries its own summary line
+         expected: 1
+         actual:   0
+    FAIL AC-1: e3-held's block carries its own summary line
+         expected: 1
+         actual:   0
+    FAIL AC-2: the run ends with an empty line, the ended-before line and the never-started line
+         expected: 
+         selftest: ended before its summary: 3 of 5 suite(s) reported (status 143).
+         selftest: never started: e4-queued e5-queued
+         actual:   
+    FAIL AC-1: the block the early end printed for e2-done is byte for byte the summary run's
+         expected: identical
+         actual:   differ:
+         1,7d0
+         < === e2-done ===
+         < 
+         <   e2-done
+         < e2-done: a line of its own output
+         < 
+         < e2-done: 2 passed, 0 failed
+         < 
+
+  HARNESS-090 AC-4 AC-2  a started suite whose buffer is not a readable file: named unreported, buffers kept
+    FAIL AC-1: the other started suites' blocks are printed, in glob order, and k3-later has none
+         expected: k1-held k2-done k4-held
+         actual:   
+    FAIL AC-2 AC-4: the run ends with the ended-before, never-started, unreported and buffers-kept lines
+         expected: 
+         selftest: ended before its summary: 3 of 5 suite(s) reported (status 143).
+         selftest: never started: k5-queued
+         selftest: unreported: k3-later
+         selftest: buffers kept: .claude/state/selftest.16656/
+         actual:   
+    FAIL AC-4: the buffer directory is still there after the run exits
+         expected: present
+         actual:   absent
+
+  HARNESS-090 AC-3  SELFTEST_FAIL_START: the named suite is reported not started, and the run goes on
+    FAIL AC-3: a suite whose start failed makes the run exit 1
+         expected: 1
+         actual:   0
+    FAIL AC-3: g2-nostart's block is its header and the one not-started line
+         expected: identical
+         actual:   differ:
+         2c2,6
+         < FAIL g2-nostart  not started: fork: simulated by SELFTEST_FAIL_START
+         ---
+         > 
+         >   g2-nostart
+         > g2-nostart: a line of its own output
+         > 
+         > g2-nostart: 2 passed, 0 failed
+    FAIL AC-3: g2-nostart's start was not attempted
+         expected: absent
+         actual:   present
+    FAIL AC-3: every other suite, the two after it included, started and finished
+         expected: g1-first g3-after g4-after
+         actual:   g1-first g2-nostart g3-after g4-after
+    FAIL AC-3: the floors line counts the three that ran, and not the one that did not start
+         expected: 1
+         actual:   0
+    FAIL AC-3: it counts as one failure among four suites
+         expected: 1
+         actual:   0
+    FAIL AC-3: and the run does not say the suites passed
+         expected: 0
+         actual:   1
+```
+
+(The pid in `selftest.16656/` is that run's `$!`; the assertion builds it
+from `$HP`, so it differs per run.)
+
+**Why this is the right red.** Every precondition passed, so each fixture
+reached the state its case is about: `e2-done` finished and unprinted with
+`e3-held` in its slot, `k3-later`'s buffer a directory and its script never
+run. The handler printed nothing (empty `actual:` on every block and trailer
+assertion) and removed the kept directory; the hook does not exist, so
+`g2-nostart` ran as an ordinary suite.
+
+**Each case, one line per assertion** (P = passes today, R = red today).
+
+AC-1 AC-2 AC-4 (removed), 18:
+
+| # | asserts | AC | today |
+|---|---|---|---|
+| 1 | precondition: `finished/e2-done` and `started/e3-held` appear within 60 s | - | P |
+| 2 | precondition: `e1-held` not finished | - | P |
+| 3 | precondition: no `=== e2-done ===` line in the output before the TERM | - | P |
+| 4 | status 143 | AC-2 | P |
+| 5 | started set is exactly `e1-held e2-done e3-held` | AC-1 | P |
+| 6 | headers in output are exactly `e1-held e2-done e3-held` | AC-1 | R |
+| 7-9 | `<s>: 2 passed, 0 failed` once each, for the three | AC-1 | R |
+| 10 | last 3 lines: empty, `selftest: ended before its summary: 3 of 5 suite(s) reported (status 143).`, `selftest: never started: e4-queued e5-queued` | AC-2 | R |
+| 11 | no `^selftest: unreported:` line | AC-2 | P |
+| 12 | no `^selftest: buffers kept:` line | AC-4 | P |
+| 13 | no `harness suite(s) passed.` | AC-2 | P |
+| 14 | no `^assertion floors:` line | AC-2 | P |
+| 15 | `h_left` empty (buffer dir and lock gone) | AC-4 | P |
+| 16 | twin (holds pre-released, `jrun 2`) exits 0 | - | P |
+| 17 | twin precondition: its `e2-done` block holds `e2-done: 2 passed, 0 failed` | - | P |
+| 18 | handler's `e2-done` block `cmp`-identical to the twin's | AC-1 | R |
+
+AC-4 (kept) AC-2 (unreported), 8:
+
+| # | asserts | AC | today |
+|---|---|---|---|
+| 1 | precondition: `finished/k2-done` and `started/k4-held` within 60 s | - | P |
+| 2 | precondition: `$BUF/k3-later.out` is a directory | - | P |
+| 3 | precondition: `k3-later`'s script never ran | - | P |
+| 4 | status 143 | AC-2 | P |
+| 5 | headers exactly `k1-held k2-done k4-held` (no block for k3-later) | AC-1 | R |
+| 6 | last 5 lines: empty, `... 3 of 5 suite(s) reported (status 143).`, `selftest: never started: k5-queued`, `selftest: unreported: k3-later`, `selftest: buffers kept: .claude/state/selftest.<pid>/` | AC-2, AC-4 | R |
+| 7 | `.claude/state/selftest.<pid>` present after exit | AC-4 | R |
+| 8 | after the test removes it, `h_left` empty (lock released) | AC-4 | P |
+
+AC-3, 11:
+
+| # | asserts | AC | today |
+|---|---|---|---|
+| 1 | exit 1 | AC-3 | R |
+| 2 | headers `g1-first g2-nostart g3-after g4-after` | AC-3 | P |
+| 3 | `g2-nostart`'s block is exactly `=== g2-nostart ===`, `FAIL g2-nostart  not started: fork: simulated by SELFTEST_FAIL_START`, and the blank line that opens the next block | AC-3 | R |
+| 4 | `started/g2-nostart` absent | AC-3 | R |
+| 5 | finished set exactly `g1-first g3-after g4-after` | AC-3 | R |
+| 6 | `assertion floors: all 3 suite(s) met their declared floor (6 assertions executed, 6 declared).` | AC-3 | R |
+| 7 | `1 of 4 harness suite(s) FAILED.` | AC-3 | R |
+| 8 | no `harness suite(s) passed.` | AC-3 | R |
+| 9 | control, `SELFTEST_FAIL_START=` empty: exit 0 | AC-3 | P |
+| 10 | control: `4 harness suite(s) passed.` | AC-3 | P |
+| 11 | control: `g2-nostart` started | AC-3 | P |
+
+**Why the passing ones are right to pass today.** The preconditions must
+pass, or the fixture is broken. Status 143, the started set and `h_left`
+empty are what the release-110 handler already did (HARNESS-036 AC-5) and
+must keep doing; the four absences (#11-14 of case 1) are the "nothing says
+passed" half of AC-2, true of a handler that prints nothing - they guard
+against GREEN printing a summary or a spurious naming line, and are not
+earned by RED's red. Case 2 #8 is the lock half of AC-4. AC-3 #2 holds
+because today all four suites run; the controls are the hook-off baseline.
+None of these is a regression guard needing a probe: each sits beside a red
+assertion over the same output.
+
+**What the tests pin (the shell equivalent of an export shape).**
+
+- The environment word `SELFTEST_FAIL_START`, holding a suite name; passed
+  by `env`, with `SELFTEST_JOBS=2` and `VERBOSE=` empty.
+- Exact stdout lines, as listed in the tables. The early-end trailer is the
+  LAST lines of stdout: nothing may follow `never started:` /
+  `unreported:` / `buffers kept:`. `<p>` in case 2 is 3: the unreported
+  `k3-later` is not counted, and the handler goes on past it to print
+  `k4-held`'s block.
+- `report_unstarted`'s block: `suite_header` (blank line, `=== name ===`)
+  then exactly the one FAIL line, with TWO spaces after the name; nothing
+  else, not even a `printf '%s\n' "$out"` of an empty `out`.
+- The kept directory is `.claude/state/selftest.<pid>/`, `<pid>` being
+  selftest.sh's own `$$` (the test's `$!` from `jstart`).
+- The handler's block for a suite is byte-identical to the main loop's, as
+  extracted from header to the next header (case 1 #18).
+
+Not constrained: how the handler iterates, whether `.start` files are
+used or kept, stderr (no assertion reads `$HW/err` in these cases), the
+order of `never started` names beyond glob order, and the one-at-a-time
+path (HARNESS-036 AC-1 already pins it).
+
+**Discovered, for GREEN.**
+
+- Case 2's `k3-later` start: the `> $BUF/k3-later.out` redirection fails in
+  the forked child, so the `&` returns 0 and `$!` is new - the scheduler
+  sees a successful start, collects a non-zero status, and the handler must
+  find the buffer is not a regular file. With the Contract's
+  `{ ... & } 2> "$BUF/$name.start"` the child's "Is a directory" message is
+  written to `k3-later.start`, which step 4 removes on the successful start
+  while the child may still be writing it. No assertion depends on it either
+  way; flagged because on Cygwin an `rm` of a file open in another process
+  can fail, and an `rm -f` that fails must not end the script.
+- Holds are `BOUND=60`; each TERM is followed by `sleep 2` before the
+  release (the backoff ceiling is 1 s), so the trap has acted before any
+  slot frees. If GREEN sees `never started` lose a name, that margin is the
+  first suspect.
+
+**Contract amendments.** None. Case 2 uses the Contract's own "buffer is a
+directory" recipe, with the mkdir written as a line of `k1-held` before it
+sources `_held.sh`, and `k2-done` waiting for `k1-held`'s started marker so
+`k3-later` cannot start before the directory exists.
+
+**Deferred verifications.** DV-1 (release 110's handler put back) and DV-2
+(`report_unstarted` without `fails=$((fails+1))`) are owned by GATES. I
+cannot run either: there is no new handler and no `report_unstarted` in the
+tree to mutate. Their predicted reds, for whoever runs them: DV-1 turns
+exactly the 9 RED-today assertions of cases 1 and 2 red (the 16 above less
+AC-3's 7), with HARNESS-036 AC-5 green. DV-2 leaves `ran` at 4 and
+`fails` at 0, so the run prints `4 harness suite(s) passed.` and exits 0:
+AC-3 #1 (exit), #7 (`1 of 4 harness suite(s) FAILED.`) and #8 (no passed
+line) go red, the block, floors-line and control assertions stay green.
+These are claims until run against the shipped handler.
+
+**Mutation table (one entry; the orchestrator runs it after GREEN).**
+
+| mutation (through `scripts/mutate.sh scripts/selftest.sh`) | command | predicted |
+|---|---|---|
+| `s/selftest: buffers kept:/selftest: buffers held:/` on GREEN's printf | `bash scripts/selftest.sh selftest` | exactly ONE assertion red: case 2 #6 ("AC-2 AC-4: the run ends with the ended-before, never-started, unreported and buffers-kept lines"); `selftest: 345 passed, 1 failed`. Case 1 #12 counts `^selftest: buffers kept:` lines and stays 0; case 2 #7 (directory present) stays green because the keep is not the print. |
+
+**R-1 additions (2026-11-06, return from GATES; full record in
+`## Regressions`).** Two new describes in `selftest.test.sh`, after the AC-3
+case, with helpers `jstart_env` and `h_scrub`; no existing assertion changed.
+Command unchanged: `bash scripts/selftest.sh selftest`. Floor 346 -> 366.
+
+- **Case A, "AC-1 (R-1) a second TERM while the handler drains"** - 11
+  assertions, 6 red today: headers `d1-held d2-done d3-held`, their three
+  summary lines, the trailer (`3 of 4 ... (status 143)`, `never started:
+  d4-queued`) and `h_left` empty. What makes it pass: fix 2, `trap '' INT
+  TERM` as `selftest_exit`'s second statement, right after `st=$?`, so the
+  second TERM is ignored and the handler finishes its drain, prints, removes
+  the buffers and releases the lock. Nothing else is needed for this case.
+- **Case B, "AC-3 (R-1) a TERM after a failed start"** - 9 assertions, green
+  today, earned by the reviewer's mutation of line 477 (5 red, pasted in
+  `## Regressions`). It must stay green through fixes 1 and 2: the
+  handler's `STARTERR` branch prints `report_unstarted` and counts it in
+  `<p>`.
+- Fix 1 (`n="${#PIDS[@]}"`) has no test; make it as the Contract says.
+- After GREEN, expect `selftest: 366 passed, 0 failed`.
 
 ## Regressions
 
-<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
-     otherwise. A test that is wrong is never edited into passing, and the
-     return is not a footnote - it is the story failing to be one clean cycle,
-     and the next person needs to know why. One block per return:
-       * which test, what it asserted, and what was wrong with it
-       * how the defect was found
-       * what it asserts now
-       * what earns it, since "watched it fail" cannot apply once the
-         implementation exists - the corrected assertion passes on its first
-         run and every run after, whether or not it asserts anything: either a
-         PROBE (mutate the specific behaviour the test pins, paste the red,
-         confirm the revert) or, where the defect was cost rather than
-         correctness, a BEFORE/AFTER measurement taken under the gate command -
-         not the plain test command, which is the faster one.
-         PASTE THE OUTPUT. check-boundaries.sh refuses a PR whose Regressions
-         or Gate probes section describes a failure without showing one.
-         A result counts only as a block: a line beginning with three
-         backticks or three tildes (a fence), or a line indented by exactly
-         four spaces. Prose does not count, nor inline code in backticks, nor
-         a tab, nor anything inside an HTML comment
-       * whether GREEN was a no-op, and the command output proving the source
-         was untouched and still passes -->
+**R-1 (from GATES, diff review, 2026-11-06): no test held the handler to a second signal, or reached its failed-start branch.**
+
+Written by the test-developer, RED, on Opus 5.5 (`claude-opus-5-5`), the
+agent file's `model: opus`; no override.
+
+**What was wrong.** No existing test was wrong; two were missing. The first
+diff review (`## Diff review`) found:
+
+- **Finding 2.** A second TERM or INT while `selftest_exit` waits on a held
+  suite runs the `exit 143` trap inside the EXIT handler, which ends it
+  before it prints a block or releases the lock. Every HARNESS-090 case sends
+  one TERM, so none could see it.
+- **Finding 3.** The handler's `STARTERR` branch (`selftest.sh` line 477,
+  `report_unstarted "$name" "${STARTERR[$i]}"`) was never reached: the AC-3
+  case runs to its summary, so the main loop's copy (line 680) prints the
+  not-started block. Replacing the handler's line with "mark unreported, keep
+  buffers" survived at `selftest: 346 passed, 0 failed`.
+
+**New tests**, both in `.claude/tests/selftest.test.sh`, after the HARNESS-090
+AC-3 case and before `HARNESS-036 AC-6`, with two helpers: `jstart_env` (a
+sibling of `jstart` that exports `VAR=value` words to the backgrounded script
+with `local -x`; `jstart` is unchanged) and `h_scrub` (removes any
+`selftest.*`, `run.lock`, `run.lock.*` from the fixture's state AFTER each
+case's own `h_left` assertion, so a handler that dies mid-drain, or a
+mutation that keeps buffers, cannot leak into later cases). No existing
+assertion was changed.
+
+**Case A, "HARNESS-090 AC-1 (R-1) a second TERM while the handler drains"**
+(11 assertions). `SELFTEST_JOBS=2`: `d1-held` holds; `d2-done` finishes
+behind it unprinted; `d3-held` holds in its slot; `d4-queued` never starts.
+TERM, `sleep 2`, TERM, `sleep 1`, `release all`, wait (then a bounded,
+non-asserting `h_wait` for the held suites' finished markers, so orphans in
+RED cannot write into the next case's markers). Asserts:
+
+| # | asserts | AC |
+|---|---|---|
+| 1-3 | preconditions: `d2-done` finished and `d3-held` started; `d1-held` not finished; no `=== d2-done ===` line before the TERM | - |
+| 4 | status 143 | AC-2 |
+| 5 | started set exactly `d1-held d2-done d3-held` | AC-1 |
+| 6 | headers exactly `d1-held d2-done d3-held` | AC-1 |
+| 7-9 | `<s>: 2 passed, 0 failed` once each, for the three | AC-1 |
+| 10 | last 3 lines: empty, `selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).`, `selftest: never started: d4-queued` | AC-2 |
+| 11 | `h_left` empty (no buffer directory, no lock) | AC-4 |
+
+This is a genuine red against code that exists: the GATES handler has no
+`trap '' INT TERM`, so the second TERM ends it. Status 143, the started set
+and the preconditions are green; 6 assertions red. Run through
+`bash scripts/attest.sh -- bash scripts/selftest.sh selftest`, local, this
+Windows host:
+
+```
+run:      2026-11-06T07:03:32Z
+command:  bash scripts/selftest.sh selftest
+tree:     7777e9dad3b981ccefb85d053826afd05ea1b191
+exit:     1
+duration: 208s
+last:     1 of 1 harness suite(s) FAILED.
+log:      .claude/state/attest-logs/20261106T070332Z.28394.log
+
+  HARNESS-090 AC-1 (R-1)  a second TERM while the handler drains does not end it: every started block printed, the lock released
+    FAIL AC-1: after a second TERM, every started suite's block is printed, once each, in glob order
+         expected: d1-held d2-done d3-held
+         actual:   
+    FAIL AC-1: after a second TERM, d1-held's block carries its own summary line
+         expected: 1
+         actual:   0
+    FAIL AC-1: after a second TERM, d2-done's block carries its own summary line
+         expected: 1
+         actual:   0
+    FAIL AC-1: after a second TERM, d3-held's block carries its own summary line
+         expected: 1
+         actual:   0
+    FAIL AC-2: after a second TERM, the run ends with an empty line, the ended-before line and the never-started line
+         expected: 
+         selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).
+         selftest: never started: d4-queued
+         actual:   
+    FAIL AC-4: after a second TERM, the buffer directory and the lock are gone
+         expected: 
+         actual:   selftest.38556 run.lock
+
+  HARNESS-090 AC-3 (R-1)  a TERM after a failed start: the handler prints the not-started block in its place
+
+selftest: 360 passed, 6 failed
+FAIL selftest  did 360 units of work, below the floor of 366 in .claude/tests/floors.conf
+```
+
+Those six are the only FAIL lines in the suite; case B and every earlier
+case are green.
+
+**Case B, "HARNESS-090 AC-3 (R-1) a TERM after a failed start"** (9
+assertions). `SELFTEST_JOBS=2`, `SELFTEST_FAIL_START=h2-nostart` via
+`jstart_env`: `h1-held` holds; `h2-nostart`'s start fails and the scheduler
+refills the slot in the same inner pass with `h3-held` (`started` moves on a
+failed start, `running` does not), which holds; `h4-queued` never starts.
+The main loop cannot print `h2-nostart`'s block while `h1-held`, before it,
+is unprinted, so the TERM leaves it to the handler's `STARTERR` branch.
+TERM, `sleep 2`, `release all`, wait. Counts checked against the handler: its
+`STARTERR` branch does `printed=$((printed+1))`, so `<p>` counts
+`h2-nostart`'s block (3 of 4). Asserts:
+
+| # | asserts | AC |
+|---|---|---|
+| 1-3 | preconditions: `h1-held` and `h3-held` started; `started/h2-nostart` absent; no `=== h1-held ===` line before the TERM | - |
+| 4 | status 143 | AC-2 |
+| 5 | headers exactly `h1-held h2-nostart h3-held` | AC-1, AC-3 |
+| 6 | `h2-nostart`'s block `cmp`-identical to `=== h2-nostart ===`, `FAIL h2-nostart  not started: fork: simulated by SELFTEST_FAIL_START`, and the blank line opening `h3-held`'s block | AC-3 |
+| 7 | last 3 lines: empty, `selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).`, `selftest: never started: h4-queued` | AC-2 |
+| 8 | no `^selftest: unreported:` line | AC-2 |
+| 9 | `h_left` empty | AC-4 |
+
+It passes on arrival (the branch exists). **Earned** by the reviewer's
+mutation, through `mutate.sh`, against `bash scripts/selftest.sh selftest`.
+The expression was dry-run with `sed ... | diff` first: it changes line 477
+only, not the main loop's line 680. Five of case B's assertions went red
+(#5-9); its preconditions and status stayed green. The other six reds of the
+run are case A's, red regardless of the mutation. Local, this Windows host
+(output abridged to the mutate lines, case B and the count):
+
+```
+=== mutate: scripts/selftest.sh (1 line(s) changed by s/^      report_unstarted "\$name" "\${STARTERR\[\$i\]}"$/      unreported="${unreported:+$unreported }$name"; kept=1/) ===
+  477 -       report_unstarted "$name" "${STARTERR[$i]}"
+  477 +       unreported="${unreported:+$unreported }$name"; kept=1
+
+=== mutate: running bash scripts/selftest.sh selftest ===
+
+  HARNESS-090 AC-3 (R-1)  a TERM after a failed start: the handler prints the not-started block in its place
+    FAIL AC-1 AC-3: the handler prints all three started blocks, the failed start's in its glob place
+         expected: h1-held h2-nostart h3-held
+         actual:   h1-held h3-held
+    FAIL AC-3: the handler's h2-nostart block is its header and the one not-started line
+         expected: identical
+         actual:   differ:
+         1,3d0
+         < === h2-nostart ===
+         < FAIL h2-nostart  not started: fork: simulated by SELFTEST_FAIL_START
+         < 
+    FAIL AC-2: the failed start's block counts as reported; h4-queued is named never started
+         expected: 
+         selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).
+         selftest: never started: h4-queued
+         actual:   selftest: never started: h4-queued
+         selftest: unreported: h2-nostart
+         selftest: buffers kept: .claude/state/selftest.52365/
+    FAIL AC-2: a failed start is not named unreported
+         expected: 0
+         actual:   1
+    FAIL AC-4: every block printed, so the buffer directory and the lock are gone
+         expected: 
+         actual:   selftest.52365
+
+selftest: 355 passed, 11 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261106T070736Z.42862.bak) ===
+```
+
+`bash scripts/mutate.sh --check` afterwards:
+
+```
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**Finding 1 gets no test.** Its window is the length of one `rm -f` inside
+`start_suite`, which a portable test cannot hold open without a second hook
+in production code (Orchestrator note, `## Diff review`). The reviewer's
+widened-window reproduction is its evidence, and `main`'s handler, which
+looped over `${#PIDS[@]}`, is the reference the fix restores.
+
+**GREEN on re-entry is not a no-op.** It makes fixes 1 and 2 as the amended
+`## Contract` `selftest_exit` block says: `trap '' INT TERM` as the
+handler's second statement (turns case A green), and the drain/print bound
+`n="${#PIDS[@]}"` instead of `${started:-0}` (no test; see above). Case B
+must stay green through both.
+
+**Floors.** `selftest` 346 -> 366 in `floors.conf` (dated note) and in
+`selftest.test.sh`'s table (line 555). Measured: `selftest: 360 passed, 6
+failed`, 366 EXECUTED; until GREEN lands the run also prints `FAIL selftest
+did 360 units of work, below the floor of 366`, expected.
+
+## Diff review
+
+**First review (2026-11-06), against `main...88ac158`.** A fresh
+`feature-developer` ran it with the `diff-review` skill, on Opus 5.5
+(`claude-opus-5-5`) with no override. It changed no file, and
+`mutate.sh --check` was clean.
+
+**Must fix**
+
+1. **A signal shortly after a suite starts loses that suite**
+   (`selftest.sh:457`, `n="${started:-0}"`).
+   - `start_suite` records `PIDS[$i]` and then runs `rm -f .start`, a
+     separate process. Only after it returns does the scheduler increment
+     `started`.
+   - So a TERM or INT during that `rm` reaches the handler with `started`
+     one short. The handler never waits for suite `i`: it calls it "never
+     started", removes the buffers and releases `run.lock` while the suite
+     still runs. `main`'s handler looped over `${#PIDS[@]}` and waited for
+     it.
+   - The reviewer reproduced it in a scratch copy, with the window widened
+     by a `sleep 3`. HEAD gave `rc=143 at 4 s`,
+     `0 of 2 suite(s) reported`, `never started: a b`, and an empty state
+     directory while suite `a` was still running. `main` waited 6 s.
+   - Fix: `n="${#PIDS[@]}"`. `start_suite` blanks `PIDS[$i]` first, so the
+     array is dense.
+
+**Should fix**
+
+2. **A second signal during the handler's wait ends it** before it prints
+   anything or releases the lock (traps 507-508). Measured on HEAD and on
+   `main`: two TERMs 1.5 s apart give `rc=143`, empty stdout, and `run.lock`
+   and `selftest.<pid>/` left behind. The new comment says nothing may end
+   the handler before the lock is released. Fix: `trap '' INT TERM` right
+   after `st=$?`.
+3. **No test reaches the handler's failed-start branch** (476-478).
+   Replacing it with "mark unreported, keep buffers" survived:
+   `selftest: 346 passed, 0 failed`, restored byte for byte.
+
+**Checked and sound:**
+- every exit path, and the serial path is byte-identical;
+- `set -u` defaults;
+- the non-zero exit is kept.
+
+**Pid reuse:** 0 repeats in 400 back-to-back starts on this host, and Linux
+assigns pids in sequence. So the `LASTPID` test shows no false failure. A
+real fork failure is fatal to the shell, so that branch fires only on a
+failed `2> .start` redirect or the hook.
+
+**Callers:** CI, `ci-local.sh`, `attest.sh`, `selftest-needed.sh` and the
+suites read the exit status only. No test pins `selftest.sh` line numbers.
+
+**Not checked:** the handler's own `$(cat)` fork on a host whose fork is
+still failing (cannot be produced here).
+
+Verdict: fix 1 first.
+
+**Orchestrator:**
+- **Finding 1** was confirmed by reading lines 457 and 597-608 and the
+  scheduler at 659-665: `started` moves only after `start_suite` returns,
+  and the `rm` runs before that.
+- **All three are taken.** 2 and 3 each need a test, so the story returns to
+  RED once for both (R-1). GREEN then makes fixes 1 and 2.
+- **Fix 2 needs no amendment:** AC-1 says the run survives an end "for any
+  reason (a signal ...)", and a second signal is one.
+- **Fix 1 gets no test of its own.** Its window is the length of one `rm`,
+  which a portable test cannot hold open without a second hook in production
+  code. The reviewer's widened-window reproduction is its evidence, and
+  `main`'s behaviour, which the fix restores, is the reference.
+
+**Second review (2026-11-06), against `main...dfe94f0`.** A fresh
+`feature-developer` ran it with the `diff-review` skill, on Opus 5.5
+(`claude-opus-5-5`) with no override. It changed no file, ran its probes
+in scratch copies, and `mutate.sh --check` was clean. Its suite run:
+`attest.sh -- bash scripts/selftest.sh selftest` gave exit 0,
+`366 passed, 0 failed`, in 123 s.
+
+**The first review's findings are resolved:**
+1. The bound is `${#PIDS[@]}`, and the array is dense. The widened-window
+   probe re-run gave `1 of 2`, with `a` waited for and printed.
+2. `trap '' INT TERM` is the handler's second statement, and R-1 case A is
+   green.
+3. R-1 case B reaches the handler's failed-start branch.
+
+**Checked and sound:**
+- **Exit paths:** TERM exits 143, INT exits 130, and a status of 0 becomes 1.
+- **The serial path** is byte-identical.
+- **Callers:** CI runs `selftest.sh` serially and reads only the status, as
+  do `ci-local.sh`, `attest.sh` and `selftest-needed.sh`.
+- **Test bounds and cleanup:** `BOUND=60`, `h_scrub`, `local -x`. Floors
+  366 in both places.
+- **The two windows left open on purpose** are judged acceptable: builtins
+  only, and `main` had the same window and also deleted the buffers.
+- **Fix 2's cost is accepted.** A hung suite during the handler's wait can be
+  ended only by KILL, if the signal reaches `selftest.sh` alone.
+
+**Should fix**
+1. **A TERM during the main loop's `out="$(cat ...)"` prints that suite's
+   header twice** (`selftest.sh:686-689`).
+   - The header is out before `printed` moves, so the handler starts the
+     block again.
+   - Reproduced in a scratch copy with the `cat` widened: `=== a1 ===`, a
+     blank line, then `=== a1 ===` and its full block. The status and
+     trailer were correct.
+   - Fix: move the `cat` above `suite_header`. No result is lost.
+
+Verdict: Ship.
+
+**Orchestrator:** should-fix 1 is deferred, not taken.
+- No result is lost, and the status, lock and trailer are right. The cost is
+  a duplicated header on a rare interrupted run.
+- The fix is a reorder no test can pin, since the window is one `cat`. Taking
+  it restarts the gates and the review for a cosmetic window.
+- It is listed for the user in the PR as left out.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-06T07:20:59Z
+    commit: bd8127d
+    tree:   46448de7c0bda7d19444b848fa71c28c53ad93bd
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -313,3 +1059,111 @@ The artifact is judged by `bash scripts/selftest.sh selftest`, which CI runs.
   of record for the refresh. CI ran it in about 6 minutes, with 39 suites
   passed.
 - Related, and not this story: HARNESS-089, which FWB filed the same day.
+- PO decisions at PLANNED (orchestrator, 2026-11-06):
+  1. **Parallel path only.** The one-at-a-time path has no buffers to lose,
+     and HARNESS-036 AC-1 pins its output byte for byte against release 77.
+     AC-2's "never started" line is not extended to it.
+  2. **The real fork failure is an early end of the shell, not a scheduler
+     event.** Measured on this host (Contract): a fatal error inside a
+     top-level loop of a non-interactive bash ends the shell. That matches
+     the field report (no summary, the handler ran, status 254). So the EXIT
+     handler is the whole defence, and no "the loop ended early" guard after
+     the loop is written: nothing could reach it, and no test could demand
+     it.
+  3. **AC-3 keeps a test hook in production code**, `SELFTEST_FAIL_START`,
+     because the scheduler's failure branch has no portable trigger
+     (`ulimit -u` is refused here). It enters at the top of `start_suite`,
+     so the detection below it is shared with a real returned failure.
+  4. **Exit status 254's origin is not established** and is not pursued.
+     The handler keeps whatever non-zero status the run was ending with and
+     forces 1 only when it would otherwise be 0.
+  5. **Two deferred verifications**, one above the default budget: the
+     handler and the scheduler are different mechanisms.
+  6. `touches:` confirmed as the field report provisionally listed it:
+     `scripts/selftest.sh`, `.claude/tests/selftest.test.sh`,
+     `.claude/tests/floors.conf`, `.claude/harness/VERSION`. No
+     `.claude/state/README.md` change: the `selftest.<pid>/*.out` row's
+     columns (writer, reader, hand-editable) do not change.
+  7. **Not already delivered:** at `dd97d6b`, `selftest_exit` (lines
+     427-435) still removes the buffer directory unconditionally and prints
+     nothing, and `SELFTEST_FAIL_START` appears nowhere in the tree.
+  8. `plan.sh conflicts`: CONFLICT with HARNESS-091, 092, 093 and 096 on
+     `VERSION`, `floors.conf` and `selftest.test.sh`. Run alone.
+- RED verified by the orchestrator, 2026-11-06. `attest.sh check` said
+  `fresh` for both runs at tree `b6bd9fc`, so neither was re-run.
+  - `selftest.sh selftest`: exit 1, `selftest: 330 passed, 16 failed`, and
+    the floor line (330 below 346, expected in RED). The 16 FAIL lines are
+    exactly the new cases' blocks, trailers, kept directory and AC-3
+    assertions; no older case failed.
+  - `gates.sh --fast`: exit 0, `0 ran, 5 unconfigured`.
+  - Read the new block (`selftest.test.sh` 1538-1755): whole-line and
+    whole-block needles, bounded holds, the Contract's buffer-as-directory
+    recipe for AC-4's kept case. No Contract amendment.
+- GREEN verified by the orchestrator, 2026-11-06. `attest.sh check` said
+  `fresh` for both at tree `38c6093`, so neither was re-run.
+  - `selftest.sh selftest`: exit 0, `selftest: 346 passed, 0 failed`, floor
+    346 met. All 16 RED reds are green; nothing that passed in RED fails.
+  - `gates.sh --fast`: exit 0, `0 ran, 5 unconfigured`.
+  - `sigpipe` 91/91 and both scanners 0 findings, run directly by GREEN. No
+    suite pins a `selftest.sh` line number.
+  - The diff matches the Contract: `LOOP_DONE`, `start_suite`,
+    `report_unstarted`, the print loop, the handler's five steps, VERSION 111.
+  - For the diff review, not changed here: `start_suite` treats `$!` equal to
+    the previous start's pid as a failed start (the Contract's rule). A host
+    that reuses a pid at once (Cygwin can) could make a real start read as
+    failed, loudly, with `start failed (status 0)`. And the measurement in
+    the Contract says a real fork failure ends the shell, so that branch is
+    nearly unreachable in practice.
+  - GREEN's own doubts: `<p>` counts not-started blocks (AC-2's "blocks
+    printed" reads that way; no test pins it); a kept directory may hold
+    `.start` files; a TERM mid-`report_suite` could print a block twice
+    (release 110 had the same window).
+- RED's one predicted mutation, run by the orchestrator at GATES (2026-11-06):
+  `s/selftest: buffers kept:/selftest: buffers held:/`. Predicted: exactly case 2's trailer
+  assertion red, `345 passed, 1 failed`. Observed: the same.
+
+```
+=== mutate: scripts/selftest.sh (1 line(s) changed by s/selftest: buffers kept:/selftest: buffers held:/) ===
+    FAIL AC-2 AC-4: the run ends with the ended-before, never-started, unreported and buffers-kept lines
+selftest: 345 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261106T064851Z.121292.bak) ===
+```
+- R-1 verified by the orchestrator, 2026-11-06. `attest.sh check` said
+  `fresh` for both at tree `7777e9d`. `selftest.sh selftest`: exit 1,
+  `selftest: 360 passed, 6 failed`. The 6 are exactly case A's blocks,
+  trailer and `h_left` after a second TERM. Case B is green on arrival and
+  was earned by the reviewer's mutation (pasted in `## Regressions`).
+  `gates.sh --fast`: exit 0.
+- GREEN after R-1, verified by the orchestrator, 2026-11-06. `attest.sh
+  check` said `fresh` for both at tree `90c54f1`. `selftest.sh selftest`:
+  exit 0, `366 passed, 0 failed`, floor 366 met. `gates.sh --fast`: exit 0.
+  - The code diff is two lines in `selftest_exit`: `trap '' INT TERM` and
+    `n="${#PIDS[@]}"`. The comment was corrected to match.
+  - Fix 1 has no test. GREEN reproduced it in scratch copies, with the
+    window widened by a `sleep` before `start_suite`'s `rm`:
+    - before the fix: `0 of 2 suite(s) reported`, `never started: a b`,
+      and the lock and buffers gone while `a` still ran;
+    - after the fix: `a`'s block printed, `1 of 2`, `never started: b`;
+    - a suite caught before its pid was recorded lands in `unreported`,
+      with its buffers kept.
+  - **Window left open.** A signal between the `&` and `PIDS[$i]="$pid"` (a
+    few builtins, no fork) leaves a running suite unwaited. `main` has the
+    same window. Not pursued.
+  - **DV-1 and DV-2 are not re-run.** Their results stand for the claims they
+    pin: the handler fix adds lines but keeps the print-and-name and
+    `report_unstarted` code they mutated. The line numbers in their pasted
+    output are from `5b72c3c`.
+- Self-test at GATES → REVIEW, 2026-11-06. `selftest-needed: run`, and
+  `--suites` said `all: scripts/selftest.sh is read by every suite`. That is
+  advance-story step 2 case (a), so the full run took the place of
+  `--changed`. A `feature-developer` ran it, on Opus 5.5
+  (`claude-opus-5-5`) with no override. `attest.sh check -- SELFTEST_JOBS=4
+  bash scripts/selftest.sh` said `fresh`. It ran on this story's own
+  parallel scheduler and printed no `ended before its summary` line.
+
+```
+exit:     0
+last:     34 harness suite(s) passed.
+duration: 1059s
+assertion floors: all 34 suite(s) met their declared floor (5696 assertions executed, 5692 declared).
+```
