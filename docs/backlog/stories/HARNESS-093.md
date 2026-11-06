@@ -4,7 +4,7 @@ title: gates.sh --list still lists a duplicated gate id and an empty evidence re
 slug: gates-sh-list-still-lists-a-duplicated-g
 epic: 
 type: chore
-status: todo
+status: in-progress
 phase: PLANNED
 branch: story/HARNESS-093-gates-sh-list-still-lists-a-duplicated-g
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
@@ -279,3 +279,25 @@ name, below the table.
 
 ## Notes
 
+
+- PO decisions at PLANNED → RED (orchestrator, 2026-11-06, tree `ab22703`):
+  1. **The Contract's anchors re-checked and unchanged:** the duplicate
+     guard is `gates.sh:514` (`[ "$is_dup" = 0 ] && [ "$LIST" = 0 ]`), the
+     empty-regex guard `:601` (`[ -z "$exp" ] && [ "$LIST" = 0 ]`), the row
+     and `evidence:` formats `:618-619`, the `--list` exit `:915`. DV-1's and
+     DV-2's `sed` patterns match those two lines verbatim. In
+     `gates.test.sh`: `count_line` 843, `h88_conf` 4087, `H88_GATE` 4088,
+     `H88_DUP_AUDIT` 4090, `H88_EMPTY_AUDIT` 4092, `h88_fails` 4095, the two
+     HARNESS-088 describes 4097 and 4158, the closing `set_phase` 4231 and
+     `summary` 4234.
+  2. **Not already delivered:** no `HARNESS-093` describe exists, and
+     neither HARNESS-088 describe calls `gates --list`.
+  3. **Test-only, as HARNESS-091 and HARNESS-092 were:** RED writes
+     everything in `**Writes:**` except `VERSION`; the new assertions pass
+     on arrival and are earned by RED's own single-assertion mutation and by
+     DV-1/DV-2 at GATES; GREEN is a verified no-op plus the `VERSION` bump,
+     checked by the orchestrator. `VERSION` holds `114 (2026-11-06)`.
+  4. **Required gate:** none is configured; the `gates` suite judges the
+     artifact, and CI runs it in full on the PR. `required_gates: []` stays.
+  5. `plan.sh conflicts`: CONFLICT with HARNESS-096 on `VERSION`,
+     `floors.conf` and `selftest.test.sh`. Run alone.
