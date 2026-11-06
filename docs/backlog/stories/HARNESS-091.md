@@ -398,6 +398,7 @@ name, below the table.
 - PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 - GREEN: no dispatch. A verified no-op plus the VERSION bump, by the orchestrator (Fable 5.1, `claude-fable-5-1`), as C-3 plans. 2026-11-06.
 - GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
+- GATES diff review, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -614,6 +615,54 @@ the full self-test on the PR and is the first Linux observation.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+## Diff review
+
+**Review (2026-11-06), against `origin/main...60f9716`.** A fresh
+`feature-developer` ran it with the `diff-review` skill, on Opus 5.5
+(`claude-opus-5-5`) with no override. It changed no file, probed in scratch
+scripts, signalled only pids it started, and `mutate.sh --check` was clean.
+
+**Checked and sound:**
+- **On this host:** `kill` then `wait` on a holder returned in 18 ms. A
+  holder killed before its trap is installed leaves nothing. The AC-3
+  `$( )` returned in 207 ms with the holder alive, and the holder was gone
+  about 0.9 s later. A holder whose parent was SIGKILLed was gone about
+  0.6 s later.
+- **On Linux,** by reading, not a run: orphans are reparented to systemd and
+  reaped, so `kill -0` fails on them.
+- **Parent-pid reuse** would cost one idle loop that outlives the suite.
+  Negligible.
+- **Callers:** 35 suites source `_lib.sh`, and none defines or uses the new
+  names. Sourcing has no side effect.
+- **`run-lock`'s `BG` kill and wait** reaps holders promptly.
+- **Other timed processes:** only `gates.test.sh:2794`, which is not reused
+  across blocks and is already a follow-up.
+- **Timing:** about 1-2 s added to `mutate`.
+
+**Should fix**
+
+1. **The AC-2/AC-3 cleanup signals pids that have already gone**
+   (`mutate.test.sh:1009`).
+   - On a passing run, `H91_KILLED` has been killed and reaped, and
+     `H91_ORPHAN` observed gone, yet the loop still sends `kill` to both.
+   - Windows reuses pids quickly, so under `SELFTEST_JOBS=4` that TERM can
+     reach another suite's process and fail it with nothing pointing back
+     here.
+   - HARNESS-030's block already clears `H30_SLEEP=""` right after its
+     `wait` (line 922).
+   - Fix: clear `H91_KILLED` once it is reaped, and kill `H91_ORPHAN` only
+     if it was observed alive. A test change, so a return to RED.
+
+**Not checked:** the new assertions have not yet run on Linux. CI on the PR
+is their first run there.
+
+Verdict: Ship.
+
+**Orchestrator:** finding 1 is taken, as R-1.
+- It is the class of defect this story exists to remove: a failure that
+  surfaces in an unrelated suite with nothing pointing at its cause.
+- No assertion changes, only the cleanup, so GREEN on re-entry is a no-op.
 
 ## Gate results
 
