@@ -5,7 +5,7 @@ slug: every-cases-md-pointer-in-rules-md-names
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-092-every-cases-md-pointer-in-rules-md-names
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/rules-trim.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -250,6 +250,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
+- GREEN: no dispatch. A verified no-op plus the VERSION bump, by the orchestrator (Fable 5.1, `claude-fable-5-1`), as decision 3 plans. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -587,3 +588,17 @@ invisible (C-4).
   - RED's C-1 amendment (an opener with no `")` after it ends the scan)
     has no fixture. RED says so, and nothing on the real tree has that shape.
     Accepted as stated.
+- GREEN verified by the orchestrator as a no-op, 2026-11-06. Not dispatched
+  (decision 3). Run directly, not through `attest.sh`, because the
+  orchestrator runs a no-op's checks itself.
+  - `git diff --stat origin/main...HEAD` before the bump named exactly
+    `rules-trim.test.sh`, `floors.conf`, `selftest.test.sh` and this story.
+    `rules.md`, `cases.md` and `scripts/` are untouched.
+  - `VERSION`: `113` → `114 (2026-11-06)`; `origin/main` still held 113.
+
+```
+rules-trim: 50 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (50 assertions executed, 50 declared).
+1 harness suite(s) passed.
+All required gates passed (0 ran, 5 unconfigured, 0 known).
+```
