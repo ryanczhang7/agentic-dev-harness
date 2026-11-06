@@ -5,7 +5,7 @@ slug: check-boundaries-refuses-to-run-without
 epic: 
 type: bug
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-097-check-boundaries-refuses-to-run-without
 depends_on: [HARNESS-089]      # this story edits the lines HARNESS-089 wrote; merged as #181, DONE on main at dd97d6b
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, docs/backlog/stories/HARNESS-097.md]
@@ -442,6 +442,7 @@ name, below the table.
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
 - RED, test-developer, claude-opus-5-5 (Opus 5.5; as planned, no override)
+- GREEN, feature-developer, claude-opus-5-5 (Opus 5.5; as planned, no override)
 
 ## Out of scope
 
@@ -789,3 +790,79 @@ did execute):
   are AC-1's three assertions plus the expected floor line (`542 units of
   work, below the floor of 545`); the twin and AC-2 are green.
   `mutate.sh --check` is clean.
+
+- **GREEN, by the feature-developer (2026-11-06, claude-opus-5-5, no override).**
+  Handoff GREEN -> GATES.
+  - **What changed.** `scripts/check-boundaries.sh`: `note`, `problem`, `ok`
+    now sit right after `fail=0`. The `mkdir -p` now ends in
+    `|| { problem "cannot create .claude/state/check-boundaries (something is
+    in the way, a plain file at that path for instance): every story copy is
+    read from a scratch file there, so without it the criteria would be judged
+    against nothing"; exit 1; }`, still on one line, and the trap still
+    follows it. The `criteria_baseline` comment paragraph is reflowed to the
+    same six lines, and its last sentence now says each copy is written to
+    `$cp` and read from there (the HARNESS-089 here-string hang, plus the
+    early-exiting-awk pipeline). `txt` is gone from its `local`, and
+    `crit_txt=""` is gone; nothing read either name (grep finds no use).
+    `.claude/harness/VERSION`: 110 -> 111. Nothing else changed.
+  - **Net line delta above old line 399: 0** (the whole file is unchanged in
+    length, 13+/13- by `git diff --stat`). `sed -n '399p;438p;630p'` still
+    prints `res=$(printf`, `rec=$(printf`, `ph_at="$(git show`. So **R-1 is
+    not needed**: the sigpipe run below is green with `sigpipe.test.sh`
+    untouched. RED does not need to re-pin anything.
+  - **Controls, measured against the shipped script** (the subset, with
+    `rc`/`out` printed after each `run_boundaries`):
+
+        control                                       expected     measured
+        twin exit (5)                                 0            0
+        twin criteria line (4)                        once         `ok    acceptance criteria unchanged since main`, 1 line
+        plain-file run exit (2)                       non-zero     1
+        plain-file run, -i `acceptance criteria` (3)  none         0 lines
+        plain-file run, `^FAIL  .*check-boundaries` (1) >= 1       1 (the problem line; mkdir's own `File exists` on stderr above it)
+        DV-1 trap deleted, `ls -A` (7)                red, names   red: `actual:   copy-9935.md`; restored, verified byte-for-byte
+
+    All match RED's table. One benign observation: with the plain file in
+    place the refusal comes before every other check, so its output is just
+    mkdir's stderr line plus the FAIL line. AC-1 allows that.
+    `bash .claude/state/harness-097-subset.sh`: `7 passed, 0 failed`.
+  - **Attest records** (each run on its own in this worktree):
+
+        run:      2026-11-06T06:58:00Z
+        command:  bash scripts/selftest.sh boundaries
+        tree:     e50de20d51f7482a27f7bf6006de4269d7c60a47
+        exit:     0
+        duration: 1100s
+        last:     1 harness suite(s) passed.
+        log:      .claude/state/attest-logs/20261106T065800Z.10916.log
+        (boundaries: 545 passed, 0 failed; floor 545 met)
+
+        run:      2026-11-06T07:16:42Z
+        command:  bash scripts/selftest.sh sigpipe
+        tree:     e50de20d51f7482a27f7bf6006de4269d7c60a47
+        exit:     0
+        duration: 144s
+        last:     1 harness suite(s) passed.
+        log:      .claude/state/attest-logs/20261106T071642Z.78508.log
+        (sigpipe: 91 passed, 0 failed; floor 91 met)
+
+        run:      2026-11-06T07:19:14Z
+        command:  bash scripts/gates.sh --fast
+        tree:     e50de20d51f7482a27f7bf6006de4269d7c60a47
+        exit:     0
+        duration: 1s
+        last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+        log:      .claude/state/attest-logs/20261106T071914Z.93684.log
+
+    `gates.sh --fast` ran nothing (every gate is unconfigured), as in RED.
+  - DV-2 has not been run; it belongs to GATES. `bash scripts/mutate.sh --check`
+    is clean. Nothing is committed.
+- **GREEN verified by the orchestrator (2026-11-06, Opus 5.5).** Read the
+  diff of `scripts/check-boundaries.sh` (helpers moved up; the one-line
+  `mkdir -p ... || { problem ...; exit 1; }`; the comment reflowed to the same
+  six lines; `txt` and `crit_txt` gone) and `VERSION` 110 -> 111. `attest.sh
+  check` answered `fresh` with exit 0 for `bash scripts/selftest.sh
+  boundaries` (`boundaries: 545 passed, 0 failed`), `bash scripts/selftest.sh
+  sigpipe` (`sigpipe: 91 passed, 0 failed`) and `bash scripts/gates.sh
+  --fast` (0 ran, 5 unconfigured); none was re-run. Net line delta above
+  line 399 is 0, so R-1 is not needed: sigpipe's three `DISCARDED` pins
+  still hold. `mutate.sh --check` is clean.
