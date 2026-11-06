@@ -4,8 +4,8 @@ title: Every cases.md pointer in rules.md names a heading that exists
 slug: every-cases-md-pointer-in-rules-md-names
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-092-every-cases-md-pointer-in-rules-md-names
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/rules-trim.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -709,3 +709,43 @@ assertion floors: all 1 suite(s) met their declared floor (50 assertions execute
 1 harness suite(s) passed.
 All required gates passed (0 ran, 5 unconfigured, 0 known).
 ```
+- Self-test at GATES → REVIEW, 2026-11-06. `selftest-needed: run`, and 10
+  of 34 suites were selected. A `feature-developer` ran each run, on Opus
+  5.5 (`claude-opus-5-5`) with no override.
+  - **`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`:** `fresh`,
+    exit 1, 7589 s, under heavy host load (an `/audit-mutations` run in
+    another session).
+    - 9 of the 10 suites passed.
+    - `boundaries` failed one HARNESS-083 assertion, immediately after the
+      host logged a fork failure:
+
+```
+selftest: --changed — 10 of 34 suite(s) selected: boundaries doctor grep-count host-load refresh rules-trim run-lock selftest sigpipe worktree
+      0 [main] bash 577681 dofork: child -1 - CreateProcessW failed for 'C:\Program Files\Git\usr\bin\bash.exe', errno 27
+/d/agentic-dev-harness/.claude/tests/boundaries.test.sh: fork: File too large
+    FAIL HARNESS-083 AC-4: --cov-fail-under 80 -> 70: refused by the whole line naming 'coverage: threshold lowered --cov-fail-under 80 -> 70'
+boundaries: 544 passed, 1 failed
+exit:     1
+last:     1 of 10 harness suite(s) FAILED.
+duration: 7589s
+```
+
+  - **`bash scripts/selftest.sh boundaries`, re-run alone on the same tree**
+    (`0ce2f3b`) once the other load had finished: `fresh`, exit 0, 2115 s.
+    `boundaries: 545 passed, 0 failed`, floor met, and no `FAIL`, `dofork`
+    or `fork:` line anywhere in the log.
+
+```
+boundaries: 545 passed, 0 failed
+exit:     0
+last:     1 harness suite(s) passed.
+duration: 2115s
+```
+
+  - **Reading.** The failing assertion belongs to HARNESS-083 and reads
+    `check-boundaries.sh`, which this story does not touch. `boundaries` was
+    selected only because it mentions `VERSION`. The same suite passes on
+    the same code when the host can fork. So the failure is consistent with
+    the host. The log does not prove that the fork failure caused that one
+    assertion, and the reading here does not claim it. CI runs every suite
+    on the PR.
