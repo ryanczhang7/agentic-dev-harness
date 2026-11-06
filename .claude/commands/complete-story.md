@@ -2,7 +2,7 @@
 description: Drive one story from its current phase all the way to a merged-ready PR
 model: fable
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(bash scripts/story.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(bash scripts/story.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -37,13 +37,17 @@ approval between phases is exactly when they get quietly reordered:
 - **GATES → REVIEW opens with a review of the diff and its callers**, by the
   `diff-review` skill on a fresh feature-developer dispatch, and goes on only
   on `Verdict: Ship.`; a fix it asks for changes the tree, so it comes before
-  the self-test. `bash scripts/selftest-needed.sh` decides whether the full
-  `SELFTEST_JOBS=4 bash scripts/selftest.sh` runs at all - only when the
-  diff touches a `harness` path; on `skip` its line goes into `## Notes` and
-  CI runs the self-test on the PR - and when it runs, it runs detached
-  and alone, while the story is still at GATES. The full gates and the
-  self-test each run in a `feature-developer` dispatch that returns a
-  verdict you check with `bash scripts/attest.sh check`;
+  the self-test. `bash scripts/selftest-needed.sh` decides whether
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`, the suites the
+  diff can break, runs at all - only when the diff touches a `harness`
+  path; on `skip` its line goes into `## Notes` and CI runs the self-test
+  on the PR - and when it runs, it runs detached and alone, while the story
+  is still at GATES. The full run, `SELFTEST_JOBS=4 bash scripts/selftest.sh`,
+  takes its place only in the three cases advance-story's step 2 names.
+  The full gates and the self-test each run in a `feature-developer`
+  dispatch on the GATES row that returns a verdict you check with
+  `bash scripts/attest.sh check` - for the self-test,
+  `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`;
   `bash scripts/check-boundaries.sh` stays your own run. Then it sets the phase before
   committing, runs `bash scripts/check-boundaries.sh`, and pushes and opens
   the PR. A suite the story never touched can fail on its change, and CI runs

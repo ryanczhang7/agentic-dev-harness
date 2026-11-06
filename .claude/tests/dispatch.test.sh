@@ -34,6 +34,12 @@
 # run its assertions twice and tie this floor to that file's count (story C-5).
 # They must agree on what "a step" is; if procedure.test.sh's parser changes,
 # change this copy in the same commit.
+#
+# HARNESS-095 moves the long run from the full self-test to HARNESS-094's
+# `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`: the self-test step, the
+# complete-story bullet and lead-po's long-run paragraph name the `--changed`
+# run and its `attest.sh check`, and a step or paragraph still naming only the
+# full run gets its own line saying it does not name the `--changed` command.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
@@ -47,7 +53,11 @@ LEADPO=".claude/agents/lead-po.md"
 FEATDEV=".claude/agents/feature-developer.md"
 
 # procedure.test.sh's needles, read out (C-2: untouched, same steps).
-STEP_SELFTEST='`SELFTEST_JOBS=4 bash scripts/selftest.sh`'
+# HARNESS-095 moves STEP_SELFTEST to the `--changed` span, as procedure.test.sh
+# does, and keeps the full-run span as STEP_FULL: a step that names only
+# STEP_FULL is the HARNESS-094 text, reported as not naming `--changed`.
+STEP_SELFTEST='`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`'
+STEP_FULL='`SELFTEST_JOBS=4 bash scripts/selftest.sh`'
 STEP_BOUNDARIES='`bash scripts/check-boundaries.sh`'
 PARA_START='**GATES → REVIEW.**'
 BULLET_START='- **GATES → REVIEW'
@@ -70,21 +80,31 @@ GG_NEEDLES=(
   'duration'
   'log'
 )
-# AC-2 / C-5 row 2.
+# AC-2 / C-5 row 2. HARNESS-095 (AC-1): the dispatch runs, and the check
+# names, the `--changed` command; both spans end at their closing backtick,
+# so the full-run spelling - a prefix of each - does not satisfy them.
+RUN_CHANGED='bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`'
+CHECK_CHANGED='bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`'
 SELFTEST_NEEDLES=(
   'feature-developer'
   'detached'
   'alone'
   'verdict'
-  'bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh`'
+  "$RUN_CHANGED"
+  "$CHECK_CHANGED"
 )
 # AC-3 / C-5 row 3, and the commit-step order row added in RED.
 DISPATCHED='feature-developer'
 COMMIT_RE='^[0-9]+\. Commit'
-# AC-4 / C-5 rows 4 and 5 (the attest-check clause added in RED).
-BULLET_NEEDLES=('feature-developer' 'verdict')
+# AC-4 / C-5 rows 4 and 5 (the attest-check clause added in RED). HARNESS-095
+# (AC-3): the bullet also says `GATES row` and names the `--changed` check.
+BULLET_NEEDLES=('feature-developer' 'verdict' 'GATES row' "$CHECK_CHANGED")
 ORCH_HEAD='## Orchestrating'
-LONG_RUN='SELFTEST_JOBS=4 bash scripts/selftest.sh'
+# HARNESS-095 (AC-3): the long-run paragraph names the `--changed` span (both
+# backticks: the check span contains it without the opening one), goes to a
+# feature-developer on the GATES row, and names the `--changed` check.
+LONG_RUN="$STEP_SELFTEST"
+LONG_NEEDLES=("$LONG_RUN" 'feature-developer' 'GATES row' "$CHECK_CHANGED")
 OLD_RUNG='every rung is something you run, not'
 ATTEST_CHECK='bash scripts/attest.sh check'
 # AC-5 / C-5 row 6 (`GATES rules` added in RED).
@@ -111,6 +131,10 @@ L_RUNG="$LEADPO: still runs every rung itself"
 L_CHECK="$LEADPO: does not name \`bash scripts/attest.sh check\`"
 L_NOHEAD="$FEATDEV: has no ## Run and report section"
 l_runsay() { printf '%s: ## Run and report does not say `%s`' "$FEATDEV" "$1"; }
+# HARNESS-095 (AC-4): a step, or a long-run paragraph, that names the full run
+# and no `--changed` command at all is the HARNESS-094 text.
+L_NOCHANGED="$ADVANCE: the self-test step does not name \`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed\`"
+L_LONG_CHANGED="$LEADPO: its long-run paragraph does not name \`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed\`"
 
 # --- pure-bash region helpers -------------------------------------------------
 # load, blank, trim, gates_steps, first_step and gates_bullet are copied from
@@ -276,7 +300,7 @@ paragraphs() {
 # violation (Contract C-5 as amended, byte for byte); silent when compliant.
 # Always returns 0: the output is the verdict.
 dispatch_problems() {
-  local root="$1" ks kb kc k p long=0 rung=0 check=0 w
+  local root="$1" ks kb kc k p long=0 full=0 rung=0 check=0 w
   # advance-story: GREEN -> GATES, the self-test step, the boundaries step.
   if [ ! -f "$root/$ADVANCE" ]; then
     printf '%s: file is missing\n' "$ADVANCE"
@@ -288,7 +312,12 @@ dispatch_problems() {
     fi
     gates_steps
     first_step "$STEP_SELFTEST"; ks=$K
-    if [ "$ks" = "-1" ] || ! all_in "${ST[$ks]}" "${SELFTEST_NEEDLES[@]}"; then
+    if [ "$ks" = "-1" ]; then
+      # HARNESS-095: a step naming the full run instead is the HARNESS-094
+      # text, and says so; no self-test step at all is the old line.
+      first_step "$STEP_FULL"
+      if [ "$K" != "-1" ]; then printf '%s\n' "$L_NOCHANGED"; else printf '%s\n' "$L_SELFTEST"; fi
+    elif ! all_in "${ST[$ks]}" "${SELFTEST_NEEDLES[@]}"; then
       printf '%s\n' "$L_SELFTEST"
     fi
     # The boundaries step: judged only when it exists. Its absence, and its
@@ -324,11 +353,19 @@ dispatch_problems() {
     section "$ORCH_HEAD"
     paragraphs "$SEC"
     for p in "${PG[@]}"; do
-      case "$p" in *"$LONG_RUN"*) case "$p" in *"$DISPATCHED"*) long=1 ;; esac ;; esac
+      all_in "$p" "${LONG_NEEDLES[@]}" && long=1
+      # HARNESS-095: the HARNESS-094 paragraph - the full run, dispatched, and
+      # no `--changed` anywhere in it.
+      case "$p" in
+        *"$STEP_FULL"*)
+          case "$p" in *--changed*) ;; *"$DISPATCHED"*) full=1 ;; esac ;;
+      esac
       case "$p" in *"$OLD_RUNG"*) rung=1 ;; esac
       case "$p" in *"$ATTEST_CHECK"*) check=1 ;; esac
     done
-    [ "$long" = 1 ] || printf '%s\n' "$L_LONG"
+    if [ "$long" = 0 ]; then
+      if [ "$full" = 1 ]; then printf '%s\n' "$L_LONG_CHANGED"; else printf '%s\n' "$L_LONG"; fi
+    fi
     [ "$rung" = 0 ] || printf '%s\n' "$L_RUNG"
     [ "$check" = 1 ] || printf '%s\n' "$L_CHECK"
   fi
@@ -386,19 +423,29 @@ EOF
 GG_AFTER='**The stamp covers tracked and staged files only.** Stage new files.'
 
 S1='1. Review the change with the `diff-review` skill.'
+# HARNESS-095: step 2 names the `--changed` run as a bare span, dispatches it
+# through `attest.sh --` and checks it with `attest.sh check --`, each span
+# once, so removing one removes only it.
 S2_GOOD="$(cat <<'EOF'
 2. `bash scripts/selftest-needed.sh`; on skip, paste its line into `## Notes`.
-   On run, dispatch a `feature-developer` to run
-   `SELFTEST_JOBS=4 bash scripts/selftest.sh` detached and alone on Windows
-   beside other test runs; it returns its verdict, and you check it with
-   `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh`.
+   On run, `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`: dispatch a
+   `feature-developer` to run
+   `bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+   detached and alone on Windows beside other test runs; it returns its
+   verdict, and you check it with
+   `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`.
 EOF
 )"
-# Today's step 2: the orchestrator runs it; feature-developer is the failure
-# route, and `alone` is in the history, but there is no verdict or check.
+# HARNESS-095 (AC-4): the HARNESS-085-compliant step as it reads at HARNESS-094,
+# the full-run spelling throughout. Reported as not naming `--changed`.
+S2_FULL="${S2_GOOD//selftest.sh --changed/selftest.sh}"
+# Today's step 2 before HARNESS-085: the orchestrator runs it; feature-developer
+# is the failure route, and `alone` is in the history, but there is no verdict
+# or check. HARNESS-095 moved its run to the `--changed` span so that it stays
+# the "does not dispatch" control rather than becoming a "does not name" one.
 S2_TODAY="$(cat <<'EOF'
 2. `bash scripts/selftest-needed.sh`; on skip, paste its line into `## Notes`.
-   On run, `SELFTEST_JOBS=4 bash scripts/selftest.sh`. Run it detached on
+   On run, `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`. Run it detached on
    Windows beside other test runs; one run passed alone. Paste its exit
    status and last line. A failure takes GATES' routes: the feature-developer.
 EOF
@@ -423,6 +470,15 @@ write_advance() {
 steps() { printf '%s\n%s\n%s\n%s\n%s\n%s' "$S1" "$1" "$S3" "${3:-$S4}" "$2" "$S6"; }
 
 BULLET_GOOD="$(cat <<'EOF'
+- **GATES → REVIEW opens with a `diff-review`**, then the full gates and the
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` self-test each run in a
+  feature-developer dispatch on the GATES row that returns a verdict, checked
+  with `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`.
+EOF
+)"
+# HARNESS-095: the bullet as it reads at HARNESS-094 - the dispatch and its
+# verdict, a bare `attest.sh check`, no GATES row and no `--changed` check.
+BULLET_094="$(cat <<'EOF'
 - **GATES → REVIEW opens with a `diff-review`**, then the full gates and the
   self-test each run in a feature-developer dispatch that returns a verdict,
   checked with `bash scripts/attest.sh check`.
@@ -458,10 +514,22 @@ you are told:
 EOF
 )"
 CHECK_GOOD='- `bash scripts/attest.sh check -- <the same words>` says whether it ran here.'
+# HARNESS-095: the long-run paragraph names the `--changed` run, the full run
+# as the option, the GATES row and the `--changed` check.
 LONG_GOOD="$(cat <<'EOF'
-The long runs, `bash scripts/gates.sh` and `SELFTEST_JOBS=4 bash scripts/selftest.sh`,
-go to a `feature-developer` on the GATES row; `bash scripts/check-boundaries.sh`
-stays yours.
+The long runs, `bash scripts/gates.sh` and `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+(or the full `SELFTEST_JOBS=4 bash scripts/selftest.sh` when /advance-story says so),
+go to a `feature-developer` on the GATES row and come back as a verdict you
+check with `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`;
+`bash scripts/check-boundaries.sh` stays yours.
+EOF
+)"
+# HARNESS-095: the paragraph as it reads at HARNESS-094 (lead-po.md:41).
+LONG_094="$(cat <<'EOF'
+The two long runs, the full `bash scripts/gates.sh` and
+`SELFTEST_JOBS=4 bash scripts/selftest.sh`, are not yours to wait on. Each goes
+to a `feature-developer` on the GATES row and comes back as a verdict you check
+with `bash scripts/attest.sh check`.
 EOF
 )"
 
@@ -521,7 +589,7 @@ for f in "$ADVANCE" "$COMPLETE" "$LEADPO" "$FEATDEV"; do
 done
 assert_eq "the four files this suite reads exist in this repository" "" "$missing"
 
-assert_eq "dispatch_problems over the real tree prints nothing: GREEN → GATES and the self-test step dispatch a feature-developer and check its verdict with attest.sh check, check-boundaries stays the orchestrator's and comes after the commit, complete-story's bullet names the dispatch and its verdict, lead-po's ## Orchestrating dispatches the long runs and no longer says every rung is run by you, and feature-developer.md has ## Run and report" \
+assert_eq "dispatch_problems over the real tree prints nothing: GREEN → GATES and the self-test step dispatch a feature-developer and check its verdict with attest.sh check, check-boundaries stays the orchestrator's and comes after the commit, complete-story's bullet names the dispatch and its verdict, lead-po's ## Orchestrating dispatches the long runs and no longer says every rung is run by you, and feature-developer.md has ## Run and report; and (HARNESS-095) the self-test step, the bullet and lead-po's long-run paragraph name \`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed\` and its \`attest.sh check\` on the GATES row" \
   "" "$(dispatch_problems "$REPO_ROOT")"
 
 # ---------------------------------------------------------------------------
@@ -609,13 +677,13 @@ assert_eq "a check of \`bash scripts/selftest.sh\` without \`SELFTEST_JOBS=4\` i
   "$L_SELFTEST" "$(dispatch_problems "$d")"
 
 fresh_case st-check-targeted
-write_advance "$d" "$GG_GOOD" "$(steps "${S2_GOOD//selftest.sh\`./selftest.sh dispatch\`.}" "$S5_GOOD")"
-assert_eq "a check of a targeted \`... selftest.sh dispatch\` is not a check of the full self-test: one line" \
+write_advance "$d" "$GG_GOOD" "$(steps "${S2_GOOD//--changed\`./--changed dispatch\`.}" "$S5_GOOD")"
+assert_eq "a check of a targeted \`... selftest.sh --changed dispatch\` is not a check of the \`--changed\` run: one line" \
   "$L_SELFTEST" "$(dispatch_problems "$d")"
 
 fresh_case st-words-in-next-step
 s2="2. \`bash scripts/selftest-needed.sh\`; on run, $STEP_SELFTEST on Windows beside other test runs; skip into \`## Notes\`."
-s3="3. \`bash scripts/phase.sh set \$1 REVIEW\` once a \`feature-developer\` ran it detached and alone and its verdict passed \`bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh\`."
+s3="3. \`bash scripts/phase.sh set \$1 REVIEW\` once a \`feature-developer\` ran it detached and alone and its verdict passed \`bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed\` and \`bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed\`."
 write_advance "$d" "$GG_GOOD" "$(printf '%s\n%s\n%s\n%s\n%s\n%s' "$S1" "$s2" "$s3" "$S4" "$S5_GOOD" "$S6")"
 assert_eq "the dispatch words in a DIFFERENT step do not satisfy the self-test step: one line" \
   "$L_SELFTEST" "$(dispatch_problems "$d")"
@@ -709,13 +777,13 @@ assert_eq "the long-run paragraph without \`feature-developer\` gives exactly on
 
 fresh_case lead-no-selftest
 write_leadpo "$d" "$RUNG_GOOD" "$CHECK_GOOD" "${LONG_GOOD//"$LONG_RUN"/the self-test}"
-assert_eq "the long-run paragraph without \`SELFTEST_JOBS=4 bash scripts/selftest.sh\` gives exactly one line" \
+assert_eq "the long-run paragraph without the bare \`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed\` span (its check still says \`--changed\`) gives exactly the dispatch line" \
   "$L_LONG" "$(dispatch_problems "$d")"
 
 fresh_case lead-split-paragraphs
-write_leadpo "$d" "$RUNG_GOOD" "$CHECK_GOOD" 'The long run is `SELFTEST_JOBS=4 bash scripts/selftest.sh`.
+write_leadpo "$d" "$RUNG_GOOD" "$CHECK_GOOD" 'The long run is `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`.
 
-It goes to a `feature-developer` on the GATES row.'
+It goes to a `feature-developer` on the GATES row, checked with `bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`.'
 assert_eq "the two needles in DIFFERENT paragraphs of the section give exactly one line" \
   "$L_LONG" "$(dispatch_problems "$d")"
 
@@ -726,9 +794,15 @@ assert_eq "the long-run paragraph only in a LATER section gives exactly one line
   "$L_LONG" "$(dispatch_problems "$d")"
 
 fresh_case lead-no-check
+write_leadpo "$d" "$RUNG_GOOD" '- Read the record it left.' "${LONG_GOOD//"$CHECK_CHANGED"/the record\`}"
+assert_eq "## Orchestrating without \`bash scripts/attest.sh check\` anywhere gives the check line; since HARNESS-095 the long-run paragraph must carry the \`--changed\` check, so removing it there gives the long-run line first" \
+  "$L_LONG
+$L_CHECK" "$(dispatch_problems "$d")"
+
+fresh_case lead-no-check-elsewhere
 write_leadpo "$d" "$RUNG_GOOD" '- Read the record it left.' "$LONG_GOOD"
-assert_eq "## Orchestrating without \`bash scripts/attest.sh check\` gives exactly one line" \
-  "$L_CHECK" "$(dispatch_problems "$d")"
+assert_eq "the \`--changed\` check in the long-run paragraph is itself a \`bash scripts/attest.sh check\`: silent" \
+  "" "$(dispatch_problems "$d")"
 
 fresh_case lead-no-section
 c="$(cat "$d/$LEADPO")"; printf '%s\n' "${c//"$ORCH_HEAD"/## Orchestration}" > "$d/$LEADPO"
@@ -786,12 +860,87 @@ write_advance "$d" "$GG_TODAY" "$(steps "$S2_TODAY" "$S5_GOOD")"
 write_complete "$d" "$BULLET_TODAY"
 write_leadpo "$d" "$RUNG_TODAY" "$CHECK_GOOD" 'Run the long runs yourself.'
 write_featdev "$d" '## Running' 'Run what you are told.'
-assert_eq "a tree WITHOUT this story's edits prints six lines: advance-story's two, complete-story's, lead-po's two, feature-developer's" \
+assert_eq "a tree WITHOUT HARNESS-085's edits prints six lines: advance-story's two, complete-story's, lead-po's two, feature-developer's" \
   "$L_GG
 $L_SELFTEST
 $L_BULLET
 $L_LONG
 $L_RUNG
 $L_NOHEAD" "$(dispatch_problems "$d")"
+
+# ---------------------------------------------------------------------------
+# HARNESS-095: the long run is `SELFTEST_JOBS=4 bash scripts/selftest.sh
+# --changed`. Expected lines are written out literally where they are new.
+describe "HARNESS-095 AC-4: the self-test step names the \`--changed\` run, and the full-run spelling does not"
+
+fresh_case st-full-094
+write_advance "$d" "$GG_GOOD" "$(steps "$S2_FULL" "$S5_GOOD")"
+assert_eq "control: the HARNESS-085-compliant step with the full-run spelling throughout (\`--changed\` absent) gives exactly one line naming the file and the \`--changed\` command" \
+  '.claude/commands/advance-story.md: the self-test step does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`' \
+  "$(dispatch_problems "$d")"
+
+fresh_case st-bare-full
+write_advance "$d" "$GG_GOOD" "$(steps "${S2_GOOD//"$STEP_SELFTEST"/$STEP_FULL}" "$S5_GOOD")"
+assert_eq "only the bare run regressed to the full-run spelling (the attest spans still \`--changed\`) is a step with no \`--changed\` run named: one \"does not name\" line" \
+  "$L_NOCHANGED" "$(dispatch_problems "$d")"
+
+fresh_case st-run-full
+write_advance "$d" "$GG_GOOD" "$(steps "${S2_GOOD//"$RUN_CHANGED"/bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh\`}" "$S5_GOOD")"
+assert_eq "dispatching \`bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh\` (the full run) is not dispatching the \`--changed\` run: one line" \
+  "$L_SELFTEST" "$(dispatch_problems "$d")"
+
+fresh_case st-check-full
+write_advance "$d" "$GG_GOOD" "$(steps "${S2_GOOD//"$CHECK_CHANGED"/bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh\`}" "$S5_GOOD")"
+assert_eq "checking \`bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh\` is checking a different record from the \`--changed\` run: one line" \
+  "$L_SELFTEST" "$(dispatch_problems "$d")"
+
+describe "HARNESS-095 AC-3: complete-story's bullet and lead-po's long-run paragraph name the \`--changed\` run and its check"
+
+fresh_case bullet-094
+write_complete "$d" "$BULLET_094"
+assert_eq "control: the bullet as it reads at HARNESS-094 (a bare \`attest.sh check\`, no GATES row) gives exactly one line" \
+  "$L_BULLET" "$(dispatch_problems "$d")"
+
+fresh_case bullet-check-full
+write_complete "$d" "${BULLET_GOOD//"$CHECK_CHANGED"/bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh\`}"
+assert_eq "a bullet checking the full run rather than the \`--changed\` run gives exactly one line" \
+  "$L_BULLET" "$(dispatch_problems "$d")"
+
+fresh_case lead-094
+write_leadpo "$d" "$RUNG_GOOD" "$CHECK_GOOD" "$LONG_094"
+assert_eq "control: the long-run paragraph as it reads at HARNESS-094 (the full run, dispatched, no \`--changed\`) gives exactly one line naming the file and the \`--changed\` command" \
+  '.claude/agents/lead-po.md: its long-run paragraph does not name `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`' \
+  "$(dispatch_problems "$d")"
+
+fresh_case lead-regressed
+write_leadpo "$d" "$RUNG_GOOD" "$CHECK_GOOD" "${LONG_GOOD//selftest.sh --changed/selftest.sh}"
+assert_eq "control: the compliant paragraph with every \`--changed\` deleted (DV-1's mutation) gives exactly the \"does not name\" line" \
+  "$L_LONG_CHANGED" "$(dispatch_problems "$d")"
+
+fresh_case lead-check-full
+write_leadpo "$d" "$RUNG_GOOD" "$CHECK_GOOD" "${LONG_GOOD//"$CHECK_CHANGED"/bash scripts/attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh\`}"
+assert_eq "a long-run paragraph that names the \`--changed\` run but checks the full run gives exactly the dispatch line" \
+  "$L_LONG" "$(dispatch_problems "$d")"
+
+fresh_case lead-no-gates-row
+write_leadpo "$d" "$RUNG_GOOD" "$CHECK_GOOD" "${LONG_GOOD//GATES row/GATES phase}"
+assert_eq "a long-run paragraph without \`GATES row\` gives exactly the dispatch line" \
+  "$L_LONG" "$(dispatch_problems "$d")"
+
+fresh_case lead-full-undispatched
+write_leadpo "$d" "$RUNG_GOOD" "$CHECK_GOOD" "${LONG_094//"$DISPATCHED"/subagent}"
+assert_eq "the HARNESS-094 paragraph without \`feature-developer\` is not dispatching at all: the dispatch line, not the \"does not name\" one" \
+  "$L_LONG" "$(dispatch_problems "$d")"
+
+describe "HARNESS-095 AC-4: the lines the tree at HARNESS-094 prints, in order"
+
+fresh_case today-094
+write_advance "$d" "$GG_GOOD" "$(steps "$S2_FULL" "$S5_GOOD")"
+write_complete "$d" "$BULLET_094"
+write_leadpo "$d" "$RUNG_GOOD" "$CHECK_GOOD" "$LONG_094"
+assert_eq "the HARNESS-094 text in all three files gives three lines: advance-story's \"does not name\", complete-story's bullet, lead-po's \"does not name\"" \
+  "$L_NOCHANGED
+$L_BULLET
+$L_LONG_CHANGED" "$(dispatch_problems "$d")"
 
 summary "dispatch"
