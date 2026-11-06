@@ -5,7 +5,7 @@ slug: a-self-test-that-cannot-start-a-process
 epic: 
 type: bug
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-090-a-self-test-that-cannot-start-a-process
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -330,6 +330,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
+- GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -742,3 +743,22 @@ These are claims until run against the shipped handler.
   - Read the new block (`selftest.test.sh` 1538-1755): whole-line and
     whole-block needles, bounded holds, the Contract's buffer-as-directory
     recipe for AC-4's kept case. No Contract amendment.
+- GREEN verified by the orchestrator, 2026-11-06. `attest.sh check` said
+  `fresh` for both at tree `38c6093`, so neither was re-run.
+  - `selftest.sh selftest`: exit 0, `selftest: 346 passed, 0 failed`, floor
+    346 met. All 16 RED reds are green; nothing that passed in RED fails.
+  - `gates.sh --fast`: exit 0, `0 ran, 5 unconfigured`.
+  - `sigpipe` 91/91 and both scanners 0 findings, run directly by GREEN. No
+    suite pins a `selftest.sh` line number.
+  - The diff matches the Contract: `LOOP_DONE`, `start_suite`,
+    `report_unstarted`, the print loop, the handler's five steps, VERSION 111.
+  - For the diff review, not changed here: `start_suite` treats `$!` equal to
+    the previous start's pid as a failed start (the Contract's rule). A host
+    that reuses a pid at once (Cygwin can) could make a real start read as
+    failed, loudly, with `start failed (status 0)`. And the measurement in
+    the Contract says a real fork failure ends the shell, so that branch is
+    nearly unreachable in practice.
+  - GREEN's own doubts: `<p>` counts not-started blocks (AC-2's "blocks
+    printed" reads that way; no test pins it); a kept directory may hold
+    `.start` files; a TERM mid-`report_suite` could print a block twice
+    (release 110 had the same window).
