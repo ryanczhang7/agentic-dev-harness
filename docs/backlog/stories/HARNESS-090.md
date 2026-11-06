@@ -385,6 +385,7 @@ name, below the table.
 - GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
 - GATES diff review (first), `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. R-1 RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 - GREEN after R-1, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
+- GATES diff review (second), `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -961,6 +962,51 @@ Verdict: fix 1 first.
   which a portable test cannot hold open without a second hook in production
   code. The reviewer's widened-window reproduction is its evidence, and
   `main`'s behaviour, which the fix restores, is the reference.
+
+**Second review (2026-11-06), against `main...dfe94f0`.** A fresh
+`feature-developer` ran it with the `diff-review` skill, on Opus 5.5
+(`claude-opus-5-5`) with no override. It changed no file, ran its probes
+in scratch copies, and `mutate.sh --check` was clean. Its suite run:
+`attest.sh -- bash scripts/selftest.sh selftest` gave exit 0,
+`366 passed, 0 failed`, in 123 s.
+
+**The first review's findings are resolved:**
+1. The bound is `${#PIDS[@]}`, and the array is dense. The widened-window
+   probe re-run gave `1 of 2`, with `a` waited for and printed.
+2. `trap '' INT TERM` is the handler's second statement, and R-1 case A is
+   green.
+3. R-1 case B reaches the handler's failed-start branch.
+
+**Checked and sound:**
+- **Exit paths:** TERM exits 143, INT exits 130, and a status of 0 becomes 1.
+- **The serial path** is byte-identical.
+- **Callers:** CI runs `selftest.sh` serially and reads only the status, as
+  do `ci-local.sh`, `attest.sh` and `selftest-needed.sh`.
+- **Test bounds and cleanup:** `BOUND=60`, `h_scrub`, `local -x`. Floors
+  366 in both places.
+- **The two windows left open on purpose** are judged acceptable: builtins
+  only, and `main` had the same window and also deleted the buffers.
+- **Fix 2's cost is accepted.** A hung suite during the handler's wait can be
+  ended only by KILL, if the signal reaches `selftest.sh` alone.
+
+**Should fix**
+1. **A TERM during the main loop's `out="$(cat ...)"` prints that suite's
+   header twice** (`selftest.sh:686-689`).
+   - The header is out before `printed` moves, so the handler starts the
+     block again.
+   - Reproduced in a scratch copy with the `cat` widened: `=== a1 ===`, a
+     blank line, then `=== a1 ===` and its full block. The status and
+     trailer were correct.
+   - Fix: move the `cat` above `suite_header`. No result is lost.
+
+Verdict: Ship.
+
+**Orchestrator:** should-fix 1 is deferred, not taken.
+- No result is lost, and the status, lock and trailer are right. The cost is
+  a duplicated header on a rare interrupted run.
+- The fix is a reorder no test can pin, since the window is one `cat`. Taking
+  it restarts the gates and the review for a cosmetic window.
+- It is listed for the user in the PR as left out.
 
 ## Gate results
 
