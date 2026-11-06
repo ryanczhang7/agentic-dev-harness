@@ -5,7 +5,7 @@ slug: a-self-test-that-cannot-start-a-process
 epic: 
 type: bug
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-090-a-self-test-that-cannot-start-a-process
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -383,6 +383,7 @@ name, below the table.
 - PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 - GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 - GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
+- GATES diff review (first), `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. R-1 RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -690,30 +691,206 @@ These are claims until run against the shipped handler.
 |---|---|---|
 | `s/selftest: buffers kept:/selftest: buffers held:/` on GREEN's printf | `bash scripts/selftest.sh selftest` | exactly ONE assertion red: case 2 #6 ("AC-2 AC-4: the run ends with the ended-before, never-started, unreported and buffers-kept lines"); `selftest: 345 passed, 1 failed`. Case 1 #12 counts `^selftest: buffers kept:` lines and stays 0; case 2 #7 (directory present) stays green because the keep is not the print. |
 
+**R-1 additions (2026-11-06, return from GATES; full record in
+`## Regressions`).** Two new describes in `selftest.test.sh`, after the AC-3
+case, with helpers `jstart_env` and `h_scrub`; no existing assertion changed.
+Command unchanged: `bash scripts/selftest.sh selftest`. Floor 346 -> 366.
+
+- **Case A, "AC-1 (R-1) a second TERM while the handler drains"** - 11
+  assertions, 6 red today: headers `d1-held d2-done d3-held`, their three
+  summary lines, the trailer (`3 of 4 ... (status 143)`, `never started:
+  d4-queued`) and `h_left` empty. What makes it pass: fix 2, `trap '' INT
+  TERM` as `selftest_exit`'s second statement, right after `st=$?`, so the
+  second TERM is ignored and the handler finishes its drain, prints, removes
+  the buffers and releases the lock. Nothing else is needed for this case.
+- **Case B, "AC-3 (R-1) a TERM after a failed start"** - 9 assertions, green
+  today, earned by the reviewer's mutation of line 477 (5 red, pasted in
+  `## Regressions`). It must stay green through fixes 1 and 2: the
+  handler's `STARTERR` branch prints `report_unstarted` and counts it in
+  `<p>`.
+- Fix 1 (`n="${#PIDS[@]}"`) has no test; make it as the Contract says.
+- After GREEN, expect `selftest: 366 passed, 0 failed`.
+
 ## Regressions
 
-<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
-     otherwise. A test that is wrong is never edited into passing, and the
-     return is not a footnote - it is the story failing to be one clean cycle,
-     and the next person needs to know why. One block per return:
-       * which test, what it asserted, and what was wrong with it
-       * how the defect was found
-       * what it asserts now
-       * what earns it, since "watched it fail" cannot apply once the
-         implementation exists - the corrected assertion passes on its first
-         run and every run after, whether or not it asserts anything: either a
-         PROBE (mutate the specific behaviour the test pins, paste the red,
-         confirm the revert) or, where the defect was cost rather than
-         correctness, a BEFORE/AFTER measurement taken under the gate command -
-         not the plain test command, which is the faster one.
-         PASTE THE OUTPUT. check-boundaries.sh refuses a PR whose Regressions
-         or Gate probes section describes a failure without showing one.
-         A result counts only as a block: a line beginning with three
-         backticks or three tildes (a fence), or a line indented by exactly
-         four spaces. Prose does not count, nor inline code in backticks, nor
-         a tab, nor anything inside an HTML comment
-       * whether GREEN was a no-op, and the command output proving the source
-         was untouched and still passes -->
+**R-1 (from GATES, diff review, 2026-11-06): no test held the handler to a second signal, or reached its failed-start branch.**
+
+Written by the test-developer, RED, on Opus 5.5 (`claude-opus-5-5`), the
+agent file's `model: opus`; no override.
+
+**What was wrong.** No existing test was wrong; two were missing. The first
+diff review (`## Diff review`) found:
+
+- **Finding 2.** A second TERM or INT while `selftest_exit` waits on a held
+  suite runs the `exit 143` trap inside the EXIT handler, which ends it
+  before it prints a block or releases the lock. Every HARNESS-090 case sends
+  one TERM, so none could see it.
+- **Finding 3.** The handler's `STARTERR` branch (`selftest.sh` line 477,
+  `report_unstarted "$name" "${STARTERR[$i]}"`) was never reached: the AC-3
+  case runs to its summary, so the main loop's copy (line 680) prints the
+  not-started block. Replacing the handler's line with "mark unreported, keep
+  buffers" survived at `selftest: 346 passed, 0 failed`.
+
+**New tests**, both in `.claude/tests/selftest.test.sh`, after the HARNESS-090
+AC-3 case and before `HARNESS-036 AC-6`, with two helpers: `jstart_env` (a
+sibling of `jstart` that exports `VAR=value` words to the backgrounded script
+with `local -x`; `jstart` is unchanged) and `h_scrub` (removes any
+`selftest.*`, `run.lock`, `run.lock.*` from the fixture's state AFTER each
+case's own `h_left` assertion, so a handler that dies mid-drain, or a
+mutation that keeps buffers, cannot leak into later cases). No existing
+assertion was changed.
+
+**Case A, "HARNESS-090 AC-1 (R-1) a second TERM while the handler drains"**
+(11 assertions). `SELFTEST_JOBS=2`: `d1-held` holds; `d2-done` finishes
+behind it unprinted; `d3-held` holds in its slot; `d4-queued` never starts.
+TERM, `sleep 2`, TERM, `sleep 1`, `release all`, wait (then a bounded,
+non-asserting `h_wait` for the held suites' finished markers, so orphans in
+RED cannot write into the next case's markers). Asserts:
+
+| # | asserts | AC |
+|---|---|---|
+| 1-3 | preconditions: `d2-done` finished and `d3-held` started; `d1-held` not finished; no `=== d2-done ===` line before the TERM | - |
+| 4 | status 143 | AC-2 |
+| 5 | started set exactly `d1-held d2-done d3-held` | AC-1 |
+| 6 | headers exactly `d1-held d2-done d3-held` | AC-1 |
+| 7-9 | `<s>: 2 passed, 0 failed` once each, for the three | AC-1 |
+| 10 | last 3 lines: empty, `selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).`, `selftest: never started: d4-queued` | AC-2 |
+| 11 | `h_left` empty (no buffer directory, no lock) | AC-4 |
+
+This is a genuine red against code that exists: the GATES handler has no
+`trap '' INT TERM`, so the second TERM ends it. Status 143, the started set
+and the preconditions are green; 6 assertions red. Run through
+`bash scripts/attest.sh -- bash scripts/selftest.sh selftest`, local, this
+Windows host:
+
+```
+run:      2026-11-06T07:03:32Z
+command:  bash scripts/selftest.sh selftest
+tree:     7777e9dad3b981ccefb85d053826afd05ea1b191
+exit:     1
+duration: 208s
+last:     1 of 1 harness suite(s) FAILED.
+log:      .claude/state/attest-logs/20261106T070332Z.28394.log
+
+  HARNESS-090 AC-1 (R-1)  a second TERM while the handler drains does not end it: every started block printed, the lock released
+    FAIL AC-1: after a second TERM, every started suite's block is printed, once each, in glob order
+         expected: d1-held d2-done d3-held
+         actual:   
+    FAIL AC-1: after a second TERM, d1-held's block carries its own summary line
+         expected: 1
+         actual:   0
+    FAIL AC-1: after a second TERM, d2-done's block carries its own summary line
+         expected: 1
+         actual:   0
+    FAIL AC-1: after a second TERM, d3-held's block carries its own summary line
+         expected: 1
+         actual:   0
+    FAIL AC-2: after a second TERM, the run ends with an empty line, the ended-before line and the never-started line
+         expected: 
+         selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).
+         selftest: never started: d4-queued
+         actual:   
+    FAIL AC-4: after a second TERM, the buffer directory and the lock are gone
+         expected: 
+         actual:   selftest.38556 run.lock
+
+  HARNESS-090 AC-3 (R-1)  a TERM after a failed start: the handler prints the not-started block in its place
+
+selftest: 360 passed, 6 failed
+FAIL selftest  did 360 units of work, below the floor of 366 in .claude/tests/floors.conf
+```
+
+Those six are the only FAIL lines in the suite; case B and every earlier
+case are green.
+
+**Case B, "HARNESS-090 AC-3 (R-1) a TERM after a failed start"** (9
+assertions). `SELFTEST_JOBS=2`, `SELFTEST_FAIL_START=h2-nostart` via
+`jstart_env`: `h1-held` holds; `h2-nostart`'s start fails and the scheduler
+refills the slot in the same inner pass with `h3-held` (`started` moves on a
+failed start, `running` does not), which holds; `h4-queued` never starts.
+The main loop cannot print `h2-nostart`'s block while `h1-held`, before it,
+is unprinted, so the TERM leaves it to the handler's `STARTERR` branch.
+TERM, `sleep 2`, `release all`, wait. Counts checked against the handler: its
+`STARTERR` branch does `printed=$((printed+1))`, so `<p>` counts
+`h2-nostart`'s block (3 of 4). Asserts:
+
+| # | asserts | AC |
+|---|---|---|
+| 1-3 | preconditions: `h1-held` and `h3-held` started; `started/h2-nostart` absent; no `=== h1-held ===` line before the TERM | - |
+| 4 | status 143 | AC-2 |
+| 5 | headers exactly `h1-held h2-nostart h3-held` | AC-1, AC-3 |
+| 6 | `h2-nostart`'s block `cmp`-identical to `=== h2-nostart ===`, `FAIL h2-nostart  not started: fork: simulated by SELFTEST_FAIL_START`, and the blank line opening `h3-held`'s block | AC-3 |
+| 7 | last 3 lines: empty, `selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).`, `selftest: never started: h4-queued` | AC-2 |
+| 8 | no `^selftest: unreported:` line | AC-2 |
+| 9 | `h_left` empty | AC-4 |
+
+It passes on arrival (the branch exists). **Earned** by the reviewer's
+mutation, through `mutate.sh`, against `bash scripts/selftest.sh selftest`.
+The expression was dry-run with `sed ... | diff` first: it changes line 477
+only, not the main loop's line 680. Five of case B's assertions went red
+(#5-9); its preconditions and status stayed green. The other six reds of the
+run are case A's, red regardless of the mutation. Local, this Windows host
+(output abridged to the mutate lines, case B and the count):
+
+```
+=== mutate: scripts/selftest.sh (1 line(s) changed by s/^      report_unstarted "\$name" "\${STARTERR\[\$i\]}"$/      unreported="${unreported:+$unreported }$name"; kept=1/) ===
+  477 -       report_unstarted "$name" "${STARTERR[$i]}"
+  477 +       unreported="${unreported:+$unreported }$name"; kept=1
+
+=== mutate: running bash scripts/selftest.sh selftest ===
+
+  HARNESS-090 AC-3 (R-1)  a TERM after a failed start: the handler prints the not-started block in its place
+    FAIL AC-1 AC-3: the handler prints all three started blocks, the failed start's in its glob place
+         expected: h1-held h2-nostart h3-held
+         actual:   h1-held h3-held
+    FAIL AC-3: the handler's h2-nostart block is its header and the one not-started line
+         expected: identical
+         actual:   differ:
+         1,3d0
+         < === h2-nostart ===
+         < FAIL h2-nostart  not started: fork: simulated by SELFTEST_FAIL_START
+         < 
+    FAIL AC-2: the failed start's block counts as reported; h4-queued is named never started
+         expected: 
+         selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).
+         selftest: never started: h4-queued
+         actual:   selftest: never started: h4-queued
+         selftest: unreported: h2-nostart
+         selftest: buffers kept: .claude/state/selftest.52365/
+    FAIL AC-2: a failed start is not named unreported
+         expected: 0
+         actual:   1
+    FAIL AC-4: every block printed, so the buffer directory and the lock are gone
+         expected: 
+         actual:   selftest.52365
+
+selftest: 355 passed, 11 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261106T070736Z.42862.bak) ===
+```
+
+`bash scripts/mutate.sh --check` afterwards:
+
+```
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**Finding 1 gets no test.** Its window is the length of one `rm -f` inside
+`start_suite`, which a portable test cannot hold open without a second hook
+in production code (Orchestrator note, `## Diff review`). The reviewer's
+widened-window reproduction is its evidence, and `main`'s handler, which
+looped over `${#PIDS[@]}`, is the reference the fix restores.
+
+**GREEN on re-entry is not a no-op.** It makes fixes 1 and 2 as the amended
+`## Contract` `selftest_exit` block says: `trap '' INT TERM` as the
+handler's second statement (turns case A green), and the drain/print bound
+`n="${#PIDS[@]}"` instead of `${started:-0}` (no test; see above). Case B
+must stay green through both.
+
+**Floors.** `selftest` 346 -> 366 in `floors.conf` (dated note) and in
+`selftest.test.sh`'s table (line 555). Measured: `selftest: 360 passed, 6
+failed`, 366 EXECUTED; until GREEN lands the run also prints `FAIL selftest
+did 360 units of work, below the floor of 366`, expected.
 
 ## Diff review
 
@@ -904,3 +1081,9 @@ Verdict: fix 1 first.
 selftest: 345 passed, 1 failed
 === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest.sh.20261106T064851Z.121292.bak) ===
 ```
+- R-1 verified by the orchestrator, 2026-11-06. `attest.sh check` said
+  `fresh` for both at tree `7777e9d`. `selftest.sh selftest`: exit 1,
+  `selftest: 360 passed, 6 failed`. The 6 are exactly case A's blocks,
+  trailer and `h_left` after a second TERM. Case B is green on arrival and
+  was earned by the reviewer's mutation (pasted in `## Regressions`).
+  `gates.sh --fast`: exit 0.

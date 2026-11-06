@@ -552,7 +552,7 @@ reporting 27
 rules-trim 30
 run-lock 140
 security-audit 51
-selftest 346
+selftest 366
 selftest-needed 482
 settings 70
 shipped-docs 14
@@ -1753,6 +1753,136 @@ jrun_env 2 SELFTEST_FAIL_START= --
 assert_eq "control: with SELFTEST_FAIL_START empty, the same fixture exits 0" 0 "$JRC"
 assert_eq "control: and all four passed" 1 "$(h_exact '4 harness suite(s) passed.' "$HW/out")"
 assert_eq "control: and g2-nostart started" present "$(present "$MK/started/g2-nostart")"
+
+# ---------------------------------------------------------------------------
+# R-1 (from GATES, diff review, 2026-11-06). Two cases the first review found
+# missing: a second signal while the handler drains (finding 2), and the
+# handler's failed-start branch (finding 3).
+
+# h_scrub   Removes whatever a run left in the fixture's .claude/state, so a
+# handler that died mid-drain (or a mutation that kept the buffers) cannot
+# leak a lock or a buffer directory into the next case. Called only AFTER the
+# case's own h_left assertion has read the state.
+h_scrub() {
+  rm -rf "$FIX"/.claude/state/selftest.* "$FIX"/.claude/state/run.lock \
+         "$FIX"/.claude/state/run.lock.* 2>/dev/null
+  return 0
+}
+
+# jstart_env <jobs> <VAR=value>... -- [args]   jstart with extra environment
+# words, exported to the backgrounded script only (local -x unwinds when the
+# function returns). Same `cd`-then-`bash ... &` shape as jstart, so $! is
+# still selftest.sh's own pid. jstart itself is left alone.
+jstart_env() {
+  local j="$1" here="$PWD" e=()
+  shift
+  while [ "$#" -gt 0 ] && [ "$1" != -- ]; do e[${#e[@]}]="$1"; shift; done
+  [ "$#" -gt 0 ] && shift
+  [ "${#e[@]}" -gt 0 ] && local -x "${e[@]}"
+  cd "$FIX" || return 1
+  SELFTEST_JOBS="$j" VERBOSE= bash scripts/selftest.sh "$@" > "$HW/out" 2> "$HW/err" &
+  HP=$!
+  cd "$here" || return 1
+  BG="$BG $HP"
+}
+
+describe "HARNESS-090 AC-1 (R-1)  a second TERM while the handler drains does not end it: every started block printed, the lock released"
+
+# SELFTEST_JOBS=2, the first HARNESS-090 case's shape with four suites:
+# d1-held holds; d2-done finishes behind it, unprinted; d3-held holds in its
+# slot; d4-queued never starts. The first TERM puts the run in its EXIT
+# handler, waiting on d1-held; the second arrives during that wait.
+reset_suites
+held d1-held   N=1 WAIT_REL=1 BOUND=60
+held d2-done   N=1 WAIT_START=d1-held LONELY=30 BOUND=60
+held d3-held   N=1 WAIT_REL=1 BOUND=60
+held d4-queued N=1
+floors <<'FLOORS'
+floor | d1-held   | 2
+floor | d2-done   | 2
+floor | d3-held   | 2
+floor | d4-queued | 2
+FLOORS
+mk_reset
+jstart 2
+assert_eq "precondition: d2-done has finished and d3-held has started in its slot" yes \
+  "$(yn h_wait "$MK/finished/d2-done" "$MK/started/d3-held")"
+assert_eq "precondition: d1-held is still holding, so nothing can be printed yet" absent \
+  "$(present "$MK/finished/d1-held")"
+assert_eq "precondition: d2-done's block is not in the output before the TERM" 0 \
+  "$(h_exact '=== d2-done ===' "$HW/out")"
+kill -TERM "$HP" 2>/dev/null
+sleep 2
+kill -TERM "$HP" 2>/dev/null
+sleep 1
+release all
+wait "$HP"; rc="$?"
+# Whatever the handler did, let the held suites finish before the next case
+# resets the markers they write (bounded by h_wait's 60 s; not an assertion).
+h_wait "$MK/finished/d1-held" "$MK/finished/d3-held" || :
+assert_eq "AC-2: two TERMs still end the run with 143" 143 "$rc"
+assert_eq "AC-1: only the three started suites ran (neither TERM started more)" "d1-held d2-done d3-held" \
+  "$(h_names started)"
+assert_eq "AC-1: after a second TERM, every started suite's block is printed, once each, in glob order" \
+  "d1-held d2-done d3-held" "$(h_heads "$HW/out")"
+for s in d1-held d2-done d3-held; do
+  assert_eq "AC-1: after a second TERM, $s's block carries its own summary line" 1 \
+    "$(h_exact "$s: 2 passed, 0 failed" "$HW/out")"
+done
+assert_eq "AC-2: after a second TERM, the run ends with an empty line, the ended-before line and the never-started line" \
+  "
+selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).
+selftest: never started: d4-queued" "$(h_tail 3 "$HW/out")"
+assert_eq "AC-4: after a second TERM, the buffer directory and the lock are gone" "" "$(h_left)"
+h_scrub
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-090 AC-3 (R-1)  a TERM after a failed start: the handler prints the not-started block in its place"
+
+# SELFTEST_JOBS=2. h1-held starts and holds; h2-nostart is named in
+# SELFTEST_FAIL_START, so its start fails and the scheduler refills the slot
+# in the same pass with h3-held, which holds. h4-queued never starts. The
+# main loop cannot print h2-nostart's block while h1-held, before it, is
+# unprinted, so the TERM leaves that block to the handler's STARTERR branch.
+reset_suites
+held h1-held    N=1 WAIT_REL=1 BOUND=60
+held h2-nostart N=1
+held h3-held    N=1 WAIT_REL=1 BOUND=60
+held h4-queued  N=1
+floors <<'FLOORS'
+floor | h1-held    | 2
+floor | h2-nostart | 2
+floor | h3-held    | 2
+floor | h4-queued  | 2
+FLOORS
+mk_reset
+jstart_env 2 SELFTEST_FAIL_START=h2-nostart --
+assert_eq "precondition: h1-held and h3-held have both started, h3-held in the slot h2-nostart failed to take" yes \
+  "$(yn h_wait "$MK/started/h1-held" "$MK/started/h3-held")"
+assert_eq "precondition: h2-nostart's start was not attempted" absent "$(present "$MK/started/h2-nostart")"
+assert_eq "precondition: h1-held is still holding, so nothing can be printed yet" 0 \
+  "$(h_exact '=== h1-held ===' "$HW/out")"
+kill -TERM "$HP" 2>/dev/null
+sleep 2
+release all
+wait "$HP"; rc="$?"
+h_wait "$MK/finished/h1-held" "$MK/finished/h3-held" || :
+assert_eq "AC-2: the TERM ends the run with 143" 143 "$rc"
+assert_eq "AC-1 AC-3: the handler prints all three started blocks, the failed start's in its glob place" \
+  "h1-held h2-nostart h3-held" "$(h_heads "$HW/out")"
+printf '=== h2-nostart ===\nFAIL h2-nostart  not started: fork: simulated by SELFTEST_FAIL_START\n\n' \
+  > "$HW/blk.want"
+h_block h2-nostart "$HW/out" > "$HW/blk.got"
+assert_eq "AC-3: the handler's h2-nostart block is its header and the one not-started line" identical \
+  "$(h_same "$HW/blk.want" "$HW/blk.got")"
+assert_eq "AC-2: the failed start's block counts as reported; h4-queued is named never started" \
+  "
+selftest: ended before its summary: 3 of 4 suite(s) reported (status 143).
+selftest: never started: h4-queued" "$(h_tail 3 "$HW/out")"
+assert_eq "AC-2: a failed start is not named unreported" 0 \
+  "$(h_count_re '^selftest: unreported:' "$HW/out")"
+assert_eq "AC-4: every block printed, so the buffer directory and the lock are gone" "" "$(h_left)"
+h_scrub
 
 # ---------------------------------------------------------------------------
 describe "HARNESS-036 AC-6  state, suite and portability hygiene, in this repository"
