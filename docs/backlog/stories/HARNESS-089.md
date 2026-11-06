@@ -5,7 +5,7 @@ slug: check-boundaries-never-deadlocks-on-a-st
 epic: 
 type: bug
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-089-check-boundaries-never-deadlocks-on-a-st
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]
@@ -747,3 +747,7 @@ this return. The orchestrator will verify that.
     `criteria_baseline` still says copies are "fed by here-string", and
     `txt` (its `local`) and `crit_txt=""` are now unused. Changing them
     moves the sigpipe pins again.
+- GREEN on re-entry after R-1 was a no-op, verified by the orchestrator on
+  2026-11-06. `git diff --name-only 0f6e391 HEAD` names only
+  `.claude/tests/sigpipe.test.sh` and this story. No source path changed. The
+  R-1 sigpipe record (`fresh`, exit 0, 91/91) is the green.
