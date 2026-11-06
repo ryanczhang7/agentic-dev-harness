@@ -22,6 +22,7 @@ in here is ever committed; only this file and `.gitkeep` are tracked.
 | `run.lock` | `scripts/gates.sh`, `scripts/selftest.sh` | `scripts/run-lock.sh`, in the next run | yes |
 | `run.lock.<pid>` | `scripts/run-lock.sh` | `ln`, while it takes the lock | yes |
 | `selftest.<pid>/*.out` | `scripts/selftest.sh`, with `SELFTEST_JOBS` above 1 | `scripts/selftest.sh`, to print each suite in order | yes |
+| `check-boundaries/*` | `scripts/check-boundaries.sh` | nothing; scratch for a `git show` result | yes |
 
 ## The `Hand-editable` column is enforced
 

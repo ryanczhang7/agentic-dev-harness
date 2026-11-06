@@ -276,6 +276,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
+- GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -651,3 +652,24 @@ measured, not claimed.
 - The 135,000-byte case passes on today's code, as the Contract's
   measurement says. The orchestrator's RED brief, which said it would hang,
   was wrong. RED earned it with one mutation (in the handoff).
+- GREEN verified by the orchestrator, 2026-11-06.
+  - `attest.sh check -- bash scripts/selftest.sh boundaries settings`:
+    `fresh` at tree `518fe83`, exit 0, `2 harness suite(s) passed.`, 2968 s.
+    The log shows `boundaries: 538 passed, 0 failed` (floor 538) and
+    `settings: 71 passed, 0 failed`. Not re-run.
+  - The diff matches the Contract line for line: the scratch directory and
+    EXIT trap after `fail=0`, `criteria_baseline`'s two reads, the baseline
+    comparison, the suppression block's three reads and its
+    `suppression_hits < "$cp"`. The README row and VERSION 110 are in.
+  - The AC-2 guard, extracted from `boundaries.test.sh` and run by GREEN over
+    the new script, prints nothing; over `HEAD` it printed seven lines.
+  - `cp`/`dp` as variable names collide with nothing: the script and
+    `lib.sh` use `cp` only as a command, which a variable does not shadow.
+  - `gates.sh --fast`: `All required gates passed (0 ran, 5 unconfigured, 0 known)`.
+  - `sigpipe` fails only on C-5, the three stale line pins, as the Contract
+    planned (R-1). New lines: `res=$(printf` 399, `rec=$(printf` 438,
+    `ph_at="$(git show` 630.
+  - Left for REVIEW to judge, not GREEN's remit: the comment above
+    `criteria_baseline` still says copies are "fed by here-string", and
+    `txt` (its `local`) and `crit_txt=""` are now unused. Changing them
+    moves the sigpipe pins again.
