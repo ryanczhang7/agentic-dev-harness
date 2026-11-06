@@ -5,7 +5,7 @@ slug: check-boundaries-never-deadlocks-on-a-st
 epic: 
 type: bug
 status: in-progress
-phase: GREEN
+phase: RED
 branch: story/HARNESS-089-check-boundaries-never-deadlocks-on-a-st
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]
@@ -277,6 +277,7 @@ name, below the table.
 
 - PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 - GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
+- R-1 RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -580,6 +581,79 @@ measured, not claimed.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### R-1 (planned, from GREEN, 2026-11-06): sigpipe's three line pins moved
+
+**Which test, and what was wrong.** `.claude/tests/sigpipe.test.sh`, C-5
+("the twelve status-discarded lines in this tree are excluded by the rule, not
+by markers"). Its `DISCARDED` fixture pins three `scripts/check-boundaries.sh`
+lines by line number: `:395:res=$(printf`, `:434:rec=$(printf`,
+`:626:ph_at="$(git show`. GREEN (commit 0f6e391) added four lines above line
+395, so all three moved down by four. The C-5 freshness check then failed as a
+stale fixture. The assertion itself was correct. Only the line numbers were
+stale. The Contract planned this return before RED began.
+
+**How it was found.** GREEN's `bash scripts/selftest.sh sigpipe` run on the
+tree as committed at 0f6e391. Reproduced by the Test Developer before the edit,
+with the same tree and the same result (exit 1). The excerpt below is from the
+full log of that reproduction:
+
+```
+    FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+         expected: 12 lines, none stale
+         actual:   12 lines,
+           scripts/check-boundaries.sh:395 no longer holds [res=$(printf] - it holds:     gr="$(section "$sfile" "Gate results")"
+           scripts/check-boundaries.sh:434 no longer holds [rec=$(printf] - it holds:             fi
+           scripts/check-boundaries.sh:626 no longer holds [ph_at="$(git show] - it holds: 
+
+sigpipe: 90 passed, 1 failed
+FAIL sigpipe  did 90 units of work, below the floor of 91 in .claude/tests/floors.conf
+
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+```
+
+**What it asserts now.** The same twelve lines. The only change is three line
+numbers, each confirmed with `grep -n` on `scripts/check-boundaries.sh` before
+the edit: `:399:res=$(printf`, `:438:rec=$(printf`, `:630:ph_at="$(git show`.
+No other line of the test changed. The comment headers at 1127/1174/1202/1232
+are prose and were left alone.
+
+```
+-DISCARDED='scripts/check-boundaries.sh:395:res=$(printf
+-scripts/check-boundaries.sh:434:rec=$(printf
+-scripts/check-boundaries.sh:626:ph_at="$(git show
++DISCARDED='scripts/check-boundaries.sh:399:res=$(printf
++scripts/check-boundaries.sh:438:rec=$(printf
++scripts/check-boundaries.sh:630:ph_at="$(git show
+```
+
+**What earns it.** The red above. The freshness check is its own probe. GREEN's
+real edit moved the very lines it pins, and the check went red naming exactly
+those three lines and what they now hold. The re-pin is the only change between
+that red and the green below. No `mutate.sh` run was needed, because the
+production change that the check guards against had already happened in the
+tree.
+
+**The green after.** `bash scripts/attest.sh -- bash scripts/selftest.sh sigpipe`
+(local run, this host). `attest.sh check` on the same command reports `fresh`.
+
+```
+run:      2026-11-06T03:54:56Z
+command:  bash scripts/selftest.sh sigpipe
+tree:     27579728960540b5fb004a8abca017f0c15fe567
+status:   ok
+exit:     0
+duration: 261s
+last:     1 harness suite(s) passed.
+log:      .claude/state/attest-logs/20261106T035456Z.512533.log
+
+sigpipe: 91 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (91 assertions executed, 91 declared).
+```
+
+**GREEN on re-entry.** Expected to be a no-op: no source file was touched in
+this return. The orchestrator will verify that.
 
 ## Gate results
 
