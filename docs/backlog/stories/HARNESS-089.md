@@ -4,8 +4,8 @@ title: check-boundaries never deadlocks on a story copy near 64 KiB
 slug: check-boundaries-never-deadlocks-on-a-st
 epic: 
 type: bug
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-089-check-boundaries-never-deadlocks-on-a-st
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]
