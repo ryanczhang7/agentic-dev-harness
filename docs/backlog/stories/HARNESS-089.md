@@ -696,6 +696,61 @@ assertion floors: all 1 suite(s) met their declared floor (91 assertions execute
 **GREEN on re-entry.** Expected to be a no-op: no source file was touched in
 this return. The orchestrator will verify that.
 
+## Diff review
+
+A fresh `feature-developer` reviewed the diff with the `diff-review` skill.
+It ran on Opus 5.5 (`claude-opus-5-5`), with no override, on 2026-11-06,
+against `main...180c7d9`. It changed no file, and `mutate.sh --check` was
+clean.
+
+**Found sound:**
+- **Callers.** CI `boundaries.yml:25`, `ci-local.sh`, the tip `gates.sh`
+  prints, and the test runners that `cd "$FIX"`.
+- **Trap.** It is the only trap, and `lib.sh` sets none. It is quoted for a
+  `$ROOT` with spaces, and the `.` after `$$` keeps two PIDs apart.
+- **`cp`/`dp`.** Not reassigned, and they do not shadow the `cp` command.
+- **When `git show` fails.** Every failure branch behaves as before: an empty
+  file there gives the same result as the old empty variable, and nothing
+  reads a stale copy.
+- **Suppression input.** Its extra trailing blank lines cannot change
+  `suppression_hits`.
+- **Pipe.** No new SIGPIPE risk from `section | sed`.
+- **settings.test.sh.** It parses the new README row.
+- **Gate tree hash.** Not affected, because it covers tracked files only.
+- **Real run on this host.** `check-boundaries.sh main` ran in 50 s and
+  removed its scratch files.
+
+**Should fix:**
+1. **The scratch directory cannot be created** (`check-boundaries.sh:29`).
+   - The `mkdir -p` status is ignored.
+   - The reviewer put a plain file at `.claude/state/check-boundaries` in a
+     throwaway clone. Every `> "$cp"` then failed, and the criteria were
+     judged against an empty baseline (`ok    acceptance criteria changed,
+     with an ## Amendments entry`). Suppression commits were only noted.
+   - Fix: `mkdir -p ... || { FAIL; exit 1; }`.
+2. **The comment above `criteria_baseline` still says copies are "read into a
+   variable and fed by here-string".** `txt` (its `local`, 327) and
+   `crit_txt=""` (362) are dead.
+3. **No test pins the EXIT-trap cleanup.** Deleting the trap turns nothing
+   red.
+
+**Nice to have:** none.
+
+Verdict: Ship.
+
+**Orchestrator:** all three are deferred to one follow-up story, not taken
+here. The reasons:
+- 1 and 3 each need a new test, so they need a return to RED, and 1 changes
+  behaviour that no acceptance criterion of this story covers.
+- 1's fix adds a line above 399, so `sigpipe`'s three pins move again.
+- 2 alone would need a source dispatch, a gate rerun and a second review for
+  a comment.
+- Doing all three together in one story costs one RED cycle and one re-pin,
+  in the same region.
+
+None of the three affects the defect this story fixes, and AC-2's guard
+catches the here-string coming back whatever the comment says.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
