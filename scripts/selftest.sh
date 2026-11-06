@@ -443,8 +443,12 @@ fi
 # is an early end (HARNESS-090): the handler collects the status of every suite
 # it waits for, prints each started suite's block it can, names what is missing,
 # keeps the buffer directory if any block could not be printed, and exits
-# non-zero. It prints no summary. Every array element is read with a default,
-# and nothing in it may end the handler before the lock is released.
+# non-zero. It prints no summary. Every array element is read with a default.
+# It covers every suite start_suite was entered for - every index below
+# ${#PIDS[@]}, which start_suite extends as its first act - not only those
+# `started` counts, because `started` moves only after start_suite returns.
+# Its second statement ignores INT and TERM, so a second signal cannot end it
+# before it has printed and released the lock.
 BUF="$ROOT/.claude/state/selftest.$$"
 BUF_MADE=0
 LOOP_DONE=0
@@ -453,7 +457,8 @@ PIDS=()     # by suite index, glob order; emptied once a suite's status is colle
 STARTERR=() # by suite index; non-empty when that suite's start failed
 selftest_exit() {
   local st=$?
-  local i=0 n="${started:-0}" pid name f kept=0 unreported="" never=""
+  trap '' INT TERM
+  local i=0 n="${#PIDS[@]}" pid name f kept=0 unreported="" never=""
   while [ "$i" -lt "$n" ]; do
     pid="${PIDS[$i]-}"
     if [ -n "$pid" ]; then

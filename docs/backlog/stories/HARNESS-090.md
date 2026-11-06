@@ -5,7 +5,7 @@ slug: a-self-test-that-cannot-start-a-process
 epic: 
 type: bug
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-090-a-self-test-that-cannot-start-a-process
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -384,6 +384,7 @@ name, below the table.
 - GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 - GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
 - GATES diff review (first), `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. R-1 RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
+- GREEN after R-1, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -1087,3 +1088,22 @@ selftest: 345 passed, 1 failed
   trailer and `h_left` after a second TERM. Case B is green on arrival and
   was earned by the reviewer's mutation (pasted in `## Regressions`).
   `gates.sh --fast`: exit 0.
+- GREEN after R-1, verified by the orchestrator, 2026-11-06. `attest.sh
+  check` said `fresh` for both at tree `90c54f1`. `selftest.sh selftest`:
+  exit 0, `366 passed, 0 failed`, floor 366 met. `gates.sh --fast`: exit 0.
+  - The code diff is two lines in `selftest_exit`: `trap '' INT TERM` and
+    `n="${#PIDS[@]}"`. The comment was corrected to match.
+  - Fix 1 has no test. GREEN reproduced it in scratch copies, with the
+    window widened by a `sleep` before `start_suite`'s `rm`:
+    - before the fix: `0 of 2 suite(s) reported`, `never started: a b`,
+      and the lock and buffers gone while `a` still ran;
+    - after the fix: `a`'s block printed, `1 of 2`, `never started: b`;
+    - a suite caught before its pid was recorded lands in `unreported`,
+      with its buffers kept.
+  - **Window left open.** A signal between the `&` and `PIDS[$i]="$pid"` (a
+    few builtins, no fork) leaves a running suite unwaited. `main` has the
+    same window. Not pursued.
+  - **DV-1 and DV-2 are not re-run.** Their results stand for the claims they
+    pin: the handler fix adds lines but keeps the print-and-name and
+    `report_unstarted` code they mutated. The line numbers in their pasted
+    output are from `5b72c3c`.
