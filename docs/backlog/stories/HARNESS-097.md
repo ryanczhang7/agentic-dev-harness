@@ -4,8 +4,8 @@ title: check-boundaries refuses to run without its scratch directory, and cleans
 slug: check-boundaries-refuses-to-run-without
 epic: 
 type: bug
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-097-check-boundaries-refuses-to-run-without
 depends_on: [HARNESS-089]      # this story edits the lines HARNESS-089 wrote; merged as #181, DONE on main at dd97d6b
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, docs/backlog/stories/HARNESS-097.md]
