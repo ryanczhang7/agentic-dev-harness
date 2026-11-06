@@ -4,8 +4,8 @@ title: check-boundaries never deadlocks on a story copy near 64 KiB
 slug: check-boundaries-never-deadlocks-on-a-st
 epic: 
 type: bug
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-089-check-boundaries-never-deadlocks-on-a-st
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]
@@ -319,6 +319,7 @@ name, below the table.
 - GREEN, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 - R-1 RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 - GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
+- GATES diff review and self-test, two fresh `feature-developer` dispatches: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -858,3 +859,15 @@ catches the here-string coming back whatever the comment says.
   2026-11-06. `git diff --name-only 0f6e391 HEAD` names only
   `.claude/tests/sigpipe.test.sh` and this story. No source path changed. The
   R-1 sigpipe record (`fresh`, exit 0, 91/91) is the green.
+- Self-test at GATES → REVIEW, 2026-11-06. `selftest-needed: run`. A
+  `feature-developer` ran it, on Opus 5.5 (`claude-opus-5-5`) with no
+  override. `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+  said `fresh`. The full run was not needed: none of advance-story step 2's
+  cases (a), (b) or (c) applies.
+
+```
+selftest-needed: suites — 18 of 34 selected from 7 harness path(s) changed against origin/main (merge-base 3b9f531)
+exit:     0
+last:     18 harness suite(s) passed.
+duration: 1601s
+```
