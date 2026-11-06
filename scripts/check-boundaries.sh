@@ -24,14 +24,14 @@ export CLAUDE_PROJECT_DIR="$ROOT"
 . "$ROOT/.claude/hooks/lib.sh"
 
 fail=0
-# Story copies and git show results go to a scratch file, never a here-string:
-# on Cygwin bash a here-string of 65,536 to 65,566 bytes blocks forever (HARNESS-089).
-mkdir -p "$ROOT/.claude/state/check-boundaries"
-cp="$ROOT/.claude/state/check-boundaries/copy-$$.md"; dp="$ROOT/.claude/state/check-boundaries/diff-$$.txt"
-trap 'rm -rf "$ROOT/.claude/state/check-boundaries/"*-$$.*' EXIT
 note() { printf '  %s\n' "$1"; }
 problem() { printf 'FAIL  %s\n' "$1"; fail=1; }
 ok() { printf 'ok    %s\n' "$1"; }
+# Story copies and git show results go to a scratch file, never a here-string:
+# on Cygwin bash a here-string of 65,536 to 65,566 bytes blocks forever (HARNESS-089).
+mkdir -p "$ROOT/.claude/state/check-boundaries" || { problem "cannot create .claude/state/check-boundaries (something is in the way, a plain file at that path for instance): every story copy is read from a scratch file there, so without it the criteria would be judged against nothing"; exit 1; }
+cp="$ROOT/.claude/state/check-boundaries/copy-$$.md"; dp="$ROOT/.claude/state/check-boundaries/diff-$$.txt"
+trap 'rm -rf "$ROOT/.claude/state/check-boundaries/"*-$$.*' EXIT
 
 # section <file|-> <heading-prefix>   Body of "## <heading-prefix>..." up to the
 # next "## ". "-" reads stdin, so `git show ref:path | section - ...` works.
@@ -317,14 +317,14 @@ fi
 #                   with the base itself, as before
 #   open -          no state has left PLANNED; nothing is frozen yet
 #   none -          nothing to compare with
-# The states, oldest first, are the base copy, every commit of BASE..HEAD that
-# holds the file (not --first-parent: in CI HEAD is a merge whose first parent
-# is the base), and the working tree. Nothing after the first non-PLANNED state
-# is read, so a later return to PLANNED cannot move the baseline. Each copy is
-# read into a variable and fed by here-string: `git show | section -` was a
-# pipeline into an early-exiting awk (see has_content above).
+# The states, oldest first, are the base copy, every commit of BASE..HEAD that holds the
+# file (not --first-parent: in CI HEAD is a merge whose first parent is the base), and the
+# working tree. Nothing after the first non-PLANNED state is read, so a later return to
+# PLANNED cannot move the baseline. Each copy is written to the scratch file $cp and read
+# from there: a here-string of a story copy blocked on Cygwin bash near 64 KiB (HARNESS-089),
+# and `git show | section -` was a pipeline into an early-exiting awk (see has_content above).
 criteria_baseline() {
-  local f="$1" txt cph rev prev_kind="" prev_rev="" have_base=0
+  local f="$1" cph rev prev_kind="" prev_rev="" have_base=0
   git cat-file -e "$BASE:$f" 2>/dev/null && have_base=1
   if ! git merge-base "$BASE" HEAD >/dev/null 2>&1; then
     if [ "$have_base" = 1 ]; then printf 'unwalked %s\n' "$BASE"; else printf 'none -\n'; fi
@@ -359,7 +359,7 @@ criteria_baseline() {
 }
 crit_base="$(criteria_baseline "$sfile")"
 crit_kind="${crit_base%% *}"; crit_rev="${crit_base#* }"
-crit_label=""; crit_txt=""
+crit_label=""
 case "$crit_kind" in
   unwalked)
     note "no merge base with $BASE, so the branch's history cannot be walked; criteria compared with $BASE itself"
