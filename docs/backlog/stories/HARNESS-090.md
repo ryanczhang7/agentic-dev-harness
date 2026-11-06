@@ -4,8 +4,8 @@ title: a self-test that cannot start a process keeps every result it has and nam
 slug: a-self-test-that-cannot-start-a-process
 epic: 
 type: bug
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-090-a-self-test-that-cannot-start-a-process
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
