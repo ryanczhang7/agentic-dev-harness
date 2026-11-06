@@ -4,7 +4,7 @@ title: Every cases.md pointer in rules.md names a heading that exists
 slug: every-cases-md-pointer-in-rules-md-names
 epic: 
 type: feature
-status: todo
+status: in-progress
 phase: PLANNED
 branch: story/HARNESS-092-every-cases-md-pointer-in-rules-md-names
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
@@ -337,3 +337,25 @@ name, below the table.
 
 ## Notes
 
+
+- PO decisions at PLANNED → RED (orchestrator, 2026-11-06, tree `6b5f3ed`):
+  1. **The Contract's settled values re-checked and unchanged:** the eight
+     pointers are at rules.md lines 67-68, 101, 208, 226-227, 246-247,
+     269-270, 299-300 and 308; the seven headings at cases.md lines 10, 23,
+     34, 56, 82, 97 and 106; DV-1's line (`## Four needles that could not
+     fail`, 34) and DV-2's (`  they could not see").`, 227) are as written.
+  2. **Not already delivered:** `rules-trim.test.sh` has no `points at`
+     guard; `POINTER='reference/cases.md'` (line 60) is still the whole
+     check.
+  3. **Test-only, as HARNESS-091 was:** the guard lives in the suite, so RED
+     writes everything in `**Writes:**` except `VERSION`, every new assertion
+     passes on arrival (the real tree resolves every pointer), and the law's
+     earning is by mutation: RED's own single-assertion mutation, then DV-1
+     and DV-2 at GATES. GREEN is a verified no-op plus the `VERSION` bump,
+     checked by the orchestrator, not dispatched. `VERSION` holds
+     `113 (2026-11-06)`; GREEN takes the next free number.
+  4. **Required gate:** none is configured; the `rules-trim` suite judges
+     the artifact, and CI runs it in full on the PR. `required_gates: []`
+     stays.
+  5. `plan.sh conflicts`: CONFLICT with HARNESS-093 and HARNESS-096 on
+     `VERSION`, `floors.conf` and `selftest.test.sh`. Run alone.
