@@ -5,7 +5,7 @@ slug: a-self-test-that-cannot-start-a-process
 epic: 
 type: bug
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-090-a-self-test-that-cannot-start-a-process
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -966,9 +966,9 @@ Verdict: fix 1 first.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-06T06:51:14Z
-    commit: f1417b1
-    tree:   5135bf95c2dc5ac700b814b1488d79a3c6a7aab5
+    run:    2026-11-06T07:20:59Z
+    commit: bd8127d
+    tree:   46448de7c0bda7d19444b848fa71c28c53ad93bd
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
