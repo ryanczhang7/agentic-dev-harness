@@ -539,7 +539,7 @@ gates 972
 grep-count 38
 host-load 72
 lib 324
-mutate 308
+mutate 315
 new-story 58
 phase 73
 phase-guard 388
@@ -550,7 +550,7 @@ profiles 132
 refresh 215
 reporting 27
 rules-trim 30
-run-lock 140
+run-lock 141
 security-audit 51
 selftest 366
 selftest-needed 482
