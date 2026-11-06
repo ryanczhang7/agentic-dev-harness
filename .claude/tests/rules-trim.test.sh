@@ -39,6 +39,25 @@
 #   - SKILL.md's entry is a line beginning "- `reference/cases.md`" inside its
 #     `## Details` section (to the next `## ` line), the shape of the three
 #     entries already there.
+#
+# HARNESS-092: every pointer NAMES a heading. The fixed string above says a
+# section points at cases.md; it never read WHICH case, so a renamed heading
+# or a mistyped pointer resolved to nothing and nothing said so.
+#   - a pointer is read from rules.md JOINED (the same J as "still carries"):
+#     each occurrence of "`reference/cases.md`, \"" opens one, and its text
+#     runs to the first `")` after it, exclusive. Inner `"` and `$` are
+#     ordinary characters of the text; the terminator is two characters
+#     because no heading contains `")`. An opener with no `")` after it ends
+#     the scan (nothing on the real tree is shaped so; AC-6 would see it);
+#   - a pointer written in any other shape is not a pointer to this check
+#     (story C-4: the syntax is not changed, and that is accepted);
+#   - a text RESOLVES when some line of cases.md outside a ``` fence is exactly
+#     `## ` and the text: a whole-line compare, so a prefix, a suffix and a
+#     case difference all fail. A failing pointer is reported once per
+#     occurrence, after the rules.md lines and before the cases.md ones;
+#   - POINTERS below is the settled list of the real tree (story C-1), and the
+#     real-tree extraction must equal it, so the "resolves" assertion cannot
+#     pass by finding nothing. Pure bash string ops over J, no grep or sed.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
@@ -124,6 +143,20 @@ POINTED='Path ownership
 The model each agent runs on
 Non-negotiables
 Mutation work per story'
+
+# HARNESS-092 C-1: the eight pointer texts of rules.md, in file order, read out
+# of it at release 113 (lines 67-68, 101, 208, 226-227, 246-247, 269-270,
+# 299-300, 308). 4 and 5 name one heading twice.
+OPEN='`reference/cases.md`, "'
+CLOSE='")'
+POINTERS='Four private copies of "a source module"
+"The default model" against itself
+Four needles that could not fail
+Three guards green over a tree they could not see
+Three guards green over a tree they could not see
+Negative zero: narrow the generator, not the comparison
+A backup that went to an unset $TMPDIR
+HARNESS-014: eighteen mutations, no defect'
 
 # --- reading -----------------------------------------------------------------
 
@@ -229,6 +262,46 @@ placed() {
   return 0
 }
 
+# pointer_texts   P := the pointer texts of J, in order (HARNESS-092 C-1).
+pointer_texts() {
+  local rest="$J"
+  P=()
+  while has "$OPEN" "$rest"; do
+    rest="${rest#*"$OPEN"}"
+    has "$CLOSE" "$rest" || break
+    P+=("${rest%%'")'*}")
+    rest="${rest#*'")'}"
+  done
+  return 0
+}
+
+# h2_headings   H := the text after `## ` of every line of LN that starts `## `
+# outside a ``` fence (the toggle `placed` uses).
+h2_headings() {
+  local l fence=0
+  H=()
+  for l in "${LN[@]}"; do
+    if is_fence "$l"; then fence=$((1 - fence)); fi
+    if [ "$fence" = 0 ] && [ "${l:0:3}" = "## " ]; then H+=("${l:3}"); fi
+  done
+  return 0
+}
+
+# resolves <text>   Some entry of H is exactly <text>.
+resolves() {
+  local h
+  for h in "${H[@]}"; do [ "$h" = "$1" ] && return 0; done
+  return 1
+}
+
+# pointer_list <root>   The pointer texts of <root>'s rules.md, one per line.
+pointer_list() {
+  local p out=""
+  load "$1/$RULES"; joined; pointer_texts
+  for p in "${P[@]}"; do out="$out${out:+$'\n'}$p"; done
+  printf '%s' "$out"
+}
+
 # --- the guard ---------------------------------------------------------------
 
 # rules_trim_problems <root>   One line per violation, in the C-4 shapes;
@@ -265,6 +338,14 @@ LIST
   done <<LIST
 $POINTED
 LIST
+  # HARNESS-092: every pointer's text is a ## heading of cases.md
+  pointer_texts
+  load "$root/$CASES"
+  h2_headings
+  local p
+  for p in "${P[@]}"; do
+    resolves "$p" || printf 'rules.md: points at "%s", not a ## heading of cases.md\n' "$p"
+  done
 
   # AC-3 (cases.md half)
   load "$root/$CASES"
@@ -345,13 +426,13 @@ bash scripts/classify.sh --list source src
 
 **A test that needs this answer asks for it; it does not reimplement it.**
 Ask classify.sh (the case: `tdd-cycle`, `reference/cases.md`, "Four private
-copies").
+copies of "a source module"").
 
 # The model each agent runs on
 
 **The per-phase plan is `.claude/harness/models.conf`, not a judgement made
 fresh each story.** Record what each dispatch resolved to (the case:
-`tdd-cycle`, `reference/cases.md`, "The default model").
+`tdd-cycle`, `reference/cases.md`, ""The default model" against itself").
 
 # Phase permissions
 
@@ -359,7 +440,8 @@ fresh each story.** Record what each dispatch resolved to (the case:
 |---|---|---|
 | `RED` | test | failing tests only |
 
-**RED may declare a test dependency, and only a test dependency.** Dev block.
+**RED may declare a test dependency, and only a test dependency.** Dev block
+(the case: `reference/cases.md`, ""The default model" against itself").
 
 - **Lockfiles are permitted unchecked.** No split to read.
 - **Some ecosystems have no in-file split at all** - go.mod.
@@ -376,7 +458,7 @@ return to RED.**
 - A gate that has never been observed to fail is not a gate.
 - **An assertion's needle is part of the assertion, and a needle that cannot
   fail is a test that cannot fail.** Anchor it (the case: `tdd-cycle`,
-  `reference/cases.md`, "Four needles").
+  `reference/cases.md`, "Four needles that could not fail").
 - **A rule is probed against the tree it judges, not only against fixtures you
   wrote.** Mutate a real line.
 - Do not weaken an assertion, add a `skip`, widen a tolerance, or delete a
@@ -388,13 +470,15 @@ return to RED.**
 - `## Gate results` is written by `scripts/gates.sh`, never by hand.
 - `depends_on` and `branch` in a story's frontmatter are enforced by
   `phase.sh set`.
-- Do not commit `.claude/state/**`. A `.bak` means a failed restore.
+- Do not commit `.claude/state/**`. A `.bak` means a failed restore (the
+  case: `tdd-cycle`, `reference/cases.md`,
+  "A backup that went to an unset $TMPDIR").
 - Agentic scaffolding (`.claude/`, `docs/`, `scripts/`, `.github/`) never ships
   in a production image.
 
 # Mutation work per story
 
-The budget (the case: `tdd-cycle`, `reference/cases.md`, "HARNESS-014").
+The budget (the case: `tdd-cycle`, `reference/cases.md`, "HARNESS-014: eighteen mutations, no defect").
 
 - **Required per story.** One earning mutation.
 - **How a mutation runs.** Through mutate.sh.
@@ -469,6 +553,18 @@ Because.
 EOF
 }
 
+# HARNESS-092 C-3: the compliant fixture's six pointers, in file order. Each
+# quotes a fixture heading whole: the first wraps at column 0, the fifth wraps
+# twice and indented (its opener ends one line, the way rules.md 299-300
+# does), the second and third name one heading twice, and three of them carry
+# an inner `"` or a `$`.
+FIX_POINTERS='Four private copies of "a source module"
+"The default model" against itself
+"The default model" against itself
+Four needles that could not fail
+A backup that went to an unset $TMPDIR
+HARNESS-014: eighteen mutations, no defect'
+
 # fresh_case <name>   A new compliant fixture; echoes its path.
 fresh_case() { local d="$WORK/$1"; rm -rf "$d"; compliant_fixture "$d"; printf '%s' "$d"; }
 
@@ -500,9 +596,9 @@ pad_to() {
 describe "the pinned lists are the Contract's, whole"
 
 n_whole="$(count_lines "$WHOLE")"; n_pref="$(count_lines "$PREFIXES")"
-n_need="$(count_lines "$NEEDLES")"; n_ptr="$(count_lines "$POINTED")"
-assert_eq "C-1: 8 whole lines (6 headings, 2 table headers) and 32 prefixes; C-2: 11 needles; AC-3: 4 pointed sections" \
-  "8 32 11 4" "$n_whole $n_pref $n_need $n_ptr"
+n_need="$(count_lines "$NEEDLES")"; n_ptr="$(count_lines "$POINTED")"; n_ptrs="$(count_lines "$POINTERS")"
+assert_eq "C-1: 8 whole lines (6 headings, 2 table headers) and 32 prefixes; C-2: 11 needles; AC-3: 4 pointed sections; HARNESS-092 C-1: 8 pointer texts" \
+  "8 32 11 4 8" "$n_whole $n_pref $n_need $n_ptr $n_ptrs"
 
 # ---------------------------------------------------------------------------
 describe "the real tree (red until GREEN moves the cases)"
@@ -520,6 +616,10 @@ assert_eq "AC-3: each of the four sections a case left points at reference/cases
   "" "$(while IFS= read -r l; do case "$l" in *' does not point at '*) printf '%s\n' "$l" ;; esac; done <<< "$OUT")"
 assert_eq "AC-4: tdd-cycle's SKILL.md lists reference/cases.md under ## Details" \
   "" "$(only 'SKILL.md: ' "$OUT")"
+assert_eq "HARNESS-092 AC-6: the pointer texts of rules.md are exactly C-1's eight, in file order" \
+  "$POINTERS" "$(pointer_list "$REPO_ROOT")"
+assert_eq "HARNESS-092 AC-1: every pointer in rules.md names a ## heading of cases.md" \
+  "" "$(only 'rules.md: points at ' "$OUT")"
 assert_eq "rules_trim_problems over the real tree prints nothing: every rule kept, every case moved and pointed at" \
   "" "$OUT"
 
@@ -529,6 +629,8 @@ describe "the fixture: compliant by construction"
 d="$(fresh_case compliant)"
 assert_eq "the compliant fixture is silent (a fence holding a # comment inside a section, needles under ## headings after a preamble)" \
   "" "$(rules_trim_problems "$d")"
+assert_eq "HARNESS-092 C-3: the compliant fixture's six pointers are extracted whole, in order, the wrapped ones joined by one space" \
+  "$FIX_POINTERS" "$(pointer_list "$d")"
 
 # ---------------------------------------------------------------------------
 describe "AC-1  the cap"
@@ -612,21 +714,24 @@ assert_eq "a ## line inside a fence is not a heading" \
 
 d="$(fresh_case cases-absent)"; rm -f "$d/$CASES"
 want=""
+while IFS= read -r nd; do want="$want${want:+$'\n'}rules.md: points at \"$nd\", not a ## heading of cases.md"; done <<LIST
+$FIX_POINTERS
+LIST
 while IFS= read -r nd; do want="$want${want:+$'\n'}cases.md: missing \"$nd\""; done <<LIST
 $NEEDLES
 LIST
-assert_eq "with no cases.md, each of the 11 needles is reported missing, in Contract order" \
+assert_eq "with no cases.md, each of the fixture's 6 pointers is reported, then each of the 11 needles missing, in Contract order" \
   "$want" "$(rules_trim_problems "$d")"
 
 d="$(fresh_case pointer-moved)"
-subst "$d/$RULES" '`tdd-cycle`, `reference/cases.md`, "The default model").' '`tdd-cycle`).'
+subst "$d/$RULES" '`tdd-cycle`, `reference/cases.md`, ""The default model" against itself").' '`tdd-cycle`).'
 subst "$d/$RULES" '- **Some ecosystems have no in-file split at all** - go.mod.' \
   '- **Some ecosystems have no in-file split at all** - go.mod (`reference/cases.md`).'
 assert_eq "a section whose pointer moved to the next section is reported, naming the section" \
   'rules.md: The model each agent runs on does not point at reference/cases.md' "$(rules_trim_problems "$d")"
 
 d="$(fresh_case pointer-bare)"
-subst "$d/$RULES" 'The budget (the case: `tdd-cycle`, `reference/cases.md`, "HARNESS-014").' 'The budget (the case: `cases.md`).'
+subst "$d/$RULES" 'The budget (the case: `tdd-cycle`, `reference/cases.md`, "HARNESS-014: eighteen mutations, no defect").' 'The budget (the case: `cases.md`).'
 assert_eq "a pointer that names cases.md without reference/ is not the path" \
   'rules.md: Mutation work per story does not point at reference/cases.md' "$(rules_trim_problems "$d")"
 
@@ -647,5 +752,116 @@ assert_eq "a mention in ## Details that is not a list entry does not count" \
 d="$(fresh_case skill-absent)"; rm -f "$d/$SKILL"
 assert_eq "a missing SKILL.md is reported once" \
   'SKILL.md: does not list reference/cases.md' "$(rules_trim_problems "$d")"
+
+# ---------------------------------------------------------------------------
+# HARNESS-092: every pointer names a heading. Each case is the compliant
+# fixture with one site changed, one fault, and the whole report compared.
+
+# pt <text>   The one line the guard prints for a pointer that does not resolve.
+pt() { printf 'rules.md: points at "%s", not a ## heading of cases.md' "$1"; }
+
+describe "HARNESS-092 AC-2  a pointer's text is exactly a ## heading"
+
+d="$(fresh_case ptr-typo)"
+subst "$d/$RULES" '"Four needles that could not fail")' '"Four needles that could not fial")'
+assert_eq "AC-2: a mistyped pointer is reported as one line, quoting its text verbatim" \
+  "$(pt 'Four needles that could not fial')" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-prefix)"
+subst "$d/$RULES" '"Four needles that could not fail")' '"Four needles")'
+assert_eq "AC-2: a pointer quoting a strict prefix of a heading does not resolve" \
+  "$(pt 'Four needles')" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-suffix)"
+subst "$d/$RULES" '"Four needles that could not fail")' '"needles that could not fail")'
+assert_eq "AC-2: a pointer quoting a strict suffix of a heading does not resolve" \
+  "$(pt 'needles that could not fail')" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-case)"
+subst "$d/$RULES" '"Four needles that could not fail")' '"four needles that could not fail")'
+assert_eq "AC-2: a pointer differing from its heading in case only does not resolve" \
+  "$(pt 'four needles that could not fail')" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-twice)"
+subst "$d/$RULES" '"The default model" against itself")' '"The default model" against itselves")'
+assert_eq "AC-2: a failing text pointed at twice is reported once per occurrence" \
+  "$(pt '"The default model" against itselves')"$'\n'"$(pt '"The default model" against itselves')" \
+  "$(rules_trim_problems "$d")"
+
+d="$(fresh_case heading-renamed)"
+subst "$d/$CASES" '## Four needles that could not fail' '## Four needles that could not fall'
+assert_eq "AC-2: a heading renamed in cases.md leaves its pointer reported, and the needles under it still placed" \
+  "$(pt 'Four needles that could not fail')" "$(rules_trim_problems "$d")"
+
+describe "HARNESS-092 AC-3  a wrapped pointer is read joined"
+
+d="$(fresh_case ptr-unwrapped)"
+drop "$d/$RULES" 'copies of "a source module"").'
+subst "$d/$RULES" '`reference/cases.md`, "Four private' '`reference/cases.md`, "Four private copies of "a source module"").'
+assert_eq "AC-3 control: the wrapped pointer's text on one line resolves too" \
+  "" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-wrapped-indented)"
+subst "$d/$RULES" 'copies of "a source module"").' '    copies of "a source module"").'
+assert_eq "AC-3: a wrapped pointer whose second line is indented resolves: lines are trimmed before they are joined" \
+  "" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-wrapped-bad)"
+subst "$d/$RULES" 'copies of "a source module"").' 'copies of "a source modules"").'
+assert_eq "AC-3: a wrapped pointer that does not resolve is one line, its text joined by a single space" \
+  "$(pt 'Four private copies of "a source modules"')" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-oneline-bad)"
+drop "$d/$RULES" 'copies of "a source module"").'
+subst "$d/$RULES" '`reference/cases.md`, "Four private' '`reference/cases.md`, "Four private copies of "a source modules"").'
+assert_eq "AC-3 control: the same failing text on one line is reported identically" \
+  "$(pt 'Four private copies of "a source modules"')" "$(rules_trim_problems "$d")"
+
+describe "HARNESS-092 AC-4  inner quotes and \$ are part of the text"
+
+d="$(fresh_case ptr-inner-open)"
+subst "$d/$RULES" '`tdd-cycle`, `reference/cases.md`, ""The default model" against itself")' \
+  '`tdd-cycle`, `reference/cases.md`, "The default model" against itself")'
+assert_eq "AC-4 control: a pointer that drops the inner opening quote is reported with that exact text" \
+  "$(pt 'The default model" against itself')" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-inner-close)"
+subst "$d/$RULES" 'copies of "a source module"").' 'copies of "a source module").'
+assert_eq "AC-4 control: a pointer that drops the inner closing quote ends at the first \") and is reported" \
+  "$(pt 'Four private copies of "a source module')" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-dollar)"
+subst "$d/$RULES" '"A backup that went to an unset $TMPDIR")' '"A backup that went to an unset TMPDIR")'
+assert_eq "AC-4 control: the \$ is a character of the heading: a pointer without it does not resolve" \
+  "$(pt 'A backup that went to an unset TMPDIR')" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-other-var)"
+subst "$d/$RULES" '"A backup that went to an unset $TMPDIR")' '"A backup that went to an unset $HOME")'
+assert_eq "AC-4 control: a \$ in a pointer is never expanded: \$HOME is reported as written" \
+  "$(pt 'A backup that went to an unset $HOME')" "$(rules_trim_problems "$d")"
+
+describe "HARNESS-092 AC-5  a ## line inside a fence is not a heading"
+
+d="$(fresh_case ptr-fenced)"
+subst "$d/$RULES" '"Four needles that could not fail")' '"a fenced comment, not a heading")'
+assert_eq "AC-5: a pointer naming a ## line inside a fence of cases.md is reported" \
+  "$(pt 'a fenced comment, not a heading')" "$(rules_trim_problems "$d")"
+
+d="$(fresh_case ptr-unfenced)"
+subst "$d/$RULES" '"Four needles that could not fail")' '"a fenced comment, not a heading")'
+subst "$d/$CASES" '```bash' ''
+subst "$d/$CASES" '```' ''
+assert_eq "AC-5 control: the same ## line with the fence removed resolves" \
+  "" "$(rules_trim_problems "$d")"
+
+describe "HARNESS-092 C-2  where the pointer lines stand in a report"
+
+d="$(fresh_case ptr-order)"
+subst "$d/$RULES" '  weakening.** Name the design clause.' '  weakening.** IMPLAUSIBLE: sed -i option is the opposite.'
+subst "$d/$RULES" '"Four needles that could not fail")' '"Four needles")'
+drop "$d/$CASES" 'keeping `-0` out of the coordinate generator'
+assert_eq "C-2: a pointer line comes after the rules.md lines and before the cases.md ones" \
+  'rules.md: still carries "IMPLAUSIBLE: sed -i option"'$'\n'"$(pt 'Four needles')"$'\n''cases.md: missing "keeping `-0` out of the coordinate generator"' \
+  "$(rules_trim_problems "$d")"
 
 summary "rules-trim"

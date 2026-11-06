@@ -549,7 +549,7 @@ procedure 154
 profiles 132
 refresh 215
 reporting 27
-rules-trim 30
+rules-trim 50
 run-lock 141
 security-audit 51
 selftest 366
