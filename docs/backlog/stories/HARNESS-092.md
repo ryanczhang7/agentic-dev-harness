@@ -5,7 +5,7 @@ slug: every-cases-md-pointer-in-rules-md-names
 epic: 
 type: feature
 status: in-progress
-phase: PLANNED
+phase: RED
 branch: story/HARNESS-092-every-cases-md-pointer-in-rules-md-names
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/rules-trim.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -118,6 +118,14 @@ whole-line compare, so a prefix, a suffix and a case difference all fail.
 A heading pointed at twice (4 and 5) is one heading; a pointer that fails is
 reported once per occurrence.
 
+*Amended in RED (test-developer, 2026-11-06), an addition, not a change:* an
+opener with no `")` anywhere after it ends the scan and yields no text. The
+block was silent on it, and `${rest%%'")'*}` with no terminator would return
+the whole rest of the file as one "text". Nothing on the real tree is so
+shaped; if one were written, AC-6's list equality is what would see it. The
+eight texts above were confirmed by running the C-2 string ops over this
+tree's rules.md (release 113) - they come out exactly as tabled.
+
 **C-2. The guard.** `rules_trim_problems` gains one block, after the
 `$POINTED` loop and before the cases.md half, so that its lines come out in
 that position in a multi-fault report: load cases.md's `## ` headings outside
@@ -144,6 +152,20 @@ failing cases are `fresh_case` fixtures with one site changed by `subst`, one
 fault each, as the existing cases are. A `## ` line inside the fixture
 cases.md's existing fence (`## a fenced comment, not a heading`) is AC-5's
 subject.
+
+*Amended in RED (test-developer, 2026-11-06).* Rewriting the fixture's
+`"The default model"` pointer whole already makes it quote
+`"The default model" against itself`, so "adds one quoting it" was read as a
+SECOND pointer to that heading, placed in `# Phase permissions` (not one of
+the four `POINTED` sections, so it cannot mask the `pointer-moved` case). It
+gives the compliant fixture the real tree's "one heading pointed at twice"
+shape (rules.md 4 and 5). The `$TMPDIR` pointer sits on the continuation of
+the `.claude/state/**` bullet, wrapped twice and indented, its opener ending
+one line - the shape of rules.md 299-300. So the fixture has six pointers,
+pinned as `FIX_POINTERS`. One consequence for an existing case: with no
+cases.md every fixture pointer is unresolvable, so `cases-absent`'s expected
+report now begins with those six `points at` lines (C-2's order) before the
+eleven `missing` ones. Its one assertion stays one assertion.
 
 **C-4. Not written.** `rules.md` and `cases.md` are not changed by this
 story: every real pointer already resolves (checked by hand when the story
@@ -227,6 +249,7 @@ name, below the table.
 
 **Resolved:**
 
+- PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -254,28 +277,216 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All in `.claude/tests/rules-trim.test.sh`, one level (the suite IS the guard:
+a rule over two prose files, pure bash). Run: `bash scripts/selftest.sh rules-trim`.
+
+- pinned lists `"8 32 11 4 8"` - `POINTERS` holds C-1's eight texts (C-2).
+- real tree, AC-6 - `pointer_list "$REPO_ROOT"` equals `POINTERS`, whole list, in order.
+- real tree, AC-1 - no `rules.md: points at ` line in the real-tree report (and the existing whole-report-empty assertion now covers it too).
+- fixture, C-3 - the compliant fixture's six pointers extract exactly as `FIX_POINTERS` (wrapped ones joined), and the fixture stays silent.
+- AC-2 typo - `"Four needles that could not fial"` is one line quoting it verbatim.
+- AC-2 prefix control - `"Four needles"` is reported.
+- AC-2 suffix - `"needles that could not fail"` is reported.
+- AC-2 case control - `"four needles that could not fail"` is reported.
+- AC-2 twice - a failing text at two sites is two identical lines.
+- AC-2 heading renamed - `## Four needles that could not fall` in cases.md leaves the pointer reported and nothing else (fixture twin of DV-1).
+- AC-3 control - the wrapped pointer joined onto one line resolves.
+- AC-3 indented wrap - the second line indented four spaces still resolves (trimmed join).
+- AC-3 wrapped failing - reported as one line, joined by one space.
+- AC-3 control - the same failing text on one line, reported identically.
+- AC-4 control - dropping the inner opening quote is reported as `The default model" against itself`.
+- AC-4 - dropping the inner closing quote ends the text at the first `")`: `Four private copies of "a source module`.
+- AC-4 - `unset TMPDIR` (no `$`) is reported: the `$` is part of the heading.
+- AC-4 - `unset $HOME` is reported as written: no expansion.
+- AC-5 - a pointer naming the fenced `## a fenced comment, not a heading` is reported.
+- AC-5 control - the same line with the fence removed resolves.
+- C-2 order - a still-carries, a pointer and a cases.md fault come out in that order.
+- `cases-absent` (existing, expected value extended) - six pointer lines, then the eleven needles.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+Test developer, 2026-11-06, model Opus 5.5 (`claude-opus-5-5`, from the
+agent definition's `model: opus`; no override applied). Tree: branch head
+`9ec3543` plus this RED's uncommitted diff.
+
+**This story is test-only (Notes, decision 3).** The guard is written in the
+suite, every real pointer already resolves, so every new assertion PASSED ON
+ARRIVAL. That is the planned shape, not a missing RED. "Watched to fail" is
+earned by mutation: one single-assertion mutation below, then DV-1 and DV-2
+at GATES. **GREEN is a verified no-op plus the `VERSION` bump** (`113
+(2026-11-06)` today -> the next free number when GREEN is reached): no
+production file is involved, and nothing in `rules.md` or `cases.md`
+changes (C-4).
+
+**Command:** `bash scripts/selftest.sh rules-trim` (or directly
+`bash .claude/tests/rules-trim.test.sh`).
+
+**Files touched**
+- `.claude/tests/rules-trim.test.sh` - header note 43-62; `OPEN`, `CLOSE`,
+  `POINTERS` 147-159; helpers `pointer_texts`, `h2_headings`, `resolves`,
+  `pointer_list` 265-302; the guard block in `rules_trim_problems` 341-348
+  (after the `$POINTED` loop, before the cases.md half); fixture pointers
+  rewritten and added inside `compliant_fixture` (406-553); `FIX_POINTERS`
+  556-566; pinned-lists assertion 598-601; real-tree AC-6 and AC-1 619-622;
+  fixture extraction 632-633; `cases-absent` expected report 714-723; the
+  five HARNESS-092 describes 756-866.
+- `.claude/tests/floors.conf` - `floor | rules-trim | 30` -> `50`, dated
+  note at the foot.
+- `.claude/tests/selftest.test.sh` - table line 552 `rules-trim 30` -> `50`.
+- this story: `## Contract` C-1 and C-3 amended in place (below), `## Test
+  plan`, this section.
+
+**Export shape.** None: no module is imported; the suite sources only
+`_lib.sh`. The message line is pinned byte for byte:
+`rules.md: points at "<text>", not a ## heading of cases.md`.
+
+**`POINTERS`, as pinned** (C-1, confirmed by running the C-2 string ops over
+rules.md at release 113):
+
+    Four private copies of "a source module"
+    "The default model" against itself
+    Four needles that could not fail
+    Three guards green over a tree they could not see
+    Three guards green over a tree they could not see
+    Negative zero: narrow the generator, not the comparison
+    A backup that went to an unset $TMPDIR
+    HARNESS-014: eighteen mutations, no defect
+
+**New assertions, by AC** (20 new; one existing expected value extended)
+- C-2 / AC-6: pinned lists `"8 32 11 4 8"` (existing assertion, fifth number).
+- AC-6: real-tree `pointer_list` equals `POINTERS` (1).
+- AC-1: real tree prints no `points at` line (1); the existing "prints
+  nothing" assertion now covers it too.
+- C-3 (AC-3 and AC-4 resolving cases): the compliant fixture's six pointers
+  extract exactly as `FIX_POINTERS` (1), and the fixture stays silent
+  (existing assertion).
+- AC-2 (6): typo; strict prefix `Four needles`; strict suffix; case only;
+  one failing text at two sites gives two lines; heading renamed in cases.md
+  (fixture twin of DV-1).
+- AC-3 (4): one-line control resolves; indented wrap resolves; wrapped
+  failing text is one line joined by one space; the same failing text on one
+  line is reported identically.
+- AC-4 (4): inner opening quote dropped -> `The default model" against
+  itself`; inner closing quote dropped -> the text ends at the first `")`;
+  `unset TMPDIR` reported; `unset $HOME` reported as written (no expansion).
+- AC-5 (2): a pointer at the fenced `## a fenced comment, not a heading` is
+  reported; control with the fence removed resolves.
+- C-2 order (1): still-carries line, then pointer line, then cases.md line.
+- `cases-absent` (existing, count unchanged): its report now opens with the
+  six fixture pointer lines (C-3 amendment).
+
+**Measured count:** `rules-trim: 50 passed, 0 failed` - 50 EXECUTED (30
+before + 20), Windows host (Git for Windows bash 5.3.15), local. About 11 s
+plain. No timeouts are involved (bash suite).
+
+**Attest records**
+- `bash scripts/attest.sh -- bash scripts/selftest.sh rules-trim` - tree
+  `c2af911087524f17756c8a6d05d5660af107a148`, exit 0, `last:     1 harness
+  suite(s) passed.`, log
+  `.claude/state/attest-logs/20261106T165835Z.441813.log` (its tail:
+  `rules-trim: 50 passed, 0 failed` and `assertion floors: all 1 suite(s)
+  met their declared floor (50 assertions executed, 50 declared).`).
+- `bash scripts/attest.sh -- bash scripts/gates.sh --fast` - same tree, exit
+  0, `last:     All required gates passed (0 ran, 5 unconfigured, 0
+  known).`, log `.claude/state/attest-logs/20261106T165851Z.442303.log`.
+  Shape as expected: every gate unconfigured, nothing ran.
+- `bash scripts/check-sigpipe.sh`: `scanned 62 shell file(s), 57 with
+  pipefail, 0 finding(s)`. `bash scripts/check-grep-count.sh`: `scanned 62
+  shell file(s), 0 finding(s)`.
+
+**The one mutation (RED's own).** Remove the fence toggle from
+`h2_headings` only (the identical line in `placed` is untouched, by the sed
+address range). Predicted catch: exactly one assertion, "AC-5: a pointer
+naming a ## line inside a fence of cases.md is reported" - a fenced `## `
+line becomes a heading, and no other case points at one. Observed: 49
+passed, 1 failed, that one. It was run twice: the first run's output was
+filtered through `grep` for display, so it was run again unfiltered and that
+run is pasted. Same result both times.
+
+```
+=== mutate: .claude/tests/rules-trim.test.sh (1 line(s) changed by /^h2_headings() {/,/^}/s/    if is_fence "\$l"; then fence=\$((1 - fence)); fi/    : no fence toggle/) ===
+  284 -     if is_fence "$l"; then fence=$((1 - fence)); fi
+  284 +     : no fence toggle
+
+=== mutate: running bash .claude/tests/rules-trim.test.sh ===
+
+  the pinned lists are the Contract's, whole
+
+  the real tree (red until GREEN moves the cases)
+
+  the fixture: compliant by construction
+
+  AC-1  the cap
+
+  AC-2  every rule opener stays, exactly
+
+  AC-3  every case moves to cases.md, under a heading, and is pointed at
+
+  AC-4  SKILL.md lists cases.md under ## Details
+
+  HARNESS-092 AC-2  a pointer's text is exactly a ## heading
+
+  HARNESS-092 AC-3  a wrapped pointer is read joined
+
+  HARNESS-092 AC-4  inner quotes and $ are part of the text
+
+  HARNESS-092 AC-5  a ## line inside a fence is not a heading
+    FAIL AC-5: a pointer naming a ## line inside a fence of cases.md is reported
+         expected: rules.md: points at "a fenced comment, not a heading", not a ## heading of cases.md
+         actual:   
+
+  HARNESS-092 C-2  where the pointer lines stand in a report
+
+rules-trim: 49 passed, 1 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_rules-trim.test.sh.20261106T165814Z.441271.bak) ===
+  284:     if is_fence "$l"; then fence=$((1 - fence)); fi
+```
+
+`bash scripts/mutate.sh --check` afterwards: `mutate: no stranded mutation;
+nothing of a previous run is in the tree.`
+
+**Negative controls.** Unlike an import-failing RED, every control here
+EXECUTED against the guard as written, so these values are measured, not
+claimed. Every expected value is an exact line; there is no threshold.
+
+| Control | Expected | Measured (local, this tree) |
+|---|---|---|
+| compliant fixture | empty report | empty |
+| fixture extraction | `FIX_POINTERS`, 6 texts | equal |
+| real-tree extraction (AC-6) | `POINTERS`, 8 texts | equal |
+| strict prefix `Four needles` | one `points at "Four needles"` line | that line |
+| case only | one line, the lower-case text | that line |
+| one-line twin of the wrapped pointer | empty, and the same line as wrapped when failing | empty / same line |
+| inner opening quote dropped | `points at "The default model" against itself"` line | that line |
+| fence removed (AC-5) | empty | empty |
+| fence toggle removed from `h2_headings` (mutation) | exactly AC-5's assertion red | 49 passed, 1 failed, AC-5 |
+
+**Deferred verifications.** DV-1 (a real heading of cases.md renamed) and
+DV-2 (a real wrapped pointer of rules.md broken on its second line) are
+**owned by GATES and were not run in RED**, as directed. I cannot claim
+them. Their expected outcomes are as the story writes them: DV-1 one
+`points at "Four needles that could not fail"` line and nothing else; DV-2
+the real-tree pointer assertion naming `Three guards green over a tree they
+could not see.` with AC-6's list equality red too, one pointer line only.
+The fixture twin of DV-1 (`heading-renamed`) passes; that is evidence about
+the mechanism, not a substitute for the real-line probe.
+
+**Contract amendments (in place, with reasons):**
+- C-1: an opener with no `")` after it ends the scan (the block was silent;
+  without that guard `%%` would return the rest of the file as one text).
+  The C-2 string ops were confirmed to behave as claimed on this host's bash
+  5.3; C-2 itself needed no change.
+- C-3: "adds one quoting `"The default model" against itself`" became a
+  second pointer to that heading in `# Phase permissions`, because the
+  rewrite already quotes it whole; the `$TMPDIR` pointer is placed in the
+  shape of rules.md 299-300; `cases-absent`'s expected report is extended
+  accordingly.
+
+**Not constrained.** There is nothing for GREEN to implement. The
+unterminated-opener behaviour is stated but not asserted by any fixture, and
+pointers outside the `` `reference/cases.md`, " `` shape are deliberately
+invisible (C-4).
 
 ## Regressions
 
@@ -359,3 +570,20 @@ name, below the table.
      stays.
   5. `plan.sh conflicts`: CONFLICT with HARNESS-093 and HARNESS-096 on
      `VERSION`, `floors.conf` and `selftest.test.sh`. Run alone.
+- RED verified by the orchestrator, 2026-11-06.
+  - `attest.sh check` said `fresh` for both runs at tree `c2af911`, so
+    neither was re-run. `selftest.sh rules-trim`: exit 0,
+    `rules-trim: 50 passed, 0 failed` (floor 30 → 50). `gates.sh --fast`:
+    exit 0.
+  - Green in RED is this story's planned shape (decision 3): the guard is
+    written in this phase and every real pointer resolves. It is earned by
+    RED's mutation (the fence toggle removed from `h2_headings` only: exactly
+    the AC-5 assertion red, `49 passed, 1 failed`, restored) and by DV-1/DV-2
+    at GATES.
+  - Read the guard (`rules-trim.test.sh` 266-305, 340-348) and the real-tree
+    assertions (618-621). They match C-1/C-2 as amended. AC-2..AC-5 each have
+    fault cases with controls, and the real tree has both AC-6's list
+    equality and AC-1's empty report.
+  - RED's C-1 amendment (an opener with no `")` after it ends the scan)
+    has no fixture. RED says so, and nothing on the real tree has that shape.
+    Accepted as stated.
