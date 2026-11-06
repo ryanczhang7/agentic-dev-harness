@@ -5,7 +5,7 @@ slug: the-running-stand-in-in-mutate-test-sh-l
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -400,6 +400,7 @@ name, below the table.
 - GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
 - GATES diff review, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 - R-1 RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
+- GATES gates and review of the fix, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -738,13 +739,33 @@ Verdict: Ship.
   surfaces in an unrelated suite with nothing pointing at its cause.
 - No assertion changes, only the cleanup, so GREEN on re-entry is a no-op.
 
+
+**Review of the fix (2026-11-06), commit `185a34a` only.** A fresh
+`feature-developer` ran it with the `diff-review` skill, on Opus 5.5
+(`claude-opus-5-5`) with no override. It changed no file, and
+`mutate.sh --check` was clean. In the same dispatch, and first,
+`attest.sh -- bash scripts/gates.sh` gave exit 0 and
+`All required gates passed (0 ran, 7 unconfigured, 0 known)`.
+
+- **Passing run:** the cleanup signals only `H91_CTL`.
+- **Red run:** a holder not seen gone keeps its pid and is killed, and the
+  two direct children are waited for. Nothing is left running.
+- **Assertions unchanged:** 211 `assert_*` lines before and after, the same
+  names and expected values, each value taken from one `gone_within` call
+  at the same point in the sequence. `mutate: 315 passed, 0 failed` on this
+  tree (attest record `fresh`).
+- **Nothing else changed:** two hunks, both inside lines 989-1019. The new
+  names are unused elsewhere and reset at the end of the block.
+- **Not checked:** a run on Linux. CI on the PR is the first.
+
+Verdict: Ship.
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-06T15:43:46Z
-    commit: 833d071
-    tree:   4b88fd84d58e932740ba61317105b9d47918a8b3
+    run:    2026-11-06T15:55:10Z
+    commit: 6298621
+    tree:   7528eec0924e044919abc83d6c1caafe4472f8ce
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
