@@ -5,7 +5,7 @@ slug: every-cases-md-pointer-in-rules-md-names
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-092-every-cases-md-pointer-in-rules-md-names
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/rules-trim.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -208,6 +208,47 @@ rather than deriving a different grammar.
   pointer to the same heading (246-247) still resolves, so exactly one
   pointer line is printed. This probes the wrap and the real file's spelling
   at once, which no fixture can. **Owner: GATES.**
+
+**Results (GATES, this host, 2026-11-06).** Both through `mutate.sh`, both
+files restored byte for byte, `mutate.sh --check` clean after each.
+
+**DV-1.** As written. Exactly one pointer line, naming the renamed heading's
+old text. Only the two real-tree assertions that read the report went red
+(AC-1's, and the older "prints nothing" one, which reads the same report);
+every fixture case and AC-6's list equality stayed green, and no
+`IMPLAUSIBLE` needle moved.
+
+```
+=== mutate: .claude/skills/tdd-cycle/reference/cases.md (1 line(s) changed by s/^## Four needles that could not fail$/## Four needles that could not fall/) ===
+    FAIL HARNESS-092 AC-1: every pointer in rules.md names a ## heading of cases.md
+         expected: 
+         actual:   rules.md: points at "Four needles that could not fail", not a ## heading of cases.md
+    FAIL rules_trim_problems over the real tree prints nothing: every rule kept, every case moved and pointed at
+         expected: 
+         actual:   rules.md: points at "Four needles that could not fail", not a ## heading of cases.md
+rules-trim: 48 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_skills_tdd-cycle_reference_cases.md.20261106T172016Z.469000.bak) ===
+```
+
+**DV-2.** As written: the real wrapped pointer at rules.md line 227 broken on
+its second line. AC-6's list equality went red (the fourth text now ends in
+a period), and the real-tree assertions went red with exactly one pointer
+line naming the joined text, `Three guards green over a tree they could not
+see.`; the second real pointer to the same heading (lines 246-247) still
+resolved.
+
+```
+=== mutate: .claude/harness/rules.md (1 line(s) changed by s/^  they could not see")\.$/  they could not see.")./) ===
+    FAIL HARNESS-092 AC-6: the pointer texts of rules.md are exactly C-1's eight, in file order
+    FAIL HARNESS-092 AC-1: every pointer in rules.md names a ## heading of cases.md
+         expected: 
+         actual:   rules.md: points at "Three guards green over a tree they could not see.", not a ## heading of cases.md
+    FAIL rules_trim_problems over the real tree prints nothing: every rule kept, every case moved and pointed at
+         expected: 
+         actual:   rules.md: points at "Three guards green over a tree they could not see.", not a ## heading of cases.md
+rules-trim: 47 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_harness_rules.md.20261106T172057Z.469936.bak) ===
+```
 
 ## Amendments
 
