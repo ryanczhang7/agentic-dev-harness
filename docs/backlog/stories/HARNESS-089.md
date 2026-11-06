@@ -93,8 +93,8 @@ line, an exit status under `timeout`.
   `git show`, `git cat-file`, `cat `, or `<` (the `$(< file)` form). One
   fault line per offending line: `scripts/check-boundaries.sh:<n>: here-string
   carries <name>, assigned from <command>`. The control: the script as it
-  stands today is refused on exactly six lines (330, 336, 372, 1077, 1086,
-  1113), and a fixture copy with the defect put back on one line is refused
+  stands today is refused on exactly seven lines (330, 336, 372, 373, 1077,
+  1086, 1113; AM-1), and a fixture copy with the defect put back on one line is refused
   on that one line. A fixture copy whose here-string variable is assigned
   from `git rev-parse` is accepted.
 - **AC-3 (no deadlock on this host)** — Given this Windows host (Git for
@@ -225,6 +225,18 @@ lines appear in one `boundaries` run; say so.
 
 ## Amendments
 
+- **AM-1 (AC-2, the control's line count).**
+  - **What it said:** "the script as it stands today is refused on exactly
+    six lines (330, 336, 372, 1077, 1086, 1113)".
+  - **What it says now:** "exactly seven lines (330, 336, 372, 373, 1077,
+    1086, 1113; AM-1)". The rule is unchanged.
+  - **Why:** AC-2's own rule refuses line 373, `<<< "$before"`, because
+    `before` is also assigned from `git show` at line 637. Line 373's value
+    is a section of a story copy, so refusing it is within the criterion's
+    intent. The count was the PO's error at PLANNED. RED found it, and the
+    orchestrator reproduced it (`## Notes`).
+  - **Approved by** the user, "Yes, amend to seven", 2026-11-06.
+
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
      out to be wrong or unsatisfiable, stop, put it to the product owner, and
      record the change here: which AC, what it said, what it says now, who
@@ -250,6 +262,7 @@ Planned by `bash scripts/plan.sh write HARNESS-089` from `.claude/harness/models
 A PLAN, not a record: a session setting or an explicit override can beat both
 this and the agent's own `model:` field, and nothing here can see which won.
 The orchestrator still writes down the model each dispatch **resolved** to, by
+- PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 name, below the table.
 
 | Phase | Agent | Planned | Why |
