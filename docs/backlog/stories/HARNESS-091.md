@@ -5,7 +5,7 @@ slug: the-running-stand-in-in-mutate-test-sh-l
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -867,3 +867,8 @@ All required gates passed (0 ran, 5 unconfigured, 0 known).
   `c291e14` before the DVs. There were two conflicts, both additive: `VERSION`
   kept this story's `113`, and `floors.conf` kept both stories' dated notes.
   The DVs and the gate run were made on the merged tree.
+- GREEN after R-1, verified by the orchestrator as a no-op, 2026-11-06.
+  `git diff --name-only HEAD~1 HEAD` named only `.claude/tests/` and
+  `docs/` paths. `attest.sh check` said `fresh` for
+  `bash scripts/selftest.sh mutate` (exit 0, `mutate: 315 passed, 0 failed`)
+  and `bash scripts/gates.sh --fast` (exit 0) on this tree.
