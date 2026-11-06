@@ -5,7 +5,7 @@ slug: check-boundaries-refuses-to-run-without
 epic: 
 type: bug
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-097-check-boundaries-refuses-to-run-without
 depends_on: [HARNESS-089]      # this story edits the lines HARNESS-089 wrote; merged as #181, DONE on main at dd97d6b
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, docs/backlog/stories/HARNESS-097.md]
@@ -394,6 +394,37 @@ green. GATES owns it because the check does not exist in RED (that absence is
 RED's red, pasted in the handoff) and the mutation is of GREEN's line. Paste
 the red lines and the restore line.
 
+**Result (GATES, 2026-11-06, run by the orchestrator, Fable 5.1), at GREEN's
+commit `07d121e`.** The expression replaced GREEN's line 32 with release
+110's bare `mkdir -p`; the subset went red on exactly the three AC-1
+assertions, the twin and AC-2 stayed green (`4 passed, 3 failed`), and the
+file was restored and verified. Pasted from the run:
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s|^mkdir -p "\$ROOT/.claude/state/check-boundaries" \|\| { problem .*; exit 1; }$|mkdir -p "$ROOT/.claude/state/check-boundaries"|) ===
+  32 - mkdir -p "$ROOT/.claude/state/check-boundaries" || { problem "cannot create .claude/state/check-boundaries (...)"; exit 1; }
+  32 + mkdir -p "$ROOT/.claude/state/check-boundaries"
+
+=== mutate: running bash .claude/state/harness-097-subset.sh ===
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, a FAIL line names that path
+         expected a line starting 'FAIL  ' that names .claude/state/check-boundaries
+         actual:   mkdir: cannot create directory '/tmp/tmp.ltoN7xVCRJ/.claude/state/check-boundaries': File exists
+           spike story; gate record not required
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, the run exits non-zero
+         expected: non-zero
+         actual:   0
+    FAIL AC-1: with a plain file at .claude/state/check-boundaries, no line mentions acceptance criteria
+         expected: 
+         actual:   ok    acceptance criteria changed, with an ## Amendments entry
+boundaries-097-subset: 4 passed, 3 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against .claude/state/mutations/scripts_check-boundaries.sh.20261106T143225Z.1935.bak) ===
+  32: mkdir -p "$ROOT/.claude/state/check-boundaries" || { problem "cannot create .claude/state/check-boundaries (...)"; exit 1; }
+```
+
+After the restore: `boundaries-097-subset: 7 passed, 0 failed`;
+`bash scripts/mutate.sh --check`: no stranded mutation.
+
 Nothing beyond these two: rules.md "Mutation work per story" is the budget,
 and exhaustive earning of HARNESS-089's assertions belongs to
 `/audit-mutations`.
@@ -443,6 +474,8 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 - RED, test-developer, claude-opus-5-5 (Opus 5.5; as planned, no override)
 - GREEN, feature-developer, claude-opus-5-5 (Opus 5.5; as planned, no override)
+- GATES (DV-2), orchestrator lead-po, claude-fable-5-1 (Fable 5.1; ran DV-2 itself with mutate.sh)
+- GATES (full gates), feature-developer, claude-opus-5-5 (Opus 5.5; as planned, no override)
 
 ## Out of scope
 
@@ -723,10 +756,21 @@ did execute):
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-06T14:33:06Z
+    commit: 07d121e
+    tree:   6c5a3176cd7d20bfefb863f142b5e84b8ac3fe35
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -866,3 +910,12 @@ did execute):
   --fast` (0 ran, 5 unconfigured); none was re-run. Net line delta above
   line 399 is 0, so R-1 is not needed: sigpipe's three `DISCARDED` pins
   still hold. `mutate.sh --check` is clean.
+- **GATES verified by the orchestrator (2026-11-06).** DV-2 run first
+  (result in its block: the three AC-1 assertions red with the fix removed,
+  restored and verified). Then the full gates, dispatched: `attest.sh check
+  -- bash scripts/gates.sh` answered `fresh`, exit 0, log
+  `20261106T143305Z.1703.log`, verdict `All required gates passed (0 ran, 7
+  unconfigured, 0 known).` Seven, not the five of `--fast`, because the full
+  run includes the two `slow` gates (integration, build); every gate is
+  unconfigured while BOOTSTRAPPED=no. Nothing in the tree was changed by the
+  run but `## Gate results`.
