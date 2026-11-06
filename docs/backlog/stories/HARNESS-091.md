@@ -4,8 +4,8 @@ title: The RUNNING stand-in in mutate.test.sh lives until its block kills it
 slug: the-running-stand-in-in-mutate-test-sh-l
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -893,3 +893,16 @@ All required gates passed (0 ran, 5 unconfigured, 0 known).
   `docs/` paths. `attest.sh check` said `fresh` for
   `bash scripts/selftest.sh mutate` (exit 0, `mutate: 315 passed, 0 failed`)
   and `bash scripts/gates.sh --fast` (exit 0) on this tree.
+- Self-test at GATES → REVIEW, 2026-11-06. `selftest-needed: run`, and
+  `--suites` said `all: .claude/tests/_lib.sh is read by every suite`. That
+  is advance-story step 2 case (a), so the full run took the place of
+  `--changed`. A `feature-developer` ran it, on Opus 5.5
+  (`claude-opus-5-5`) with no override. `attest.sh check -- SELFTEST_JOBS=4
+  bash scripts/selftest.sh` said `fresh`.
+
+```
+exit:     0
+last:     34 harness suite(s) passed.
+duration: 2713s
+assertion floors: all 34 suite(s) met their declared floor (5711 assertions executed, 5707 declared).
+```
