@@ -4,7 +4,7 @@ title: The RUNNING stand-in in mutate.test.sh lives until its block kills it
 slug: the-running-stand-in-in-mutate-test-sh-l
 epic: 
 type: fix
-status: todo
+status: in-progress
 phase: PLANNED
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
@@ -90,7 +90,7 @@ in full on the PR.
 
 ## Contract
 
-**Writes:** `.claude/tests/_lib.sh`, `.claude/tests/mutate.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, `.claude/harness/VERSION`
+**Writes:** `.claude/tests/_lib.sh`, `.claude/tests/mutate.test.sh`, `.claude/tests/run-lock.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, `.claude/harness/VERSION`
 
 RED may amend any block in place, with a reason; GREEN builds what the
 amended block says. The acceptance criteria do not inherit that: a change to
@@ -149,6 +149,36 @@ pid only, by `kill -0`, because process listing is not portable to Git Bash.
   `floors.conf` and the hand copy `mutate 308` in `selftest.test.sh` (line
   542) to it.
 
+**C-2a. Line numbers, refreshed at PLANNED → RED (2026-11-06, tree
+`e8845fa`).** The numbers above were taken on 2026-11-04 and the tree has
+moved: the plant is `sleep 30 &` / `H30_SLEEP=$!` at **888-889**; C-1's
+`--check` is at **916** (C-3's, which this story does not touch, at 926);
+the comment is still line 536, the EXIT trap line 546, `is_alive` line 584,
+the AC-7 describe 942 and the next `# ====` banner 960. `VERSION` holds
+`111 (2026-11-06)`; GREEN takes the next free number when it gets there.
+
+**C-5. The run-lock stand-ins (AC-4).** `.claude/tests/run-lock.test.sh`:
+
+- lines 225-226, `sleep 600 & LIVE1=$!; BG="$BG $LIVE1"` and the `LIVE2`
+  twin, become `hold_until_killed LIVE1; BG="$BG $LIVE1"` and
+  `hold_until_killed LIVE2; BG="$BG $LIVE2"`. The suite already sources
+  `_lib.sh`, and its EXIT cleanup (lines 40-41) kills and waits every pid in
+  `BG`, which reaps a holder exactly as it reaped a `sleep`. `DEAD` (line
+  227) and `PLANT_STARTED` are untouched. The comment at line 224 says the
+  two live ones have no bound.
+- AC-4: in the block `describe "AC-6  the markers are not a bypass: the pid
+  must be the one the lock records"` (line 513), immediately after
+  `reset "$FIX"` and before `plant "$FIX" "$LIVE1" ...` (line 516), one new
+  assertion, exactly
+  `assert_eq "AC-6 precondition: the two live holders planted at the top are still alive" "alive alive" "$(is_alive "$LIVE1") $(is_alive "$LIVE2")"`.
+  `run-lock.test.sh` has no `is_alive`; it gains a local copy of
+  `mutate.test.sh`'s one-liner (line 584), placed beside its other helpers,
+  rather than a shared one in `_lib.sh`, so `mutate.test.sh`'s own definition
+  is not shadowed or duplicated there.
+- Every other `run-lock` assertion is unchanged. The floor `run-lock | 140`
+  in `floors.conf` and `run-lock 140` in `selftest.test.sh` (line 553) rise
+  by the executed count RED measures (expected 141).
+
 **C-3. Typing and phases.** A `fix` whose failing test reproduces the defect:
 AC-1's precondition is what the 2026-11-04 run lacked, and DV-1 shows it red
 under the defect put back. Test-only, as HARNESS-021 was: RED writes
@@ -186,6 +216,20 @@ wait under one second); RED may raise it with a reason, never lower it.
   MUST go red and AC-2 and the control stay green; the describe's cleanup
   kills the survivor, and `mutate.sh --check` is clean afterwards. Same
   reason RED cannot own it. **Owner: GATES.**
+
+- **DV-3, defect put back (AC-4).** With `run-lock`'s two holders turned
+  back into timed sleeps too short for the suite -
+  `bash scripts/mutate.sh .claude/tests/run-lock.test.sh 's/^hold_until_killed LIVE\([12]\); BG=/sleep 45 \& LIVE\1=$!; BG=/' -- bash scripts/selftest.sh run-lock` -
+  the AC-6 "not a bypass" block MUST go red on **"AC-6 precondition: the two
+  live holders planted at the top are still alive"** first, ahead of the
+  seven assertions HARNESS-094's `## Notes` records for this mutation (and
+  AC-3's live-holder control goes red too, as it did there). The
+  precondition's presence ahead of them is what AC-4 adds. RED cannot own
+  this: the suite is what it is writing. **Owner: GATES.**
+- **Budget.** Three entries, one above `rules.md`'s default: AC-1 and AC-4
+  are the same defect put back in two suites, and DV-2 is the law's own
+  requirement for AC-3, an assertion written against a helper that exists by
+  the time it runs.
 
 ## Amendments
 
@@ -347,3 +391,25 @@ name, below the table.
   `sleep 600` stand-ins to 45 s reproduces exactly those 7 failures. The cause
   is not measured. The fix is the same as AC-1..3, and the Contract and DV
   blocks need a line for it when this story is started.
+- PO decisions at PLANNED → RED (orchestrator, 2026-11-06):
+  1. **AC-4 gets its Contract block (C-5) and its own deferred verification
+     (DV-3).** AC-4 was added on 2026-11-05 without either; the `touches:`
+     line already named `run-lock.test.sh`, and the `**Writes:**` line now
+     does too.
+  2. **Line numbers refreshed (C-2a).** HARNESS-089 and HARNESS-090 moved
+     nothing in these two suites, but the Contract's numbers were off by one
+     at the plant and by fifteen at C-1; they are re-read from tree
+     `e8845fa`.
+  3. **`is_alive` stays per suite.** `run-lock.test.sh` gets a local copy
+     rather than `_lib.sh` gaining one, so `mutate.test.sh`'s definition at
+     line 584 is neither shadowed nor duplicated.
+  4. **Not already delivered:** `hold_until_killed` appears nowhere in
+     `.claude/tests/`, `mutate.test.sh:888` still plants `sleep 30 &`, and
+     `run-lock.test.sh:225-226` still plant `sleep 600 &`.
+  5. **Required gate:** none is configured; the artifact is judged by the
+     `mutate` and `run-lock` suites, which CI runs in full on the PR.
+     `required_gates: []` stays, with its note.
+  6. `plan.sh conflicts`: CONFLICT with HARNESS-092, 093 and 096 on
+     `VERSION`, `floors.conf` and `selftest.test.sh`. Run alone.
+  7. **GREEN is planned as a verified no-op plus the VERSION bump** (C-3), so
+     it is checked by the orchestrator, not dispatched.
