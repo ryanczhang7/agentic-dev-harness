@@ -4,8 +4,8 @@ title: a self-test that cannot start a process keeps every result it has and nam
 slug: a-self-test-that-cannot-start-a-process
 epic: 
 type: bug
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-090-a-self-test-that-cannot-start-a-process
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]
@@ -1153,3 +1153,17 @@ selftest: 345 passed, 1 failed
     pin: the handler fix adds lines but keeps the print-and-name and
     `report_unstarted` code they mutated. The line numbers in their pasted
     output are from `5b72c3c`.
+- Self-test at GATES → REVIEW, 2026-11-06. `selftest-needed: run`, and
+  `--suites` said `all: scripts/selftest.sh is read by every suite`. That is
+  advance-story step 2 case (a), so the full run took the place of
+  `--changed`. A `feature-developer` ran it, on Opus 5.5
+  (`claude-opus-5-5`) with no override. `attest.sh check -- SELFTEST_JOBS=4
+  bash scripts/selftest.sh` said `fresh`. It ran on this story's own
+  parallel scheduler and printed no `ended before its summary` line.
+
+```
+exit:     0
+last:     34 harness suite(s) passed.
+duration: 1059s
+assertion floors: all 34 suite(s) met their declared floor (5696 assertions executed, 5692 declared).
+```
