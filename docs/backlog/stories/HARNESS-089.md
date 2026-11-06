@@ -5,7 +5,7 @@ slug: check-boundaries-never-deadlocks-on-a-st
 epic: 
 type: bug
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-089-check-boundaries-never-deadlocks-on-a-st
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]
@@ -222,6 +222,46 @@ mutated run costs two minutes and ends.
 mutation as DV-1, the AC-2 real-tree assertion must print exactly one fault
 line naming the restored line. Same `mutate.sh` run as DV-1 if both red
 lines appear in one `boundaries` run; say so.
+
+**DV-1 and DV-2 result (GATES, this host, 2026-11-06).** Both came from one
+`mutate.sh` run. It put the here-string back on GREEN's loop lines 340-341 in
+`criteria_baseline`, ran the whole `boundaries` suite and restored the file.
+The suite has no per-case filter, so this suite is the narrowest command that
+holds both assertions.
+
+- **DV-1:** the 65,566-byte history went red with status 124 and no criteria
+  line, which is three AC-1 failures.
+- **DV-2:** the AC-2 guard printed exactly one fault line, naming line 341.
+- **The 135,000-byte case stayed green.** It is not among the four failures:
+  `534 passed, 4 failed` out of 538.
+- **Restore:** `mutate.sh` verified it byte for byte, and `--check` was clean
+  afterwards.
+
+```
+=== mutate: scripts/check-boundaries.sh (2 line(s) changed by 340s|git show "$rev:$f" > "$cp" 2>/dev/null|txt="$(git show "$rev:$f" 2>/dev/null)"|;341s|frontmatter_value "$cp" phase|frontmatter_value - phase <<< "$txt"|) ===
+  340 -     git show "$rev:$f" > "$cp" 2>/dev/null || continue
+  341 -     cph="$(frontmatter_value "$cp" phase)"; cph="${cph//[[:space:]]/}"
+  340 +     txt="$(git show "$rev:$f" 2>/dev/null)" || continue
+  341 +     cph="$(frontmatter_value - phase <<< "$txt")"; cph="${cph//[[:space:]]/}"
+    FAIL AC-1: a 65566-byte RED copy does not hang check-boundaries.sh (status 124 under timeout 120)
+         expected: no
+         actual:   yes, status 124
+    FAIL AC-1: a 65566-byte RED copy exits with the small-copy history's status
+         expected: 1
+         actual:   124
+    FAIL AC-1: a 65566-byte RED copy reports the same criteria line as the small-copy history
+         expected: 1
+         actual:   0
+
+  no here-string carries a story copy or a git show result (HARNESS-089)
+    FAIL AC-2: no here-string in scripts/check-boundaries.sh carries a story copy or a git show result
+         expected: 
+         actual:   scripts/check-boundaries.sh:341: here-string carries txt, assigned from git show
+boundaries: 534 passed, 4 failed
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261106T040050Z.570227.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 ## Amendments
 
