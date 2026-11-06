@@ -5,7 +5,7 @@ slug: the-running-stand-in-in-mutate-test-sh-l
 epic: 
 type: fix
 status: in-progress
-phase: PLANNED
+phase: RED
 branch: story/HARNESS-091-the-running-stand-in-in-mutate-test-sh-l
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/mutate.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -106,10 +106,24 @@ existing helpers:
 hold_until_killed() {
   local parent=$$
   ( trap 'kill "$s" 2>/dev/null; exit 0' TERM INT
-    while kill -0 "$parent" 2>/dev/null; do sleep 1 & s=$!; wait "$s"; done ) &
+    while kill -0 "$parent" 2>/dev/null; do sleep 1 & s=$!; wait "$s"; done ) </dev/null >/dev/null 2>&1 &
   printf -v "$1" '%s' "$!"
 }
 ```
+
+*Amended in RED (2026-11-06, test-developer):* the subshell's stdin, stdout
+and stderr are redirected to `/dev/null`. Measured on this host before the
+change: AC-3's `p="$(bash -c '. _lib.sh; hold_until_killed p; printf %s "$p"')"`
+took **1,127 ms**, because the holder inherited the command substitution's
+pipe and `$( )` returned only once the holder had exited - so the orphan was
+already gone before AC-3 could observe it alive or dead, and under DV-2's
+mutation (`while :`) the `$( )` would never return and the suite would hang
+rather than go red. After the change: 68 ms, the orphan is observably alive on
+return and gone 2 s later; under the DV-2 shape, 72 ms, the orphan stays alive
+and a `kill` removes it. The helper's comment says why. Everything else in the
+block behaves as stated on this host (Git for Windows bash): `$$` in the
+subshell is the caller's, `kill` + `wait` reaps it, and an orphan goes within
+about a second of its shell exiting.
 
 Semantics pinned: it is called as `hold_until_killed H30_SLEEP`, never in a
 `$( )`, so the holder is a direct child of the suite and `wait "$pid"` after
@@ -143,6 +157,11 @@ pid only, by `kill -0`, because process listing is not portable to Git Bash.
   (the child shell's `$$` is the parent that goes away); the control holder is
   started by the suite. The describe kills every holder it started before it
   ends, whatever the assertions said, so a red run strands nothing.
+  *Amended in RED (2026-11-06):* the child sources `_lib.sh` by absolute
+  path, `bash -c '. "$1"; hold_until_killed p; printf %s "$p"' h91
+  "$TESTS_DIR/_lib.sh"`, so it does not depend on the suite's working
+  directory; and `gone_within` prints `nopid` for a pid that is not a number,
+  so an empty variable cannot pass as a holder that went.
 - Every new assertion executes unconditionally (the floor is the executed
   count). Expected: 1 (AC-1) + about 5 (AC-2/AC-3); RED reads the real number
   off `bash scripts/selftest.sh mutate` and raises `floor | mutate | 308` in
@@ -271,6 +290,7 @@ name, below the table.
 
 **Resolved:**
 
+- PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -300,28 +320,168 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All shell, in the harness self-test. Level: the suite itself (the defect is
+in a test's stand-in process, so the suite is the only level that holds it).
+
+- `mutate.test.sh`, HARNESS-030 AC-4 block: the plant is `hold_until_killed H30_SLEEP` (C-2; no new assertion - AC-4's existing precondition now observes the holder).
+- `mutate.test.sh`, before C-1's `--check`: "C-1 precondition: the stand-in planted at AC-4 is still alive" = `alive` (AC-1).
+- `mutate.test.sh`, HARNESS-091 describe: "AC-2 precondition: hold_until_killed puts a pid in the variable it is given" - the variable is all digits (AC-2).
+- same: "AC-2 control: the holder is alive when hold_until_killed returns" = `alive` (AC-2's control: gone is not never-started).
+- same: "AC-2: sent kill and waited for, the holder is gone within 10 s" = `gone` (AC-2).
+- same: "AC-3 precondition: the child shell started a holder and printed its pid" - all digits (AC-3).
+- same: "AC-3: a holder whose shell exited without killing it is gone within 10 s" = `gone` (AC-3).
+- same: "AC-3 control: the suite's own holder, whose shell is still running, is alive at that moment" = `alive` (AC-3's control).
+- `run-lock.test.sh`, top: `LIVE1`/`LIVE2` are `hold_until_killed` holders (C-5; observed by the existing AC-3 "live pid really is running" precondition).
+- `run-lock.test.sh`, "AC-6 the markers are not a bypass", right after `reset "$FIX"`: "AC-6 precondition: the two live holders planted at the top are still alive" = `alive alive` (AC-4).
+- Floors: `mutate` 308 -> 315, `run-lock` 140 -> 141, in `floors.conf` and `selftest.test.sh`'s hand copy.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+Written by the test-developer, RED, 2026-11-06. Model: Opus 5.5
+(`claude-opus-5-5`), as the agent definition declares; no override.
+
+**GREEN is a verified no-op plus the `VERSION` bump** (C-3). Every test-side
+write is done; nothing in `scripts/` was touched. GREEN's only write is
+`.claude/harness/VERSION` (it holds `111 (2026-11-06)` today; take the next
+free number when you get there).
+
+**Commands.** `bash scripts/selftest.sh mutate run-lock` (both suites, with
+the floors audit); `bash .claude/tests/mutate.test.sh` alone for the narrowest
+run.
+
+**Files and line ranges** (working tree, uncommitted at hand-off):
+
+- `.claude/tests/_lib.sh` 84-97: new `# --- processes` section with
+  `hold_until_killed` and its comment (C-1 as amended: fds to `/dev/null`).
+- `.claude/tests/mutate.test.sh` 536-538: the HARNESS-030 header comment
+  rewritten (no bound; reaped by the block's kill, the EXIT trap, its own
+  loop). 890: `hold_until_killed H30_SLEEP` replaces `sleep 30 &` /
+  `H30_SLEEP=$!`. 917: AC-1's precondition, immediately before C-1's
+  `--check`. 962-1012: the new describe "HARNESS-091 AC-2/AC-3: ...", after
+  the HARNESS-030 AC-7 block and before the HARNESS-059 banner, with
+  `gone_within`, the AC-2 holder, the suite-owned control holder, the
+  orphaned holder via `bash -c`, and an unconditional cleanup of all three.
+- `.claude/tests/run-lock.test.sh` 200-202: local `is_alive`. 227-231:
+  comment plus `hold_until_killed LIVE1; BG=...` / `LIVE2`. 521: AC-4's
+  precondition right after `reset "$FIX"` in "AC-6 the markers are not a
+  bypass".
+- `.claude/tests/floors.conf` 51, 62, 1038-1049: floors and the dated note.
+- `.claude/tests/selftest.test.sh` 542, 553: the hand copy.
+
+**New assertions and what each pins** (exact texts):
+
+| Assertion | Expected | Pins |
+|---|---|---|
+| `C-1 precondition: the stand-in planted at AC-4 is still alive` | `alive` | AC-1 |
+| `AC-2 precondition: hold_until_killed puts a pid in the variable it is given` | 1 (all digits) | AC-2: the helper sets the named variable |
+| `AC-2 control: the holder is alive when hold_until_killed returns` | `alive` | AC-2 control: "gone" is not "never started" |
+| `AC-2: sent kill and waited for, the holder is gone within 10 s` | `gone` | AC-2 |
+| `AC-3 precondition: the child shell started a holder and printed its pid` | 1 (all digits) | AC-3: the orphan exists |
+| `AC-3: a holder whose shell exited without killing it is gone within 10 s` | `gone` | AC-3 |
+| `AC-3 control: the suite's own holder, whose shell is still running, is alive at that moment` | `alive` | AC-3 control: gone is tied to the parent exiting |
+| `AC-6 precondition: the two live holders planted at the top are still alive` | `alive alive` | AC-4 |
+
+`gone_within <pid> <s>` polls `kill -0` every 0.2 s for up to `<s>` (10, the
+settled bound, not raised) and prints `gone`/`alive`; a non-numeric pid prints
+`nopid`, so an empty variable cannot pass the two "gone" assertions.
+
+**Measured counts** (local, this Windows host): `mutate` 315 (308 + 7),
+`run-lock` 141 (140 + 1), all passed. Floors raised to exactly those.
+`bash scripts/selftest.sh lib selftest` also run after the floor edit: 690
+executed, all passed (the hand copy agrees with `floors.conf`).
+
+**Attest records.**
+
+    run:      2026-11-06T15:07:38Z
+    command:  bash scripts/selftest.sh mutate run-lock
+    tree:     48a1f39d5b18ac3075523224bdce89a4bc85955d
+    status:   ok
+    exit:     0
+    duration: 177s
+    last:     2 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261106T150738Z.142502.log
+
+    run:      2026-11-06T15:10:59Z
+    command:  bash scripts/gates.sh --fast
+    tree:     48a1f39d5b18ac3075523224bdce89a4bc85955d
+    status:   ok
+    exit:     0
+    duration: 2s
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261106T151059Z.154552.log
+
+`bash scripts/check-sigpipe.sh`: 0 findings (62 files scanned).
+`bash scripts/check-grep-count.sh`: 0 findings.
+
+**Passed on arrival, and RED's one mutation.** Every new assertion passes on
+its first run: it is written against a helper written in the same phase. The
+one mutation RED owns, predicted to catch exactly one assertion (AC-3's
+orphan): the holder records the wrong parent, `$PPID` instead of `$$`. Inside
+the suite the parent is then the suite's own parent, still alive, so AC-2 and
+the HARNESS-030 / run-lock uses behave as before; the orphan's recorded parent
+is the suite, which is alive, so the orphan never goes. Distinct from DV-2
+(which removes the parent check entirely). Result: exactly one red, 314/1.
+
+```
+$ bash scripts/mutate.sh .claude/tests/_lib.sh 's/local parent=\$\$/local parent=$PPID/' -- bash .claude/tests/mutate.test.sh
+=== mutate: .claude/tests/_lib.sh (1 line(s) changed by s/local parent=\$\$/local parent=$PPID/) ===
+  92 -   local parent=$$
+  92 +   local parent=$PPID
+
+=== mutate: running bash .claude/tests/mutate.test.sh ===
+...
+  HARNESS-091 AC-2/AC-3: hold_until_killed lives until killed, and reaps itself when its shell has gone
+    FAIL AC-3: a holder whose shell exited without killing it is gone within 10 s
+         expected: gone
+         actual:   alive
+...
+mutate: 314 passed, 1 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests__lib.sh.20261106T150119Z.114430.bak) ===
+  92:   local parent=$$
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**Deferred verifications declined.** DV-1, DV-2 and DV-3 I did not run. Each
+mutates the suite or helper written in this phase and is owned by **GATES**
+per the story; they stay with GATES. Expected outcomes, as claims for GATES to
+confirm: DV-1 - the "C-1 precondition" line red ahead of C-1's two; DV-2 -
+only "AC-3: a holder whose shell exited ... is gone within 10 s" red (the
+`$( )` returns promptly because of the C-1 amendment, measured 72 ms with the
+`while :` shape outside the suite; cleanup kills the survivor), `mutate.sh
+--check` clean after; DV-3 - "AC-6 precondition: the two live holders ..." the
+first red line of the "not a bypass" block. Note for DV-3: `sleep 45` must
+actually expire before that block; on a fast host the run-lock suite reaches
+it in roughly 90-120 s (the suite took ~135 s alone here), so it should, but
+GATES should read the count off the run rather than assume.
+
+**Contract amendments (in place, in `## Contract`).**
+
+1. C-1: the holder's subshell gets `</dev/null >/dev/null 2>&1`. Measured: as
+   written, AC-3's `$(bash -c ...)` took 1,127 ms because the holder held the
+   substitution's pipe and `$( )` returned only after the holder exited (so
+   AC-3 could not observe it), and under DV-2's mutation it would hang the
+   suite instead of going red. With the redirect: 68 ms, orphan observably
+   alive on return and gone within 2 s.
+2. C-2: the AC-3 child sources `_lib.sh` by absolute path (`"$TESTS_DIR/_lib.sh"`
+   passed as `$1`), and `gone_within` prints `nopid` for a non-numeric pid.
+
+No acceptance criterion changed.
+
+**Follow-up candidate.** `.claude/tests/gates.test.sh` line 2794 plants a
+`sleep 30 &` (`H30_SLEEP`) as a RUNNING sentinel's process and relies on it
+across one full `bash scripts/gates.sh` run before killing it at ~2806. Not
+reused across blocks, but the same unchosen 30 s window spans a fixture gates
+run, which under host load can exceed it. A one-line move to
+`hold_until_killed` would remove it. No other timed background process in
+`.claude/tests/` is reused across blocks (`grep -n 'sleep [0-9]* *&'`).
+
+**Observed on Linux only by reasoning, not by run:** `$$` in a `( )`
+subshell is the caller's, and an orphaned holder is reparented to init and
+reaped, so `kill -0` on it fails once it exits (no zombie). AC-2 `wait`s
+before polling, so its holder is reaped and is not a zombie either. CI runs
+the full self-test on the PR and is the first Linux observation.
 
 ## Regressions
 
@@ -413,3 +573,32 @@ name, below the table.
      `VERSION`, `floors.conf` and `selftest.test.sh`. Run alone.
   7. **GREEN is planned as a verified no-op plus the VERSION bump** (C-3), so
      it is checked by the orchestrator, not dispatched.
+- RED verified by the orchestrator, 2026-11-06.
+  - `attest.sh check` said `fresh` for both runs at tree `48a1f39`, so
+    neither was re-run. `selftest.sh mutate run-lock`: exit 0,
+    `2 harness suite(s) passed.`, 177 s. `gates.sh --fast`: exit 0.
+  - Green in RED is this story's planned shape (C-3): it writes only tests,
+    and the defect is put back at GATES (DV-1, DV-3).
+  - Read the diff: the `_lib.sh` helper, `mutate.test.sh`'s plant, comment,
+    C-1 precondition and AC-2/AC-3 describe, and `run-lock.test.sh`'s
+    holders, local `is_alive` and AC-6 precondition. All match the Contract
+    as amended.
+  - Floors: `mutate` 308 → 315, `run-lock` 140 → 141.
+  - RED's one mutation (`local parent=$PPID`) turned exactly the one AC-3
+    assertion red, `mutate: 314 passed, 1 failed`, restored byte for byte.
+    It is pasted in the handoff.
+- **C-1 amendment reproduced independently** (2026-11-06). RED said a
+  holder started inside `$( )` holds the substitution open until it dies,
+  so AC-3 could never see the orphan alive. Checked with a different shape:
+  a child shell that starts a holder (a bare `kill -0` loop, no inner
+  `sleep`/`wait`) and then lives 3 s. Run in a scratch script.
+
+      plain: substitution returned after 3274 ms (inner child itself lives 3000 ms); orphan pid 168095 alive now? no
+      redir: substitution returned after 3208 ms (inner child itself lives 3000 ms); orphan pid 168206 alive now? yes
+
+  Without the redirect, the substitution waited for the holder to die.
+  With `</dev/null >/dev/null 2>&1`, it returned when the child exited, and
+  the holder was still alive to be observed. The amendment stands.
+- Follow-up candidate from RED: `.claude/tests/gates.test.sh:2794` plants
+  `sleep 30 &` behind a RUNNING sentinel for one fixture `gates.sh` run. It
+  is not reused across blocks, but it is the same unchosen 30 s window.

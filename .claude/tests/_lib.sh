@@ -81,6 +81,20 @@ actual:                   $3" ;;
   esac
 }
 
+# --- processes ---------------------------------------------------------------
+
+# hold_until_killed <varname>   Start a process that lives until it is
+# signalled or the calling shell ($$) has gone, and put its pid in <varname>.
+# No wall-clock bound. The stand-in for a RUNNING mutation (HARNESS-091).
+# Its stdin, stdout and stderr are /dev/null: a holder that kept the caller's
+# stdout would hold open any $( ) or pipe the caller sits in, until it exited.
+hold_until_killed() {
+  local parent=$$
+  ( trap 'kill "$s" 2>/dev/null; exit 0' TERM INT
+    while kill -0 "$parent" 2>/dev/null; do sleep 1 & s=$!; wait "$s"; done ) </dev/null >/dev/null 2>&1 &
+  printf -v "$1" '%s' "$!"
+}
+
 # --- fixture -----------------------------------------------------------------
 
 # make_fixture   Creates a throwaway repository that looks enough like a project
