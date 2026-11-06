@@ -24,6 +24,11 @@ export CLAUDE_PROJECT_DIR="$ROOT"
 . "$ROOT/.claude/hooks/lib.sh"
 
 fail=0
+# Story copies and git show results go to a scratch file, never a here-string:
+# on Cygwin bash a here-string of 65,536 to 65,566 bytes blocks forever (HARNESS-089).
+mkdir -p "$ROOT/.claude/state/check-boundaries"
+cp="$ROOT/.claude/state/check-boundaries/copy-$$.md"; dp="$ROOT/.claude/state/check-boundaries/diff-$$.txt"
+trap 'rm -rf "$ROOT/.claude/state/check-boundaries/"*-$$.*' EXIT
 note() { printf '  %s\n' "$1"; }
 problem() { printf 'FAIL  %s\n' "$1"; fail=1; }
 ok() { printf 'ok    %s\n' "$1"; }
@@ -326,14 +331,14 @@ criteria_baseline() {
     return 0
   fi
   if [ "$have_base" = 1 ]; then
-    txt="$(git show "$BASE:$f" 2>/dev/null)"
-    cph="$(frontmatter_value - phase <<< "$txt")"; cph="${cph//[[:space:]]/}"
+    git show "$BASE:$f" > "$cp" 2>/dev/null
+    cph="$(frontmatter_value "$cp" phase)"; cph="${cph//[[:space:]]/}"
     if [ "$cph" != PLANNED ]; then printf 'base %s\n' "$BASE"; return 0; fi
     prev_kind=base; prev_rev="$BASE"
   fi
   for rev in $(git rev-list --reverse --topo-order "$BASE"..HEAD 2>/dev/null); do
-    txt="$(git show "$rev:$f" 2>/dev/null)" || continue
-    cph="$(frontmatter_value - phase <<< "$txt")"; cph="${cph//[[:space:]]/}"
+    git show "$rev:$f" > "$cp" 2>/dev/null || continue
+    cph="$(frontmatter_value "$cp" phase)"; cph="${cph//[[:space:]]/}"
     if [ "$cph" != PLANNED ]; then
       case "$prev_kind" in
         "")   printf 'first %s\n' "$rev" ;;
@@ -368,9 +373,8 @@ esac
 if [ "$crit_kind" = open ]; then
   note "story $sid has not left PLANNED in any committed state; its criteria are not frozen yet"
 elif [ -n "$crit_label" ] && git cat-file -e "$crit_rev:$sfile" 2>/dev/null; then
-  crit_txt="$(git show "$crit_rev:$sfile" 2>/dev/null)"
-  before="$(section - "Acceptance criteria" <<< "$crit_txt")"
-  before="$(sed 's/[[:space:]]*$//' <<< "$before")"
+  git show "$crit_rev:$sfile" > "$cp" 2>/dev/null
+  before="$(section "$cp" "Acceptance criteria" | sed 's/[[:space:]]*$//')"
   after=$(section "$sfile" "Acceptance criteria" | sed 's/[[:space:]]*$//')
   if [ "$before" = "$after" ]; then
     ok "acceptance criteria unchanged since $crit_label"
@@ -1070,11 +1074,11 @@ for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
   [ -n "$sup_paths" ] || continue
   # 3i skips a commit whose story file it cannot read. This one says so: a
   # commit the rule could not judge is never silently counted as clean.
-  if ! sup_story="$(git show "$c:$sfile" 2>/dev/null)"; then
+  if ! git show "$c:$sfile" > "$cp" 2>/dev/null; then
     note "commit $c7: story file not readable at this commit; GREEN/GATES additions not judged"
     continue
   fi
-  ph_at="$(frontmatter_value - phase <<< "$sup_story")"; ph_at="${ph_at//[[:space:]]/}"
+  ph_at="$(frontmatter_value "$cp" phase)"; ph_at="${ph_at//[[:space:]]/}"
   # The documented GATES -> REVIEW step sets the phase and only then commits, so
   # work done in GATES can land in a commit whose own story says REVIEW. Its
   # first parent's committed phase says which phase the work was done in. A root
@@ -1082,8 +1086,8 @@ for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
   case "$ph_at" in
     GREEN|GATES) ;;
     *) sup_pph=""
-       if sup_pstory="$(git show "$c^:$sfile" 2>/dev/null)"; then
-         sup_pph="$(frontmatter_value - phase <<< "$sup_pstory")"; sup_pph="${sup_pph//[[:space:]]/}"
+       if git show "$c^:$sfile" > "$cp" 2>/dev/null; then
+         sup_pph="$(frontmatter_value "$cp" phase)"; sup_pph="${sup_pph//[[:space:]]/}"
        fi
        case "$sup_pph" in GREEN|GATES) ph_at="$ph_at, after $sup_pph" ;; *) continue ;; esac ;;
   esac
@@ -1105,12 +1109,13 @@ for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
       done <<< "$sup_hits"
       continue
     fi
-    if ! sup_diff="$(git show --format= --unified=0 "$c" -- "$f" 2>/dev/null)"; then
+    if ! git show --format= --unified=0 "$c" -- "$f" > "$dp" 2>/dev/null; then
       sup_refused=1
       problem "story $sid: commit $c7 ($ph_at) changed '$f', and its diff could not be read, so nothing can say the lines it added are not suppressions."
       continue
     fi
-    sup_hits="$(suppression_hits <<< "$sup_table"$'\n'"--8<-- diff"$'\n'"$sup_diff")"
+    { printf '%s\n--8<-- diff\n' "$sup_table"; cat "$dp"; } > "$cp"
+    sup_hits="$(suppression_hits < "$cp")"
     [ -n "$sup_hits" ] || continue
     while IFS='|' read -r sup_n sup_rid sup_text; do
       [ -n "$sup_n" ] || continue
