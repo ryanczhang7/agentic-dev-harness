@@ -293,6 +293,7 @@ name, below the table.
 - PLANNED, `lead-po` (orchestrator): Fable 5.1 (`claude-fable-5-1`). RED, `test-developer`: `opus` (Opus 5.5, `claude-opus-5-5`), the agent's own `model:`; no override. 2026-11-06.
 - GREEN: no dispatch. A verified no-op plus the VERSION bump, by the orchestrator (Fable 5.1, `claude-fable-5-1`), as decision 3 plans. 2026-11-06.
 - GATES full gates, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06. `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known)`.
+- GATES diff review, `feature-developer`: `opus` (Opus 5.5, `claude-opus-5-5`); no override. 2026-11-06.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
@@ -555,6 +556,59 @@ invisible (C-4).
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+## Diff review
+
+**Review (2026-11-06), against `origin/main...1b9e410`.** A fresh
+`feature-developer` ran it with the `diff-review` skill, on Opus 5.5
+(`claude-opus-5-5`) with no override. It changed no file, and
+`mutate.sh --check` was clean.
+
+**Checked and sound:**
+- **The suite:** a scratch copy ran `rules-trim: 50 passed, 0 failed`.
+- **The grammar, probed in scratch:**
+  - inner `"`, `$`, backticks and `$(...)` stay literal and are never
+    expanded;
+  - two pointers on one joined line split correctly;
+  - a pointer wrapped right after the comma joins correctly;
+  - an empty pointer is reported;
+  - a text containing `")` is cut there and reported, loudly;
+  - an opener with no closer before the next pointer swallows it, and is
+    reported, and AC-6 fails too;
+  - a pointer inside a fence of `rules.md` is still checked, which is the
+    strict direction.
+- **Headings:** trailing whitespace, a tab after `##`, and two spaces are
+  all read whole-line, consistent with `placed`.
+- **Fixtures:** the three cases that expect an empty report each change
+  exactly their intended lines, so none passes vacuously. `cases-absent`
+  still checks all 11 needles.
+- **Callers:** only `floors.conf:61` and `selftest.test.sh:552` name the
+  suite, and both say 50. No other suite reads `cases.md` headings.
+- **The count assertion:** `"8 32 11 4 8"` matches C-1.
+- **Portability:** the constructs used work on bash 4 and later.
+
+**Should fix**
+1. **The "opener with no closer ends the scan" branch has no test**
+   (`pointer_texts`, `has "$CLOSE" "$rest" || break`). Replacing it with
+   `:` through `mutate.sh` left the suite at 50/50. AC-6 guards the real
+   tree.
+
+**Nice to have**
+2. `cases.md` is loaded twice in a row in `rules_trim_problems`.
+3. `pointer_texts` writes `")` literally where `"$CLOSE"` would do.
+
+**Not checked:** a CI run on Linux bash.
+
+Verdict: Ship.
+
+**Orchestrator:** none of the three is taken.
+- **1 is deferred to a follow-up.** On the real tree, AC-6's pinned list of
+  the eight texts goes red if any pointer loses its `")`. So an unterminated
+  real pointer is caught, just not by this branch. A fixture for it costs a
+  return to RED, a second review and a fresh self-test, for a shape no
+  pointer has.
+- **2 and 3 are edits to a frozen test file** that change no behaviour.
+  Declined.
 
 ## Gate results
 
