@@ -4231,4 +4231,52 @@ assert_eq "C-1: and that is 2 manifest problem(s)., exit 1" "1|1" "$(count_line 
 set_phase "$FIX" ""
 git -C "$FIX" checkout -q -- . 2>/dev/null
 
+describe "HARNESS-093 AC-1/AC-2: --list lists a duplicated id and an empty evidence regex, both lines, exit 0"
+
+# --list is not a judge (HARNESS-088 C-1): both faults are guarded by
+# `[ "$LIST" = 0 ]`, so it prints the duplicate's lines and an empty
+# `evidence: ` as they are. Drop either guard and the `continue` runs before
+# the row prints: a row vanishes, the exit stays 0. So the row COUNT is what
+# these pin, not the exit. Both needles are built with gates.sh's own --list
+# formats, so the evidence line's trailing space is in it by construction.
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+H93_ROW="$(printf '%-12s %-9s %-6s %s' unit required . "printf 'Tests  47 passed (47)\\n'")"
+H93_EVID="$(printf '%-12s %-9s %-6s evidence: %s' '' '' '' '')"
+
+# AC-1. Two identical `gate | unit` lines and an empty regex.
+h88_conf "$H88_GATE" "$H88_GATE" 'evidence | unit |'
+out="$(gates --list)"; rc=$?
+assert_eq "AC-1: --list on a duplicated id with an empty regex prints the row and its evidence line twice - the whole output" \
+"$H93_ROW
+$H93_EVID
+$H93_ROW
+$H93_EVID" "$out"
+assert_eq "AC-1: the unit row is listed twice, whole line" 2 "$(count_line "$H93_ROW" "$out")"
+assert_eq "AC-1: the empty 'evidence: ' line is listed twice, whole line" 2 "$(count_line "$H93_EVID" "$out")"
+assert_eq "AC-1: --list prints no FAIL line" "" "$(h88_fails "$out")"
+assert_eq "AC-1: --list prints no manifest problem line" 0 "$(count_re 'manifest problem' "$out")"
+assert_eq "AC-1: --list exits 0" 0 "$rc"
+
+# AC-1 control: the same file is the faulty one - --audit refuses it.
+out="$(gates --audit)"; rc=$?
+assert_eq "AC-1 control: --audit on the same file prints the empty-regex FAIL, then the duplicate FAIL" \
+"$H88_EMPTY_AUDIT
+$H88_DUP_AUDIT" "$(h88_fails "$out")"
+assert_eq "AC-1 control: and --audit exits 1" 1 "$rc"
+
+# AC-2. The second gate line deleted: each line once, so AC-1's two is the
+# duplicate being listed, not one line printed twice.
+h88_conf "$H88_GATE" 'evidence | unit |'
+out="$(gates --list)"; rc=$?
+assert_eq "AC-2: --list on one gate line with an empty regex prints the row and its evidence line once - the whole output" \
+"$H93_ROW
+$H93_EVID" "$out"
+assert_eq "AC-2: the unit row is listed once, whole line" 1 "$(count_line "$H93_ROW" "$out")"
+assert_eq "AC-2: the empty 'evidence: ' line is listed once, whole line" 1 "$(count_line "$H93_EVID" "$out")"
+assert_eq "AC-2: --list exits 0" 0 "$rc"
+
+set_phase "$FIX" ""
+git -C "$FIX" checkout -q -- . 2>/dev/null
+
 summary "gates"
