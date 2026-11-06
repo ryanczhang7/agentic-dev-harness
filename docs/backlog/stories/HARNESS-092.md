@@ -4,8 +4,8 @@ title: Every cases.md pointer in rules.md names a heading that exists
 slug: every-cases-md-pointer-in-rules-md-names
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-092-every-cases-md-pointer-in-rules-md-names
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/rules-trim.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
