@@ -4,8 +4,8 @@ title: gates.sh --list still lists a duplicated gate id and an empty evidence re
 slug: gates-sh-list-still-lists-a-duplicated-g
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-093-gates-sh-list-still-lists-a-duplicated-g
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
