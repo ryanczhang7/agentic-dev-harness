@@ -4,8 +4,8 @@ title: gates.sh --list still lists a duplicated gate id and an empty evidence re
 slug: gates-sh-list-still-lists-a-duplicated-g
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-093-gates-sh-list-still-lists-a-duplicated-g
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -367,6 +367,57 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Fresh `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
+(2026-11-07), self-reported; no override. Report, as returned:
+
+**What the change does.** One describe at the end of
+`.claude/tests/gates.test.sh` (4234-4279, 12 assertions) pins that
+`gates.sh --list` is not a judge: on a manifest with `gate | unit` twice and
+an empty `evidence | unit |` it lists both rows and both `evidence: ` lines,
+exit 0; with one gate line, each once. The floor rises 972 -> 984
+(`floors.conf`, `selftest.test.sh:538`), `VERSION` 114 -> 115;
+`scripts/gates.sh` is untouched.
+
+**Checked (reading and small direct probes; the gates suite not run):**
+
+- *Needles can fail.* `count_line` (843) is `grep -cxF`, whole-line literal.
+  `H93_ROW`/`H93_EVID` use gates.sh's 618-619 formats; the command text
+  matches `rest 5` of `H88_GATE` (both literal backslash-n, `printf '%s'`
+  does not expand it). `$(...)` strips only trailing newlines, so
+  `H93_EVID` keeps its trailing space - probed: 1 against the exact line, 0
+  with the space stripped. The whole-output `assert_eq`s are stricter still.
+- *rc capture.* `out="$(gates --list)"; rc=$?` takes the substitution's
+  status; `gates()` is `( cd "$FIX" && bash scripts/gates.sh ... 2>&1 )`.
+- *Exit-0 cannot see a dropped guard,* by design: gates.sh:915 exits 0 on
+  `--list` regardless; the block's comment says the row count is the pin,
+  matching GATES' 3 and 6 reds. The exit assertions still catch an early
+  non-zero exit.
+- *Fixture state.* HARNESS-088's block ends with `set_phase "$FIX" ""` and a
+  checkout, so the new block's opening reset is a harmless no-op that
+  follows the per-block convention; `h88_conf` rewrites the whole conf, and
+  the closing reset precedes `summary`. No leak either way.
+- *AC-1 control* duplicates HARNESS-088 C-1's input and two assertions;
+  AC-1 names the control, so it is required. Not a finding.
+- *Floors note.* 6 + 2 + 4 = 12, none conditional; after exactly two
+  HARNESS-088 describes (4097, 4158); 972 is HARNESS-088's floor; attest
+  logs show `gates: 972 passed, 0 failed` five times and
+  `gates: 984 passed, 0 failed` once (`20261106T222647Z.16484.log`).
+- *Other pins.* `972`/`984` across `.claude/tests`, `scripts`, `.github`:
+  only floors.conf:47 and selftest.test.sh:538. The `972` in
+  phase-guard.test.sh:1610/1614 is its own line range. The two
+  `gates.test.sh:1812` pins (grep-count.test.sh:304, lib.test.sh:257) are
+  unaffected, since the diff only appends from 4234. The sigpipe pins are
+  on gates.sh, unchanged.
+
+No findings in any group.
+
+Not checked: the gates suite itself (as briefed); 984 rests on the attest
+log above.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -458,3 +509,15 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
 
   (`bash scripts/selftest.sh gates`, about 43 min on this host; `bash
   scripts/gates.sh --fast`, exit 0.)
+- Self-test at GATES → REVIEW (2026-11-07): `selftest-needed: run`;
+  dispatched to `feature-developer`, resolved **claude-opus-5-5**;
+  `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+  said `fresh`:
+
+      selftest: --changed — 11 of 34 suite(s) selected: boundaries doctor gates grep-count host-load mutate refresh run-lock selftest sigpipe worktree
+      exit:     0
+      duration: 2203s
+      last:     11 harness suite(s) passed.
+      assertion floors: all 11 suite(s) met their declared floor (2909 assertions executed, 2909 declared).
+
+  Not case (b): no script changed, only a suite, floors and `VERSION`.
