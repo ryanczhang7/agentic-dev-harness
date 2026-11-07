@@ -5,7 +5,7 @@ slug: gates-sh-list-still-lists-a-duplicated-g
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-093-gates-sh-list-still-lists-a-duplicated-g
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -131,6 +131,39 @@ measured on the shipped script and recorded in Context; RED reads them out.
   guards and are both owed, one each, because either alone leaves the other
   guard untested. **Owner: GATES.**
 
+- **Result, run by the orchestrator in GATES (2026-11-07), both against
+  `bash .claude/tests/gates.test.sh`, each restored and verified by
+  `mutate.sh`; `mutate.sh --check` clean afterwards.** Both match RED's
+  predicted table: DV-1 3 reds, all AC-1; DV-2 6 reds, AC-1 and AC-2;
+  the exit-0, no-FAIL, `--audit` control and HARNESS-088 assertions
+  stayed green in both.
+
+```
+=== DV-1 2026-11-07T08:25:23Z
+DV-1 exit 1 08:43:40
+=== mutate: scripts/gates.sh (1 line(s) changed by s/\[ "\$is_dup" = 0 \] \&\& \[ "\$LIST" = 0 \]/[ "$is_dup" = 0 ]/) ===
+=== mutate: running bash .claude/tests/gates.test.sh ===
+    FAIL AC-1: --list on a duplicated id with an empty regex prints the row and its evidence line twice - the whole output
+    FAIL AC-1: the unit row is listed twice, whole line
+    FAIL AC-1: the empty 'evidence: ' line is listed twice, whole line
+gates: 981 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261107T082524Z.2064.bak) ===
+=== DV-2 2026-11-07T08:43:40Z
+DV-2 exit 1 09:01:54
+=== mutate: scripts/gates.sh (1 line(s) changed by s/\[ -z "\$exp" \] \&\& \[ "\$LIST" = 0 \]/[ -z "$exp" ]/) ===
+=== mutate: running bash .claude/tests/gates.test.sh ===
+    FAIL AC-1: --list on a duplicated id with an empty regex prints the row and its evidence line twice - the whole output
+    FAIL AC-1: the unit row is listed twice, whole line
+    FAIL AC-1: the empty 'evidence: ' line is listed twice, whole line
+    FAIL AC-2: --list on one gate line with an empty regex prints the row and its evidence line once - the whole output
+    FAIL AC-2: the unit row is listed once, whole line
+    FAIL AC-2: the empty 'evidence: ' line is listed once, whole line
+gates: 978 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_gates.sh.20261107T084341Z.23001.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -180,6 +213,13 @@ name, below the table.
   verifications and Out of scope were written in this dispatch.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5**
   (2026-11-06), self-reported; no model override was passed. As planned.
+- GREEN - no dispatch: a verified no-op plus the `VERSION` bump, checked by
+  the orchestrator (C-4).
+- GATES - deferred verifications DV-1 and DV-2 run by the orchestrator;
+  full gates run by `feature-developer`, planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-07), self-reported; no override passed.
+  `attest.sh check -- bash scripts/gates.sh`: fresh, exit 0,
+  `All required gates passed (0 ran, 7 unconfigured, 0 known).`
 
 **Oracle partition:** every criterion is mechanical - exact `--list` lines and counts measured on the shipped script and recorded in Context; RED reads them out and forms the needles with the same `printf` formats `gates.sh` uses.
 
@@ -329,10 +369,21 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-07T09:02:25Z
+    commit: 6aefec2
+    tree:   4fea7acc95a881081d995708fefe8b8eea06ace5
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
