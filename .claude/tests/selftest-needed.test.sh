@@ -781,15 +781,18 @@ assert_eq "and not lib, whose rows are scripts/ and .claude/hooks/ only" 0 "$(ou
 # mentioned by its repo path, so R3 cannot see it (`## Diff review` finding
 # 2: 2 of 34 on the real tree, while _helpers.conf gave all). The needle is
 # the WHOLE stderr, so R2's `is read by every suite` does not pass either.
+# HARNESS-096 AC-3 renamed both fixtures to names no real file will take:
+# a suite that names a path as test data maps it (R3), so a fixture named
+# like a plausible real file kept that real file from R5 on the real tree.
 suites_fixture
-put .claude/tests/_helpers.sh 'helper() { :; }'
-expect_suites "AM-2 control: an untracked .claude/tests/_helpers.sh that no suite mentions prints all, and names it as mapped by no rule" 0 \
-  "all" whole "${SUITES_ALL}.claude/tests/_helpers.sh is mapped by no rule; defaulting to every suite" --suites
+put .claude/tests/_h096_fixture_helper.sh 'helper() { :; }'
+expect_suites "AM-2 control: an untracked .claude/tests/_h096_fixture_helper.sh that no suite mentions prints all, and names it as mapped by no rule" 0 \
+  "all" whole "${SUITES_ALL}.claude/tests/_h096_fixture_helper.sh is mapped by no rule; defaulting to every suite" --suites
 
 suites_fixture
-put scripts/newtool.sh '#!/usr/bin/env bash'
-expect_suites "AM-2: a new scripts/newtool.sh that no suite mentions prints all, though lib, sigpipe and grep-count scan it" 0 \
-  "all" whole "${SUITES_ALL}scripts/newtool.sh is mapped by no rule; defaulting to every suite" --suites
+put scripts/h096-fixture-tool.sh '#!/usr/bin/env bash'
+expect_suites "AM-2: a new scripts/h096-fixture-tool.sh that no suite mentions prints all, though lib, sigpipe and grep-count scan it" 0 \
+  "all" whole "${SUITES_ALL}scripts/h096-fixture-tool.sh is mapped by no rule; defaulting to every suite" --suites
 
 suites_fixture
 put .claude/skills/stack-profiles/reference/x.txt 'x'
@@ -880,5 +883,188 @@ CM_AFTER
 )"
 assert_eq "the --suites line appears exactly once" 1 "$(cm_count "$CM_L1")"
 assert_eq "the --changed line appears exactly once" 1 "$(cm_count "$CM_L2")"
+
+# ---------------------------------------------------------------------------
+# HARNESS-096. R3 counts a mention only where it ends where the path ends
+# (story, Contract "R3, amended" and C-2): the character after the match is
+# end of line, or is not in [A-Za-z0-9_/-] and is not a `.` followed by
+# [A-Za-z0-9].
+#
+# THE RED SHAPE. Today R3 is a bare `index`, so a longer path starting with
+# the changed one maps it: the two dirty-mention cases and AC-2 print a list
+# where `all` is pinned, and AC-4's texts are absent. The clean-mention cases
+# are CONTROLS - a clean mention is a substring too - and pass on arrival;
+# they fail only if GREEN's boundary check refuses a terminator it must
+# accept. Every stub line is appended to gamma, which names no path. A changed
+# scripts/x.sh is a scripts/*.sh, so the scanner rows add grep-count, lib and
+# sigpipe beside a mapping suite: the pinned list is four suites (Contract
+# C-3 amended in RED: it said `hdr 1 9 1`).
+describe "HARNESS-096 AC-1: a mention counts only where it ends where the path ends"
+
+h096_fixture() {   # <line appended to gamma>   d := the fixture, on its branch
+  new_fixture; SN="$d/scripts/selftest-needed.sh"
+  suites_stubs
+  printf '%s\n' "$1" >> "$d/.claude/tests/gamma.test.sh"
+  commit_all "gamma names a path"
+  story_branch
+}
+
+h096_fixture '# keeps scripts/x.sh.bak and runs scripts/xy.sh'
+put scripts/x.sh '#!/usr/bin/env bash'
+expect_suites "AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all" 0 \
+  "all" whole "${SUITES_ALL}scripts/x.sh is mapped by no rule; defaulting to every suite" --suites
+
+h096_fixture '# keeps scripts/x.sh-old, scripts/x.sh_old, scripts/x.sh/sub, scripts/x.sh.d and scripts/x.sh2'
+put scripts/x.sh '#!/usr/bin/env bash'
+expect_suites "AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all" 0 \
+  "all" whole "${SUITES_ALL}scripts/x.sh is mapped by no rule; defaulting to every suite" --suites
+
+H096_MAPPED="gamma
+grep-count
+lib
+sigpipe"
+H096_TERMS=(" " '"' "'" '`' ")" ":" ",")
+H096_NAMES=("a space" "a double quote" "a single quote" "a backtick" "a closing parenthesis" "a colon" "a comma")
+for i in "${!H096_TERMS[@]}"; do
+  h096_fixture "# runs scripts/x.sh${H096_TERMS[$i]} then stops"
+  put scripts/x.sh '#!/usr/bin/env bash'
+  expect_suites "AC-1 control: gamma names scripts/x.sh followed by ${H096_NAMES[$i]}, so scripts/x.sh maps to gamma" 0 \
+    "$H096_MAPPED" first "$(hdr 4 9 1)" --suites
+  assert_eq "AC-1 control (${H096_NAMES[$i]}): gamma is printed exactly once" 1 "$(out_has gamma)"
+done
+
+h096_fixture '# the last step runs scripts/x.sh.'
+put scripts/x.sh '#!/usr/bin/env bash'
+expect_suites "AC-1 control: gamma names scripts/x.sh followed by a sentence-ending . at end of line, so scripts/x.sh maps to gamma" 0 \
+  "$H096_MAPPED" first "$(hdr 4 9 1)" --suites
+assert_eq "AC-1 control (a sentence-ending .): gamma is printed exactly once" 1 "$(out_has gamma)"
+
+h096_fixture '# keeps scripts/x.sh.bak then scripts/x.sh'
+put scripts/x.sh '#!/usr/bin/env bash'
+expect_suites "AC-1 control: a dirty mention THEN a clean one on the same line still maps scripts/x.sh to gamma" 0 \
+  "$H096_MAPPED" first "$(hdr 4 9 1)" --suites
+assert_eq "AC-1 control (dirty then clean): gamma is printed exactly once" 1 "$(out_has gamma)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-096 AC-2: a path that is the prefix of a longer file name is not mentioned by it"
+
+h096_fixture '# runs scripts/new-story.sh'
+put scripts/new 'x'
+expect_suites "AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all" 0 \
+  "all" whole "${SUITES_ALL}scripts/new is mapped by no rule; defaulting to every suite" --suites
+
+h096_fixture '# runs scripts/new then stops'
+put scripts/new 'x'
+expect_suites "AC-2 control: gamma names scripts/new followed by a space, so scripts/new maps to gamma alone" 0 \
+  "gamma" first "$(hdr 1 9 1)" --suites
+assert_eq "AC-2 control: gamma is printed exactly once" 1 "$(out_has gamma)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-096 AC-3: this suite's R5 fixtures take names no real harness file will take"
+
+# The old names are spelled in two halves, so this needle is not itself a
+# mention of them in this file.
+SN_TEST="$REPO_ROOT/.claude/tests/selftest-needed.test.sh"
+SN_TEST_TEXT="$(tr -d '\r' < "$SN_TEST")"
+h096_lines_holding() {   # <needle>   lines of this suite's source holding it
+  awk -v n="$1" 'index($0, n) { c++ } END { print c + 0 }' <<H096_SRC
+$SN_TEST_TEXT
+H096_SRC
+}
+h096_lines_equal() {   # <line>   lines of this suite's source exactly <line>
+  awk -v l="$1" '$0 == l { c++ } END { print c + 0 }' <<H096_SRC
+$SN_TEST_TEXT
+H096_SRC
+}
+H096_OLD_HELPER=".claude/tests/""_helpers.sh"
+H096_OLD_TOOL="scripts/""newtool.sh"
+assert_eq "this suite's source names the old helper fixture path on no line" 0 "$(h096_lines_holding "$H096_OLD_HELPER")"
+assert_eq "this suite's source names the old tool fixture path on no line" 0 "$(h096_lines_holding "$H096_OLD_TOOL")"
+assert_eq "the AM-2 control writes .claude/tests/_h096_fixture_helper.sh, on exactly one line" 1 \
+  "$(h096_lines_equal "put .claude/tests/_h096_fixture_helper.sh 'helper() { :; }'")"
+assert_eq "the AM-2 case writes scripts/h096-fixture-tool.sh, on exactly one line" 1 \
+  "$(h096_lines_equal "put scripts/h096-fixture-tool.sh '#!/usr/bin/env bash'")"
+assert_eq "classify.sh calls .claude/tests/_h096_fixture_helper.sh harness" \
+  "harness	.claude/tests/_h096_fixture_helper.sh" \
+  "$(cd "$REPO_ROOT" && bash scripts/classify.sh .claude/tests/_h096_fixture_helper.sh 2>/dev/null | tr -d '\r')"
+assert_eq "classify.sh calls scripts/h096-fixture-tool.sh harness" \
+  "harness	scripts/h096-fixture-tool.sh" \
+  "$(cd "$REPO_ROOT" && bash scripts/classify.sh scripts/h096-fixture-tool.sh 2>/dev/null | tr -d '\r')"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-096 AC-4: the header and CLAUDE.md declare that a mention as test data maps a path"
+
+SNH_TEXT="$(tr -d '\r' < "$REPO_ROOT/scripts/selftest-needed.sh")"
+snh_count() {   # <line>   lines of selftest-needed.sh exactly <line>
+  awk -v l="$1" '$0 == l { c++ } END { print c + 0 }' <<SNH_LINES
+$SNH_TEXT
+SNH_LINES
+}
+SNH_R2_TAIL='#                every suite: `all` (A-4)'
+SNH_R4='#   R4 scans     a row of the SCANS table below; an `add` row adds its suite'
+SNH_N1='#   R3 mentioned a suite whose source holds the path as a fixed substring'
+SNH_N2='#                that ends where the path ends; comments and test data'
+SNH_N3='#                count, so a path a suite names only as test data is'
+SNH_N4='#                mapped by that mention and never reaches R5 (HARNESS-096)'
+SNH_O1='#   R3 mentioned a suite whose source holds the path as a fixed substring,'
+SNH_O2='#                comments included (over-selects, never under-selects)'
+assert_eq "precondition: the header's R2 row ends on its one \`all\` (A-4) line" 1 "$(snh_count "$SNH_R2_TAIL")"
+assert_eq "the header's new R3 line 1 appears exactly once" 1 "$(snh_count "$SNH_N1")"
+assert_eq "the header's new R3 line 2 appears exactly once" 1 "$(snh_count "$SNH_N2")"
+assert_eq "the header's new R3 line 3 appears exactly once" 1 "$(snh_count "$SNH_N3")"
+assert_eq "the header's new R3 line 4 appears exactly once" 1 "$(snh_count "$SNH_N4")"
+assert_eq "the four R3 lines sit, in order, between the R2 row and the R4 row" "$SNH_N1
+$SNH_N2
+$SNH_N3
+$SNH_N4
+$SNH_R4" "$(awk -v a="$SNH_R2_TAIL" 'f && n < 5 { print; n++ } $0 == a { f = 1 }' <<SNH_AFTER
+$SNH_TEXT
+SNH_AFTER
+)"
+assert_eq "the old R3 line (ending in a comma) is gone" 0 "$(snh_count "$SNH_O1")"
+assert_eq "the old \`never under-selects\` line is gone" 0 "$(snh_count "$SNH_O2")"
+assert_eq "no line of selftest-needed.sh still claims R3 never under-selects" 0 \
+  "$(awk 'index($0, "never under-selects") { c++ } END { print c + 0 }' <<SNH_CLAIM
+$SNH_TEXT
+SNH_CLAIM
+)"
+
+CM_P1='`--suites` maps a changed path to every suite whose source names it, ending'
+CM_P2='where the path ends, comments and test data included. A path a suite names'
+CM_P3='only as test data is mapped by that mention and does not reach `all`.'
+CM_GATES_HEAD='`gates.sh` judges the **code**'
+assert_eq "CLAUDE.md's declaration line 1 appears exactly once" 1 "$(cm_count "$CM_P1")"
+assert_eq "CLAUDE.md's declaration line 2 appears exactly once" 1 "$(cm_count "$CM_P2")"
+assert_eq "CLAUDE.md's declaration line 3 appears exactly once" 1 "$(cm_count "$CM_P3")"
+assert_eq "the declaration is its own paragraph directly before the one beginning \`gates.sh\` judges the **code**" "[]
+[$CM_P1]
+[$CM_P2]
+[$CM_P3]
+[]" "$(awk -v g="$CM_GATES_HEAD" '
+    { b[NR] = $0 }
+    substr($0, 1, length(g)) == g { for (i = NR - 5; i < NR; i++) print "[" b[i] "]"; exit }' <<CM_BEFORE
+$CM_TEXT
+CM_BEFORE
+)"
+assert_eq "the declaration sits in ## Running things" "## Running things" \
+  "$(awk -v l="$CM_P1" '/^## / { h = $0 } $0 == l { print h; exit }' <<CM_HEAD
+$CM_TEXT
+CM_HEAD
+)"
+assert_eq "the code block holding --suites still closes directly into the \`mutate.sh\` exists paragraph" "
+\`mutate.sh\` exists because" "$(awk -v a="$CM_L1" '
+    f == 0 && $0 == a { f = 1; next }
+    f == 1 && $0 == "```" { f = 2; next }
+    f == 2 && n < 1 { print; n++; next }
+    f == 2 { print substr($0, 1, 26); exit }' <<CM_FENCE
+$CM_TEXT
+CM_FENCE
+)"
+assert_eq "CLAUDE.md lines 160-162 are still the selftest-needed.sh, --suites and --changed lines, byte for byte" "$CM_ANCHOR
+$CM_L1
+$CM_L2" "$(awk 'NR >= 160 && NR <= 162' <<CM_LINENO
+$CM_TEXT
+CM_LINENO
+)"
 
 summary "selftest-needed"
