@@ -4,8 +4,8 @@ title: --suites counts a mention only where the path ends, and declares fixture 
 slug: suites-counts-a-mention-only-where-the-p
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-096-suites-counts-a-mention-only-where-the-p
 depends_on: [HARNESS-094]      # the mechanism it refines; user decision 2026-11-04 to ship 094 and file this
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, CLAUDE.md]
@@ -308,6 +308,10 @@ name, below the table.
 - GATES - `feature-developer` (full gates run), planned `opus`, resolved
   **claude-opus-5-5** (2026-11-07), self-reported; `model: opus` passed
   explicitly, matching the plan. As planned.
+- GATES - `feature-developer` (diff review, fresh), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-07), self-reported. As planned.
+- GATES - `feature-developer` (`--changed` self-test), planned `opus`,
+  resolved **claude-opus-5-5** (2026-11-07), self-reported. As planned.
 
 ## Out of scope
 
@@ -586,6 +590,75 @@ unchanged; leave it.
 
 ## Regressions
 
+## Diff review
+
+Fresh `feature-developer` with the `diff-review` skill, 2026-11-07, over
+`git diff d3e8822 HEAD` at `d4d498e`; resolved **claude-opus-5-5**, no
+override beyond `model: opus`. It changed no file in the worktree. The report
+is kept whole below, apart from its opening summary of the change.
+
+- **`clean_hit` in POSIX awk.**
+  - An empty needle cannot occur: `FNR == NR { if (length($0)) ...}` drops
+    empty paths before they are stored.
+  - `substr` past the end of the line returns `""` in gawk, mawk and busybox,
+    and both `c` and `nx` are guarded against `""` before `index` is used on
+    them.
+  - The occurrence walk moves `off` forward one match start at a time, so it
+    finds overlapping matches, and a dirty match followed by a clean one on
+    the same line.
+  - A path at the very start of a line works, because only the right-hand
+    edge is checked.
+  - `p[j]` is only ever a literal `index` needle. The only regex calls are
+    the two `sub()` calls on `FILENAME`.
+  - A CRLF line ends in `\r`, which counts as a clean terminator, so Windows
+    checkouts are not affected.
+- **The `.` rule.** `scripts/x.sh.` at the end of a line, or followed by a
+  space or punctuation, counts as a mention. `scripts/x.sh.bak` and
+  `scripts/x.sh.d` do not.
+- **Real paths losing suites.** A one-off awk applied the old rule (bare
+  `index`) and the new rule (`clean_hit`) to all 281 tracked paths against
+  the current `.claude/tests/*.test.sh`. Both give 292 (path, suite) pairs,
+  and no tracked path lost a suite. As a control, `scripts/new` drops from 7
+  suites to 1, so the comparison does tell the two rules apart. Scratch files
+  only.
+- **Callers.** The only caller is `scripts/selftest.sh:312` (`--changed`).
+  Stdout and stderr have the same shape as before. Nothing under `.github/`
+  or `.claude/hooks/` calls the script.
+- **Tests.**
+  - Each continuation character (`-`, `_`, `/`, `.`+alnum, digit) is pinned
+    by one fixture line, so dropping any one of them from the alphabet turns
+    the AC-1 case red.
+  - The `nx != ""` guard is pinned by the sentence-ending `.` control.
+  - Side note: the AC-1 fixture's `scripts/xy.sh` does not contain
+    `scripts/x.sh`, so it adds nothing to that case. It is harmless, because
+    `x.sh.bak` carries the case.
+- **CLAUDE.md.** The new paragraph contradicts neither the header nor the
+  unchanged `--suites` and `--changed` lines, apart from finding 1.
+
+Nice to have:
+
+1. **The CLAUDE.md sentence ignores the R2 paths** (the new paragraph before
+   "`gates.sh` judges the **code**").
+   - **What this is:** the line saying that a path a suite names only as test
+     data "is mapped by that mention and does not reach `all`".
+   - **Problem:** `scripts/selftest.sh` and the other three R2 paths are named
+     by suites and still give `all`, through R2. So "does not reach `all`" is
+     true only of the unmapped-path rule (R5). The header's "never reaches
+     R5" says it correctly.
+   - **Fix:** say "is not defaulted to `all` as unmapped". AC-4 and C-5 pin
+     the current text, so the change needs an `## Amendments` entry, not an
+     edit.
+   - **If we skip it:** a reader could expect a change to
+     `scripts/selftest.sh` to select a short list of suites. The script still
+     prints `all`, so nothing runs fewer suites than it should.
+
+Verdict: Ship.
+
+*Orchestrator (2026-11-07):* not taken in this story. The finding is about
+wording, the behaviour is safe in the direction that matters (R2 still gives
+`all`), and AC-4 pins the text, so changing it would be an amendment the user
+has to approve. It is offered to the user as a follow-up.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -713,3 +786,17 @@ This matches 094's 3 of 34 for `_helpers.sh`:
   `20261107T223610Z.410193.log`, whose verdict line is `All required gates
   passed (0 ran, 7 unconfigured, 0 known).`), so it was not re-run. The
   developer changed no file.
+- Diff review at GATES → REVIEW (2026-11-07): `Verdict: Ship.`, one Nice to
+  have (CLAUDE.md wording about R2 paths) left as a follow-up offered to the
+  user; report in `## Diff review`.
+- Self-test at GATES → REVIEW (2026-11-07): `selftest-needed: run`.
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` was dispatched and
+  detached, and ran alone. `attest.sh check` said `fresh`, `exit: 0`,
+  `last: 21 harness suite(s) passed.`, `duration: 2311s`, log
+  `20261107T224331Z.418219.log`. Header:
+  `selftest: --changed — 21 of 34 suite(s) selected: attest boundaries dispatch doctor grep-count host-load lib mutate phase-guard plan procedure refresh reporting rules-trim run-lock selftest selftest-needed shipped-docs sigpipe story worktree`.
+  The floors audit passed for all 21 suites (4143 assertions executed,
+  4143 declared). The log has no FAIL line. `--changed` was enough, not the
+  full run: `selftest-needed.sh` has one caller, `selftest.sh`, and the
+  `selftest`, `dispatch` and `procedure` suites that exercise it were
+  selected.
