@@ -5,7 +5,7 @@ slug: suites-counts-a-mention-only-where-the-p
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-096-suites-counts-a-mention-only-where-the-p
 depends_on: [HARNESS-094]      # the mechanism it refines; user decision 2026-11-04 to ship 094 and file this
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, CLAUDE.md]
@@ -242,6 +242,8 @@ name, below the table.
   orchestrator on **claude-fable-5-1** (2026-11-07): C-1..C-6, DV-3, AC-4's
   wording, `touches:` + `CLAUDE.md`.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5**
+  (2026-11-07), self-reported; no override passed. As planned.
+- GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
   (2026-11-07), self-reported; no override passed. As planned.
 
 ## Out of scope
@@ -580,3 +582,12 @@ unchanged; leave it.
       the `gates.sh` paragraph, after the `mutate.sh` one, as RED pinned it;
       the `mutate.sh` paragraph explains the block's last line and stays
       attached to it.
+- GREEN verified by the orchestrator (2026-11-07): `attest.sh check` said
+  `fresh` for `bash scripts/selftest.sh selftest-needed` (exit 0,
+  `selftest-needed: 618 passed, 0 failed`, no FAIL line, log
+  `20261107T205729Z.309282.log`) and `bash scripts/gates.sh --fast`
+  (exit 0, 0 ran), so neither was re-run. Diff read: `clean_hit` is POSIX
+  awk (`index`/`substr` against literal alphabets), the hit test is
+  spelled `clean_hit($0, p[j])` once, so DV-1's sed applies; the header's
+  four lines and `CLAUDE.md`'s three are C-5's text; `VERSION` 116. Every
+  control in the handoff's table is green at its recorded value.

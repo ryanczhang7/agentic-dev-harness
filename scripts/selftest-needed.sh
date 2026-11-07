@@ -50,8 +50,10 @@
 #   R2 every     .claude/tests/_lib.sh, .claude/tests/_spawns.sh,
 #                scripts/selftest.sh and .claude/hooks/lib.sh are read by
 #                every suite: `all` (A-4)
-#   R3 mentioned a suite whose source holds the path as a fixed substring,
-#                comments included (over-selects, never under-selects)
+#   R3 mentioned a suite whose source holds the path as a fixed substring
+#                that ends where the path ends; comments and test data
+#                count, so a path a suite names only as test data is
+#                mapped by that mention and never reaches R5 (HARNESS-096)
 #   R4 scans     a row of the SCANS table below; an `add` row adds its suite
 #                but does not map the path (A-5)
 #   R5 unmapped  a path R1-R3 and R4's `map` rows all miss: `all`, naming the
@@ -189,10 +191,25 @@ shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
 
   # R3, one process for every (path, suite) pair: the paths first, then each
   # suite file. Prints "<path index><TAB><suite>" for every path a suite's
-  # source holds as a fixed substring (`index`, never a regex).
+  # source holds as a fixed substring (`index`, never a regex) that ends
+  # where the path ends: clean_hit refuses an occurrence continued by a
+  # path character, or by a `.` and an alphanumeric (`x.sh.bak`, `new-story`).
   mentions=""
   if [ "$m" -gt 0 ]; then
     mentions="$(printf '%s\n' "$harness" | awk '
+      function clean_hit(line, p,   k, off, c, nx) {
+        off = 0
+        while ((k = index(substr(line, off + 1), p)) > 0) {
+          off += k
+          c = substr(line, off + length(p), 1)
+          nx = substr(line, off + length(p) + 1, 1)
+          if (c == "") return 1
+          if (!index("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_/-", c) &&
+              !(c == "." && nx != "" && index("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", nx)))
+            return 1
+        }
+        return 0
+      }
       FNR == NR { if (length($0)) { np++; p[np] = $0 }; next }
       FILENAME != cur {
         cur = FILENAME; split("", hit)
@@ -200,7 +217,7 @@ shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
       }
       {
         for (j = 1; j <= np; j++)
-          if (!(j in hit) && index($0, p[j])) { hit[j] = 1; print j "\t" s }
+          if (!(j in hit) && clean_hit($0, p[j])) { hit[j] = 1; print j "\t" s }
       }' - .claude/tests/*.test.sh)"
   fi
 
