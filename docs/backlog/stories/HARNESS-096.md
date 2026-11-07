@@ -5,7 +5,7 @@ slug: suites-counts-a-mention-only-where-the-p
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-096-suites-counts-a-mention-only-where-the-p
 depends_on: [HARNESS-094]      # the mechanism it refines; user decision 2026-11-04 to ship 094 and file this
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, CLAUDE.md]
@@ -192,6 +192,35 @@ configured in this repository. The artifact is judged by
 AC-1's `x.sh.bak` case and AC-2 must go red, and AC-1's controls must stay
 green. Paste the red lines and the restore line.
 
+*Result (orchestrator, 2026-11-07, tree `177e411`):* ran as written, in this
+worktree, alone. 16 assertions red, exactly the AC-1 `x.sh.bak` case, the
+AC-1 continuation-character case and AC-2; every control green (602 passed,
+the RED handoff's predicted 602/16). `mutate.sh --check` clean afterwards.
+
+```
+=== mutate: scripts/selftest-needed.sh (1 line(s) changed by s/clean_hit(\$0, p\[j\])/index($0, p[j])/) ===
+=== mutate: running bash scripts/selftest.sh selftest-needed ===
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from root]: stdout is exactly the pinned list
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from root]: stdout has exactly 1 line(s)
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from root]: stderr is exactly the pinned text
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from subdir]: stdout is exactly the pinned list
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from subdir]: stdout has exactly 1 line(s)
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from subdir]: stderr is exactly the pinned text
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from root]: stdout is exactly the pinned list
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from root]: stdout has exactly 1 line(s)
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from root]: stderr is exactly the pinned text
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from subdir]: stdout is exactly the pinned list
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from subdir]: stdout has exactly 1 line(s)
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from subdir]: stderr is exactly the pinned text
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from root]: stdout is exactly the pinned list
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from root]: stderr is exactly the pinned text
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from subdir]: stdout is exactly the pinned list
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from subdir]: stderr is exactly the pinned text
+selftest-needed: 602 passed, 16 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261107T221925Z.384976.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
 **DV-3 (AC-3, real tree). Owner: GATES.** On the real tree at GATES, with
 the AM-2 fixtures renamed, an untracked `.claude/tests/_helpers.sh` and an
 untracked `scripts/newtool.sh` — the two plausible real names the old
@@ -201,11 +230,42 @@ same two files against the merge base's script and suite (a clone or
 `git stash`-free worktree at `d3e8822`) give a list, not `all` (094's review
 measured `_helpers.sh` at 3 of 34). Paste both into `## Gate probes`.
 
+*Result:* both halves pasted in `## Gate probes` (DV-3). Each name gives
+`all` at `177e411`; the merge base gives 3 and 4 of 34.
+
 **DV-2 (real tree). Owner: GATES.** On the real tree, `--suites` against the
 branch's merge base must still give, for the merged PRs #165 to #177 replayed
 as in HARNESS-094's second review, the same answers as the 094 script, or
 `all` where a prefix-only mention was the only thing mapping a path. Paste
 the table. A list that shrinks is a finding.
+
+*Result (orchestrator, 2026-11-07):* no list shrank; none changed. Method:
+two `--no-hardlinks` scratch clones, `dvold` at `d3e8822` (the 094 script)
+and `dv2` (the replay tree). For each merge commit `M`, `dv2` was checked out
+at `M^2` (the PR tip) and `--suites M^1` was run with each script, the
+merged tree's own suites as data. The two outputs were saved and `diff`ed;
+all nine non-`all` lists are byte-identical.
+
+| PR | merge | 094 script | 096 script | diff |
+|---|---|---|---|---|
+| #165 | `45bf6a5` | 17 | 17 | none |
+| #166 | `c3f4d79` | 18 | 18 | none |
+| #167 | `97d2efe` | 8 | 8 | none |
+| #169 | `427ff4b` | 21 | 21 | none |
+| #170 | `f8e6986` | 13 | 13 | none |
+| #171 | `391b1b1` | 14 | 14 | none |
+| #173 | `58a1a78` | all (lib.sh) | all (lib.sh) | none |
+| #174 | `1ce21ca` | 20 | 20 | none |
+| #175 | `03fbbf6` | all (lib.sh) | all (lib.sh) | none |
+| #176 | `53fdbdd` | 18 | 18 | none |
+| #177 | `909b481` | 23 | 23 | none |
+
+#168 and #172 are left out, as in 094's table: `main` has no merge for #168,
+and #172 is the `plan/HARNESS-084-verification-cost` branch. The counts differ from 094's second review
+(#165 22 there, 17 here). 094 does not record its exact replay command,
+and this replay runs the PR tip's suites against `M^1`. Both scripts were
+run on the same inputs here, so the comparison is unaffected. The cause of
+the difference from 094's numbers was not investigated.
 
 ## Amendments
 
@@ -245,6 +305,9 @@ name, below the table.
   (2026-11-07), self-reported; no override passed. As planned.
 - GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
   (2026-11-07), self-reported; no override passed. As planned.
+- GATES - `feature-developer` (full gates run), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-07), self-reported; `model: opus` passed
+  explicitly, matching the plan. As planned.
 
 ## Out of scope
 
@@ -525,7 +588,59 @@ unchanged; leave it.
 
 ## Gate results
 
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-07T22:36:15Z
+    commit: 177e411
+    tree:   f168da6c1a8e7ef7b9a3ba364419c894c6a89fc8
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
+
 ## Gate probes
+
+**DV-3, AC-3 on the real tree (orchestrator, 2026-11-07).** GATES freezes
+test paths in this worktree, so an untracked `.claude/tests/_helpers.sh`
+cannot be written here. The probe ran in a `--no-hardlinks` scratch clone
+checked out at the branch tip `177e411`, with `main` and `origin/main` set to
+the merge base `d3e8822`. Each file was a one-line `#!/usr/bin/env bash`,
+created alone and removed after, and `git status` was clean after each.
+
+At `177e411` (the 096 script and suite), each name gives exactly `all`:
+
+```
+== .claude/tests/_helpers.sh alone, script at 177e411 ==
+    selftest-needed: suites — all: .claude/tests/_helpers.sh is mapped by no rule; defaulting to every suite
+    all
+== scripts/newtool.sh alone, script at 177e411 ==
+    selftest-needed: suites — all: scripts/newtool.sh is mapped by no rule; defaulting to every suite
+    all
+```
+
+Negative control, a clone at the merge base `d3e8822` (the 094 script and
+suite): both names give a list, mapped through the old fixture mentions.
+This matches 094's 3 of 34 for `_helpers.sh`:
+
+```
+== _helpers.sh alone ==
+    selftest-needed: suites — 3 of 34 selected from 1 harness path(s) changed against origin/main (merge-base d3e8822)
+      grep-count       .claude/tests/_helpers.sh (scans *.sh)
+      selftest-needed  .claude/tests/_helpers.sh (mentioned)
+      sigpipe          .claude/tests/_helpers.sh (scans *.sh)
+== newtool.sh alone ==
+    selftest-needed: suites — 4 of 34 selected from 1 harness path(s) changed against origin/main (merge-base d3e8822)
+      grep-count       scripts/newtool.sh (scans *.sh)
+      lib              scripts/newtool.sh (scans scripts/*.sh)
+      selftest-needed  scripts/newtool.sh (mentioned)
+      sigpipe          scripts/newtool.sh (scans *.sh)
+```
 
 ## Scaffold inventory
 
@@ -591,3 +706,10 @@ unchanged; leave it.
   spelled `clean_hit($0, p[j])` once, so DV-1's sed applies; the header's
   four lines and `CLAUDE.md`'s three are C-5's text; `VERSION` 116. Every
   control in the handoff's table is green at its recorded value.
+- GATES verified by the orchestrator (2026-11-07): DV-1, DV-2 and DV-3 run
+  by me before `gates.sh`, results pasted in their blocks and in
+  `## Gate probes`. The full run was dispatched; `attest.sh check -- bash
+  scripts/gates.sh` said `fresh` (exit 0, 5 s, log
+  `20261107T223610Z.410193.log`, whose verdict line is `All required gates
+  passed (0 ran, 7 unconfigured, 0 known).`), so it was not re-run. The
+  developer changed no file.
