@@ -5,7 +5,7 @@ slug: gates-sh-list-still-lists-a-duplicated-g
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-093-gates-sh-list-still-lists-a-duplicated-g
 depends_on: [HARNESS-094, HARNESS-095]      # the fast pre-PR self-test goes first (user decision, 2026-11-04); both must be DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -395,3 +395,15 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
   `mutate.sh --check` is clean. No Contract amendment was claimed. The
   floors.conf note was completed with the measured count by the
   orchestrator.
+- GREEN verified by the orchestrator, no dispatch (2026-11-07), as C-4
+  plans: a no-op plus `VERSION` 114 -> 115. `git diff --stat main...HEAD`
+  named only the three test paths and this story; `scripts/gates.sh` is
+  untouched. Both commands were run directly, not through `attest.sh`:
+
+      gates: 984 passed, 0 failed
+      assertion floors: all 1 suite(s) met their declared floor (984 assertions executed, 984 declared).
+      1 harness suite(s) passed.
+      All required gates passed (0 ran, 5 unconfigured, 0 known).
+
+  (`bash scripts/selftest.sh gates`, about 43 min on this host; `bash
+  scripts/gates.sh --fast`, exit 0.)
