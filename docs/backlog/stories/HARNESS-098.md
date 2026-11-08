@@ -4,8 +4,8 @@ title: CLAUDE.md's --suites paragraph stops claiming a test-data mention never g
 slug: claude-md-s-suites-paragraph-stops-claim
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-098-claude-md-s-suites-paragraph-stops-claim
 depends_on: [HARNESS-096]      # it rewrites one line HARNESS-096 wrote and supersedes one of its assertions; 096 is DONE on main (b7b1809)
 touches: [CLAUDE.md, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
