@@ -4,8 +4,8 @@ title: CLAUDE.md's --suites paragraph stops claiming a test-data mention never g
 slug: claude-md-s-suites-paragraph-stops-claim
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-098-claude-md-s-suites-paragraph-stops-claim
 depends_on: [HARNESS-096]      # it rewrites one line HARNESS-096 wrote and supersedes one of its assertions; 096 is DONE on main (b7b1809)
 touches: [CLAUDE.md, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -187,6 +187,10 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+- PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1**
+  (2026-11-07), as a `/plan-story` subagent; no override.
+- RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5**
+  (2026-11-08), self-reported; `model: opus` passed. As planned.
 ## Out of scope
 
 - Any change to `scripts/selftest-needed.sh` - its awk, its R2 `case`, or
@@ -205,11 +209,178 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED. -->
+Every criterion is mechanical; each is pinned by an exact whole-line or
+exact-window assertion over `CLAUDE.md` / `scripts/selftest-needed.sh` with
+`\r` stripped, all in `.claude/tests/selftest-needed.test.sh`, the
+`HARNESS-096 AC-4` describe, plus the HARNESS-094 AC-8 describe. No
+generator, no threshold, no negative control with a measured value: the
+"controls" are the whole-line counts themselves, whose expected values are
+stated below.
+
+| AC | Assertion (title as it appears in the suite) | Expected after GREEN | On arrival (RED) |
+|---|---|---|---|
+| AC-1 | `CLAUDE.md's old declaration line 3 (ending `does not reach `all`.`) is gone` - `cm_count "$CM_O3"` | 0 | 1 - **red (new)** |
+| AC-1 | `no line of CLAUDE.md still claims a test-data mention does not reach `all`` - awk `index` count | 0 | 1 - **red (new)** |
+| AC-2 | `CLAUDE.md's declaration line 3 appears exactly once` - `CM_P3` re-pointed to C-2's line 3 | 1 | 0 - **red (re-pointed)** |
+| AC-2 | `the declaration is its own paragraph directly before the one beginning `gates.sh` judges the **code**` - the five-line window `[] / P1 / P2 / P3 / []` | match | line 3 differs - **red (re-pointed)** |
+| AC-2 | declaration lines 1 and 2 appear exactly once; the declaration sits in `## Running things` | 1, 1, heading | green (unchanged pins) |
+| AC-3 | HARNESS-094 AC-8 (four assertions, 866-885 of the original file), the fence assertion and the lines-160-162 assertion | unchanged | green (unchanged pins) |
+| AC-4 | `SNH_N1`..`SNH_N4` once each, in order between the R2 and R4 rows; `SNH_O1`/`SNH_O2` and `never under-selects` absent | unchanged | green (unchanged pins) |
+| AC-4 | `git diff main -- scripts/selftest-needed.sh` empty | empty | not a suite assertion: a review check (GREEN writes nothing under `scripts/`; check-boundaries/diff review sees it) |
+
+AC-3's "not edited" clause for the test file is a property of this RED's
+diff, not a runtime assertion: `git diff` of the test file shows only the
+comment, the `CM_P3` value, the `CM_O3` line and the two new assertions.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. -->
+**RED ran as `claude-opus-5-5`** (test-developer, dispatched by the
+orchestrator; no model override stated in the dispatch).
+
+### Command
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed
+
+Record (fresh against tree `4c82d0be8e690bdd31c1e80cf168cd80b3b925d7`,
+`attest.sh check` answered `fresh`): `exit: 1`,
+`last: 1 of 1 harness suite(s) FAILED.`,
+`log: .claude/state/attest-logs/20261108T033454Z.615879.log`, 303 s, Windows
+host, local. (An earlier run, `20261108T032545Z.602465.log`, gave the same
+616/4 before the floors.conf comment paragraph was appended; the record
+above is the one on the final tree.)
+
+Admissibility: `bash scripts/attest.sh -- bash scripts/gates.sh --fast` -
+`exit: 0`, `last: All required gates passed (0 ran, 5 unconfigured, 0 known).`,
+`log: .claude/state/attest-logs/20261108T033959Z.626925.log`. No gate is
+configured here, as the story says; the suite above is the judge.
+
+### Verbatim failure (from the log, lines 63-90)
+
+```
+  HARNESS-096 AC-4: the header and CLAUDE.md declare that a mention as test data maps a path
+    FAIL CLAUDE.md's declaration line 3 appears exactly once
+         expected: 1
+         actual:   0
+    FAIL CLAUDE.md's old declaration line 3 (ending `does not reach `all`.`) is gone
+         expected: 0
+         actual:   1
+    FAIL no line of CLAUDE.md still claims a test-data mention does not reach `all`
+         expected: 0
+         actual:   1
+    FAIL the declaration is its own paragraph directly before the one beginning `gates.sh` judges the **code**
+         expected: []
+         [`--suites` maps a changed path to every suite whose source names it, ending]
+         [where the path ends, comments and test data included. A path a suite names]
+         [only as test data counts as mentioned, never as unmapped (which gives `all`).]
+         []
+         actual:   []
+         [`--suites` maps a changed path to every suite whose source names it, ending]
+         [where the path ends, comments and test data included. A path a suite names]
+         [only as test data is mapped by that mention and does not reach `all`.]
+         []
+
+selftest-needed: 616 passed, 4 failed
+FAIL selftest-needed  did 616 units of work, below the floor of 620 in .claude/tests/floors.conf
+
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+```
+
+Exactly the four predicted assertions are red, plus the floor line; no other
+FAIL in the log. Each fails on its assertion (count or window), not on a
+load or syntax error. Every AC-2 (lines 1, 2, heading), AC-3 and AC-4 pin is
+green, as predicted.
+
+### Tests, one line each
+
+- `CLAUDE.md's declaration line 3 appears exactly once` - `CM_P3` (now C-2's
+  new line 3) on exactly one line. AC-2. Re-pointed.
+- `CLAUDE.md's old declaration line 3 (ending ...) is gone` - `CM_O3` (the old
+  line) on 0 lines. AC-1. New.
+- `no line of CLAUDE.md still claims a test-data mention does not reach `all``
+  - awk `index($0, "does not reach `all`")` over `CM_TEXT`, 0. AC-1. New.
+  This is the needle with no negation problem: the new line contains
+  "gives `all`", not "does not reach".
+- `the declaration is its own paragraph directly before ...` - the five lines
+  before `` `gates.sh` judges `` are `[] / P1 / P2 / P3 / []`. AC-2. Re-pointed
+  through the variable; text unchanged.
+- Unchanged and green: declaration lines 1-2 once each, `## Running things`
+  (AC-2); the fence and lines-160-162 assertions and HARNESS-094 AC-8 (AC-3);
+  `SNH_*` header pins (AC-4).
+
+### Files touched in RED
+
+- `.claude/tests/selftest-needed.test.sh` - in the HARNESS-096 AC-4 describe
+  only: a three-line comment above `CM_P1` naming HARNESS-098 as superseding
+  HARNESS-096 C-5; `CM_P3` re-assigned; `CM_O3` added; the two new assertions
+  directly after the line-3 assertion. Describe title, `SNH_*`, `CM_P1`,
+  `CM_P2`, the line-1/line-2 assertions, the placement/heading/fence/lineno
+  assertions and the HARNESS-094 AC-8 describe untouched.
+- `.claude/tests/floors.conf` - `floor | selftest-needed | 618` -> `620`
+  (line 64), plus a HARNESS-098 paragraph appended to the comment block.
+- `.claude/tests/selftest.test.sh` - `selftest-needed 618` -> `620` (line 556).
+  Not run in RED (that suite's own run is long); it compares this table with
+  floors.conf, and both say 620.
+- this story's `## Test plan` and this handoff.
+
+### Floor measured
+
+620 EXECUTED (616 passed + 4 failed), equal to the C-4 prediction. The floor
+counts passed units, so it is red in RED (616 < 620) and green once GREEN
+lands (620).
+
+### What GREEN writes - exactly this, nothing else
+
+1. `CLAUDE.md` line 192, replace
+   `` only as test data is mapped by that mention and does not reach `all`. ``
+   with exactly
+   `` only as test data counts as mentioned, never as unmapped (which gives `all`). ``
+   (77 characters, no trailing space, LF as the rest of the file). Lines 190-191
+   and everything else in `CLAUDE.md` unchanged; the paragraph stays three lines.
+2. `.claude/harness/VERSION`: `116 (2026-11-07)` -> `117 (<date of GREEN>)`.
+3. Nothing under `scripts/` (AC-4: `git diff main -- scripts/selftest-needed.sh`
+   empty), and no test file (frozen).
+
+Export shape / callers: this is a docs-pin story; no module, function or
+output shape is involved. Callers list: **none** - checked: a repo-wide grep
+for `does not reach `all`` (excluding `.git`, `.claude/state` and the 096/098
+story files) finds only `CLAUDE.md:192` and the new test/floors text that
+names it; `CM_P3`/`CM_O3` occur only in the describe. Unconstrained: nothing;
+the line is pinned byte for byte.
+
+### Predicted post-GREEN counts
+
+`bash scripts/selftest.sh selftest-needed`: `selftest-needed: 620 passed, 0
+failed`, floor 620 met.
+
+### Negative controls
+
+None measured: the criteria are whole-line counts with fixed expected values
+(table in `## Test plan`). Unlike an import-failing suite, every assertion in
+this file executed in RED, so the red lines above are observed, not claimed.
+
+### Deferred verifications
+
+**DV-1 (owner GATES) - declined in RED, not run.** It restores the old line
+into a `CLAUDE.md` that holds the new one; in RED the new line is not there,
+so the `mutate.sh` expression would match nothing (and `mutate.sh` refuses a
+no-op). Predicted when GATES runs it: exactly the four assertions above red,
+`selftest-needed: 616 passed, 4 failed`, every HARNESS-094 AC-8, placement
+(other than the window), heading, fence, lineno and `SNH_*` assertion green.
+Note the DV-1 sed expression contains literal backticks inside single quotes
+and `\.`/`$` anchors; it is well-formed as written in `## Deferred
+verifications`.
+
+### Contract
+
+No block amended. C-1's anchors held (line numbers in the test file have
+shifted by +3 from the comment and +1 from `CM_O3` below line 1031, and by
++6 more below the line-3 assertion).
+
+### Implementation notes
+
+None; one-line edit. The `selftest` suite pins the floor table and should be
+in the PR's CI selftest; nothing GREEN writes affects it.
 
 ## Gate results
 
@@ -262,3 +433,18 @@ name, below the table.
      test is written against code that already exists except the
      re-pointed pins, which DV-1 earns in the same run; no rule over the
      tree changes, so no real-tree probe is owed.
+- PLANNED → RED checks (orchestrator, 2026-11-07): every C-1 anchor
+  re-read on `b7b1809` and matches; the defect is reproduced (`grep -cxF`
+  of the old line 1, substring count 1); `gates.sh --list` shows every gate
+  unconfigured, so `required_gates: []` stands; empty epic. The story was
+  committed at PLANNED as `de1594c` on its branch before the phase was set.
+- RED verified by the orchestrator (2026-11-08): `attest.sh check` said
+  `fresh` for `bash scripts/selftest.sh selftest-needed` (exit 1,
+  `selftest-needed: 616 passed, 4 failed`, log
+  `20261108T033454Z.615879.log`) and `bash scripts/gates.sh --fast` (exit 0,
+  0 ran, log `20261108T033959Z.626925.log`), so neither was re-run. The four
+  FAIL lines are exactly C-3's: line 3 once, the old line gone, the
+  substring gone, and the placement window. The only other FAIL is the
+  floor line (616 against 620). Diff read: only the AC-4 describe changed
+  (comment, `CM_P3`, `CM_O3`, two assertions); both floors went 618 → 620;
+  no source, CLAUDE.md or script was touched.

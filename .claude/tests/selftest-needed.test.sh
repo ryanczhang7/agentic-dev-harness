@@ -1029,13 +1029,23 @@ $SNH_TEXT
 SNH_CLAIM
 )"
 
+# The third line is HARNESS-098's: it supersedes HARNESS-096 C-5's pin of
+# `... is mapped by that mention and does not reach `all`.`, which is false
+# for the R2 paths (suites name them and --suites still answers `all`).
 CM_P1='`--suites` maps a changed path to every suite whose source names it, ending'
 CM_P2='where the path ends, comments and test data included. A path a suite names'
-CM_P3='only as test data is mapped by that mention and does not reach `all`.'
+CM_P3='only as test data counts as mentioned, never as unmapped (which gives `all`).'
+CM_O3='only as test data is mapped by that mention and does not reach `all`.'
 CM_GATES_HEAD='`gates.sh` judges the **code**'
 assert_eq "CLAUDE.md's declaration line 1 appears exactly once" 1 "$(cm_count "$CM_P1")"
 assert_eq "CLAUDE.md's declaration line 2 appears exactly once" 1 "$(cm_count "$CM_P2")"
 assert_eq "CLAUDE.md's declaration line 3 appears exactly once" 1 "$(cm_count "$CM_P3")"
+assert_eq "CLAUDE.md's old declaration line 3 (ending \`does not reach \`all\`.\`) is gone" 0 "$(cm_count "$CM_O3")"
+assert_eq "no line of CLAUDE.md still claims a test-data mention does not reach \`all\`" 0 \
+  "$(awk 'index($0, "does not reach `all`") { c++ } END { print c + 0 }' <<CM_CLAIM
+$CM_TEXT
+CM_CLAIM
+)"
 assert_eq "the declaration is its own paragraph directly before the one beginning \`gates.sh\` judges the **code**" "[]
 [$CM_P1]
 [$CM_P2]
