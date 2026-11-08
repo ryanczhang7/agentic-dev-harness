@@ -5,7 +5,7 @@ slug: claude-md-s-suites-paragraph-stops-claim
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-098-claude-md-s-suites-paragraph-stops-claim
 depends_on: [HARNESS-096]      # it rewrites one line HARNESS-096 wrote and supersedes one of its assertions; 096 is DONE on main (b7b1809)
 touches: [CLAUDE.md, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -165,6 +165,23 @@ green: 616 passed, 4 failed predicted. RED cannot run this: the new line is
 not in `CLAUDE.md` until GREEN. Paste the red lines and the restore line,
 and confirm `bash scripts/mutate.sh --check` is clean.
 
+*Result (orchestrator, 2026-11-08, tree `57b3d36`):* ran as written, in
+this worktree, alone. Exactly C-3's four assertions went red and every other
+assertion stayed green, 616 passed and 4 failed as predicted. The file was
+restored and verified, and `mutate.sh --check` was clean afterwards.
+
+```
+=== mutate: CLAUDE.md (1 line(s) changed by s/^only as test data counts as mentioned, never as unmapped (which gives `all`)\.$/only as test data is mapped by that mention and does not reach `all`./) ===
+=== mutate: running bash scripts/selftest.sh selftest-needed ===
+    FAIL CLAUDE.md's declaration line 3 appears exactly once
+    FAIL CLAUDE.md's old declaration line 3 (ending `does not reach `all`.`) is gone
+    FAIL no line of CLAUDE.md still claims a test-data mention does not reach `all`
+    FAIL the declaration is its own paragraph directly before the one beginning `gates.sh` judges the **code**
+selftest-needed: 616 passed, 4 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/CLAUDE.md.20261108T062428Z.662859.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
 ## Model guidance
 
 Planned by `bash scripts/plan.sh write HARNESS-098` from `.claude/harness/models.conf`.
@@ -193,6 +210,9 @@ name, below the table.
   (2026-11-08), self-reported; `model: opus` passed. As planned.
 - GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
   (2026-11-08), self-reported; `model: opus` passed. As planned.
+- GATES - `feature-developer` (full gates run), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-08), self-reported; `model: opus` passed. As
+  planned.
 ## Out of scope
 
 - Any change to `scripts/selftest-needed.sh` - its awk, its R2 `case`, or
@@ -407,7 +427,21 @@ in the PR's CI selftest; nothing GREEN writes affects it.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-08T06:32:54Z
+    commit: 57b3d36
+    tree:   4632e648d690376326057fedfad219830d108489
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -478,3 +512,9 @@ in the PR's CI selftest; nothing GREEN writes affects it.
   (exit 0, 0 ran, log `20261108T051304Z.659121.log`), so neither was re-run.
   Diff read: `CLAUDE.md` changes only line 192, to C-2's text; `VERSION`
   is 117; `git diff main -- scripts` is empty (AC-4).
+- GATES verified by the orchestrator (2026-11-08): I ran DV-1 myself before
+  `gates.sh`, and its result is pasted in its block (616/4, restored). The
+  full run was dispatched. `attest.sh check -- bash scripts/gates.sh` said
+  `fresh` (exit 0, 5 s, log `20261108T063250Z.674547.log`, verdict `All
+  required gates passed (0 ran, 7 unconfigured, 0 known).`), so it was not
+  re-run. The developer changed no file.
