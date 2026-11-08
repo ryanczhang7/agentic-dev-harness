@@ -4,8 +4,8 @@ title: --suites counts a mention only where the path ends, and declares fixture 
 slug: suites-counts-a-mention-only-where-the-p
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-096-suites-counts-a-mention-only-where-the-p
 depends_on: [HARNESS-094]      # the mechanism it refines; user decision 2026-11-04 to ship 094 and file this
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, CLAUDE.md]
