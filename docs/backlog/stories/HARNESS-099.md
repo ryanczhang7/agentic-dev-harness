@@ -5,7 +5,7 @@ slug: the-gates-suite-executes-the-same-count
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-099-the-gates-suite-executes-the-same-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -343,6 +343,8 @@ name, below the table.
   run.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5**
   (2026-11-08), self-reported; `model: opus` passed. As planned.
+- GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
+  (2026-11-08), self-reported; `model: opus` passed. As planned.
 
 ## Out of scope
 
@@ -602,6 +604,38 @@ observations.
 **Discovered.** The planned C-2 title (`shipped`) contradicted AC-5; amended,
 not routed around. Nothing else changes the approach.
 
+### GREEN
+
+Written by `feature-developer`, resolved **claude-opus-5-5** (Opus 5.5),
+2026-11-08, no model override stated in the dispatch.
+
+GREEN changed one line: `.claude/harness/VERSION` line 34 `117 (2026-11-08)`
+-> `118 (2026-11-08)`. Nothing else - no test, floor, script or other
+Contract-listed file. Tests ran frozen.
+
+    command:  bash scripts/selftest.sh gates
+    tree:     706f4a51c29d1d50a241b21fed01fc154107fcf5
+    exit:     0
+    duration: 720s
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261108T213638Z.1219037.log
+
+    gates: 998 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (998 assertions executed, 998 declared).
+
+In that log, 0 lines begin with `FAIL` and 0 lines contain `note: project.conf`.
+That matches RED's step-2 summary (998/0, floor 998). The handoff's control
+table rows asserted in the suite all passed. GREEN did not re-measure them
+outside the framework, because no production module changed and nothing
+measured differently.
+
+    command:  bash scripts/gates.sh --fast
+    tree:     706f4a51c29d1d50a241b21fed01fc154107fcf5
+    exit:     0
+    duration: 1s
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261108T214854Z.1247206.log
+
 ## Gate results
 
 <!-- Written by scripts/gates.sh itself on every full run, stamped with the
@@ -715,3 +749,9 @@ not routed around. Nothing else changes the approach.
     `AC-7:` is the only form that keeps both. Accepted. The C-7 amendment
     (two of `ws.conf`'s template assertions fail, not three, because it has no
     live keep-when line) matches the step-1 log above.
+- GREEN verified by the orchestrator (2026-11-08): `attest.sh check` said
+  `fresh` for `bash scripts/selftest.sh gates` (exit 0,
+  `gates: 998 passed, 0 failed`, no FAIL line, log
+  `20261108T213638Z.1219037.log`) and for `bash scripts/gates.sh --fast`
+  (exit 0, 0 ran, log `20261108T214854Z.1247206.log`), so neither was re-run.
+  Diff read: GREEN changed only `VERSION` (117 → 118) and the story.
