@@ -5,7 +5,7 @@ slug: claude-md-s-suites-paragraph-stops-claim
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-098-claude-md-s-suites-paragraph-stops-claim
 depends_on: [HARNESS-096]      # it rewrites one line HARNESS-096 wrote and supersedes one of its assertions; 096 is DONE on main (b7b1809)
 touches: [CLAUDE.md, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -190,6 +190,8 @@ name, below the table.
 - PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1**
   (2026-11-07), as a `/plan-story` subagent; no override.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5**
+  (2026-11-08), self-reported; `model: opus` passed. As planned.
+- GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
   (2026-11-08), self-reported; `model: opus` passed. As planned.
 ## Out of scope
 
@@ -382,6 +384,27 @@ shifted by +3 from the comment and +1 from `CM_O3` below line 1031, and by
 None; one-line edit. The `selftest` suite pins the floor table and should be
 in the PR's CI selftest; nothing GREEN writes affects it.
 
+### GREEN (feature-developer, resolved `claude-opus-5-5`, no override stated)
+
+- Wrote exactly two files: `CLAUDE.md:192` replaced with the C-2 line (77
+  characters, LF, no trailing space; lines 190-191 untouched, paragraph still
+  three lines), and `.claude/harness/VERSION` `116 (2026-11-07)` ->
+  `117 (2026-11-08)`. Nothing under `scripts/`; no test file.
+  `git diff main -- scripts/selftest-needed.sh` is empty.
+- I did not re-run the suite red before the edit: RED's fresh record above
+  (`20261108T033454Z.615879.log`, 616/4) was already on this tree, and
+  `CLAUDE.md:192` visibly still held the old line.
+- `bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed`:
+  `exit: 0`, `last: 1 harness suite(s) passed.`, 290 s,
+  `log: .claude/state/attest-logs/20261108T050755Z.650343.log`.
+  `selftest-needed: 620 passed, 0 failed`, floor 620 met (620 executed,
+  620 declared), no `FAIL` in the log. Matches RED's prediction exactly.
+- `bash scripts/attest.sh -- bash scripts/gates.sh --fast`: `exit: 0`,
+  `last: All required gates passed (0 ran, 5 unconfigured, 0 known).`,
+  `log: .claude/state/attest-logs/20261108T051304Z.659121.log`.
+- Negative controls: none recorded (every assertion ran in RED), so nothing
+  to confirm beyond the counts. No gate added or changed; no `## Gate probes`.
+
 ## Gate results
 
 <!-- Written by scripts/gates.sh itself on every full run. -->
@@ -448,3 +471,10 @@ in the PR's CI selftest; nothing GREEN writes affects it.
   floor line (616 against 620). Diff read: only the AC-4 describe changed
   (comment, `CM_P3`, `CM_O3`, two assertions); both floors went 618 → 620;
   no source, CLAUDE.md or script was touched.
+- GREEN verified by the orchestrator (2026-11-08): `attest.sh check` said
+  `fresh` for `bash scripts/selftest.sh selftest-needed` (exit 0,
+  `selftest-needed: 620 passed, 0 failed`, no FAIL in the log
+  `20261108T050755Z.650343.log`) and for `bash scripts/gates.sh --fast`
+  (exit 0, 0 ran, log `20261108T051304Z.659121.log`), so neither was re-run.
+  Diff read: `CLAUDE.md` changes only line 192, to C-2's text; `VERSION`
+  is 117; `git diff main -- scripts` is empty (AC-4).
