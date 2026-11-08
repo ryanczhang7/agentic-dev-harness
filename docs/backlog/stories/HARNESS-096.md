@@ -4,11 +4,11 @@ title: --suites counts a mention only where the path ends, and declares fixture 
 slug: suites-counts-a-mention-only-where-the-p
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-096-suites-counts-a-mention-only-where-the-p
 depends_on: [HARNESS-094]      # the mechanism it refines; user decision 2026-11-04 to ship 094 and file this
-touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
+touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, CLAUDE.md]
 required_gates: []  # every gate is unconfigured here; the artifact is judged by selftest (see Context)
 ---
 
@@ -66,16 +66,113 @@ configured in this repository. The artifact is judged by
   `test`). A real-tree probe of each such R5
   case is pasted into `## Gate probes`: on the real tree, an untracked file of
   a plausible real name that no suite mentions gives `all`.
-- **AC-4 (the limit is declared)** — The header of `selftest-needed.sh` and
-  `CLAUDE.md`'s `--suites` line no longer claim R3 "never under-selects".
-  They say instead that a path any suite names, including as test data, is
-  mapped by that mention and does not reach R5.
+- **AC-4 (the limit is declared)** — The header of `selftest-needed.sh` no
+  longer claims R3 "never under-selects" (today its line 54); it says instead
+  that a path any suite names, including as test data, is mapped by that
+  mention and does not reach R5. `CLAUDE.md` carries the same declaration as
+  the exact new lines pinned in Contract C-5, in its "Running things"
+  section, while its `--suites` and `--changed` command lines stay byte for
+  byte as they are: HARNESS-094 AC-8 pins both, and `CLAUDE.md` never made
+  the "never under-selects" claim (refined at PLANNED → RED, PO decision 1
+  in `## Notes`).
 
 ## Contract
 
 - **Writes:** `scripts/selftest-needed.sh`, `.claude/tests/selftest-needed.test.sh`,
   `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh` (its floor
-  table), `.claude/harness/VERSION`.
+  table), `.claude/harness/VERSION`, `CLAUDE.md`.
+- **C-1. Anchors (tree `d3e8822`, 2026-11-07).** `scripts/selftest-needed.sh`:
+  the header rule table at lines 50-60, with R3 at 53-54 (`#   R3 mentioned a
+  suite whose source holds the path as a fixed substring,` / `#
+  comments included (over-selects, never under-selects)`); the R3 awk at
+  190-204, whose hit test is line 203,
+  `if (!(j in hit) && index($0, p[j])) { hit[j] = 1; print j "\t" s }`.
+  `.claude/tests/selftest-needed.test.sh` (884 lines): `suites_stubs` 513,
+  `suites_fixture` 525, `expect_suites` 547, `hdr` 591, `SUITES_ALL` 596,
+  the HARNESS-094 describes at 601, 622, 665, 749, 816, 850, 863; the AM-2
+  fixtures `put .claude/tests/_helpers.sh` at 785 and `put scripts/newtool.sh`
+  at 790; `summary "selftest-needed"` 884. Floors: `floor | selftest-needed |
+  482` (floors.conf 64) and `selftest-needed 482` (selftest.test.sh 556).
+  `CLAUDE.md`: the `--suites` line is 161, inside the `## Running things`
+  code block (157-182; *amended in RED: this said 153-171*), then the
+  `mutate.sh` paragraph (184-188) and the `gates.sh` judges paragraph
+  (190); `## Context discipline` follows. `VERSION` holds
+  `115 (2026-11-06)`.
+- **C-2. Shape of the amended R3.** The awk keeps exactly one hit decision,
+  at the same place as today's `index($0, p[j])`, spelled
+  `clean_hit($0, p[j])`, where `clean_hit(line, p)` is an awk function
+  defined in the same program: it walks every occurrence of `p` in `line`
+  (`index` on a shrinking suffix), and returns 1 at the first whose next
+  character `c = substr(line, k + length(p), 1)` is `""`, or is not in
+  `[A-Za-z0-9_/-]` and is not (`.` with `substr(line, k + length(p) + 1, 1)`
+  in `[A-Za-z0-9]`); else 0. Character classes are spelled as string
+  `index()` against a literal alphabet, not as regex classes over `c`, so
+  the function is POSIX awk. This spelling is what makes DV-1 a one-line
+  mutation: `s/clean_hit(\$0, p\[j\])/index($0, p[j])/`.
+- **C-3. AC-1 and AC-2 fixtures.** Built on `suites_fixture` (nine stub
+  suites, `SUITE_STUBS`), with one extra line appended to one stub by
+  `printf ... >> "$d/.claude/tests/<stub>.test.sh"` before `commit_all`, as
+  `suites_stubs` does. AC-1: a stub line `# keeps scripts/x.sh.bak and runs
+  scripts/xy.sh` and an untracked `scripts/x.sh` → stdout exactly `all`,
+  stderr exactly `${SUITES_ALL}scripts/x.sh is mapped by no rule; defaulting
+  to every suite`, via `expect_suites ... whole`. AC-1 controls: eight stub
+  lines, one per terminator — `scripts/x.sh ` (space), `scripts/x.sh"`,
+  `scripts/x.sh'`, `` scripts/x.sh` ``, `scripts/x.sh)`, `scripts/x.sh:`,
+  `scripts/x.sh,`, and `scripts/x.sh.` at end of line — each in a fresh
+  fixture (or one stub holding all eight), with `scripts/x.sh` then listed
+  for that stub: `expect_suites ... first "$(hdr 4 9 1)"`, stdout exactly
+  `<stub>`, `grep-count`, `lib`, `sigpipe`, and `out_has <stub>` = 1.
+  *(Amended in RED, test-developer: this said `hdr 1 9 1`. A changed
+  `scripts/x.sh` is a `scripts/*.sh`, so R4's three `add` rows put
+  `grep-count`, `lib` and `sigpipe` beside the mapping stub, exactly as
+  HARNESS-094's `scripts/probes/x.sh` case pins `hdr 4 9 1`; `hdr 1 9 1`
+  is unsatisfiable by any R3. The stub is `gamma`, which names no other
+  path, and each terminator gets a fresh fixture, so a terminator GREEN
+  refuses fails alone.)* Plus one control where the clean mention sits AFTER a dirty
+  one on the same line (`scripts/x.sh.bak then scripts/x.sh`), which must
+  still map. AC-2: a stub line `# runs scripts/new-story.sh` and an untracked
+  `scripts/new` → `all`, stderr naming `scripts/new`. Note `alpha` already
+  names `scripts/probes/x.sh`, which does not contain `scripts/x.sh`.
+- **C-4. AC-3 fixture names.** The AM-2 fixtures at 785 and 790 become
+  `.claude/tests/_h096_fixture_helper.sh` and `scripts/h096-fixture-tool.sh`
+  (both verified `harness` by `bash scripts/classify.sh` on this tree), and
+  their labels and pinned stderr follow. No other test in the tree names
+  `_helpers.sh` or `scripts/newtool.sh`. The real-tree probe AC-3 asks for
+  is DV-3, owned by GATES, because its result belongs in `## Gate probes`.
+- **C-5. AC-4 texts.** Header lines 53-54 become exactly these four lines:
+  `#   R3 mentioned a suite whose source holds the path as a fixed substring`
+  / `#                that ends where the path ends; comments and test data`
+  / `#                count, so a path a suite names only as test data is`
+  / `#                mapped by that mention and never reaches R5 (HARNESS-096)`.
+  `CLAUDE.md` gains, as its own paragraph (a blank line either side)
+  directly before the paragraph beginning `` `gates.sh` judges the
+  **code** `` (today line 190) and after the `` `mutate.sh` exists because ``
+  paragraph (184-188), which stays directly after the code block, exactly
+  these three lines:
+  *(Amended in RED, test-developer: this said "directly after the code
+  block that closes at line 171 and before the paragraph beginning
+  `gates.sh` judges". On tree `342d68d` the `## Running things` block is
+  157-182, and the `mutate.sh` paragraph sits between its closing fence and
+  the `gates.sh` paragraph, so the two clauses cannot both hold. Kept the
+  `gates.sh` clause, because the `mutate.sh` paragraph explains the block's
+  last line and separating it from the block would break that; RED pins
+  that the fence still runs directly into the `mutate.sh` paragraph. The
+  three lines themselves are unchanged.)*
+  `` `--suites` maps a changed path to every suite whose source names it, ending ``
+  / `where the path ends, comments and test data included. A path a suite names`
+  / `` only as test data is mapped by that mention and does not reach `all`. ``
+  Lines 160-162 of `CLAUDE.md` (the `selftest-needed.sh`, `--suites` and
+  `--changed` lines) are unchanged byte for byte. RED pins all of this with
+  whole-line counts (`grep -cxF` or the `cm_count` style of HARNESS-094
+  AC-8), and asserts the two old lines are gone.
+- **C-6. Phases.** RED writes the test file, the floors (482 → the measured
+  count) and nothing else; its AC-1/AC-2/AC-4 cases fail on arrival (the awk
+  is bare `index`, the texts are absent), its AC-3 renames pass on arrival
+  and are earned by one mutation RED runs itself (rename one fixture back
+  and watch only its own assertions move). GREEN writes the awk, the header,
+  `CLAUDE.md` and `VERSION` (115 → 116). Callers: none — the change is
+  inside one awk program; `--suites`' stdout and stderr shapes are
+  unchanged, and HARNESS-094's existing cases must all stay green.
 - **R3, amended.** A match of `p` at offset `k` in a line counts only when the
   character after it (offset `k + length(p)`) is end of line, or is not in
   `[A-Za-z0-9_/-]` and is not a `.` followed by `[A-Za-z0-9]`. When a line
@@ -90,15 +187,85 @@ configured in this repository. The artifact is judged by
 ## Deferred verifications
 
 **DV-1 (defect put back). Owner: GATES.** Revert the boundary check with
-`bash scripts/mutate.sh scripts/selftest-needed.sh '<expr restoring a bare index() hit>' -- bash scripts/selftest.sh selftest-needed`.
-AC-1's `x.sh.bak` case and AC-2 must go red, and AC-1's control must stay
+`bash scripts/mutate.sh scripts/selftest-needed.sh 's/clean_hit(\$0, p\[j\])/index($0, p[j])/' -- bash scripts/selftest.sh selftest-needed`
+(the expression C-2 fixes).
+AC-1's `x.sh.bak` case and AC-2 must go red, and AC-1's controls must stay
 green. Paste the red lines and the restore line.
+
+*Result (orchestrator, 2026-11-07, tree `177e411`):* ran as written, in this
+worktree, alone. 16 assertions red, exactly the AC-1 `x.sh.bak` case, the
+AC-1 continuation-character case and AC-2; every control green (602 passed,
+the RED handoff's predicted 602/16). `mutate.sh --check` clean afterwards.
+
+```
+=== mutate: scripts/selftest-needed.sh (1 line(s) changed by s/clean_hit(\$0, p\[j\])/index($0, p[j])/) ===
+=== mutate: running bash scripts/selftest.sh selftest-needed ===
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from root]: stdout is exactly the pinned list
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from root]: stdout has exactly 1 line(s)
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from root]: stderr is exactly the pinned text
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from subdir]: stdout is exactly the pinned list
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from subdir]: stdout has exactly 1 line(s)
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from subdir]: stderr is exactly the pinned text
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from root]: stdout is exactly the pinned list
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from root]: stdout has exactly 1 line(s)
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from root]: stderr is exactly the pinned text
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from subdir]: stdout is exactly the pinned list
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from subdir]: stdout has exactly 1 line(s)
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from subdir]: stderr is exactly the pinned text
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from root]: stdout is exactly the pinned list
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from root]: stderr is exactly the pinned text
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from subdir]: stdout is exactly the pinned list
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from subdir]: stderr is exactly the pinned text
+selftest-needed: 602 passed, 16 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_selftest-needed.sh.20261107T221925Z.384976.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**DV-3 (AC-3, real tree). Owner: GATES.** On the real tree at GATES, with
+the AM-2 fixtures renamed, an untracked `.claude/tests/_helpers.sh` and an
+untracked `scripts/newtool.sh` — the two plausible real names the old
+fixtures took — each give exactly `all` from `bash scripts/selftest-needed.sh
+--suites`, stderr naming the path as mapped by no rule. Negative control: the
+same two files against the merge base's script and suite (a clone or
+`git stash`-free worktree at `d3e8822`) give a list, not `all` (094's review
+measured `_helpers.sh` at 3 of 34). Paste both into `## Gate probes`.
+
+*Result:* both halves pasted in `## Gate probes` (DV-3). Each name gives
+`all` at `177e411`; the merge base gives 3 and 4 of 34.
 
 **DV-2 (real tree). Owner: GATES.** On the real tree, `--suites` against the
 branch's merge base must still give, for the merged PRs #165 to #177 replayed
 as in HARNESS-094's second review, the same answers as the 094 script, or
 `all` where a prefix-only mention was the only thing mapping a path. Paste
 the table. A list that shrinks is a finding.
+
+*Result (orchestrator, 2026-11-07):* no list shrank; none changed. Method:
+two `--no-hardlinks` scratch clones, `dvold` at `d3e8822` (the 094 script)
+and `dv2` (the replay tree). For each merge commit `M`, `dv2` was checked out
+at `M^2` (the PR tip) and `--suites M^1` was run with each script, the
+merged tree's own suites as data. The two outputs were saved and `diff`ed;
+all nine non-`all` lists are byte-identical.
+
+| PR | merge | 094 script | 096 script | diff |
+|---|---|---|---|---|
+| #165 | `45bf6a5` | 17 | 17 | none |
+| #166 | `c3f4d79` | 18 | 18 | none |
+| #167 | `97d2efe` | 8 | 8 | none |
+| #169 | `427ff4b` | 21 | 21 | none |
+| #170 | `f8e6986` | 13 | 13 | none |
+| #171 | `391b1b1` | 14 | 14 | none |
+| #173 | `58a1a78` | all (lib.sh) | all (lib.sh) | none |
+| #174 | `1ce21ca` | 20 | 20 | none |
+| #175 | `03fbbf6` | all (lib.sh) | all (lib.sh) | none |
+| #176 | `53fdbdd` | 18 | 18 | none |
+| #177 | `909b481` | 23 | 23 | none |
+
+#168 and #172 are left out, as in 094's table: `main` has no merge for #168,
+and #172 is the `plan/HARNESS-084-verification-cost` branch. The counts differ from 094's second review
+(#165 22 there, 17 here). 094 does not record its exact replay command,
+and this replay runs the PR tip's suites against `M^1`. Both scripts were
+run on the same inputs here, so the comparison is unaffected. The cause of
+the difference from 094's numbers was not investigated.
 
 ## Amendments
 
@@ -130,6 +297,22 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+- PLANNED - `lead-po`, planned `fable`, resolved **claude-fable-5-1**
+  (2026-11-04), as a `/plan-story` subagent; refined at PLANNED → RED by the
+  orchestrator on **claude-fable-5-1** (2026-11-07): C-1..C-6, DV-3, AC-4's
+  wording, `touches:` + `CLAUDE.md`.
+- RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5**
+  (2026-11-07), self-reported; no override passed. As planned.
+- GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
+  (2026-11-07), self-reported; no override passed. As planned.
+- GATES - `feature-developer` (full gates run), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-07), self-reported; `model: opus` passed
+  explicitly, matching the plan. As planned.
+- GATES - `feature-developer` (diff review, fresh), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-07), self-reported. As planned.
+- GATES - `feature-developer` (`--changed` self-test), planned `opus`,
+  resolved **claude-opus-5-5** (2026-11-07), self-reported. As planned.
+
 ## Out of scope
 
 - Replacing mention-based mapping with a static call graph of which scripts
@@ -138,13 +321,399 @@ name, below the table.
 
 ## Test plan
 
+All in `.claude/tests/selftest-needed.test.sh`, four describes marked
+`HARNESS-096 AC-n` directly before `summary "selftest-needed"`, plus the two
+AM-2 renames inside HARNESS-094's AC-4 describe. Every case runs; every
+assertion is unconditional (the one loop is over a fixed list of seven
+terminators). Every AC-1/AC-2 fixture is `h096_fixture <line>`: the nine
+`suites_stubs` stubs, `<line>` appended to `gamma` (which names no path),
+committed on main, then a story branch; the changed path is untracked.
+`expect_suites` is 8 assertions (exit, whole stdout, line count, stderr;
+from the root and from `src/`).
+
+| Case | Asserts | AC | n | On arrival |
+|---|---|---|---|---|
+| gamma: `# keeps scripts/x.sh.bak and runs scripts/xy.sh`; untracked `scripts/x.sh` | exit 0, stdout exactly `all`, stderr exactly `${SUITES_ALL}scripts/x.sh is mapped by no rule; defaulting to every suite` | AC-1 | 8 | FAIL |
+| gamma: `scripts/x.sh-old`, `_old`, `/sub`, `.d`, `2` on one line | same, `all` | AC-1 (C-2's excluded continuations: `-`, `_`, `/`, `.`+alnum, a digit) | 8 | FAIL |
+| gamma: `scripts/x.sh<t> then stops`, t = space, `"`, `'`, backtick, `)`, `:`, `,` (7 fixtures) | exit 0, stdout exactly `gamma grep-count lib sigpipe`, header `hdr 4 9 1`; `out_has gamma` = 1 | AC-1 control | 7 x 9 | PASS (control) |
+| gamma: `# the last step runs scripts/x.sh.` | same list, `hdr 4 9 1`, `out_has gamma` = 1 | AC-1 control | 9 | PASS (control) |
+| gamma: `# keeps scripts/x.sh.bak then scripts/x.sh` | same list, `hdr 4 9 1`, `out_has gamma` = 1 | AC-1 control (dirty then clean) | 9 | PASS (control) |
+| gamma: `# runs scripts/new-story.sh`; untracked `scripts/new` | exit 0, `all`, stderr exactly `${SUITES_ALL}scripts/new is mapped by no rule; defaulting to every suite` | AC-2 | 8 | FAIL |
+| gamma: `# runs scripts/new then stops`; untracked `scripts/new` | stdout exactly `gamma`, `hdr 1 9 1`; `out_has gamma` = 1 | AC-2 control | 9 | PASS (control) |
+| this suite's source, no line holding either old fixture path (needle spelled in two halves) | 0, 0 | AC-3 | 2 | PASS (earned by mutation, Handoff) |
+| this suite's source, the two `put` lines with the new names | each exactly 1 | AC-3 | 2 | PASS |
+| `classify.sh` on both new names | exactly `harness<TAB><path>` | AC-3 | 2 | PASS |
+| renamed AM-2 cases (existing, 094) | `all`, whole stderr naming the new path | AC-3 / 094 AM-2 | 16 (not new) | PASS |
+| header: R2 tail line once (precondition) | 1 | AC-4 | 1 | PASS |
+| header: each C-5 line exactly once (whole line) | 1 x 4 | AC-4 | 4 | FAIL x 4 (line 1 is the old line 1 minus its comma, so it is absent too) |
+| header: the 5 lines after the R2 tail are the C-5 four, then R4's first line | exact | AC-4 | 1 | FAIL |
+| header: old line 53, old line 54, any `never under-selects` line | 0, 0, 0 | AC-4 | 3 | FAIL |
+| CLAUDE.md: each C-5 line exactly once (whole line, CR stripped) | 1 x 3 | AC-4 | 3 | FAIL |
+| CLAUDE.md: the 5 lines before the `gates.sh` judges paragraph are blank, C-5 x 3, blank | exact | AC-4 | 1 | FAIL |
+| CLAUDE.md: the nearest `## ` heading above C-5 line 1 is `## Running things` | exact | AC-4 | 1 | FAIL |
+| CLAUDE.md: the fence closing the `--suites` block is followed by a blank line, then `` `mutate.sh` exists because `` | exact | AC-4 (C-5 amended placement) | 1 | PASS (guard) |
+| CLAUDE.md lines 160-162 are the `selftest-needed.sh`, `--suites`, `--changed` lines | exact | AC-4 | 1 | PASS (guard) |
+
 ## Handoff: RED -> GREEN
+
+Written by `test-developer`, dispatched with no model override; resolved
+**Opus 5.5 (`claude-opus-5-5`)**. Tree at dispatch `342d68d`.
+
+**Command.** `bash scripts/selftest.sh selftest-needed` (about 4-8 min on
+this Windows host, local; 243 s and 460 s in the two attest runs below).
+
+**Files touched (RED).**
+
+- `.claude/tests/selftest-needed.test.sh` (884 -> 1070 lines): the two AM-2
+  fixtures renamed in place (now 788-794, with a three-line HARNESS-096
+  comment above at 784-786); four new describes `HARNESS-096 AC-1..AC-4`
+  inserted directly before `summary "selftest-needed"` (now line 1070).
+- `.claude/tests/floors.conf`: line 64 `floor | selftest-needed | 618`
+  (was 482); a dated HARNESS-096 note appended at the end.
+- `.claude/tests/selftest.test.sh`: line 556 `selftest-needed 618` (was 482).
+- This story: `## Contract` C-1, C-3 and C-5 amended in place (below),
+  `## Test plan`, this section.
+
+Not touched: `scripts/selftest-needed.sh`, `CLAUDE.md`, `VERSION` (all GREEN's).
+
+**Measured count.** 618 executed on this tree: `selftest-needed: 589 passed,
+29 failed`. Statically: 482 + 136 (AC-1 97, AC-2 17, AC-3 6, AC-4 16). The
+floor gate counts passed work, so RED sits below the floor (`did 589 units
+of work, below the floor of 618`), as HARNESS-094's RED did. GREEN must
+reach `618 passed, 0 failed`.
+
+**Attest records** (the second one is the run on the final test tree;
+`attest.sh check` said `fresh` for both before this story edit):
+
+```
+command:  bash scripts/selftest.sh selftest-needed
+tree:     3409039268d0154094012a1da2080eea4d5ff9ea
+exit:     1
+last:     1 of 1 harness suite(s) FAILED.
+log:      .claude/state/attest-logs/20261107T204103Z.248331.log
+
+command:  bash scripts/gates.sh --fast
+tree:     3409039268d0154094012a1da2080eea4d5ff9ea
+exit:     0
+last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+log:      .claude/state/attest-logs/20261107T204516Z.258884.log
+```
+
+An earlier run, before the floors edit, at tree `3be7750…`, log
+`.claude/state/attest-logs/20261107T202649Z.215261.log`, gave the same 29
+FAIL lines (diffed: identical). `check-sigpipe.sh`: `scanned 62 shell
+file(s), 57 with pipefail, 0 finding(s)`; `check-grep-count.sh`: `scanned 62
+shell file(s), 0 finding(s)`.
+
+**The 29 FAIL lines, verbatim** (every HARNESS-094 case is green):
+
+```
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from root]: stdout is exactly the pinned list
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from root]: stdout has exactly 1 line(s)
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from root]: stderr is exactly the pinned text
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from subdir]: stdout is exactly the pinned list
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from subdir]: stdout has exactly 1 line(s)
+    FAIL AC-1: gamma names scripts/x.sh.bak and scripts/xy.sh only, so an untracked scripts/x.sh is mapped by no rule and prints all [from subdir]: stderr is exactly the pinned text
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from root]: stdout is exactly the pinned list
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from root]: stdout has exactly 1 line(s)
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from root]: stderr is exactly the pinned text
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from subdir]: stdout is exactly the pinned list
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from subdir]: stdout has exactly 1 line(s)
+    FAIL AC-1: a mention continued by -, _, /, .<alnum> or a digit is a longer path, so scripts/x.sh still prints all [from subdir]: stderr is exactly the pinned text
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from root]: stdout is exactly the pinned list
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from root]: stderr is exactly the pinned text
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from subdir]: stdout is exactly the pinned list
+    FAIL AC-2: gamma names scripts/new-story.sh only, so an untracked scripts/new is mapped by no rule and prints all [from subdir]: stderr is exactly the pinned text
+    FAIL the header's new R3 line 1 appears exactly once
+    FAIL the header's new R3 line 2 appears exactly once
+    FAIL the header's new R3 line 3 appears exactly once
+    FAIL the header's new R3 line 4 appears exactly once
+    FAIL the four R3 lines sit, in order, between the R2 row and the R4 row
+    FAIL the old R3 line (ending in a comma) is gone
+    FAIL the old `never under-selects` line is gone
+    FAIL no line of selftest-needed.sh still claims R3 never under-selects
+    FAIL CLAUDE.md's declaration line 1 appears exactly once
+    FAIL CLAUDE.md's declaration line 2 appears exactly once
+    FAIL CLAUDE.md's declaration line 3 appears exactly once
+    FAIL the declaration is its own paragraph directly before the one beginning `gates.sh` judges the **code**
+    FAIL the declaration sits in ## Running things
+```
+
+Right failures: in the AC-1/AC-2 reds, the exit (0) assertion passes and
+the stdout and stderr assertions fail, because today R3 maps the path to
+`gamma` (AC-1: `gamma grep-count lib sigpipe`, four lines; AC-2: `gamma`,
+one line, which is why AC-2's line-count assertion passes and only 4 of its
+8 fail). That is the prefix match, not a fixture error.
+
+**Per assertion -> AC.** See `## Test plan` (one row per case, with count
+and on-arrival result).
+
+**Export shape pinned.** No module is imported; the suite drives
+`bash scripts/selftest-needed.sh --suites` in a fixture and reads two files
+of the real tree. Pinned:
+
+- `--suites` stdout/stderr shapes exactly as HARNESS-094 (`hdr`, `SUITES_ALL`,
+  R5's `<path> is mapped by no rule; defaulting to every suite`). Unchanged.
+- The boundary rule, as Contract "R3, amended": accepted after the match:
+  end of line, space, `"`, `'`, backtick, `)`, `:`, `,`, `.` at end of
+  line; refused: `.` + alnum (`.bak`, `.d`), `-`, `_`, `/`, a digit. (A
+  letter is refused too, but no case pins it for `scripts/x.sh`;
+  `scripts/xy.sh` does not contain `scripts/x.sh`, and AC-2's
+  `scripts/new-story.sh` pins `-` after `scripts/new`.) Any one clean
+  occurrence on a line counts.
+- `scripts/selftest-needed.sh`: the four C-5 header lines, consecutive,
+  directly after `#                every suite: \`all\` (A-4)` and directly
+  before the line `#   R4 scans     a row of the SCANS table below; an
+  \`add\` row adds its suite`; the old lines 53 and 54 gone; no line
+  anywhere in the file containing `never under-selects`.
+- `CLAUDE.md` (CR stripped): the three C-5 lines once each; the five lines
+  before the line beginning `` `gates.sh` judges the **code** `` are blank,
+  the three lines, blank; the nearest `## ` heading above is `## Running
+  things`; the fence after the `--suites` line is still followed by a blank
+  line and `` `mutate.sh` exists because ``; lines 160-162 unchanged.
+
+Not constrained: how `clean_hit` is written (C-2 fixes its name and the
+`clean_hit($0, p[j])` spelling only for DV-1's sed; the suite does not read
+the awk), anything about the `hit` bookkeeping, and stderr reason lines
+beyond the header.
+
+**Contract amendments (in place, in `## Contract`, with reasons there).**
+
+1. C-3: the AC-1 controls' header is `hdr 4 9 1` with stdout `gamma`,
+   `grep-count`, `lib`, `sigpipe`, not `hdr 1 9 1`. A changed
+   `scripts/x.sh` is a `scripts/*.sh`, so R4's three `add` rows always put
+   those three suites beside the mapping stub (094's `scripts/probes/x.sh`
+   case pins the same shape). `hdr 1 9 1` was unsatisfiable.
+2. C-5 / C-1: the `## Running things` code block is 157-182, not 153-171,
+   and the `` `mutate.sh` exists because `` paragraph (184-188) sits between
+   it and the `gates.sh` paragraph (190), so "directly after the code block"
+   and "before the `gates.sh` paragraph" could not both hold. The paragraph
+   goes **after the `mutate.sh` paragraph, directly before the `gates.sh`
+   paragraph**, a blank line either side; RED pins that the fence still
+   runs into the `mutate.sh` paragraph. The three texts are unchanged.
+   Exactly what GREEN writes into `CLAUDE.md`, between line 188
+   (`Anything else, \`sed -i\` included, is working around the lock (law 5).`)
+   and its following blank line:
+
+       (blank line)
+       `--suites` maps a changed path to every suite whose source names it, ending
+       where the path ends, comments and test data included. A path a suite names
+       only as test data is mapped by that mention and does not reach `all`.
+
+   The header's four lines are C-5's, unamended. No acceptance criterion
+   changed.
+
+**Negative controls, expected values.** The controls ran this time (the
+suite loads; nothing fails at import), against the shipped bare-`index` R3.
+They pass on arrival because a clean mention is a substring too; they
+discriminate only against a GREEN that refuses a terminator it must accept.
+
+| Control (stub line on `gamma`, changed path untracked) | Expected under GREEN | Measured now (bare `index`) |
+|---|---|---|
+| `scripts/x.sh then stops` (space) | `gamma grep-count lib sigpipe`, `hdr 4 9 1`, gamma once | same, 9/9 pass |
+| `scripts/x.sh" then stops` | same | same, 9/9 |
+| `scripts/x.sh' then stops` | same | same, 9/9 |
+| `` scripts/x.sh` then stops `` | same | same, 9/9 |
+| `scripts/x.sh) then stops` | same | same, 9/9 |
+| `scripts/x.sh: then stops` | same | same, 9/9 |
+| `scripts/x.sh, then stops` | same | same, 9/9 |
+| `the last step runs scripts/x.sh.` (end of line) | same | same, 9/9 |
+| `keeps scripts/x.sh.bak then scripts/x.sh` | same | same, 9/9 |
+| `runs scripts/new then stops` (AC-2 control) | `gamma`, `hdr 1 9 1`, gamma once | same, 9/9 |
+| `keeps scripts/x.sh.bak and runs scripts/xy.sh` (AC-1) | `all`, R5 stderr | `gamma grep-count lib sigpipe`: 6/8 fail |
+| `-old`, `_old`, `/sub`, `.d`, `2` continuations (AC-1) | `all`, R5 stderr | same list: 6/8 fail |
+| `runs scripts/new-story.sh` (AC-2) | `all`, R5 stderr naming `scripts/new` | `gamma`: 4/8 fail |
+
+**AC-3: passed on arrival, earned by one mutation.** Prediction written
+before the run: renaming the helper fixture back everywhere
+(`s#_h096_fixture_helper\.sh#_helpers.sh#g`, 8 lines) turns exactly ONE
+assertion red, `this suite's source names the old helper fixture path on no
+line`, expected 0, actual 8; the AM-2 control itself stays green (the
+fixture's stubs never name it, so R5 still answers `all`), as do the
+`put`-line and `classify.sh` assertions (their needles are renamed with it,
+and `classify.sh` calls the old name `harness` too). So 30 failed, 588
+passed. Measured: exactly that.
+
+```
+=== mutate: .claude/tests/selftest-needed.test.sh (8 line(s) changed by s#_h096_fixture_helper\.sh#_helpers.sh#g) ===
+  788 - put .claude/tests/_h096_fixture_helper.sh 'helper() { :; }'
+  788 + put .claude/tests/_helpers.sh 'helper() { :; }'
+  ...
+=== mutate: running bash scripts/selftest.sh selftest-needed ===
+    FAIL this suite's source names the old helper fixture path on no line
+         expected: 0
+         actual:   8
+selftest-needed: 588 passed, 30 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_selftest-needed.test.sh.20261107T203514Z.232554.bak) ===
+```
+
+Diff of that run's FAIL lines against the RED run's: the one line above
+and nothing else. `bash scripts/mutate.sh --check`: `no stranded mutation`.
+Full log: scratch only, not committed. The old names are spelled in two
+halves in the guard (`".claude/tests/""_helpers.sh"`), so the guard is not
+itself a mention. `classify.sh` re-checked on this tree:
+`harness	.claude/tests/_h096_fixture_helper.sh`,
+`harness	scripts/h096-fixture-tool.sh` (and the suite now asserts both).
+
+Note for DV-3 and AC-3: the AC-1/AC-2 fixture names this suite now carries
+(`scripts/x.sh`, `scripts/x.sh.bak`, `scripts/xy.sh`, `scripts/new`,
+`scripts/new-story.sh`) are mentions on the real tree. `scripts/new-story.sh`
+is a real file, so it now also selects `selftest-needed`: an over-selection,
+harmless. `scripts/x.sh` was already named at line 110 before this story.
+
+**Deferred verifications: declined.** DV-1, DV-2 and DV-3 are owned by
+GATES, and DV-1 needs the real `clean_hit`, which does not exist in RED. I
+did not run any of them. Predicted DV-1 result (restore bare `index` after
+GREEN): 16 red, every control green.
+
+| Assertion (both `[from root]` and `[from subdir]`) | DV-1 |
+|---|---|
+| AC-1 `x.sh.bak`/`xy.sh`: stdout exactly the pinned list | red x 2 |
+| AC-1 `x.sh.bak`/`xy.sh`: stdout has exactly 1 line(s) | red x 2 |
+| AC-1 `x.sh.bak`/`xy.sh`: stderr exactly the pinned text | red x 2 |
+| AC-1 continuations: the same three | red x 6 |
+| AC-2 `new-story.sh`: stdout exactly the pinned list, stderr exactly the pinned text | red x 4 |
+| AC-2 `new-story.sh`: stdout has exactly 1 line(s), exits 0 | green (`gamma` is one line) |
+| every AC-1/AC-2 control, AC-3, AC-4, every HARNESS-094 case | green |
+
+So: `selftest-needed: 602 passed, 16 failed`. DV-1's text names the
+`x.sh.bak` case and AC-2; the second AC-1 dirty case goes red too.
+
+**Timings:** all local (Windows host, under concurrent load). No CI timing
+was taken. No timeouts are involved: the suite is bash with no per-test
+budget.
+
+**For GREEN.** `--suites` already gives the R4 additions for `scripts/x.sh`,
+so the only behaviour change is the R3 hit test. The header precondition
+pins the R2 tail line `#                every suite: \`all\` (A-4)`
+unchanged; leave it.
 
 ## Regressions
 
+## Diff review
+
+Fresh `feature-developer` with the `diff-review` skill, 2026-11-07, over
+`git diff d3e8822 HEAD` at `d4d498e`; resolved **claude-opus-5-5**, no
+override beyond `model: opus`. It changed no file in the worktree. The report
+is kept whole below, apart from its opening summary of the change.
+
+- **`clean_hit` in POSIX awk.**
+  - An empty needle cannot occur: `FNR == NR { if (length($0)) ...}` drops
+    empty paths before they are stored.
+  - `substr` past the end of the line returns `""` in gawk, mawk and busybox,
+    and both `c` and `nx` are guarded against `""` before `index` is used on
+    them.
+  - The occurrence walk moves `off` forward one match start at a time, so it
+    finds overlapping matches, and a dirty match followed by a clean one on
+    the same line.
+  - A path at the very start of a line works, because only the right-hand
+    edge is checked.
+  - `p[j]` is only ever a literal `index` needle. The only regex calls are
+    the two `sub()` calls on `FILENAME`.
+  - A CRLF line ends in `\r`, which counts as a clean terminator, so Windows
+    checkouts are not affected.
+- **The `.` rule.** `scripts/x.sh.` at the end of a line, or followed by a
+  space or punctuation, counts as a mention. `scripts/x.sh.bak` and
+  `scripts/x.sh.d` do not.
+- **Real paths losing suites.** A one-off awk applied the old rule (bare
+  `index`) and the new rule (`clean_hit`) to all 281 tracked paths against
+  the current `.claude/tests/*.test.sh`. Both give 292 (path, suite) pairs,
+  and no tracked path lost a suite. As a control, `scripts/new` drops from 7
+  suites to 1, so the comparison does tell the two rules apart. Scratch files
+  only.
+- **Callers.** The only caller is `scripts/selftest.sh:312` (`--changed`).
+  Stdout and stderr have the same shape as before. Nothing under `.github/`
+  or `.claude/hooks/` calls the script.
+- **Tests.**
+  - Each continuation character (`-`, `_`, `/`, `.`+alnum, digit) is pinned
+    by one fixture line, so dropping any one of them from the alphabet turns
+    the AC-1 case red.
+  - The `nx != ""` guard is pinned by the sentence-ending `.` control.
+  - Side note: the AC-1 fixture's `scripts/xy.sh` does not contain
+    `scripts/x.sh`, so it adds nothing to that case. It is harmless, because
+    `x.sh.bak` carries the case.
+- **CLAUDE.md.** The new paragraph contradicts neither the header nor the
+  unchanged `--suites` and `--changed` lines, apart from finding 1.
+
+Nice to have:
+
+1. **The CLAUDE.md sentence ignores the R2 paths** (the new paragraph before
+   "`gates.sh` judges the **code**").
+   - **What this is:** the line saying that a path a suite names only as test
+     data "is mapped by that mention and does not reach `all`".
+   - **Problem:** `scripts/selftest.sh` and the other three R2 paths are named
+     by suites and still give `all`, through R2. So "does not reach `all`" is
+     true only of the unmapped-path rule (R5). The header's "never reaches
+     R5" says it correctly.
+   - **Fix:** say "is not defaulted to `all` as unmapped". AC-4 and C-5 pin
+     the current text, so the change needs an `## Amendments` entry, not an
+     edit.
+   - **If we skip it:** a reader could expect a change to
+     `scripts/selftest.sh` to select a short list of suites. The script still
+     prints `all`, so nothing runs fewer suites than it should.
+
+Verdict: Ship.
+
+*Orchestrator (2026-11-07):* not taken in this story. The finding is about
+wording, the behaviour is safe in the direction that matters (R2 still gives
+`all`), and AC-4 pins the text, so changing it would be an amendment the user
+has to approve. It is offered to the user as a follow-up.
+
 ## Gate results
 
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-07T22:36:15Z
+    commit: 177e411
+    tree:   f168da6c1a8e7ef7b9a3ba364419c894c6a89fc8
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
+
 ## Gate probes
+
+**DV-3, AC-3 on the real tree (orchestrator, 2026-11-07).** GATES freezes
+test paths in this worktree, so an untracked `.claude/tests/_helpers.sh`
+cannot be written here. The probe ran in a `--no-hardlinks` scratch clone
+checked out at the branch tip `177e411`, with `main` and `origin/main` set to
+the merge base `d3e8822`. Each file was a one-line `#!/usr/bin/env bash`,
+created alone and removed after, and `git status` was clean after each.
+
+At `177e411` (the 096 script and suite), each name gives exactly `all`:
+
+```
+== .claude/tests/_helpers.sh alone, script at 177e411 ==
+    selftest-needed: suites — all: .claude/tests/_helpers.sh is mapped by no rule; defaulting to every suite
+    all
+== scripts/newtool.sh alone, script at 177e411 ==
+    selftest-needed: suites — all: scripts/newtool.sh is mapped by no rule; defaulting to every suite
+    all
+```
+
+Negative control, a clone at the merge base `d3e8822` (the 094 script and
+suite): both names give a list, mapped through the old fixture mentions.
+This matches 094's 3 of 34 for `_helpers.sh`:
+
+```
+== _helpers.sh alone ==
+    selftest-needed: suites — 3 of 34 selected from 1 harness path(s) changed against origin/main (merge-base d3e8822)
+      grep-count       .claude/tests/_helpers.sh (scans *.sh)
+      selftest-needed  .claude/tests/_helpers.sh (mentioned)
+      sigpipe          .claude/tests/_helpers.sh (scans *.sh)
+== newtool.sh alone ==
+    selftest-needed: suites — 4 of 34 selected from 1 harness path(s) changed against origin/main (merge-base d3e8822)
+      grep-count       scripts/newtool.sh (scans *.sh)
+      lib              scripts/newtool.sh (scans scripts/*.sh)
+      selftest-needed  scripts/newtool.sh (mentioned)
+      sigpipe          scripts/newtool.sh (scans *.sh)
+```
 
 ## Scaffold inventory
 
@@ -154,3 +723,80 @@ name, below the table.
 
 - Planned 2026-11-04 from HARNESS-094's second GATES diff review, at the
   user's decision "Ship, file follow-up".
+- PO decisions at PLANNED → RED (orchestrator, 2026-11-07, tree `d3e8822`):
+  1. **AC-4 refined, not amended** (still PLANNED, so no `## Amendments`).
+     `CLAUDE.md` holds no "never under-selects" claim — `grep -rn
+     under-select scripts CLAUDE.md .claude/harness docs/wiki` finds only
+     `scripts/selftest-needed.sh:54` — and its `--suites` line (161) is
+     pinned byte for byte by HARNESS-094 AC-8 (selftest-needed.test.sh
+     863-882), together with the `--changed` line after it. Rewriting that
+     line would mean editing a DONE story's assertion to fit. So the
+     declaration lands in `CLAUDE.md` as a new paragraph (C-5) and the
+     command lines stay. Reported to the user first, so it can be overruled
+     before GREEN.
+  2. **Not already delivered:** line 203 is still the bare
+     `index($0, p[j])`; line 54 still says `never under-selects`; the AM-2
+     fixtures are still `_helpers.sh` / `newtool.sh`; `CLAUDE.md` has no
+     declaration paragraph.
+  3. **Required gate:** none configured; the artifact is judged by the
+     `selftest-needed` suite, which CI runs in full on the PR.
+     `required_gates: []` stays. Epic empty: no done-when to check.
+  4. **Callers:** none. The change is inside one awk program and the
+     output shapes do not move (C-6).
+  5. `plan.sh conflicts`: "fewer than two startable stories"; this is the
+     last story on the board.
+  6. **Budget:** DV-1 is the defect put back; DV-3 is the real-tree probe a
+     rule-over-the-tree story owes; RED earns its AC-3 renames with one
+     mutation of its own. DV-2 (the 094 replay) is above the default and
+     kept, because a shrinking list is the one regression this story could
+     introduce without any fixture seeing it.
+- RED verified by the orchestrator (2026-11-07): `attest.sh check` said
+  `fresh` for `bash scripts/selftest.sh selftest-needed` (exit 1,
+  `selftest-needed: 589 passed, 29 failed`, log
+  `20261107T204103Z.248331.log`) and `bash scripts/gates.sh --fast`
+  (exit 0, 0 ran), so neither was re-run. Every one of the 29 FAIL lines is
+  a HARNESS-096 AC-1/AC-2/AC-4 assertion; no HARNESS-094 case is red; the
+  only other FAIL is the floor line (589 passed against 618, as in 094's
+  RED). The controls are green on arrival, as planned.
+  - **Contract amendments reproduced independently:**
+    - C-3 (`hdr 4 9 1`, not `hdr 1 9 1`): `SCANS` at
+      `scripts/selftest-needed.sh:172-174` holds `lib add scripts/*.sh`,
+      `sigpipe add *.sh` and `grep-count add *.sh`, so any changed
+      `scripts/*.sh` lists those three beside the mapping suite. Accepted.
+    - C-5 placement: `CLAUDE.md`'s `## Running things` block runs 157-182,
+      and the `` `mutate.sh` exists because `` paragraph (184) sits between
+      it and the `` `gates.sh` judges `` paragraph (190), so my two clauses
+      could not both hold. PO decision: the declaration goes directly before
+      the `gates.sh` paragraph, after the `mutate.sh` one, as RED pinned it;
+      the `mutate.sh` paragraph explains the block's last line and stays
+      attached to it.
+- GREEN verified by the orchestrator (2026-11-07): `attest.sh check` said
+  `fresh` for `bash scripts/selftest.sh selftest-needed` (exit 0,
+  `selftest-needed: 618 passed, 0 failed`, no FAIL line, log
+  `20261107T205729Z.309282.log`) and `bash scripts/gates.sh --fast`
+  (exit 0, 0 ran), so neither was re-run. Diff read: `clean_hit` is POSIX
+  awk (`index`/`substr` against literal alphabets), the hit test is
+  spelled `clean_hit($0, p[j])` once, so DV-1's sed applies; the header's
+  four lines and `CLAUDE.md`'s three are C-5's text; `VERSION` 116. Every
+  control in the handoff's table is green at its recorded value.
+- GATES verified by the orchestrator (2026-11-07): DV-1, DV-2 and DV-3 run
+  by me before `gates.sh`, results pasted in their blocks and in
+  `## Gate probes`. The full run was dispatched; `attest.sh check -- bash
+  scripts/gates.sh` said `fresh` (exit 0, 5 s, log
+  `20261107T223610Z.410193.log`, whose verdict line is `All required gates
+  passed (0 ran, 7 unconfigured, 0 known).`), so it was not re-run. The
+  developer changed no file.
+- Diff review at GATES → REVIEW (2026-11-07): `Verdict: Ship.`, one Nice to
+  have (CLAUDE.md wording about R2 paths) left as a follow-up offered to the
+  user; report in `## Diff review`.
+- Self-test at GATES → REVIEW (2026-11-07): `selftest-needed: run`.
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` was dispatched and
+  detached, and ran alone. `attest.sh check` said `fresh`, `exit: 0`,
+  `last: 21 harness suite(s) passed.`, `duration: 2311s`, log
+  `20261107T224331Z.418219.log`. Header:
+  `selftest: --changed — 21 of 34 suite(s) selected: attest boundaries dispatch doctor grep-count host-load lib mutate phase-guard plan procedure refresh reporting rules-trim run-lock selftest selftest-needed shipped-docs sigpipe story worktree`.
+  The floors audit passed for all 21 suites (4143 assertions executed,
+  4143 declared). The log has no FAIL line. `--changed` was enough, not the
+  full run: `selftest-needed.sh` has one caller, `selftest.sh`, and the
+  `selftest`, `dispatch` and `procedure` suites that exercise it were
+  selected.

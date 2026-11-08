@@ -187,6 +187,10 @@ expression, runs the command, restores the file, verifies the restore with `cmp`
 and logs it — so it is allowed in every phase, and the phase lock knows it.
 Anything else, `sed -i` included, is working around the lock (law 5).
 
+`--suites` maps a changed path to every suite whose source names it, ending
+where the path ends, comments and test data included. A path a suite names
+only as test data is mapped by that mention and does not reach `all`.
+
 `gates.sh` judges the **code**; `check-boundaries.sh` judges the **commit** —
 the phase in the committed frontmatter, the acceptance criteria against the base
 branch, whether the recorded gate run still matches the tree. CI runs both, so
