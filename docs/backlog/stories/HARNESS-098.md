@@ -4,8 +4,8 @@ title: CLAUDE.md's --suites paragraph stops claiming a test-data mention never g
 slug: claude-md-s-suites-paragraph-stops-claim
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-098-claude-md-s-suites-paragraph-stops-claim
 depends_on: [HARNESS-096]      # it rewrites one line HARNESS-096 wrote and supersedes one of its assertions; 096 is DONE on main (b7b1809)
 touches: [CLAUDE.md, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -213,6 +213,11 @@ name, below the table.
 - GATES - `feature-developer` (full gates run), planned `opus`, resolved
   **claude-opus-5-5** (2026-11-08), self-reported; `model: opus` passed. As
   planned.
+- GATES - `feature-developer` (diff review, fresh), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-08), self-reported. As planned.
+- GATES - `feature-developer` (`--changed` self-test), planned `opus`,
+  resolved **claude-opus-5-5** (2026-11-08), self-reported. As planned.
+
 ## Out of scope
 
 - Any change to `scripts/selftest-needed.sh` - its awk, its R2 `case`, or
@@ -425,6 +430,67 @@ in the PR's CI selftest; nothing GREEN writes affects it.
 - Negative controls: none recorded (every assertion ran in RED), so nothing
   to confirm beyond the counts. No gate added or changed; no `## Gate probes`.
 
+## Diff review
+
+Fresh `feature-developer` with the `diff-review` skill, 2026-11-08, over
+`git diff b7b1809 HEAD` at `e2e8e5b`; resolved **claude-opus-5-5**, no
+override beyond `model: opus`. It changed no file. The report is condensed
+below; its checks and its finding are kept whole.
+
+- **Is the new line true for every rule?**
+  - R1 (itself) and R3 (mentioned): true.
+  - R2 (every): an R2 path answers `all` with the reason "is read by every
+    suite". That is not the R5 unmapped default, so "never as unmapped"
+    holds.
+  - R4 (scans): its `add` rows do not map a path, but a test-data mention
+    still maps it through R3. True.
+  - R5 (unmapped): it needs R1-R3 and R4's `map` rows all to miss, and a
+    mention is an R3 hit. True.
+  - The line says what the header's R3 row says, and the parenthesis matches
+    R5's "`all`, naming the path".
+- **Width and shape:** the new line is 77 characters. The paragraph is still
+  three lines with a blank line either side, directly before the `gates.sh`
+  judges paragraph, so the placement assertion's `NR-5..NR-1` window holds.
+- **Assertions:** `cm_count` compares whole lines, `CM_TEXT` is CR-stripped
+  (line 872), and both new assertions read `CM_TEXT`.
+- **The awk `index` needle:** no line in CLAUDE.md contains it today. A
+  future line using the phrase would be making the same negative claim
+  about `all`, so the needle blocks nothing legitimate.
+- **Floors comment:** says RED measured 616 passed, 4 failed, 620 executed.
+  That matches the RED record and DV-1, and the date matches the RED commit.
+- **Other copies of the old clause:** none outside the 096 and 098 story
+  files, apart from the test's own pins and comment and the floors comment,
+  all deliberate. docs/wiki, the skills and rules.md carry no copy. The
+  header's R3 row was correct and is unchanged (AC-4).
+- **Supersession record:** the 096 describe title is still accurate. The
+  comment above `CM_P1` names HARNESS-098, quotes the old text and says why
+  it was false, so a later reader is not misled.
+- **DV-1:** exactly the four predicted FAILs, a verified restore, and a
+  clean `mutate.sh --check`.
+
+Nice to have:
+
+1. **The line still invites the inference the old line stated**
+   (`CLAUDE.md:192`).
+   - **Problem:** someone changing `scripts/selftest.sh`, which 11 suites
+     name, may read "counts as mentioned, never as unmapped (which gives
+     `all`)" as "so it gives those suites, not `all`". `--suites` still
+     prints `all` through R2, which the paragraph never mentions. The
+     sentence is true; only the inference is wrong, and much less invited
+     than before.
+   - **Fix:** none here, because AC-2 fixes the exact text. A later story
+     could name R2 in the paragraph, at the cost of a fourth line and a
+     placement-window edit.
+   - **If we skip it:** an occasional expectation of a short list that gets
+     `all` instead. That is over-selection, the safe direction.
+
+Verdict: Ship.
+
+*Orchestrator (2026-11-08):* not taken. It errs in the safe direction, the
+text is this story's pinned AC-2, and naming R2 would grow the paragraph,
+which the story chose not to do. No follow-up is filed; the user can ask
+for one.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -518,3 +584,15 @@ in the PR's CI selftest; nothing GREEN writes affects it.
   `fresh` (exit 0, 5 s, log `20261108T063250Z.674547.log`, verdict `All
   required gates passed (0 ran, 7 unconfigured, 0 known).`), so it was not
   re-run. The developer changed no file.
+- Diff review at GATES → REVIEW (2026-11-08): `Verdict: Ship.` It had one
+  Nice to have (the R2 inference), not taken; the report is in
+  `## Diff review`.
+- Self-test at GATES → REVIEW (2026-11-08): `selftest-needed: run`.
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` was dispatched,
+  detached, and ran alone. `attest.sh check` said `fresh`, `exit: 0`,
+  `last: 19 harness suite(s) passed.`, `duration: 2977s`, log
+  `20261108T064705Z.681279.log`. Header:
+  `selftest: --changed — 19 of 34 suite(s) selected: attest boundaries doctor grep-count host-load lib mutate phase-guard plan refresh reporting rules-trim run-lock selftest selftest-needed shipped-docs sigpipe story worktree`.
+  The floors audit was met for all 19 suites (3908 executed, 3908
+  declared), and the log has no FAIL line. `--changed` is enough here: no
+  script changed, so case (b) of the procedure does not apply.
