@@ -5,7 +5,7 @@ slug: the-gates-suite-executes-the-same-count
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-099-the-gates-suite-executes-the-same-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -291,6 +291,25 @@ RED cannot own this: in RED the suite is being written, and the committed shape
 is what the mutation must be against. Paste the red lines, the floor FAIL, the
 restore line, and confirm `bash scripts/mutate.sh --check` is clean.
 
+*Result (orchestrator, 2026-11-08, tree `2723914`):* ran with RED's recorded
+expression, in this worktree, alone. Exactly the one predicted assertion went
+red, the bootstrapped count pin (3 against 0), and the floor FAIL reads 991
+against 998, which matches RED's corrected arithmetic: two fixture manifests
+take the bootstrapped path in the template tree, so 6 assertions stop. The
+restore was verified and `mutate.sh --check` was clean afterwards.
+
+```
+=== mutate: .claude/tests/gates.test.sh (1 line(s) changed by s/then boot69 "\$_p" "\$2" "\$3"; return 0/then return 0/) ===
+=== mutate: running bash scripts/selftest.sh gates ===
+    FAIL HARNESS-099 AC-2: the bootstrapped path of the shipped-manifest block executes exactly three assertions
+         expected: 3
+         actual:   0
+gates: 991 passed, 1 failed
+FAIL gates  did 991 units of work, below the floor of 998 in .claude/tests/floors.conf
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_gates.test.sh.20261108T215303Z.1250066.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
 **DV-2 (the consumer's shape, end to end - AC-1). Owner: GATES.** In a scratch
 clone of the GATES tree (`git clone --no-hardlinks . <scratch>`, never
 manga-translator's worktree), make the clone's own
@@ -309,6 +328,31 @@ failed` with the same `N`, `N` ≥ the floor, no `FAIL gates` line, no `note:
 project.conf is this project's own` line, and exit 0. The PLANNED
 reproduction of the same procedure against `main` (`## Notes`) is the before
 side. Paste both summary lines and both exit codes.
+
+*Result (orchestrator, 2026-11-08):* passed. Two `--no-hardlinks` scratch
+clones were made of the branch at `2723914`. In the bootstrapped clone,
+`BOOTSTRAPPED=yes` was set, the five required gates were given `printf ok`,
+and five `evidence | <id> | -` lines were appended. The template clone was
+left unmodified. Both ran `bash scripts/selftest.sh gates`. `--audit` passed
+in the bootstrapped clone first. The two runs printed the same count, 998,
+equal to the floor; there was no `FAIL gates` line and the `note:` line count
+was 0 in both. The before side (981 against 984) is the PLANNED reproduction
+in `## Notes`.
+
+```
+clones at: 2723914 2723914
+== boot clone --audit:
+Manifest audit passed.
+audit rc=0
+== boot clone: bash scripts/selftest.sh gates
+boot rc=0
+gates: 998 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (998 assertions executed, 998 declared).
+== template clone: bash scripts/selftest.sh gates
+tmpl rc=0
+gates: 998 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (998 assertions executed, 998 declared).
+```
 
 ## Amendments
 
@@ -345,6 +389,9 @@ name, below the table.
   (2026-11-08), self-reported; `model: opus` passed. As planned.
 - GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
   (2026-11-08), self-reported; `model: opus` passed. As planned.
+- GATES - `feature-developer` (full gates run), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-08), self-reported; `model: opus` passed. As
+  planned.
 
 ## Out of scope
 
@@ -638,10 +685,21 @@ measured differently.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-08T22:21:56Z
+    commit: 2723914
+    tree:   b60fbe940d0f3a97f3080b902ed039691610f0ed
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
@@ -755,3 +813,9 @@ measured differently.
   `20261108T213638Z.1219037.log`) and for `bash scripts/gates.sh --fast`
   (exit 0, 0 ran, log `20261108T214854Z.1247206.log`), so neither was re-run.
   Diff read: GREEN changed only `VERSION` (117 → 118) and the story.
+- GATES verified by the orchestrator (2026-11-08): DV-1 and DV-2 were run
+  by me before and beside `gates.sh`, with results pasted in their blocks.
+  The full run was dispatched; `attest.sh check -- bash scripts/gates.sh`
+  said `fresh` (exit 0, 2 s, log `20261108T222155Z.1297391.log`, verdict `All
+  required gates passed (0 ran, 7 unconfigured, 0 known).`), so it was not
+  re-run. The developer changed no file.
