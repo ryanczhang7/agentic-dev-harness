@@ -4,8 +4,8 @@ title: The gates suite executes the same count in a bootstrapped project as in t
 slug: the-gates-suite-executes-the-same-count
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-099-the-gates-suite-executes-the-same-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -144,15 +144,25 @@ both trees, and CI runs the full self-test on the PR.
   `^BOOTSTRAPPED=` line of the CR-stripped conf, text after `=`, all whitespace
   removed, empty meaning `no`; `yes` is bootstrapped - and sets `SHIP69_PATH`
   to `bootstrapped` or `template`. It executes EXACTLY THREE assertions on
-  either path, titled `AC-7 (<label>): ...`; `<label>` is `shipped` for the
-  real manifest so the template tree's three titles become
-  `AC-7 (shipped): the shipped project.conf holds the keep-when format line
-  once, after skipped-when's and before BOOTSTRAPPED=` and so on - the title
-  prefix is the one change to the template assertions, their bodies and
-  expected values are not touched. The `note:` printf is deleted. The template
-  path is the three existing assertions over `<conf>`. The bootstrapped path
-  is C-3. `ship69 shipped "$SHIP69" "$REPO_ROOT"` is called once where the
-  `if` was.
+  either path, titled `AC-7 (<label>): ...` for a non-empty `<label>` and
+  `AC-7: ...` for an empty one (the prefix is `AC-7${1:+ ($1)}:`). The real
+  manifest is called with an EMPTY label, so the template tree's three titles
+  stay exactly `AC-7: the shipped project.conf holds the keep-when format line
+  once, after skipped-when's and before BOOTSTRAPPED=` and so on; the fixture
+  calls carry their labels. Their bodies and expected values are not touched
+  (the one change is `$SHIP69` → `$2`, the `<conf>` argument). The `note:`
+  printf is deleted. The template path is the three existing assertions over
+  `<conf>`. The bootstrapped path is C-3. `ship69 "" "$SHIP69" "$REPO_ROOT"`
+  is called once where the `if` was.
+  *Amended in RED (test-developer, 2026-11-08).* As planned this block said
+  `<label>` is `shipped` for the real manifest, giving titles that begin
+  `AC-7 (shipped): the shipped project.conf ...`. That contradicts AC-5, which
+  is frozen and requires the three template titles to begin
+  `AC-7: the shipped project.conf holds the keep-when format line once`,
+  `AC-7: and an example keep-when line in a comment` and
+  `AC-7: the shipped project.conf carries no live keep-when line`, "with their
+  text ... unchanged". The AC wins and the Contract is amended to fit it; no
+  criterion moved.
 - **C-3. The bootstrapped path - three assertions about the manifest's own
   live keep-when lines**, none a duplicate of the `--audit` trio at
   3864-3867, which stays unconditional. Readers, as functions beside `live69`:
@@ -245,8 +255,11 @@ both trees, and CI runs the full self-test on the PR.
   in two steps, both pasted in the handoff: (1) the function with the
   bootstrapped path still printing the `note:` and asserting nothing, plus
   C-4's fixtures and pins - the bootstrapped count pin fails `3` against `0`,
-  the `ws.conf` path pin fails (`template`, and its three template assertions
-  fail on a manifest with no format line) - that is AC-2 and AC-4 reproduced;
+  the `ws.conf` path pin fails (`template`, and two of its three template
+  assertions fail on a manifest with no format line - the third, "carries no
+  live keep-when line", holds, because C-4's `ws.conf` has no live line;
+  *amended in RED, 2026-11-08, from "its three template assertions fail",
+  to match the step-1 run in `## Handoff`*) - that is AC-2 and AC-4 reproduced;
   (2) C-3 written - green. AC-1 itself is not a suite assertion (it is a
   statement about two whole runs) and is verified by DV-2. GREEN bumps
   `.claude/harness/VERSION` 117 → 118 (`check-boundaries.sh` refuses an
@@ -328,6 +341,9 @@ name, below the table.
   dispatch. Oracle partition for RED's brief: every criterion is mechanical
   (Contract, "Oracle"); the only measured number is the floor, read off the
   run.
+- RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5**
+  (2026-11-08), self-reported; `model: opus` passed. As planned.
+
 ## Out of scope
 
 - Any change to `scripts/selftest.sh`'s floor mechanism - a declared or
@@ -356,8 +372,28 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All in `.claude/tests/gates.test.sh`, in the HARNESS-069 section, at the level
+the defect lives: the suite's own shipped-manifest block, run by
+`bash scripts/selftest.sh gates`. Every assertion is unconditional and runs in
+every tree, except the real manifest's three, which run on whichever path the
+real `project.conf` takes, and are three either way.
+
+| Assertion (title) | Covers |
+|---|---|
+| `AC-7: the shipped project.conf holds the keep-when format line once, ...` / `AC-7: and an example keep-when line in a comment, ...` / `AC-7: the shipped project.conf carries no live keep-when line` - `ship69 "" "$SHIP69"` in the template tree (titles and bodies unchanged) | AC-5 |
+| `AC-7: gates.sh --list attributes every live keep-when line ...` / `AC-7: and prints every live keep-when pattern verbatim` / `AC-7: every live keep-when pattern is a valid ERE ...` - the same call in a bootstrapped tree | AC-1, AC-3 |
+| `AC-7 (template-fixture): ...` x3, on `tmpl.conf` | AC-2 (template path holds on a template-shaped manifest) |
+| `HARNESS-099 AC-2: the template path of the shipped-manifest block executes exactly three assertions` (3) | AC-2 |
+| `AC-7 (bootstrapped-fixture): ...` x3, on `boot.conf` (live line before `BOOTSTRAPPED=`, a `|`-less spacing variant, a `\+` pattern, a commented line) | AC-3 (a), (b), (c) |
+| `HARNESS-099 AC-2: the bootstrapped path of the shipped-manifest block executes exactly three assertions` (3) | AC-2, AC-1 by construction |
+| `AC-7 (whitespace-yes): ...` x3, on `ws.conf` (empty live set) | AC-4, AC-3 on the empty case |
+| `HARNESS-099 AC-4: BOOTSTRAPPED=  yes  , read as gates.sh reads it, takes the bootstrapped path` (`bootstrapped`) | AC-4 |
+| `HARNESS-099 AC-3 control: badere69 counts the invalid ERE ( once` (1, on `bad.conf`) | AC-3 control |
+| `HARNESS-099 AC-3 control: kw69 reads live.conf's two live lines trimmed and not the comment` (`unit\tx\nunit\ty`) | AC-3 control |
+| floors: `floor \| gates \| 998` (floors.conf 47) = `gates 998` (selftest.test.sh 538), the `selftest` suite's existing equality check | AC-5 |
+
+AC-1 is about two whole runs, not one assertion; it is measured (Handoff,
+"Bootstrapped-tree count") and owned end to end by DV-2.
 
 ## Handoff: RED -> GREEN
 
@@ -372,6 +408,199 @@ name, below the table.
        * the sed expression DV-1 will use, against the shape as built
        * which of C-5's two orderings was taken
        * anything discovered that changes the approach -->
+
+Written by `test-developer`, resolved **claude-opus-5-5** (Opus 5.5), 2026-11-08,
+dispatched by the orchestrator with no model override stated. Windows host,
+local, every number below.
+
+**Command.** `bash scripts/selftest.sh gates` (about 10 minutes here).
+
+**Files touched.**
+- `.claude/tests/gates.test.sh` - the shipped-manifest block (now 3805-3946)
+  rewritten as `ship69` plus readers, fixtures, pins and controls. Nothing
+  after it changed: lines from `mkdir -p "$M69/src/sub"` (now 3947) to the end
+  are byte-identical to `main` (checked with `diff`). The HARNESS-080 blocks,
+  the `--audit` trio (now 3959-3962) and the goldens keep their text.
+- `.claude/tests/floors.conf` - line 47 `984` -> `998`, and a HARNESS-099
+  paragraph appended to the comment block (the end of the file).
+- `.claude/tests/selftest.test.sh` - line 538 `gates 984` -> `gates 998`.
+- `docs/backlog/stories/HARNESS-099.md` - `## Test plan`, this handoff, and two
+  in-place Contract amendments (C-2, C-7; below).
+- Not touched: `scripts/gates.sh`, `.claude/harness/project.conf`,
+  `.claude/harness/VERSION` (GREEN's).
+
+**C-5 ordering: the functions moved up.** `cwds69` (with its HARNESS-080
+comment) and `audit69` moved, bodies byte-identical, to directly after
+`live69()` (now 3837 and 3848); the new `list69` is beside them (3850), then
+`kw69` 3854, `kwlist69` 3865, `badere69` 3873, `boot69` 3884 (the
+bootstrapped path's three assertions), `ship69` 3900, the real-manifest call
+`ship69 "" "$SHIP69" "$REPO_ROOT"` 3916, then `live.conf` and its existing
+control, then C-4's fixtures, pins and controls (3918-3946). Callers checked:
+`audit69`'s three callers (now 3950, 3955, 3959) keep their signature
+`audit69 <conf> <source root>`; `kwlist69` uses stdout only (`g69` discards
+stderr).
+
+**Contract amendments made in RED (in place, with reasons there).**
+- **C-2:** the real manifest is called with an EMPTY label, and the prefix is
+  `AC-7${1:+ ($1)}:`, so the template tree's three titles stay `AC-7: the
+  shipped project.conf ...` exactly. As planned, `shipped` would have made them
+  `AC-7 (shipped): ...`, which contradicts frozen AC-5 ("titles beginning
+  `AC-7: the shipped project.conf holds ...`", "text ... unchanged"). No AC
+  moved. The fixture calls carry labels (`template-fixture`,
+  `bootstrapped-fixture`, `whitespace-yes`). Template bodies' one change:
+  `$SHIP69` -> `$2`.
+- **C-7:** step 1 fails TWO of `ws.conf`'s three template assertions, not
+  three: C-4's `ws.conf` has no live line, so "carries no live keep-when line"
+  holds. That is measured (below), not a defect.
+
+**Step 1 - the defect reproduced (AC-2, AC-4).** `ship69` with today's
+behaviour inside it: the literal `grep -qE '^BOOTSTRAPPED=yes'` decision and
+a bootstrapped path that printed the HARNESS-070 `note:` and asserted
+nothing, plus every C-4 fixture, pin and control. Attest record:
+
+    command:  bash scripts/selftest.sh gates
+    tree:     3a614a03154501cfb53f6c477f3fb56e0946bfe5
+    status:   ok
+    exit:     1
+    duration: 652s
+    last:     1 of 1 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261108T201721Z.1152954.log
+
+The FAIL lines, verbatim from that log (117-129):
+
+    note: project.conf is this project's own (BOOTSTRAPPED=yes), not the template; its keep-when text is not asserted (HARNESS-070)
+    FAIL HARNESS-099 AC-2: the bootstrapped path of the shipped-manifest block executes exactly three assertions
+         expected: 3
+         actual:   0
+    FAIL AC-7 (whitespace-yes): the shipped project.conf holds the keep-when format line once, after skipped-when's and before BOOTSTRAPPED=
+         expected: yes
+         actual:   no (keep-when format at none, skipped-when format at none, BOOTSTRAPPED at none)
+    FAIL AC-7 (whitespace-yes): and an example keep-when line in a comment, between the format line and BOOTSTRAPPED=
+         expected: yes
+         actual:   no (example at none)
+    FAIL HARNESS-099 AC-4: BOOTSTRAPPED=  yes  , read as gates.sh reads it, takes the bootstrapped path
+         expected: bootstrapped
+         actual:   template
+
+    gates: 991 passed, 4 failed
+
+Those are the right failures: the count pin is 3 against 0 because the
+bootstrapped path ran nothing (the `note:` printed once, for `boot.conf`);
+`BOOTSTRAPPED=  yes  ` went down the template path. The template-path count
+pin and both AC-3 controls passed there (995 executed = 984 + 3 + 1 + 0 + 1 +
+3 + 1 + 2).
+
+**Step 2 - C-3 written: green.** Floors already set to 998 (the prediction);
+attest record on the final tree:
+
+    run:      2026-11-08T20:29:52Z
+    command:  bash scripts/selftest.sh gates
+    tree:     8819b3d31de55b894e7c145740808774962936eb
+    status:   ok
+    exit:     0
+    duration: 572s
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261108T202952Z.1175278.log
+
+    gates: 998 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (998 assertions executed, 998 declared).
+
+No `FAIL` and no `note: project.conf` line in that log.
+`attest.sh check -- bash scripts/selftest.sh gates` reports `fresh` after the
+story edits (the story is not in the hashed tree).
+
+**Measured floor: 998 EXECUTED** (template tree), written to floors.conf 47
+and selftest.test.sh 538.
+
+**Bootstrapped-tree count, measured (not the worktree).** A
+`git clone --no-hardlinks` of this tree under the session scratchpad
+(`C:\Users\ryanc\AppData\Local\Temp\claude\4cfd7d19cf4ea1ee\13cff595-70f1-48a0-9b4b-07e8e971562b\scratchpad\h099\boot-yes`),
+the three changed test files copied in, its own `project.conf` given DV-2's
+clean procedure (line 307 -> `BOOTSTRAPPED=yes`, `printf ok` on lint,
+typecheck, unit, coverage, build, `evidence | <id> | -` for each appended);
+`bash scripts/gates.sh --audit` there: `Manifest audit passed.`, exit 0. Then
+`bash scripts/selftest.sh gates` there (log `...\scratchpad\h099\boot-yes.log`):
+
+    gates: 998 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (998 assertions executed, 998 declared).
+    exit 0
+
+No `note:` line. This is evidence toward AC-1; DV-2 is still GATES's and must
+be run on the GATES tree.
+
+**Admissibility.**
+
+    command:  bash scripts/gates.sh --fast
+    tree:     8819b3d31de55b894e7c145740808774962936eb
+    exit:     0
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261108T203946Z.1215803.log
+
+`bash scripts/mutate.sh --check`: `mutate: no stranded mutation; nothing of a
+previous run is in the tree.`
+
+**Shape GREEN inherits (stated as fact).** No production module is imported;
+the suite calls only `scripts/gates.sh --list` and `--audit` in `F69`, which
+this story does not change. Helpers in the suite, all of them test code:
+`ship69 <label> <conf> <source root>` (sets global `SHIP69_PATH`),
+`boot69 <prefix> <conf> <source root>`, `kw69 <conf>`,
+`kwlist69 <conf> <source root>`, `list69 <conf> <source root>`,
+`badere69 <conf>`. Not constrained: nothing in production.
+
+**What GREEN must do.** Bump `.claude/harness/VERSION` `117 (2026-11-08)` ->
+`118 (<date>)` and nothing else; verify the no-op by running
+`bash scripts/selftest.sh gates` (expect `gates: 998 passed, 0 failed`, floor
+met) and paste the summary. No test, floor or Contract-listed file other
+than VERSION is GREEN's to touch.
+
+**Tests that passed on arrival.** The template-path count pin, the three
+`template-fixture` assertions and both AC-3 controls passed in step 1. They are
+new assertions over new test helpers written in the same step (no existing
+implementation is being pinned); the count pin is earned by DV-1's mutation
+(its bootstrapped twin goes red on the same counter), and the controls were
+measured outside the framework (table). Not separately mutation-probed in RED.
+
+**Negative controls - expected values.** Measured outside the framework:
+`kw69`/`badere69`/`live69` sourced from the block into a plain bash, run on
+copies of the fixtures under the scratchpad (`...\scratchpad\h099\ctl`).
+Then confirmed inside the suite in both runs (they passed in step 1 and
+step 2).
+
+| Control | Threshold / expected | Candidate range | Measured outside framework | In suite |
+|---|---|---|---|---|
+| `badere69 bad.conf` (`keep-when \| unit \| (`) | exactly 1 | 0 = reader blind to exit 2; 1 = correct | 1 | pass (step 1, step 2) |
+| `badere69 live.conf` (valid `x`, `y`) | 0 (not asserted; sanity) | - | 0 | n/a |
+| `kw69 live.conf` | `unit\tx\nunit\ty` | comment `z` included, untrimmed fields, or `y` missed = wrong | `unit\tx\nunit\ty` (od -c) | pass |
+| `kw69 boot.conf` (C-4's stated value; not a separate assertion) | `unit\tWindows fatal exception` then `cov\tUnknown C\+\+ exception` | - | as expected | via (a)/(b) |
+| `kw69` on `keep-when \| unit \| a\|b ` (a `\|` in a pattern) | `unit\ta\|b` | - | `unit\ta\|b` | n/a (probe of `rest 3` parity) |
+| `live69 live.conf` (existing) | 2 | - | 2 | pass |
+
+**Deferred verifications - declined, GATES owns both.** I cannot run DV-1 or
+DV-2 in RED: DV-1 has to be made against the committed shape, and DV-2 against
+the GATES tree. For DV-1, the expression against the shape as built (line 3905
+is the only line it matches; checked with `sed` + `diff` on a copy):
+
+    bash scripts/mutate.sh .claude/tests/gates.test.sh 's/then boot69 "\$_p" "\$2" "\$3"; return 0/then return 0/' -- bash scripts/selftest.sh gates
+
+Predicted red, template tree: two fixture manifests run the bootstrapped path
+here (`boot.conf`, `ws.conf`; the real manifest is the template), so 6
+assertions stop executing. The `ws.conf` path pin still passes (the path is set
+before `boot69` is called), and exactly one assertion fails:
+
+    FAIL HARNESS-099 AC-2: the bootstrapped path of the shipped-manifest block executes exactly three assertions
+         expected: 3
+         actual:   0
+    gates: 991 passed, 1 failed
+    FAIL gates  did 991 units of work, below the floor of 998 in .claude/tests/floors.conf
+
+(998 - 6 = 992 executed, 1 failed, so 991 passed; selftest.sh's "units of
+work" is the PASSED count, which is why it is 991, not 992 - DV-1's
+"<N-9>" would be wrong here. In a consumer tree the real manifest also takes
+the path: 998 - 9 = 989 executed, 988 passed.) These are predictions, not
+observations.
+
+**Discovered.** The planned C-2 title (`shipped`) contradicted AC-5; amended,
+not routed around. Nothing else changes the approach.
 
 ## Gate results
 
@@ -468,3 +697,21 @@ name, below the table.
   beside them) and are disposable; `boot-mt` holds only the consumer's
   `project.conf` copied into a bare clone, for the `--audit` check in PO
   decision 3.
+- RED verified by the orchestrator (2026-11-08): the step-1 log
+  `20261108T201721Z.1152954.log` shows exactly the four predicted FAILs
+  (the bootstrapped count pin 3 vs 0, two `AC-7 (whitespace-yes)` template
+  assertions, the AC-4 path pin), `gates: 991 passed, 4 failed`. `attest.sh
+  check` said `fresh` for the final `bash scripts/selftest.sh gates` (exit 0,
+  `gates: 998 passed, 0 failed`, no FAIL or `note:` line, log
+  `20261108T202952Z.1175278.log`) and for `bash scripts/gates.sh --fast`
+  (exit 0, 0 ran), so neither was re-run. Diff read: `gates.test.sh` lines
+  1-3804 and everything from `mkdir -p "$M69/src/sub"` to the end are
+  byte-identical to `main`, so only the shipped-manifest block changed. The
+  real call is `ship69 "" "$SHIP69" "$REPO_ROOT"`, so the template titles keep
+  their `AC-7: ` text. The DV-1 needle matches one line (3905).
+  - **C-2 amendment reproduced:** AC-5 (frozen) requires the three template
+    titles to begin `AC-7: the shipped project.conf ...`, so C-2's planned
+    `AC-7 (shipped):` prefix could not satisfy it. An empty label giving
+    `AC-7:` is the only form that keeps both. Accepted. The C-7 amendment
+    (two of `ws.conf`'s template assertions fail, not three, because it has no
+    live keep-when line) matches the step-1 log above.
