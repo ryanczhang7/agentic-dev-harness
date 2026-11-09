@@ -4,8 +4,8 @@ title: The gates suite executes the same count in a bootstrapped project as in t
 slug: the-gates-suite-executes-the-same-count
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-099-the-gates-suite-executes-the-same-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
