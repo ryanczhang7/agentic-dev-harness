@@ -5,7 +5,7 @@ slug: ci-local-runs-only-workflows-that-trigge
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-100-ci-local-runs-only-workflows-that-trigge
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/ci-local.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -429,6 +429,76 @@ mutation goes through `bash scripts/mutate.sh` against the narrowest command,
   workflows as `boundaries.yml` IN, `deploy.yml` OUT, `gates.yml` IN.
   Owner: GATES.
 
+*Results (orchestrator, 2026-11-09, tree `c5a37a0`, all run in GATES):*
+
+**DV-1, passed.** The same ten reds as RED, the floor FAIL at 38 against 48, and the restore verified:
+
+```
+=== mutate: scripts/ci-local.sh (1 line(s) changed by s/if triggers_on_pull_request "\$f"; then/if true; then/) ===
+=== mutate: running bash scripts/selftest.sh ci-local ===
+    FAIL AC-1: a push-only workflow's step is not listed
+    FAIL AC-5: pull_request mentioned outside on: does not count
+    FAIL AC-6: an excluded workflow is named on stderr
+    FAIL AC-6: so is the one that only mentions pull_request
+    FAIL AC-8: on: [pull_request_target] is not listed
+    FAIL AC-8: a block on: holding only pull_request_target: is not listed
+    FAIL AC-8: the inline pull_request_target workflow is named on stderr
+    FAIL AC-8: the block pull_request_target workflow is named on stderr
+    FAIL AC-2: the push-only workflow's step did not run
+    FAIL AC-6: a real run names the excluded workflow too
+ci-local: 38 passed, 10 failed
+FAIL ci-local  did 38 units of work, below the floor of 48 in .claude/tests/floors.conf
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_ci-local.sh.20261109T222245Z.2092607.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**DV-2, passed.** AC-3 and AC-4 go red and no AC-1 assertion fails (0 `FAIL AC-1:` lines). The count, 21 passed and 27 failed, matches the handoff's scratch-copy prediction; the rest are older inline-`on:` fixtures, the expected collateral. The restore was verified:
+
+```
+=== mutate: scripts/ci-local.sh (1 line(s) changed by s/found = (v ~/found = 0 \&\& (v ~/) ===
+=== mutate: running bash scripts/selftest.sh ci-local ===
+    FAIL AC-3: on: [push, pull_request] is listed
+    FAIL AC-4: a bare on: pull_request is listed
+ci-local: 21 passed, 27 failed
+FAIL ci-local  did 21 units of work, below the floor of 48 in .claude/tests/floors.conf
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_ci-local.sh.20261109T222325Z.2093428.bak) ===
+```
+
+**DV-3(a), passed.** Unmutated, `ci-local.sh --dry-run` lists the `scripts/check-boundaries.sh` step once and prints 0 `not running` notes. With the real `boundaries.yml`'s `  pull_request:` changed to `  push:`, it prints the note and drops that step. The restore was verified:
+
+```
+=== mutate: .github/workflows/boundaries.yml (1 line(s) changed by s/^  pull_request:$/  push:/) ===
+=== mutate: running bash -c bash scripts/ci-local.sh --dry-run 2>&1 ===
+note: not running boundaries.yml: it does not trigger on pull_request
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.github_workflows_boundaries.yml.20261109T222358Z.2094238.bak) ===
+```
+
+**DV-3(b), passed.** Two `--no-hardlinks` scratch clones, with `deploy.yml.template` renamed to `deploy.yml` and its leading `# ` stripped as its header says. At the story branch (`c5a37a0`), neither deploy step is listed and the note is printed. The control at `main` (`94acc3f`, the unfixed script) lists both:
+
+```
+story branch c5a37a0: lists 'gates.sh --gate build': 0; lists 'your target here': 0
+  note: not running deploy.yml: it does not trigger on pull_request
+main 94acc3f:         lists 'gates.sh --gate build': 1; lists 'your target here': 1; not-running notes: 0
+```
+
+**DV-4, passed.** Two `--no-hardlinks` clones of the story branch were given clean_calendar's real workflows (from its `main`, `a2c4f51`: `boundaries.yml`, `deploy.yml`, `deploy.yml.template`, `gates.yml`). The second clone also got clean_calendar's own `scripts/ci-local.sh`. Nothing was run in the clean_calendar clone. The results: 0 supabase deploy lines are listed; the `deploy.yml` note appears in both; stdout is byte-identical across the two, 11 lines; the `not running` lines are identical; and all 11 `run:` steps of the copied `gates.yml` and `boundaries.yml` are listed, the one `${{ github.base_ref }}` step resolved rather than skipped:
+
+```
+pnpm install --frozen-lockfile
+pnpm exec playwright install --with-deps chromium
+pnpm exec supabase start
+bash scripts/selftest.sh
+FORCE_COLOR=1 CLICOLOR_FORCE=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always bash scripts/selftest.sh
+bash scripts/check-sigpipe.sh
+bash scripts/check-grep-count.sh
+bash scripts/gates.sh --list
+bash scripts/gates.sh --audit
+bash scripts/gates.sh
+bash scripts/check-boundaries.sh origin/story/HARNESS-100-ci-local-runs-only-workflows-that-trigge
+note: not running deploy.yml: it does not trigger on pull_request
+stdout byte-identical to clean_calendar's own script: yes (11 lines); run: steps missing: 0
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -477,6 +547,9 @@ name, below the table.
   (2026-11-09), self-reported; `model: opus` passed. As planned.
 - GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
   (2026-11-09), self-reported; `model: opus` passed. As planned.
+- GATES - `feature-developer` (full gates run), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-09), self-reported; `model: opus` passed. As
+  planned.
 
 Brief for RED: the oracle partition is the Contract's C-6 - AC-1 to AC-6 and
 AC-8 mechanical (pin exact whole lines and the verbatim note text), AC-9
@@ -809,10 +882,21 @@ says), and `^  pull_request:$` in `.github/workflows/boundaries.yml` (line
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-09T22:25:37Z
+    commit: c5a37a0
+    tree:   53357409aae40a7c75140d0d6057d66e7c88f167
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -914,3 +998,10 @@ says), and `^  pull_request:$` in `.github/workflows/boundaries.yml` (line
     patched copy (C-2 holds exactly). Only the comment wording differs, as
     the handoff asked. Line endings are LF, matching `git ls-files --eol`
     `i/lf w/lf attr/text eol=lf`. VERSION is 119.
+- GATES verified by the orchestrator (2026-11-09): I ran DV-1 to DV-4
+  before `gates.sh`, and all passed; the results are pasted under
+  `## Deferred verifications`. The full run was dispatched; `attest.sh check
+  -- bash scripts/gates.sh` said `fresh` (exit 0, 2 s, log
+  `20261109T222535Z.2095113.log`, verdict `All required gates passed (0 ran,
+  7 unconfigured, 0 known).`), so it was not re-run. The developer changed
+  no file.
