@@ -5,7 +5,7 @@ slug: the-gates-suite-executes-the-same-count
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-099-the-gates-suite-executes-the-same-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -1084,3 +1084,10 @@ approved the amendment, and the story returns to RED (R-1).
   said `fresh` (exit 0, 2 s, log `20261108T222155Z.1297391.log`, verdict `All
   required gates passed (0 ran, 7 unconfigured, 0 known).`), so it was not
   re-run. The developer changed no file.
+- GREEN after R-1 (orchestrator, 2026-11-09): a verified no-op, so it was
+  run by the orchestrator, not dispatched. `git diff main` outside the tests
+  touches only `VERSION` (already `118`). `bash scripts/attest.sh -- bash
+  scripts/selftest.sh gates`: exit 0, `gates: 1002 passed, 0 failed`, no FAIL
+  line, 1065 s, log `20261109T001702Z.1476575.log`. `bash scripts/attest.sh --
+  bash scripts/gates.sh --fast`: exit 0, 0 ran, log
+  `20261109T003449Z.1506741.log`. Both checks are `fresh`.
