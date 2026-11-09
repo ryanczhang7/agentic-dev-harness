@@ -3807,28 +3807,25 @@ assert_eq "AC-7 control: the blocked-when check this wording copies fires in thi
 # checkout is written. This repository ships no live keep-when line (PO-5):
 # only the documented format and a commented example.
 #
-# HARNESS-070: the first three assertions below are about the TEMPLATE's text.
-# In a project built on the harness project.conf is the project's own -
+# HARNESS-070: the template path's three assertions are about the TEMPLATE's
+# text. In a project built on the harness project.conf is the project's own -
 # refresh-harness.sh LEAVES it - and may carry live keep-when lines, which is
 # what the feature is for. "Is this the template" is check-boundaries.sh
 # 3a-bis's test: every real project sets BOOTSTRAPPED=yes; the template never does.
+#
+# HARNESS-099: and the block executes EXACTLY THREE assertions whichever the
+# manifest is. HARNESS-070 printed a `note:` in a bootstrapped tree and ran
+# nothing, and the `gates` floor - measured on the template - then failed in
+# every consumer with no assertion failing (981 against 984, manga-translator,
+# release 117). The rule for every suite: a suite may read the real tree, but
+# an assertion over a file refresh-harness.sh LEAVES (project.conf,
+# project-floors.conf, project-*.test.sh) must execute the same number of
+# assertions whatever that file says, because the floor is measured on the
+# template and a consumer cannot lower it. So the block is ship69, run once on
+# the real manifest and on fixtures below, and both counts are pinned on the
+# fixtures so the pins execute in every tree.
 SHIP69="$REPO_ROOT/.claude/harness/project.conf"
 live69() { tr -d '\r' < "$1" | grep -cE -- '^[[:space:]]*keep-when[[:space:]]*\|'; }
-if grep -qE '^BOOTSTRAPPED=yes' "$SHIP69"; then
-  printf '    note: %s\n' "project.conf is this project's own (BOOTSTRAPPED=yes), not the template; its keep-when text is not asserted (HARNESS-070)"
-else
-  _fmt="$(tr -d '\r' < "$SHIP69" | grep -nxF -- '# Format:  keep-when | <gate id> | <extended regex>' | cut -d: -f1 | tr '\n' ' ' | sed 's/ $//')"
-  _sfmt="$(tr -d '\r' < "$SHIP69" | grep -nxF -- '# Format:  skipped-when | <gate id> | <extended regex>' | cut -d: -f1)"
-  _boot="$(tr -d '\r' < "$SHIP69" | grep -nxE -- 'BOOTSTRAPPED=[a-z]+' | head -n 1 | cut -d: -f1)"
-  assert_eq "AC-7: the shipped project.conf holds the keep-when format line once, after skipped-when's and before BOOTSTRAPPED=" yes \
-    "$([ -n "$_fmt" ] && [ "${_fmt#* }" = "$_fmt" ] && [ -n "$_sfmt" ] && [ -n "$_boot" ] && [ "$_sfmt" -lt "$_fmt" ] && [ "$_fmt" -lt "$_boot" ] && printf yes || printf "no (keep-when format at ${_fmt:-none}, skipped-when format at ${_sfmt:-none}, BOOTSTRAPPED at ${_boot:-none})")"
-  _ex="$(tr -d '\r' < "$SHIP69" | grep -nE -- '^#[[:space:]]+keep-when[[:space:]]*\|[[:space:]]*[a-z]' | head -n 1 | cut -d: -f1)"
-  assert_eq "AC-7: and an example keep-when line in a comment, between the format line and BOOTSTRAPPED=" yes \
-    "$([ -n "$_ex" ] && [ -n "$_fmt" ] && [ -n "$_boot" ] && [ "$_fmt" -lt "$_ex" ] && [ "$_ex" -lt "$_boot" ] && printf yes || printf "no (example at ${_ex:-none})")"
-  assert_eq "AC-7: the shipped project.conf carries no live keep-when line" 0 "$(live69 "$SHIP69")"
-fi
-printf 'BOOTSTRAPPED=yes\nkeep-when | unit | x\n  keep-when|unit|y\n# keep-when | unit | z\n' > "$M69/live.conf"
-assert_eq "AC-7 control: the live-line reader counts two live lines and not the comment" 2 "$(live69 "$M69/live.conf")"
 # HARNESS-080: a consuming project's gates may run in a subdirectory - a Tauri
 # app's src-tauri - and the audit FAILs a cwd that does not exist. F69 holds
 # only scripts/ and .claude/hooks/, so the manifest is audited in a tree that
@@ -3849,6 +3846,120 @@ cwds69() {
 }
 # audit69 <conf> <source root>   audit <conf> in F69, shaped like <source root>
 audit69() { cp "$1" "$F69/.claude/harness/project.conf"; cwds69 "$1" "$2" "$F69"; g69 --audit; }
+# list69 <conf> <source root>    the same, for --list (HARNESS-099)
+list69() { cp "$1" "$F69/.claude/harness/project.conf"; cwds69 "$1" "$2" "$F69"; g69 --list; }
+# kw69 <conf>   the live keep-when lines live69 counts, as <id><TAB><pattern>,
+# both trimmed, manifest order. The pattern is everything after the SECOND
+# `|`, as gates.sh's `rest 3` reads it, so a pattern holding `|` survives.
+kw69() {
+  tr -d '\r' < "$1" | grep -E -- '^[[:space:]]*keep-when[[:space:]]*\|' \
+    | awk '{ s = $0; sub(/^[^|]*\|/, "", s); i = index(s, "|")
+             if (i) { id = substr(s, 1, i - 1); pat = substr(s, i + 1) } else { id = s; pat = "" }
+             gsub(/^[ \t]+|[ \t]+$/, "", id); gsub(/^[ \t]+|[ \t]+$/, "", pat)
+             printf "%s\t%s\n", id, pat }'
+}
+# kwlist69 <conf> <source root>   the same pairs as `gates.sh --list` prints
+# them: a gate row (column one is not a space) sets the id, and each
+# `<30 spaces>keep-when: <pattern>` line under it emits <id><TAB><pattern>.
+# stdout only - g69 discards stderr.
+kwlist69() {
+  list69 "$1" "$2" | tr -d '\r' \
+    | awk '/^[^ ]/ { id = $1 }
+           /^ +keep-when: / { t = $0; sub(/^ +keep-when: /, "", t); printf "%s\t%s\n", id, t }'
+}
+# badere69 <conf>   how many kw69 patterns make `grep -E` exit 2 (an invalid
+# ERE); `-e`, so a pattern starting with `-` is a pattern; exit 1 is "valid,
+# no match".
+badere69() {
+  local _n=0 _pat _rc
+  while IFS= read -r _pat; do
+    grep -E -e "$_pat" </dev/null >/dev/null 2>&1; _rc=$?
+    [ "$_rc" -eq 2 ] && _n=$((_n + 1))
+  done < <(kw69 "$1" | cut -f2-)
+  printf '%s' "$_n"
+}
+# boot69 <title prefix> <conf> <source root>   the bootstrapped path: three
+# assertions about the manifest's own live keep-when lines (HARNESS-099 C-3),
+# none a duplicate of the unconditional --audit trio further down.
+boot69() {
+  local _kw _kl _t
+  # R-1 (AM-1): --list groups the lines by gate, so both sides are stably
+  # sorted by gate id; manifest order within each gate is kept.
+  _t="$(printf '\t')"
+  _kw="$(kw69 "$2" | LC_ALL=C sort -s -t"$_t" -k1,1)"; _kl="$(kwlist69 "$2" "$3" | LC_ALL=C sort -s -t"$_t" -k1,1)"
+  assert_eq "$1 gates.sh --list attributes every live keep-when line to the gate it names, in manifest order within each gate" \
+    "$(printf '%s\n' "$_kw" | cut -f1)" "$(printf '%s\n' "$_kl" | cut -f1)"
+  assert_eq "$1 and prints every live keep-when pattern verbatim" \
+    "$(printf '%s\n' "$_kw" | cut -f2-)" "$(printf '%s\n' "$_kl" | cut -f2-)"
+  assert_eq "$1 every live keep-when pattern is a valid ERE for grep -E, the matcher gates.sh applies it with" \
+    0 "$(badere69 "$2")"
+}
+# ship69 <label> <conf> <source root>   EXACTLY three assertions on either
+# path. The path is decided as gates.sh 93-95 reads BOOTSTRAPPED - the first
+# ^BOOTSTRAPPED= line, the text after `=`, all whitespace removed, empty
+# meaning no - and left in SHIP69_PATH. Titles are `AC-7 (<label>): ...`; the
+# real manifest is called with an EMPTY label, so its titles stay `AC-7: ...`
+# exactly as HARNESS-099 AC-5 requires.
+ship69() {
+  local _b _p="AC-7${1:+ ($1)}:"
+  _b="$(tr -d '\r' < "$2" | grep -E '^BOOTSTRAPPED=' | head -n 1)"
+  _b="${_b#*=}"; _b="${_b//[[:space:]]/}"; [ -n "$_b" ] || _b=no
+  if [ "$_b" = yes ]; then SHIP69_PATH=bootstrapped; else SHIP69_PATH=template; fi
+  if [ "$SHIP69_PATH" = bootstrapped ]; then boot69 "$_p" "$2" "$3"; return 0; fi
+  _fmt="$(tr -d '\r' < "$2" | grep -nxF -- '# Format:  keep-when | <gate id> | <extended regex>' | cut -d: -f1 | tr '\n' ' ' | sed 's/ $//')"
+  _sfmt="$(tr -d '\r' < "$2" | grep -nxF -- '# Format:  skipped-when | <gate id> | <extended regex>' | cut -d: -f1)"
+  _boot="$(tr -d '\r' < "$2" | grep -nxE -- 'BOOTSTRAPPED=[a-z]+' | head -n 1 | cut -d: -f1)"
+  assert_eq "$_p the shipped project.conf holds the keep-when format line once, after skipped-when's and before BOOTSTRAPPED=" yes \
+    "$([ -n "$_fmt" ] && [ "${_fmt#* }" = "$_fmt" ] && [ -n "$_sfmt" ] && [ -n "$_boot" ] && [ "$_sfmt" -lt "$_fmt" ] && [ "$_fmt" -lt "$_boot" ] && printf yes || printf "no (keep-when format at ${_fmt:-none}, skipped-when format at ${_sfmt:-none}, BOOTSTRAPPED at ${_boot:-none})")"
+  _ex="$(tr -d '\r' < "$2" | grep -nE -- '^#[[:space:]]+keep-when[[:space:]]*\|[[:space:]]*[a-z]' | head -n 1 | cut -d: -f1)"
+  assert_eq "$_p and an example keep-when line in a comment, between the format line and BOOTSTRAPPED=" yes \
+    "$([ -n "$_ex" ] && [ -n "$_fmt" ] && [ -n "$_boot" ] && [ "$_fmt" -lt "$_ex" ] && [ "$_ex" -lt "$_boot" ] && printf yes || printf "no (example at ${_ex:-none})")"
+  assert_eq "$_p the shipped project.conf carries no live keep-when line" 0 "$(live69 "$2")"
+}
+ship69 "" "$SHIP69" "$REPO_ROOT"
+printf 'BOOTSTRAPPED=yes\nkeep-when | unit | x\n  keep-when|unit|y\n# keep-when | unit | z\n' > "$M69/live.conf"
+assert_eq "AC-7 control: the live-line reader counts two live lines and not the comment" 2 "$(live69 "$M69/live.conf")"
+# HARNESS-099 C-4: the block on fixture manifests, so both paths execute - and
+# both counts are pinned - in every tree, whichever path the real one takes.
+# The count is _lib.sh's own: _pass + _fail before and after one ship69 call.
+printf '%s\n' '# Format:  skipped-when | <gate id> | <extended regex>' \
+  '# Format:  keep-when | <gate id> | <extended regex>' \
+  '#   keep-when | integration | SEGFAULT in worker [0-9]+' \
+  'BOOTSTRAPPED=no' > "$M69/tmpl.conf"
+printf '%s\n' 'keep-when | unit | Windows fatal exception' \
+  'BOOTSTRAPPED=yes' \
+  'gate | unit | required | . | printf ok' \
+  'evidence | unit | -' \
+  'gate | cov | required | . | printf ok' \
+  'evidence | cov | -' \
+  '  keep-when|cov|Unknown C\+\+ exception' \
+  '# keep-when | unit | z' > "$M69/boot.conf"
+printf '%s\n' 'BOOTSTRAPPED=  yes  ' \
+  'gate | unit | required | . | printf ok' \
+  'evidence | unit | -' > "$M69/ws.conf"
+printf '%s\n' 'BOOTSTRAPPED=yes' 'keep-when | unit | (' > "$M69/bad.conf"
+n0=$((_pass + _fail)); ship69 template-fixture "$M69/tmpl.conf" "$M69"; n1=$((_pass + _fail))
+assert_eq "HARNESS-099 AC-2: the template path of the shipped-manifest block executes exactly three assertions" 3 "$((n1 - n0))"
+n0=$((_pass + _fail)); ship69 bootstrapped-fixture "$M69/boot.conf" "$M69"; n1=$((_pass + _fail))
+assert_eq "HARNESS-099 AC-2: the bootstrapped path of the shipped-manifest block executes exactly three assertions" 3 "$((n1 - n0))"
+# R-1 (AM-1): --list groups keep-when lines by gate, in gate-line order, so a
+# manifest whose live lines alternate between gates - manga-translator's shape
+# - is printed grouped. (a) and (b) compare in manifest order WITHIN each gate.
+printf '%s\n' 'BOOTSTRAPPED=yes' \
+  'gate | unit | required | . | printf ok' \
+  'evidence | unit | -' \
+  'gate | cov | required | . | printf ok' \
+  'evidence | cov | -' \
+  'keep-when | unit | Windows fatal exception' \
+  'keep-when | cov | Unknown C\+\+ exception' \
+  'keep-when | unit | Segmentation fault' > "$M69/alt.conf"
+n0=$((_pass + _fail)); ship69 alternating-fixture "$M69/alt.conf" "$M69"; n1=$((_pass + _fail))
+assert_eq "HARNESS-099 AC-2: the bootstrapped path executes exactly three assertions on a manifest whose keep-when lines alternate between gates" 3 "$((n1 - n0))"
+ship69 whitespace-yes "$M69/ws.conf" "$M69"
+assert_eq "HARNESS-099 AC-4: BOOTSTRAPPED=  yes  , read as gates.sh reads it, takes the bootstrapped path" bootstrapped "$SHIP69_PATH"
+assert_eq "HARNESS-099 AC-3 control: badere69 counts the invalid ERE ( once" 1 "$(badere69 "$M69/bad.conf")"
+assert_eq "HARNESS-099 AC-3 control: kw69 reads live.conf's two live lines trimmed and not the comment" \
+  "$(printf 'unit\tx\nunit\ty')" "$(kw69 "$M69/live.conf")"
 mkdir -p "$M69/src/sub"
 printf 'BOOTSTRAPPED=yes\ngate | sub | required | sub | printf ok\nevidence | sub | -\n' > "$M69/sub.conf"
 printf 'BOOTSTRAPPED=yes\ngate | gone | required | gone | printf ok\nevidence | gone | -\n' > "$M69/gone.conf"
