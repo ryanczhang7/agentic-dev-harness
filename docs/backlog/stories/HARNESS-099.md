@@ -5,7 +5,7 @@ slug: the-gates-suite-executes-the-same-count
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-099-the-gates-suite-executes-the-same-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -324,6 +324,27 @@ manifest whose keep-when lines alternate between gates`, each `3` against `0`.
 `FAIL gates  did 991 units of work, below the floor of 1002`. In a consumer
 tree the real manifest takes the path too: 990 executed, 988 passed.
 
+*Result on the R-1 tree (orchestrator, 2026-11-09, tree `fab1689`):* the
+expression was re-run in this worktree, alone, and exactly matched the
+prediction: both bootstrapped count pins went red, each 3 against 0, giving
+`gates: 991 passed, 2 failed` and the floor FAIL at 991 against 1002. The
+restore was verified, and `mutate.sh --check` was clean afterwards.
+
+```
+=== mutate: .claude/tests/gates.test.sh (1 line(s) changed by s/then boot69 "\$_p" "\$2" "\$3"; return 0/then return 0/) ===
+=== mutate: running bash scripts/selftest.sh gates ===
+    FAIL HARNESS-099 AC-2: the bootstrapped path of the shipped-manifest block executes exactly three assertions
+         expected: 3
+         actual:   0
+    FAIL HARNESS-099 AC-2: the bootstrapped path executes exactly three assertions on a manifest whose keep-when lines alternate between gates
+         expected: 3
+         actual:   0
+gates: 991 passed, 2 failed
+FAIL gates  did 991 units of work, below the floor of 1002 in .claude/tests/floors.conf
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_gates.test.sh.20261109T060131Z.1532306.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
 **DV-2 (the consumer's shape, end to end - AC-1). Owner: GATES.** In a scratch
 clone of the GATES tree (`git clone --no-hardlinks . <scratch>`, never
 manga-translator's worktree), make the clone's own
@@ -381,6 +402,38 @@ assertion failed and why, and confirm that none of `AC-7 (...)` or
 `e1500a6` against the same manifest, recorded in `## Regressions` R-1. Added
 2026-11-08 with AM-1, because DV-2's bootstrapped clone had no live
 keep-when line.
+
+*DV-2 and DV-3 on the R-1 tree (orchestrator, 2026-11-09, tree `fab1689`):*
+both pass. Three `--no-hardlinks` scratch clones of the branch were run in
+parallel:
+- `g2t`: unmodified.
+- `g2b`: bootstrapped exactly as DV-2 above.
+- `g3m`: `D:\mt-harness-refresh\.claude\harness\project.conf` copied in, read
+  and never written. It has 16 live keep-when lines that alternate between
+  gates, the R-1 shape.
+
+All three ran `bash scripts/selftest.sh gates` and print the same count,
+1002, equal to the floor. None has a FAIL line, none prints the `note:`
+line, and all exit 0. `g3m` is DV-3. Its before side, at `e1500a6`, was
+`gates: 996 passed, 2 failed` (R-1), so the consumer this story unblocks now
+passes.
+
+```
+clones at: fab1689 fab1689 fab1689
+g3m live keep-when lines: 16
+== g2t
+g2t rc=0
+gates: 1002 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (1002 assertions executed, 1002 declared).
+== g2b
+g2b rc=0
+gates: 1002 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (1002 assertions executed, 1002 declared).
+== g3m
+g3m rc=0
+gates: 1002 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (1002 assertions executed, 1002 declared).
+```
 
 ## Amendments
 
@@ -448,6 +501,8 @@ name, below the table.
   **claude-opus-5-5** (2026-11-08), self-reported. Verdict: fix 1 first (R-1).
 - RED (return, R-1) - `test-developer`, planned `opus`, resolved
   **claude-opus-5-5** (2026-11-08), self-reported. As planned.
+- GATES (after R-1) - `feature-developer` (full gates run), planned `opus`,
+  resolved **claude-opus-5-5** (2026-11-09), self-reported. As planned.
 
 ## Out of scope
 
@@ -952,9 +1007,9 @@ approved the amendment, and the story returns to RED (R-1).
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-08T22:21:56Z
-    commit: 2723914
-    tree:   b60fbe940d0f3a97f3080b902ed039691610f0ed
+    run:    2026-11-09T06:35:22Z
+    commit: fab1689
+    tree:   5dc4e7361d7741cd4c5008678b393bc48508d2a7
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1091,3 +1146,10 @@ approved the amendment, and the story returns to RED (R-1).
   line, 1065 s, log `20261109T001702Z.1476575.log`. `bash scripts/attest.sh --
   bash scripts/gates.sh --fast`: exit 0, 0 ran, log
   `20261109T003449Z.1506741.log`. Both checks are `fresh`.
+- GATES after R-1 verified by the orchestrator (2026-11-09): DV-1, DV-2 and
+  DV-3 were re-run on `fab1689` and are pasted in `## Deferred
+  verifications`. DV-1 is 991/2 as predicted; DV-2 and DV-3 are 1002/0 in all
+  three clones, manga-translator's real manifest included. The full run was
+  dispatched; `attest.sh check -- bash scripts/gates.sh` said `fresh` (exit 0,
+  4 s, log `20261109T063519Z.1629456.log`, verdict `All required gates
+  passed (0 ran, 7 unconfigured, 0 known).`), so it was not re-run.
