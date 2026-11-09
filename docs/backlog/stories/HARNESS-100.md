@@ -5,7 +5,7 @@ slug: ci-local-runs-only-workflows-that-trigge
 epic: 
 type: fix
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-100-ci-local-runs-only-workflows-that-trigge
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/ci-local.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -220,7 +220,7 @@ the amended block says.** The acceptance criteria are not in that licence.
           inon {
             if ($0 ~ /^[[:space:]]*(#|$)/) next
             match($0, /^[[:space:]]*/); this = RLENGTH
-            if (this == 0) exit
+            if (this == 0 && $0 !~ /^-[[:space:]]/) exit
             if (ind < 0) ind = this
             if (this != ind) next
             line = $0; sub(/^[[:space:]]*(-[[:space:]]+)?/, "", line)
@@ -253,7 +253,12 @@ the amended block says.** The acceptance criteria are not in that licence.
     mapping key `pull_request:` or a sequence item `- pull_request`, optionally
     quoted, optionally followed by a comment; deeper lines (`branches:`,
     `- cron:`) and comment or blank lines are skipped; the block ends at the
-    next column-0 line;
+    next column-0 line that is not a `- ` sequence item, so a block sequence
+    written in column 0 under `on:` is read like an indented one;
+    *amended in RED on the return for R-1 (2026-11-09, test-developer): the
+    code line above was `if (this == 0) exit`, clean_calendar's, which
+    drops a column-0 `- pull_request` workflow; R-1 records the PO decision
+    to diverge here. The line count of the script does not change;*
   - `workflow_files()` keeps its order (gates.yml first, then the rest by glob
     name order) and emits only files for which the predicate holds;
   - the existing "no run: steps found" exit 2 is unchanged and now also covers
@@ -550,6 +555,10 @@ name, below the table.
 - GATES - `feature-developer` (full gates run), planned `opus`, resolved
   **claude-opus-5-5** (2026-11-09), self-reported; `model: opus` passed. As
   planned.
+- GATES - `feature-developer` (diff review, fresh), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-09), self-reported. Ship, with Should fix 1 (R-1).
+- RED (return, R-1) - `test-developer`, planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-09), self-reported. As planned.
 
 Brief for RED: the oracle partition is the Contract's C-6 - AC-1 to AC-6 and
 AC-8 mechanical (pin exact whole lines and the verbatim note text), AC-9
@@ -855,6 +864,90 @@ inline-branch `pull_request([^A-Za-z0-9_]|$)/` (1), the block-branch
 says), and `^  pull_request:$` in `.github/workflows/boundaries.yml` (line
 9). DV mutations not run: GATES owns them.
 
+### R-1 (return to RED)
+
+test-developer, model **`claude-opus-5-5`** (Opus 5.5). The plan says
+`opus` and the dispatch had no override. Run on 2026-11-09, Windows host,
+locally. Every number here comes from a local run. None comes from CI.
+
+**Added.** The `TFIX` fixture in the HARNESS-100 describe of
+`.claude/tests/ci-local.test.sh` gains `compact.yml` and `compact-push.yml`.
+Four assertions titled `R-1: ...` go after the AC-8 ones. Their shapes, the
+indentation departure from the brief and why are in `## Regressions` R-1. No
+existing assertion changed. Files touched: `.claude/tests/ci-local.test.sh`
+(+40 lines), `.claude/tests/floors.conf` (line 42 now `52`, plus an R-1
+paragraph at the end), `.claude/tests/selftest.test.sh` (line 533 now
+`ci-local 52`), and this story: the C-2 code line and its block-end bullet
+were amended in place with a reason, plus this part and R-1.
+
+| # | Assertion | On today's script |
+|---|---|---|
+| R-1a | `touch .m-compact` is a whole stdout line of `--dry-run` | FAIL |
+| R-1b | stderr holds no `not running compact.yml` | FAIL |
+| R-1c | no whole stdout line `touch .m-compact-push` | pass (earned by the over-broad mutant) |
+| R-1d | stderr holds the whole line `note: not running compact-push.yml: it does not trigger on pull_request` | pass (earned, same mutant) |
+
+**Red** (record: `exit: 1`, `last: 1 of 1 harness suite(s) FAILED.`,
+`log: .claude/state/attest-logs/20261109T233145Z.2103978.log`):
+
+    $ bash scripts/attest.sh -- bash scripts/selftest.sh ci-local
+        FAIL R-1: an on: sequence written in column 0 holding - pull_request is listed
+        FAIL R-1: the column-0 pull_request workflow is not reported excluded
+    ci-local: 50 passed, 2 failed
+
+It is the right failure. stdout lacks `touch .m-compact`, and stderr carries
+`note: not running compact.yml: ...`: the predicate reads the workflow as
+OUT. The run's floor line ("did 50 units of work, below the floor of 52")
+shows what a red suite counts. The first RED looked the same way (38 against
+48).
+
+**Earned probe** (pasted in `## Regressions` R-1). On the scratch clone, the
+planned fix gives `52 passed, 0 failed`. The over-broad `if (0) exit` gives
+`50 passed, 2 failed`, with exactly R-1c and R-1d red.
+
+**New floor.** ci-local **52** executed (50 + 2), in both
+`floors.conf:42` and `selftest.test.sh:533`. sigpipe stays 91: no pin moved.
+
+**GREEN's job.**
+1. In `scripts/ci-local.sh`, line 114: `if (this == 0) exit` becomes
+   `if (this == 0 && $0 !~ /^-[[:space:]]/) exit`. That is one line, edited in
+   place, and the file stays 230 lines. `grep -n 'dirty="\$(git status'
+   scripts/ci-local.sh` must still print `208:`, because sigpipe pins it and
+   that pin is frozen.
+2. Line 45: `sed -n '2,32p'` becomes `sed -n '2,33p'` (diff review, nice to
+   have 2).
+3. `.claude/harness/VERSION` stays at `119`, because GREEN already wrote it.
+4. Run `bash scripts/selftest.sh ci-local`, `... sigpipe` and
+   `... selftest`.
+
+If the C-2 comment's description of the block end should mention column-0
+items, rewording it must not change the line count. The tests do not
+constrain the comment.
+
+**Predicted counts after GREEN**, measured on the clone with the planned fix
+(the `--help` change was not applied there): `ci-local: 52 passed, 0 failed`,
+and `sigpipe: 91 passed, 0 failed`. The sigpipe figure is predicted, not
+measured: `dirty=` stays at 208 on the clone.
+
+**Negative control, expected value:**
+
+| Control | Mutation (clone copy) | Expected reds | Measured |
+|---|---|---|---|
+| planned fix | - | 0 | `52 passed, 0 failed` |
+| unfixed (today) | - | R-1a, R-1b | `50 passed, 2 failed` (worktree, attested) |
+| over-broad block end | line 114 → `if (0) exit` | R-1c, R-1d | `50 passed, 2 failed` (exactly those) |
+
+**gates --fast** (record: `exit: 0`, `last: All required gates passed (0 ran,
+5 unconfigured, 0 known).`, `log:
+.claude/state/attest-logs/20261109T233437Z.2107787.log`). Every gate is
+unconfigured in this tree, so this run judges nothing.
+
+**selftest** (C-8, which checks the floor tables). Record: `exit: 0`, `last: 1 harness suite(s) passed.`,
+`log: .claude/state/attest-logs/20261109T233449Z.2107981.log`, 334 s,
+`selftest: 366 passed, 0 failed`. Both floor tables agree at 52. All three
+records are on tree `6a408038`, and `attest.sh check` on the ci-local record
+says `fresh`.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -879,6 +972,140 @@ says), and `^  pull_request:$` in `.github/workflows/boundaries.yml` (line
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+- **R-1 (2026-11-09, found at GATES → REVIEW by the fresh diff review).**
+  - **What is missing:** a case. `triggers_on_pull_request` ends the `on:`
+    block at the first line in column 0 (`if (this == 0) exit`). YAML also
+    allows a block sequence in column 0 under its key (`on:` then
+    `- pull_request`), and GitHub accepts that form. Such a workflow comes
+    out OUT, so its steps are silently skipped and the run still reports
+    green. This is the one failure the script exists to prevent. It is the
+    unindented layout of the `- pull_request` shape the predicate already
+    claims to read (C-2's comment), not a parser feature.
+  - **How it was found:** the diff review measured it on a copy. The
+    orchestrator reproduced it independently with its own fixtures on a copy
+    of the shipped predicate:
+
+        compact: OUT        (on:\n- pull_request\n- workflow_dispatch\njobs:...)
+        indented: IN        (on:\n  - pull_request\njobs:...)
+        compact-push: OUT   (on:\n- push\njobs:\n  a:\n    steps:\n    - pull_request)
+
+  - **What RED adds:** a fixture workflow whose `on:` is a column-0 block
+    sequence holding `- pull_request`. It must be listed and must get no
+    `not running` note. A column-0 sequence holding only `- push` must not be
+    listed. RED watches the first case fail against today's shipped script,
+    so it is a new test against existing code that fails, earned by its own
+    red.
+  - **What GREEN changes (Contract C-2 amended, a PO decision):** at that one
+    line, `if (this == 0 && $0 !~ /^-[[:space:]]/) exit`, so a column-0 `- `
+    item continues the block while any other column-0 line (`jobs:`) still
+    ends it. This is a deliberate divergence from clean_calendar's code. That
+    project has the same gap, and its next refresh takes the fix.
+  - **What RED added (test-developer, `claude-opus-5-5`, 2026-11-09):** two
+    workflows in the existing `TFIX` fixture and four assertions after the
+    AC-8 ones (`.claude/tests/ci-local.test.sh`). No existing assertion's
+    text or expected value changed, and none could see the new files: their
+    needles are `m-deploy`, `m-release`, `not running gates.yml` and whole
+    lines naming other markers. `compact.yml` (`on:` / `- pull_request` /
+    `- workflow_dispatch` in column 0, step `touch .m-compact`): listed as a
+    whole line, and no `not running compact.yml` on stderr. `compact-push.yml`
+    (`on:` / `- push` / `jobs:` / `- pull_request` / `- run: touch
+    .m-compact-push`, all in column 0): not listed, and its whole-line note
+    printed. **Departure from the brief:** the brief put the push control's
+    `pull_request` mention under `jobs:` → `steps:`, indented. That shape
+    cannot fail against the over-broad fix: the first-indentation rule
+    (`ind = 0`) skips every indented line whatever ends the block. Measured
+    on the scratch clone, the over-broad predicate gives OUT for it:
+
+        $ triggers_on_pull_request indented.yml   # on:/- push/jobs:/  a:/.../    - pull_request, with `if (0) exit`
+        OUT
+
+    So the mention is in column 0. That is the diff review's measured shape
+    (`on:\n- push\njobs:\n- pull_request`). The no-note negative uses
+    `has_text`, the same as the existing gates.yml one, because the absence
+    of a substring is the stronger negative. It also cannot match
+    `compact-push.yml`'s note.
+  - **Red against the shipped script** (the (a) pair; the (b) pair passes on
+    arrival, because today's script excludes it):
+
+        $ bash scripts/attest.sh -- bash scripts/selftest.sh ci-local
+            FAIL R-1: an on: sequence written in column 0 holding - pull_request is listed
+            FAIL R-1: the column-0 pull_request workflow is not reported excluded
+                 stderr: note: not running compact-push.yml: it does not trigger on pull_request
+                 note: not running compact.yml: it does not trigger on pull_request
+        ci-local: 50 passed, 2 failed
+        FAIL ci-local  did 50 units of work, below the floor of 52 in .claude/tests/floors.conf
+        exit: 1   last: 1 of 1 harness suite(s) FAILED.
+        log: .claude/state/attest-logs/20261109T233145Z.2103978.log
+
+  - **Earned:** the (b) pair, on a `--no-hardlinks` clone of this branch
+    (`scratchpad/r1-100`) with this suite and floors copied in. The
+    worktree's `scripts/ci-local.sh` was never touched. Line 114 is replaced
+    in the clone's copy only:
+
+        planned fix  `if (this == 0 && $0 !~ /^-[[:space:]]/) exit` (230 lines, dirty= at 208)
+        $ bash .claude/tests/ci-local.test.sh
+        ci-local: 52 passed, 0 failed
+
+        over-broad   `if (0) exit` (a column-0 line never ends the block)
+        $ bash .claude/tests/ci-local.test.sh
+            FAIL R-1: a column-0 on: sequence holding only - push is not listed, though jobs: mentions pull_request
+            FAIL R-1: the column-0 push-only workflow is named on stderr
+        ci-local: 50 passed, 2 failed
+
+        restored     `if (this == 0 && $0 !~ /^-[[:space:]]/) exit`
+
+    The over-broad mutant turns exactly the (b) pair red and nothing else.
+    The (a) pair has its own red above.
+
+## Diff review
+
+Fresh `feature-developer` with the `diff-review` skill, 2026-11-09, over
+`git diff 94acc3f HEAD` at `8ca43b0`. It resolved **claude-opus-5-5**, with
+no override. It changed no file in the worktree, ran nothing there, and its
+probes ran on copies in the scratchpad. Condensed; the findings are kept
+whole.
+
+- **Read correctly:** `on: # comment` followed by a block; `"on":`, `'on':`
+  and `on :`; blank and comment lines before the first child; `push:` with
+  nested `branches:` and then `pull_request:` at the same indent (IN); a
+  `pull_request:` nested under `push:` (OUT); `- pull_request` in an indented
+  sequence; CRLF in every form (IN, because `[[:space:]]` matches `\r`);
+  `on: { pull_request: {} }` (IN) and `{pull_request_target: {}}` (OUT); a
+  leading `---`; an `on:` key at deeper indent inside a job (OUT: the rule is
+  anchored at column 0, and only the first top-level `on:` is read).
+- **Not handled:** `true:` (OUT, which is correct, because GitHub reads
+  `on`); tabs (YAML forbids them); anchors and multi-line flow sequences (out
+  of scope); the column-0 block sequence (finding 1).
+- **Other checks:** `deploy.yml.template` is not matched by `*.yml`; the
+  loop emits gates.yml once, first; `scripts/gates.sh:1193` and
+  `scripts/host-load.sh:10` mention ci-local only in comments; the
+  derivation is unaffected. Every positive check is a whole-line
+  `has_line`, and no substring negative can pass alone on an empty result.
+
+**Should fix 1.** A pull-request workflow whose `on:` list is not indented
+is dropped, and the run still reports green (`if (this == 0) exit`). The
+proposed fix is `if (this == 0 && $0 !~ /^-[[:space:]]/) exit`; measured,
+it reads the compact sequence as IN, keeps
+`on:\n- push\njobs:\n- pull_request` OUT and leaves every other case
+unchanged. It needs a fixture, so it goes back to RED. → **Taken, as R-1.**
+
+**Nice to have 2.** `--help` cuts off the header's last line
+(`sed -n '2,33p'`, not `'2,32p'`). It predates this story. → Folded into
+GREEN, because it is the same file. It is one character, and the line count
+does not change.
+
+**Judgements:** skipping `workflow_dispatch`-only workflows is right.
+Skipping `merge_group`-only and unfiltered `on: push` workflows is
+defensible but leaves a gap for merge-queue consumers. CLAUDE.md, the README
+and the header still say "every step CI runs", which the story's Out of
+scope defers. → Recorded as a follow-up for the user.
+
+Verdict: Ship.
+
+*Orchestrator (2026-11-09):* Should fix 1 was reproduced independently (R-1)
+and is taken here, since cause, reproduction and fix are all in hand. The
+story returns to RED.
 
 ## Gate results
 
@@ -1005,3 +1232,17 @@ says), and `^  pull_request:$` in `.github/workflows/boundaries.yml` (line
   `20261109T222535Z.2095113.log`, verdict `All required gates passed (0 ran,
   7 unconfigured, 0 known).`), so it was not re-run. The developer changed
   no file.
+- R-1 RED verified by the orchestrator (2026-11-09):
+  - `attest.sh check` said `fresh` for `bash scripts/selftest.sh ci-local`
+    (exit 1, `ci-local: 50 passed, 2 failed`, log
+    `20261109T233145Z.2103978.log`). The two FAILs are exactly R-1a and
+    R-1b, the column-0 `pull_request` workflow, and the floor line is the
+    only other FAIL. `--fast` is also `fresh`, exit 0.
+  - Diff read: `ci-local.test.sh` gains 40 lines and loses none, and
+    `scripts/ci-local.sh` is untouched. The floor is now 52 in both files.
+  - The test developer's departure from the brief on (b) was checked by
+    reading the predicate. Once the first `on:` child is in column 0,
+    `ind` is 0, so an indented `pull_request` under `jobs:` is skipped by
+    `if (this != ind) next` whatever ends the block. That shape could not go
+    red against an over-broad fix, and the column-0 shape it used instead
+    can. Accepted.

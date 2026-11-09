@@ -523,6 +523,36 @@ jobs:
     steps:
       - run: touch .m-targetblock
 YML
+# R-1: a block SEQUENCE under `on:` written in column 0. Valid YAML, accepted
+# by GitHub, and the unindented layout of the `- pull_request` shape the filter
+# already reads - so a filter that ends the block at the first column-0 line
+# drops this workflow and the run still reports green.
+cat > "$TFIX/.github/workflows/compact.yml" <<'YML'
+name: compact
+on:
+- pull_request
+- workflow_dispatch
+jobs:
+  compact:
+    runs-on: ubuntu-latest
+    steps:
+    - run: touch .m-compact
+YML
+# Its negative control: the same layout holding only `- push`, then `jobs:`
+# whose own column-0 sequence mentions pull_request (the shape the diff review
+# measured; a parsing control, not a runnable workflow). A filter that never
+# lets a column-0 line end the block reads past `jobs:` as part of `on:` and
+# lists it. The mention has to be in column 0: an indented one is skipped by
+# the first-indentation rule whatever ends the block, so it would control
+# nothing.
+cat > "$TFIX/.github/workflows/compact-push.yml" <<'YML'
+name: compact-push
+on:
+- push
+jobs:
+- pull_request
+- run: touch .m-compact-push
+YML
 
 tout="$( cd "$TFIX" && bash scripts/ci-local.sh --dry-run 2>/dev/null )"
 terr="$( cd "$TFIX" && bash scripts/ci-local.sh --dry-run 2>&1 >/dev/null )"
@@ -561,6 +591,16 @@ else _bad "AC-8: the inline pull_request_target workflow is named on stderr" "st
 if has_line "note: not running target-block.yml: it does not trigger on pull_request" "$terr"; then
   _ok "AC-8: the block pull_request_target workflow is named on stderr"
 else _bad "AC-8: the block pull_request_target workflow is named on stderr" "stderr: $terr"; fi
+# R-1: the column-0 block sequence
+if has_line "touch .m-compact" "$tout"; then _ok "R-1: an on: sequence written in column 0 holding - pull_request is listed"
+else _bad "R-1: an on: sequence written in column 0 holding - pull_request is listed" "stdout: $tout"; fi
+if has_text "not running compact.yml" "$terr"; then _bad "R-1: the column-0 pull_request workflow is not reported excluded" "stderr: $terr"
+else _ok "R-1: the column-0 pull_request workflow is not reported excluded"; fi
+if has_line "touch .m-compact-push" "$tout"; then _bad "R-1: a column-0 on: sequence holding only - push is not listed, though jobs: mentions pull_request" "stdout: $tout"
+else _ok "R-1: a column-0 on: sequence holding only - push is not listed, though jobs: mentions pull_request"; fi
+if has_line "note: not running compact-push.yml: it does not trigger on pull_request" "$terr"; then
+  _ok "R-1: the column-0 push-only workflow is named on stderr"
+else _bad "R-1: the column-0 push-only workflow is named on stderr" "stderr: $terr"; fi
 
 # AC-2: a real run. The positive marker is the control that the run happened
 # at all - without it, "no deploy marker" is equally true of a run that
