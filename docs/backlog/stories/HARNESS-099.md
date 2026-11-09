@@ -4,8 +4,8 @@ title: The gates suite executes the same count in a bootstrapped project as in t
 slug: the-gates-suite-executes-the-same-count
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-099-the-gates-suite-executes-the-same-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -198,6 +198,12 @@ both trees, and CI runs the full self-test on the PR.
   "matches no empty line") was considered and rejected: `keep-when | unit | .`
   - keep every failing unit log - is a legitimate wish, and the self-test
   must not impose policy on a consumer's manifest.
+  - *R-1 note (2026-11-09, AM-1):* (a) and (b) compare both sides after a
+    stable sort by gate id (`LC_ALL=C sort -s -t"$_t" -k1,1`, `_t` a TAB),
+    because `gates.sh --list` groups lines by gate. (a)'s title now ends
+    `... to the gate it names, in manifest order within each gate`. Read
+    together, (a) and (b) still require identical (id, pattern) sequences
+    within each gate.
 - **C-4. Fixture manifests and pins, all unconditional, written under
   `$M69`**, after the real-manifest call:
   - `tmpl.conf`, template-shaped, exactly these four lines in order:
@@ -503,6 +509,10 @@ name, below the table.
   **claude-opus-5-5** (2026-11-08), self-reported. As planned.
 - GATES (after R-1) - `feature-developer` (full gates run), planned `opus`,
   resolved **claude-opus-5-5** (2026-11-09), self-reported. As planned.
+- GATES (after R-1) - `feature-developer` (second diff review, fresh), planned
+  `opus`, resolved **claude-opus-5-5** (2026-11-09), self-reported. Ship.
+- GATES (after R-1) - `feature-developer` (`--changed` self-test), planned `opus`,
+  resolved **claude-opus-5-5** (2026-11-09), self-reported. As planned.
 
 ## Out of scope
 
@@ -554,6 +564,14 @@ real `project.conf` takes, and are three either way.
 
 AC-1 is about two whole runs, not one assertion; it is measured (Handoff,
 "Bootstrapped-tree count") and owned end to end by DV-2.
+
+*R-1 note (2026-11-09):* the suite now also writes `alt.conf`, a
+bootstrapped fixture whose live keep-when lines alternate unit, cov, unit,
+and runs `ship69 alternating-fixture` on it with its own count pin: 3 + 1
+assertions. Before the sort, its (a) and (b) failed (1000 passed, 2
+failed); with the sort the suite gives 1002 passed, 0 failed. The floor is
+`floor | gates | 1002` (floors.conf 47) and `gates 1002` (selftest.test.sh
+538), replacing the 998 above.
 
 ## Handoff: RED -> GREEN
 
@@ -1003,6 +1021,59 @@ Verdict: fix 1 first.
 *Orchestrator (2026-11-08):* reproduced independently (AM-1). The user
 approved the amendment, and the story returns to RED (R-1).
 
+### Second review (2026-11-09, at `31a1a52`, after R-1)
+
+Fresh `feature-developer` with the `diff-review` skill over the whole diff
+`3c79f70..31a1a52`, resolved **claude-opus-5-5**, no override. It changed no
+file in the worktree and ran nothing there. Condensed; its reproductions and
+numbers are kept.
+
+- **Independent run on manga-translator's real manifest:** a scratch clone
+  at `31a1a52` with `D:\mt-harness-refresh`'s `project.conf` copied in (16
+  live keep-when lines alternating between gates; read-only). It gave
+  `gates: 1002 passed, 0 failed`, the floor was met (1002 of 1002), rc 0,
+  and there was no FAIL or `note:` line.
+- **The sort is stable and locale-proof.** Git Bash and ubuntu CI both have
+  GNU coreutils `sort` (8.32 here), so `-s` is supported. It was checked on
+  lines that reorder without `-s`. `-k1,1` keys on field 1 only, so a TAB in
+  a pattern does not affect it. `LC_ALL=C` rules out locale collation of ids.
+- **The sort hides no misattribution.** (a) and (b) compare columns 1 and 2
+  of the same sorted sequences. Passing both requires identical (id,
+  pattern) pairs in the same within-gate order, which is the order the
+  first-match rule depends on. Only the meaningless cross-gate order is
+  dropped. A swap A:Y/B:X now shows under (b) rather than (a); only how the
+  failure reads changes.
+- **`kwlist69` parses correctly.** On the real `--list` output every
+  indented line starts with 30 spaces and its own label, and only
+  `^ +keep-when: ` emits a pair. A 13-character id (`coverage-core`) still
+  reads correctly as `$1`. The rows that `--list` prints before the gate loop
+  set no false id.
+- **Duplicate gate ids, and a keep-when naming no configured gate:** (a)
+  fails, and `--audit` fails too, so there is no disagreement on any
+  manifest the audit accepts.
+- **One case the audit accepts:** `keep-when |  | x` with an empty id. It
+  passes `--audit`, `--list` omits it, and (b) fails. The suite is reporting
+  a genuinely dead line, so this is a gap in `--audit`, and `gates.sh` is out
+  of scope here.
+- **The readers match `gates.sh`'s parser:** the same live-line test, the
+  same trimming, and the same handling of a line with no `|` or with an
+  empty pattern.
+- **Count pins cannot be fooled:** they read `_lib.sh`'s counters in the
+  calling shell, `ship69` does not run in a subshell, and DV-1 shows both
+  bootstrapped pins go red.
+- **floors.conf numbers add up:** 984 + 14 = 998, and + 4 = 1002. Counting
+  the `assert_eq` calls in the diff gives the same. There is no other
+  984/998 pin in tests, scripts, `.github` or `docs/wiki`. `floors.conf:47`
+  equals `selftest.test.sh:538` (1002), and VERSION is 118.
+- **Nice to have 1:** C-3 and the Test plan described the suite as it was
+  before R-1.
+
+Verdict: Ship.
+
+*Orchestrator (2026-11-09):* Nice to have 1 was taken, story only: dated R-1
+notes were added to C-3 and to the Test plan. The empty-id `--audit` gap is
+out of scope here; it is offered to the user as a follow-up.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -1153,3 +1224,19 @@ approved the amendment, and the story returns to RED (R-1).
   dispatched; `attest.sh check -- bash scripts/gates.sh` said `fresh` (exit 0,
   4 s, log `20261109T063519Z.1629456.log`, verdict `All required gates
   passed (0 ran, 7 unconfigured, 0 known).`), so it was not re-run.
+- Diff review at GATES → REVIEW: the first review (`e1500a6`) said fix 1
+  first, which became R-1. The second review (`31a1a52`) said `Verdict:
+  Ship.` and independently ran manga-translator's manifest at 1002/0. Both
+  are in `## Diff review`.
+- Self-test at GATES → REVIEW (2026-11-09): `selftest-needed: run`.
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` was dispatched,
+  detached, and ran alone. `attest.sh check` said `fresh`, `exit: 0`,
+  `last: 11 harness suite(s) passed.`, `duration: 1568s`, log
+  `20261109T070616Z.1660566.log`. Header:
+  `selftest: --changed — 11 of 34 suite(s) selected: boundaries doctor gates grep-count host-load mutate refresh run-lock selftest sigpipe worktree`.
+  The floors were met for all 11 (2927 executed, 2927 declared), and the log
+  has no FAIL line. `--changed` is enough: no script changed, so case (b)
+  does not apply.
+- Follow-up offered to the user: `--audit` accepts `keep-when |  | x` (an
+  empty gate id), a line `gates.sh` never applies. Found by the second
+  review; `gates.sh` is out of scope here.
