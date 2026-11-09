@@ -530,7 +530,7 @@ done <<'COUNTS'
 attest 179
 boundaries 545
 briefs 31
-ci-local 32
+ci-local 48
 classify 55
 dispatch 83
 doctor 69

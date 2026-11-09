@@ -4,8 +4,8 @@ title: ci-local runs only workflows that trigger on pull_request
 slug: ci-local-runs-only-workflows-that-trigge
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-100-ci-local-runs-only-workflows-that-trigge
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/ci-local.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -473,6 +473,8 @@ name, below the table.
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
 - PLANNED, `lead-po`: ran on **opus** (`claude-opus-5-5`, Opus 5.5), not the planned `fable`, by the user's decision (2026-11-09), because the account's Fable usage limit was reached - an earlier Fable dispatch stopped on HTTP 429 before writing anything.
+- RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5**
+  (2026-11-09), self-reported; `model: opus` passed. As planned.
 
 Brief for RED: the oracle partition is the Contract's C-6 - AC-1 to AC-6 and
 AC-8 mechanical (pin exact whole lines and the verbatim note text), AC-9
@@ -513,6 +515,57 @@ AC-7 a non-change.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Level: integration, one fixture. Every new assertion runs the real
+`scripts/ci-local.sh` (dry and real) inside one `make_project_fixture` tree,
+`TFIX`, whose `.github/workflows/` holds seven test-written workflows, each with
+one step `touch .m-<name>`. That is the cheapest level that can falsify the
+criteria: the predicate is private to the script, and what the story promises
+is the script's stdout, stderr and side effects. All in one new describe,
+`only workflows CI runs on a pull request`, at `.claude/tests/ci-local.test.sh`
+416-579 (after HARNESS-079's `rm -rf "$SFIX"`, before `summary "ci-local"`).
+Whole-line matching through `has_line` (awk `$0 == n` over a here-string);
+substring absence through `has_text` (awk `index`). No `printf | grep -q`.
+
+| Fixture file | `on:` | Role |
+|---|---|---|
+| `gates.yml` | block: `pull_request:`, a comment line, `schedule:` + `- cron:`, `workflow_dispatch:` | AC-1 positive, AC-2 control, AC-6 "not reported" |
+| `deploy.yml` | block: `push:` + `branches: [main]`, `workflow_dispatch:` (deploy.yml.template's shape) | AC-1/AC-2 negative, AC-6 note |
+| `both.yml` | `[push, pull_request]` | AC-3 |
+| `bare.yml` | `pull_request` | AC-4 |
+| `release.yml` | block `push:`; `pull_request` in a comment above `on:` and in `if: github.event_name != 'pull_request'` | AC-5 control (grep-the-word filter), AC-6 note |
+| `target.yml` | `[pull_request_target]` | AC-8 control, inline branch |
+| `target-block.yml` | block: `pull_request_target:` | AC-8 control, block branch |
+
+Assertions (16, all unconditional, no loop):
+
+| # | Title (as printed) | AC | Red today? |
+|---|---|---|---|
+| 1 | `AC-1: a block on: with pull_request among other events is listed` | AC-1 + | no (pass on arrival) |
+| 2 | `AC-1: a push-only workflow's step is not listed` | AC-1 - | **yes** |
+| 3 | `AC-3: on: [push, pull_request] is listed` | AC-3 | no (earned by DV-2) |
+| 4 | `AC-4: a bare on: pull_request is listed` | AC-4 | no (earned by DV-2) |
+| 5 | `AC-5: pull_request mentioned outside on: does not count` | AC-5 | **yes** |
+| 6 | `AC-6: an excluded workflow is named on stderr` (deploy.yml, dry) | AC-6 | **yes** |
+| 7 | `AC-6: so is the one that only mentions pull_request` (release.yml, dry) | AC-6 | **yes** |
+| 8 | `AC-6: an included workflow is not reported excluded` | AC-6 | no (pass on arrival) |
+| 9 | `AC-8: on: [pull_request_target] is not listed` | AC-8 | **yes** |
+| 10 | `AC-8: a block on: holding only pull_request_target: is not listed` | AC-8 | **yes** |
+| 11 | `AC-8: the inline pull_request_target workflow is named on stderr` | AC-8 | **yes** |
+| 12 | `AC-8: the block pull_request_target workflow is named on stderr` | AC-8 | **yes** |
+| 13 | `AC-2: the real run succeeds` (exit 0) | AC-2 | no (pass on arrival) |
+| 14 | `AC-2: the pull_request workflow's step ran` (`.m-gates` exists) | AC-2 control | no (pass on arrival) |
+| 15 | `AC-2: the push-only workflow's step did not run` (`.m-deploy` absent) | AC-2 | **yes** |
+| 16 | `AC-6: a real run names the excluded workflow too` (combined output) | AC-6 | **yes** |
+
+AC-7: no existing assertion touched (`git diff` of the suite is 164 pure
+insertions, 0 deletions). AC-9: `floors.conf` line 42 and `selftest.test.sh`
+line 533 both `48`; `sigpipe.test.sh` 577 moved 169 -> 208; `sigpipe` floor
+91 unchanged; VERSION is GREEN's.
+
+Note on naming: HARNESS-079's describe also titles its assertions `AC-8: ...`
+(its own story's AC-8, the two-job gates.yml). The texts differ, so every
+FAIL line is still unique; read the title, not only the prefix.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -532,6 +585,179 @@ AC-7 a non-change.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED by `test-developer`, model **`claude-opus-5-5`** (Opus 5.5), as planned
+(`opus`); no override in the dispatch. 2026-11-09, Windows host, local. Every
+number below is from a local run; none from CI.
+
+**Commands** (run through the attestation wrapper exactly as written):
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh ci-local
+    bash scripts/attest.sh -- bash scripts/selftest.sh sigpipe
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+
+**Files touched (all test / harness paths):**
+
+- `.claude/tests/ci-local.test.sh` - new describe at 416-579 (C-4). +164, 0 removed.
+- `.claude/tests/sigpipe.test.sh` - line 577 only: `scripts/ci-local.sh:169:dirty="$(git status` -> `scripts/ci-local.sh:208:dirty="$(git status` (C-3).
+- `.claude/tests/floors.conf` - line 42 `floor | ci-local      | 48` (was 32), and a HARNESS-100 paragraph at the end of the comment block (C-5).
+- `.claude/tests/selftest.test.sh` - line 533 `ci-local 48` (was 32).
+- this story: `## Test plan`, this section.
+- NOT touched: `scripts/ci-local.sh`, `.claude/harness/VERSION` (both GREEN's).
+
+**ci-local, verbatim** (record `exit: 1`, `last: 1 of 1 harness suite(s) FAILED.`,
+`log: .claude/state/attest-logs/20261109T212313Z.2053201.log`, tree
+`280a045b688b5c43151be0b568a4815e9f2bb32e`, status ok, 44 s):
+
+    FAIL AC-1: a push-only workflow's step is not listed
+    FAIL AC-5: pull_request mentioned outside on: does not count
+    FAIL AC-6: an excluded workflow is named on stderr
+    FAIL AC-6: so is the one that only mentions pull_request
+    FAIL AC-8: on: [pull_request_target] is not listed
+    FAIL AC-8: a block on: holding only pull_request_target: is not listed
+    FAIL AC-8: the inline pull_request_target workflow is named on stderr
+    FAIL AC-8: the block pull_request_target workflow is named on stderr
+    FAIL AC-2: the push-only workflow's step did not run
+    FAIL AC-6: a real run names the excluded workflow too
+    ci-local: 38 passed, 10 failed
+    FAIL ci-local  did 38 units of work, below the floor of 48 in .claude/tests/floors.conf
+    assertion floors: 0 of 1 suite(s) met their declared floor.
+    1 of 1 harness suite(s) FAILED.
+
+Why it is the right failure: exactly the ten the AC list's "expected red"
+names (AC-1 negative, AC-2 `.m-deploy`, AC-5, the two dry AC-6 notes, the real
+AC-6 note, the four AC-8), each red on its own assertion, and all 32 existing
+assertions still green (AC-7). The suite loads and every assertion executes:
+48 EXECUTED. The floor line is expected too: `selftest.sh` compares a floor
+with the PASSED count (`did 38 units of work`), so the suite sits below 48
+until GREEN lands. An earlier run before the floor edit (log
+`.claude/state/attest-logs/20261109T210852Z.2037478.log`) printed the same ten
+FAIL lines and `38 passed, 10 failed`.
+
+**sigpipe, verbatim:** record `exit: 1`, `last: 1 of 1 harness suite(s) FAILED.`,
+`log: .claude/state/attest-logs/20261109T212413Z.2054252.log`, tree
+`280a045b688b5c43151be0b568a4815e9f2bb32e`, status ok, 425 s:
+
+    FAIL C-5 freshness: all twelve status-discarded lines are still where this suite says they are
+         expected: 12 lines, none stale
+         actual:   12 lines,
+           scripts/ci-local.sh:208 no longer holds [dirty="$(git status] - it holds:
+    sigpipe: 90 passed, 1 failed
+    FAIL sigpipe  did 90 units of work, below the floor of 91 in .claude/tests/floors.conf
+    assertion floors: 0 of 1 suite(s) met their declared floor.
+    1 of 1 harness suite(s) FAILED.
+
+The one red is the moved pin: today's 191-line script has no line 208 (hence
+"it holds:" with nothing after it). That is the C-3 freshness assertion and
+nothing else; 91 executed, as the floor says. (An earlier sigpipe run,
+started before the floor edit, was killed by me part-way so the recorded run
+would be on the final tree - log
+`.claude/state/attest-logs/20261109T211052Z.2038481.log`; it is not evidence.)
+
+**gates --fast:** record `exit: 0`, `last: All required gates passed (0 ran, 5 unconfigured, 0 known).`,
+`log: .claude/state/attest-logs/20261109T213135Z.2066384.log`, status ok, 2 s.
+Every gate is UNCONFIGURED in this unbootstrapped tree (format, lint,
+typecheck, unit, coverage), mutation ON REQUEST; so `--fast` judges nothing
+here and the suites above are the evidence. (A first attempt at 21:27:59 was
+refused by the run lock while sigpipe ran - log
+`.claude/state/attest-logs/20261109T212759Z.2058902.log`, exit 2 - and was
+rerun after it.)
+
+**selftest (C-8, for the floor tables):** record `exit: 0`,
+`last: 1 harness suite(s) passed.`,
+`log: .claude/state/attest-logs/20261109T213146Z.2066542.log`, same tree,
+233 s: `selftest: 366 passed, 0 failed` - the two floor tables agree at 48.
+
+**Measured floors:** ci-local **48** executed (38 + 10) - written to both
+files. sigpipe **91**: measured 91 executed (90 + 1), so the floor stays 91 in both files, unchanged. Neither number is arithmetic
+on the Contract; the Contract's predictions (48; 38/10) matched the run.
+
+**What GREEN must do:**
+
+1. Apply C-2 to `scripts/ci-local.sh` exactly: the `workflow_files()` body,
+   `triggers_on_pull_request()` and the two comment blocks, with the comment's
+   `(HARNESS-052)` becoming `(HARNESS-100, from clean_calendar's HARNESS-052)`
+   and the supabase example becoming upstream's `deploy.yml.template`,
+   **without changing the number of lines**. Keep the function name
+   `triggers_on_pull_request` (the DVs target it).
+2. Confirm `grep -n 'dirty="\$(git status' scripts/ci-local.sh` prints `208:`
+   (re-verified in RED: clean_calendar's `ci-local.sh.patch` applied with
+   `git apply` to a scratch copy of this tree's script gives 230 lines and
+   `208:dirty=...`, byte-identical to the planner's
+   `scratchpad/h100/ci-local.sh`). If it does not land on 208, stop: the pin is
+   frozen in GREEN.
+3. `.claude/harness/VERSION` line 34: `118 (2026-11-08)` -> `119 (<date>)`.
+4. Run `bash scripts/selftest.sh ci-local`, `... sigpipe`, `... selftest`.
+
+**Predicted post-GREEN counts** (measured, not derived: a `--no-hardlinks`
+scratch clone of this branch with this suite and the patched script from step 2,
+clean_calendar's comment wording): `ci-local: 48 passed, 0 failed`. sigpipe:
+`sigpipe: 91 passed, 0 failed` predicted (not measured with the patched
+script: the C-5 freshness pin is the only assertion that reads the line, and the
+patched copy has the shape at 208).
+
+**Export shape the tests pin.** Not a module: the tests pin the script's
+observable contract only -
+- stdout of `--dry-run`: one step per line; `touch .m-<name>` for included
+  workflows, nothing for excluded ones;
+- stderr: the whole line `note: not running <basename>: it does not trigger on pull_request`
+  per excluded file, verbatim, and none for an included one; on a real run the
+  same line appears in the combined output;
+- a real run exits 0 and executes only included steps.
+Not constrained: the function names, the awk technique, the order of the
+notes relative to each other, where in stderr the notes fall. (C-7.)
+
+**Passed on arrival** (today's script includes everything): #1, #3, #4, #8,
+#13, #14. #1/#13/#14 are the controls that the run happened at all; #8 is
+vacuous until a filter exists, earned by DV-1's restoring direction; #3/#4 are
+earned by DV-2 (GATES). None is earned in RED - no production code exists to
+mutate that would make them red. This is declined below, not claimed.
+
+**Negative controls - expected values.** Measured outside the worktree, in the
+scratch clone above, by replacing the predicate in a COPY of the patched
+script (never `scripts/ci-local.sh` in the worktree). These are RED's
+measurements against the clean_calendar-worded copy; GREEN/GATES confirm them
+against the shipped script.
+
+| Control | Mutation (in the scratch copy) | Expected reds | Measured |
+|---|---|---|---|
+| none (patched script) | - | 0 | `48 passed, 0 failed` |
+| unfixed script (today) | - | 10: #2 #5 #6 #7 #9-12 #15 #16 | `38 passed, 10 failed` (the worktree run) |
+| AC-5 / grep-the-word filter | `triggers_on_pull_request() { grep -q pull_request "$1"; }` | #5, #7, #9-12 | `42 passed, 6 failed` (exactly those six) |
+| AC-8 inline-branch prefix | `pull_request([^A-Za-z0-9_]\|$)/` -> `pull_request/` on the `found = (v ~` line | #9, #11 | `46 passed, 2 failed` (exactly those) |
+| AC-8 block-branch prefix | line 118 `pull_request["\047]?[[:space:]]*(:\|#\|$)/` -> `pull_request/` | #10, #12 | `46 passed, 2 failed` (exactly those) |
+| DV-1 expression | `s/if triggers_on_pull_request "\$f"; then/if true; then/` | the ten above | `38 passed, 10 failed`, the same ten FAIL lines |
+| DV-2 expression | `s/found = (v ~/found = 0 \&\& (v ~/` | #3, #4 red; #1, #2 green; older inline fixtures red | `21 passed, 27 failed`; FAIL list includes #3, #4 and the HARNESS-079 `AC-8:` four; #1/#2 not in it |
+
+So each control fires on the branch it exists for and on nothing else: the
+two prefix controls split cleanly by branch, which is why AC-8 has two files.
+
+**DV expressions re-checked against the patched copy:** DV-1's literal
+`if triggers_on_pull_request "$f"; then` occurs on exactly 1 line; DV-2's
+`found = (v ~` on exactly 1 line; DV-3(a)'s `^  pull_request:$` on exactly 1
+line of the real `.github/workflows/boundaries.yml` (line 9; file is LF). No
+correction needed. DV-2 measured 21/27 here (48 executed) against
+clean_calendar's 17/23 (40): the difference is HARNESS-079's four inline
+fixtures and this story's AC-8 four (which stay green, being excluded anyway).
+
+**Deferred verifications declined.** DV-1, DV-2, DV-3 and DV-4 are owned by
+GATES and I did not run them: DV-1 and DV-2 mutate the real
+`triggers_on_pull_request`, which does not exist in this tree yet; DV-3 and
+DV-4 need the fixed script. The scratch-copy measurements in the table above
+are NOT those verifications - they ran against a copy, outside the worktree,
+not through `mutate.sh` - and are recorded only as expected values.
+
+**Callers check.** `grep -rn 'workflow_files\|triggers_on_pull_request'` over
+`*.sh`, `*.md`, `*.yml` outside `scripts/ci-local.sh` and this story: no
+hits. Suites mentioning `ci-local`: boundaries, gates, host-load, procedure,
+rules-trim, run-lock, selftest, sigpipe (plus ci-local). None writes into
+`.github/workflows` (`grep` for `workflows` with a write verb in each:
+none); they read the script's text, pin its line (sigpipe) or its floor
+(selftest), or quote a summary line (rules-trim). The filter cannot change
+what they see.
+
+**Discovered.** Nothing that changes the approach. The Contract's C-1..C-8
+stand as written; no amendment.
 
 ## Regressions
 
@@ -640,3 +866,16 @@ AC-7 a non-change.
     it over the real tree, whose two workflows trigger on `pull_request`.
   - `gates.sh --list`: every gate is unconfigured, so `required_gates: []`
     stands. The epic is empty.
+- RED verified by the orchestrator (2026-11-09): `attest.sh check` said
+  `fresh` for all three of RED's commands, so none was re-run.
+  - `bash scripts/selftest.sh ci-local`: exit 1, `ci-local: 38 passed, 10
+    failed`, log `20261109T212313Z.2053201.log`. The ten FAILs are exactly
+    the AC list's "expected red"; the only other FAIL is the floor line.
+  - `bash scripts/selftest.sh sigpipe`: exit 1, `sigpipe: 90 passed, 1
+    failed`, log `20261109T212413Z.2054252.log`. The one FAIL is the moved
+    C-5 pin, expected while the script has 191 lines.
+  - `bash scripts/gates.sh --fast`: exit 0.
+  - Diff read: `ci-local.test.sh` gains 164 lines and loses none (AC-7);
+    `sigpipe.test.sh` changes line 577 only (169 → 208); `ci-local`'s floor
+    goes 32 → 48 in both files; `sigpipe` stays at 91. `scripts/ci-local.sh`
+    and VERSION are untouched.
