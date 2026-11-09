@@ -5,7 +5,7 @@ slug: the-gates-suite-executes-the-same-count
 epic: 
 type: fix
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-099-the-gates-suite-executes-the-same-count
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/gates.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]
@@ -91,7 +91,8 @@ both trees, and CI runs the full self-test on the PR.
   block runs on it, then its three assertions are about those lines and hold
   for a well-formed manifest: (a) `bash scripts/gates.sh --list` on that
   manifest prints one `keep-when: <pattern>` line per live line, under the gate
-  the line names, in manifest order - the ids agree; (b) the patterns agree,
+  the line names, in manifest order within each gate (`--list` groups the
+  lines by gate, in `gate`-line order) - the ids agree; (b) the patterns agree,
   verbatim; (c) every live pattern is a valid extended regex for the matcher
   `gates.sh` applies it with (`grep -E`). *Controls:* a manifest whose live
   pattern is `(` is counted as 1 invalid by (c)'s reader; the live-line reader
@@ -310,6 +311,19 @@ FAIL gates  did 991 units of work, below the floor of 998 in .claude/tests/floor
 mutate: no stranded mutation; nothing of a previous run is in the tree.
 ```
 
+*R-1 prediction for a re-run (test-developer, 2026-11-08; predicted, not
+observed).* The result above stands for tree `2723914`. R-1 added `alt.conf`,
+a third fixture on the bootstrapped path with its own count pin, so on the R-1
+tree the same expression (checked with `sed` + `diff` on a copy: it still
+matches exactly one line, now 3908) stops 9 assertions in the template tree and
+fails TWO pins, the existing `HARNESS-099 AC-2: the bootstrapped path of the
+shipped-manifest block executes exactly three assertions` and the new
+`HARNESS-099 AC-2: the bootstrapped path executes exactly three assertions on a
+manifest whose keep-when lines alternate between gates`, each `3` against `0`.
+1002 - 9 = 993 executed, 2 failed: `gates: 991 passed, 2 failed` and
+`FAIL gates  did 991 units of work, below the floor of 1002`. In a consumer
+tree the real manifest takes the path too: 990 executed, 988 passed.
+
 **DV-2 (the consumer's shape, end to end - AC-1). Owner: GATES.** In a scratch
 clone of the GATES tree (`git clone --no-hardlinks . <scratch>`, never
 manga-translator's worktree), make the clone's own
@@ -354,9 +368,47 @@ gates: 998 passed, 0 failed
 assertion floors: all 1 suite(s) met their declared floor (998 assertions executed, 998 declared).
 ```
 
+**DV-3 (a real consumer's manifest, end to end - AC-1 and AC-3 after
+AM-1). Owner: GATES.** In a `--no-hardlinks` scratch clone of the GATES tree,
+copy `D:\mt-harness-refresh\.claude\harness\project.conf` (read-only, never
+written) over the clone's `project.conf`, then run
+`bash scripts/selftest.sh gates`. The run **must** print `gates: <N> passed,
+0 failed`, where `<N>` is the template count, with no `FAIL gates` line and
+exit 0. If the suite fails for a reason unrelated to this block, for example
+an `--audit` cwd that does not exist in the upstream tree, paste which
+assertion failed and why, and confirm that none of `AC-7 (...)` or
+`HARNESS-099` are among the failures. The before side is the run at
+`e1500a6` against the same manifest, recorded in `## Regressions` R-1. Added
+2026-11-08 with AM-1, because DV-2's bootstrapped clone had no live
+keep-when line.
+
 ## Amendments
 
-<!-- none -->
+- **AM-1 (2026-11-08, AC-3(a), approved by the user in chat: "Yes, amend
+  it").**
+  - **Was:** "... prints one `keep-when: <pattern>` line per live line, under
+    the gate the line names, in manifest order - the ids agree".
+  - **Is:** "... under the gate the line names, in manifest order within each
+    gate (`--list` groups the lines by gate, in `gate`-line order) - the ids
+    agree".
+  - **Why:** found by the GATES diff review and reproduced by the
+    orchestrator (below). `scripts/gates.sh` 634-636 prints keep-when lines
+    under each gate, looping over gates in `gate`-line order. So a manifest
+    whose keep-when lines alternate between gates is printed grouped, not in
+    file order. That is manga-translator's shape, and changing `gates.sh` is
+    out of scope. Within one gate `--list` does keep file order, which is the
+    order the first-match rule (346-357) depends on. As written, AC-3(a) was
+    false of `gates.sh` for the consumer this story exists to unblock.
+  - **Orchestrator's reproduction, independent of the reviewer's code:** a
+    `--no-hardlinks` clone at `e1500a6`, with `D:\mt-harness-refresh`'s
+    `project.conf` copied in. The live keep-when ids are listed in file order
+    by an awk over the conf, and in `--list` order by an awk over `gate`
+    rows and `keep-when:` lines:
+
+        == MT file order (ids):
+        unit unit coverage coverage coverage-core coverage-core integration integration unit unit coverage coverage coverage-core coverage-core integration integration
+        == --list order (ids):
+        unit unit unit unit coverage coverage coverage coverage coverage-core coverage-core coverage-core coverage-core integration integration integration integration
 
 ## Model guidance
 
@@ -392,6 +444,10 @@ name, below the table.
 - GATES - `feature-developer` (full gates run), planned `opus`, resolved
   **claude-opus-5-5** (2026-11-08), self-reported; `model: opus` passed. As
   planned.
+- GATES - `feature-developer` (diff review, fresh), planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-08), self-reported. Verdict: fix 1 first (R-1).
+- RED (return, R-1) - `test-developer`, planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-08), self-reported. As planned.
 
 ## Out of scope
 
@@ -682,6 +738,215 @@ measured differently.
     duration: 1s
     last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
     log:      .claude/state/attest-logs/20261108T214854Z.1247206.log
+
+### R-1 (return to RED)
+
+Written by `test-developer`, resolved **claude-opus-5-5** (Opus 5.5),
+2026-11-08, no model override stated in the dispatch. Remit: R-1 only.
+
+**Command:** `bash scripts/selftest.sh gates`.
+
+**What changed, in `.claude/tests/gates.test.sh` only (plus the floors):**
+- New fixture `$M69/alt.conf`, after the `boot.conf` count pin:
+  `BOOTSTRAPPED=yes`, `gate`/`evidence` lines for `unit` and `cov`, then live
+  keep-when lines `unit | Windows fatal exception`, `cov | Unknown C\+\+
+  exception`, `unit | Segmentation fault`. `ship69 alternating-fixture` on it
+  between `n0`/`n1`, then one count pin, `HARNESS-099 AC-2: the bootstrapped
+  path executes exactly three assertions on a manifest whose keep-when lines
+  alternate between gates` (3). That is 4 new unconditional assertions.
+- `boot69`: `_kw` and `_kl` are each piped through `LC_ALL=C sort -s
+  -t"$_t" -k1,1` (`_t` a local TAB) before (a) and (b) compare them - stable,
+  so manifest order within each gate is kept (AM-1). `LC_ALL=C` so both sides
+  sort identically on any host.
+- Title of (a) changed: `... to the gate it names, in manifest order` ->
+  `... in manifest order within each gate`, to say what it now asserts. (b)
+  and (c) titles unchanged. The template-path titles (AC-5) are untouched.
+  Nothing else references the old (a) title (grepped).
+
+**Red, then green** - verbatim in `## Regressions` R-1 "Earned": unsorted
+comparison `gates: 1000 passed, 2 failed` (the new fixture's (a) and (b)
+only); sorted `gates: 1002 passed, 0 failed`, floor 1002.
+
+**Mutation:** `bash scripts/mutate.sh .claude/tests/gates.test.sh 's/ |
+LC_ALL=C sort -s -t"\$_t" -k1,1//g' -- bash scripts/selftest.sh gates` - one
+line changed, the alternating fixture's (a) and (b) red and nothing else,
+`gates: 1000 passed, 2 failed`, restore verified, `--check` clean. Output in
+`## Regressions`.
+
+**DV-1:** its expression still matches exactly one line (now 3908). Its
+predicted numbers change with the new fixture (991 passed, 2 failed, floor
+1002) - written as a prediction under DV-1; the recorded result for `2723914`
+is left as observed. DV-3 not run (GATES owns it); `D:\mt-harness-refresh` not
+touched.
+
+**Floors:** `.claude/tests/floors.conf` 47 and `.claude/tests/selftest.test.sh`
+538: gates 998 -> 1002, with an R-1 paragraph appended to floors.conf's
+comment block. Measured, local, Windows host: template tree `gates: 1002
+passed, 0 failed` (1002 executed). Bootstrapped `--no-hardlinks` scratch clone
+of `e1500a6` with these three files copied in, DV-2's procedure
+(`BOOTSTRAPPED=yes`, five required gates `printf ok`, five `evidence | <id> |
+-`; `--audit` printed `Manifest audit passed.`, rc 0): `gates: 1002 passed, 0
+failed`, rc 0, 0 `note: project.conf` lines - **equal**. (That clone has no
+live keep-when line in its own manifest, so its (a)/(b) on the real manifest
+compare empty with empty; the alternating shape is covered by `alt.conf`, and
+end to end by DV-3.)
+
+**Files touched:** `.claude/tests/gates.test.sh`, `.claude/tests/floors.conf`,
+`.claude/tests/selftest.test.sh`, `docs/backlog/stories/HARNESS-099.md`
+(`## Deferred verifications` DV-1 note, this handoff part, `## Regressions` R-1
+Earned).
+
+**What GREEN does:** nothing beyond verifying. VERSION is already 118; no
+production file moved. Run the command above and confirm `gates: 1002 passed,
+0 failed`.
+
+**Final records (attested, local, Windows host):**
+
+    command:  bash scripts/selftest.sh gates
+    tree:     1129f14dbbdc438c4e7c381af665897465aa619d
+    exit:     0
+    duration: 422s
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261108T235714Z.1446620.log
+
+    gates: 1002 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (1002 assertions executed, 1002 declared).
+
+    command:  bash scripts/gates.sh --fast
+    tree:     1129f14dbbdc438c4e7c381af665897465aa619d
+    exit:     0
+    duration: 1s
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261109T000418Z.1469010.log
+
+## Regressions
+
+- **R-1 (2026-11-08, found at GATES → REVIEW by the fresh diff review).**
+  - **What is wrong:** `boot69`'s assertions (a) and (b) compare `kw69`
+    (live keep-when lines in file order) with `kwlist69` (lines in
+    `gates.sh --list` order). `--list` groups lines by gate, so on any
+    manifest whose keep-when lines alternate between gates, (a) and (b) fail
+    on a correct manifest. manga-translator's real manifest is that shape: 16
+    lines alternating unit / coverage / coverage-core / integration. The
+    reviewer predicted `gates: 996 passed, 2 failed` there, which still blocks
+    the refresh this story exists to unblock.
+  - **How it was missed:** no fixture alternates between gates (`boot.conf`
+    has one `unit` line, then one `cov` line). DV-2's bootstrapped clone had
+    no live keep-when line, so (a) and (b) compared empty with empty.
+  - **What it should assert instead (AM-1):** both sides are stably sorted
+    by gate id before comparing, so ids and patterns agree in file order
+    within each gate. A new fixture with lines alternating between gates
+    (for example unit, cov, unit) pins it, and must fail against the current
+    comparison. DV-2 is strengthened to run with manga-translator's real
+    manifest copied in (DV-3).
+  - **Earning it:** the corrected comparison passes on arrival against an
+    alternating fixture only if it is right. RED shows the new fixture's (a)
+    and (b) red against the current unsorted comparison, then green after the
+    sort. RED also runs one `mutate.sh` mutation removing the sort and
+    watches the alternating fixture's assertion go red. The output is pasted
+    here.
+  - **Earned (test-developer, return to RED, 2026-11-08, Windows host,
+    local).** Fixture `alt.conf` (live keep-when lines unit, cov, unit) and
+    its count pin added first, against the UNSORTED comparison - the defect
+    reproduced, (a) and (b) for the new fixture red, nothing else:
+
+        FAIL AC-7 (alternating-fixture): gates.sh --list attributes every live keep-when line to the gate it names, in manifest order
+             expected: unit
+             cov
+             unit
+             actual:   unit
+             unit
+             cov
+        FAIL AC-7 (alternating-fixture): and prints every live keep-when pattern verbatim
+             expected: Windows fatal exception
+             Unknown C\+\+ exception
+             Segmentation fault
+             actual:   Windows fatal exception
+             Segmentation fault
+             Unknown C\+\+ exception
+        gates: 1000 passed, 2 failed
+
+    Then both sides stably sorted by gate id (`LC_ALL=C sort -s -t"$_t"
+    -k1,1`): `gates: 1002 passed, 0 failed`, floor 1002 met. Then the sort
+    removed by mutation, the corrected file restored and verified:
+
+        === mutate: .claude/tests/gates.test.sh (1 line(s) changed by s/ | LC_ALL=C sort -s -t"\$_t" -k1,1//g) ===
+        === mutate: running bash scripts/selftest.sh gates ===
+            FAIL AC-7 (alternating-fixture): gates.sh --list attributes every live keep-when line to the gate it names, in manifest order within each gate
+                 expected: unit
+                 cov
+                 unit
+                 actual:   unit
+                 unit
+                 cov
+            FAIL AC-7 (alternating-fixture): and prints every live keep-when pattern verbatim
+                 expected: Windows fatal exception
+                 Unknown C\+\+ exception
+                 Segmentation fault
+                 actual:   Windows fatal exception
+                 Segmentation fault
+                 Unknown C\+\+ exception
+        gates: 1000 passed, 2 failed
+        FAIL gates  did 1000 units of work, below the floor of 1002 in .claude/tests/floors.conf
+        assertion floors: 0 of 1 suite(s) met their declared floor.
+        === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_gates.test.sh.20261108T234612Z.1422539.bak) ===
+        mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+- **R-1 before side, whole suite (orchestrator, 2026-11-08):** a
+  `--no-hardlinks` clone at `e1500a6` with `D:\mt-harness-refresh`'s
+  `project.conf` copied in (read-only), `bash scripts/selftest.sh gates`. It
+  confirms the reviewer's prediction exactly, and it is DV-3's before side:
+
+        FAIL AC-7: gates.sh --list attributes every live keep-when line to the gate it names, in manifest order
+        FAIL AC-7: and prints every live keep-when pattern verbatim
+    gates: 996 passed, 2 failed
+    FAIL gates  did 996 units of work, below the floor of 998 in .claude/tests/floors.conf
+
+- **R-1 RED verified by the orchestrator (2026-11-09):** `attest.sh check`
+  said `fresh` for `bash scripts/selftest.sh gates` (exit 0,
+  `gates: 1002 passed, 0 failed`, no FAIL line, log
+  `20261108T235714Z.1446620.log`) and for `bash scripts/gates.sh --fast`
+  (exit 0). Diff read: `boot69` sorts both sides stably by gate id (title (a)
+  now ends "within each gate"), plus the new `alt.conf` fixture and its count
+  pin. Floors 998 → 1002 in both files. `mutate.sh --check` is clean, and the
+  Earned block is pasted above.
+
+## Diff review
+
+### First review (2026-11-08, at `e1500a6`)
+
+Fresh `feature-developer` with the `diff-review` skill, resolved
+**claude-opus-5-5**, no override. It changed no file in the worktree.
+Condensed; the finding is kept whole.
+
+- **Checked and held:**
+  - Lines 1-3804, and everything from `mkdir -p "$M69/src/sub"` to the end,
+    are byte-identical to `3c79f70` (`cmp`), so the `--audit` trio and the
+    HARNESS-080 blocks are unchanged.
+  - The readers hold under CRLF, surrounding whitespace, `|` in a pattern, a
+    leading `-` (`-e`), an empty live set, and a missing `BOOTSTRAPPED=`.
+  - `list69` copies the conf as `audit69` does. `gates.sh` finds ROOT from
+    its own location (`gates.sh:62`), so `--list` in F69 cannot read the real
+    conf.
+  - The count pins use `_lib.sh`'s own counters, and `assert_eq` adds exactly
+    one to `_pass` or `_fail`.
+  - The floors.conf paragraph matches DV-1/DV-2.
+- **Must fix 1:** a real consumer's manifest fails (a) and (b).
+  - **Problem:** `--list` groups keep-when lines by gate (`gates.sh`
+    634-636), and manga-translator's 16 lines alternate between gates. Run
+    against a scratch copy, the diff's own readers disagree on both ids and
+    patterns; (c) holds. The predicted result is `gates: 996 passed, 2
+    failed`.
+  - **Fix:** stable-sort both sides by gate id, and add an alternating
+    fixture. This is a test change, so it returns to RED, and AC-3(a)'s "in
+    manifest order" is an `## Amendments` question.
+  - **Not checked:** the reviewer did not run the whole suite on that
+    manifest.
+
+Verdict: fix 1 first.
+
+*Orchestrator (2026-11-08):* reproduced independently (AM-1). The user
+approved the amendment, and the story returns to RED (R-1).
 
 ## Gate results
 

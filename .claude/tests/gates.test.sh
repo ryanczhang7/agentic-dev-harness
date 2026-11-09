@@ -3882,9 +3882,12 @@ badere69() {
 # assertions about the manifest's own live keep-when lines (HARNESS-099 C-3),
 # none a duplicate of the unconditional --audit trio further down.
 boot69() {
-  local _kw _kl
-  _kw="$(kw69 "$2")"; _kl="$(kwlist69 "$2" "$3")"
-  assert_eq "$1 gates.sh --list attributes every live keep-when line to the gate it names, in manifest order" \
+  local _kw _kl _t
+  # R-1 (AM-1): --list groups the lines by gate, so both sides are stably
+  # sorted by gate id; manifest order within each gate is kept.
+  _t="$(printf '\t')"
+  _kw="$(kw69 "$2" | LC_ALL=C sort -s -t"$_t" -k1,1)"; _kl="$(kwlist69 "$2" "$3" | LC_ALL=C sort -s -t"$_t" -k1,1)"
+  assert_eq "$1 gates.sh --list attributes every live keep-when line to the gate it names, in manifest order within each gate" \
     "$(printf '%s\n' "$_kw" | cut -f1)" "$(printf '%s\n' "$_kl" | cut -f1)"
   assert_eq "$1 and prints every live keep-when pattern verbatim" \
     "$(printf '%s\n' "$_kw" | cut -f2-)" "$(printf '%s\n' "$_kl" | cut -f2-)"
@@ -3939,6 +3942,19 @@ n0=$((_pass + _fail)); ship69 template-fixture "$M69/tmpl.conf" "$M69"; n1=$((_p
 assert_eq "HARNESS-099 AC-2: the template path of the shipped-manifest block executes exactly three assertions" 3 "$((n1 - n0))"
 n0=$((_pass + _fail)); ship69 bootstrapped-fixture "$M69/boot.conf" "$M69"; n1=$((_pass + _fail))
 assert_eq "HARNESS-099 AC-2: the bootstrapped path of the shipped-manifest block executes exactly three assertions" 3 "$((n1 - n0))"
+# R-1 (AM-1): --list groups keep-when lines by gate, in gate-line order, so a
+# manifest whose live lines alternate between gates - manga-translator's shape
+# - is printed grouped. (a) and (b) compare in manifest order WITHIN each gate.
+printf '%s\n' 'BOOTSTRAPPED=yes' \
+  'gate | unit | required | . | printf ok' \
+  'evidence | unit | -' \
+  'gate | cov | required | . | printf ok' \
+  'evidence | cov | -' \
+  'keep-when | unit | Windows fatal exception' \
+  'keep-when | cov | Unknown C\+\+ exception' \
+  'keep-when | unit | Segmentation fault' > "$M69/alt.conf"
+n0=$((_pass + _fail)); ship69 alternating-fixture "$M69/alt.conf" "$M69"; n1=$((_pass + _fail))
+assert_eq "HARNESS-099 AC-2: the bootstrapped path executes exactly three assertions on a manifest whose keep-when lines alternate between gates" 3 "$((n1 - n0))"
 ship69 whitespace-yes "$M69/ws.conf" "$M69"
 assert_eq "HARNESS-099 AC-4: BOOTSTRAPPED=  yes  , read as gates.sh reads it, takes the bootstrapped path" bootstrapped "$SHIP69_PATH"
 assert_eq "HARNESS-099 AC-3 control: badere69 counts the invalid ERE ( once" 1 "$(badere69 "$M69/bad.conf")"
