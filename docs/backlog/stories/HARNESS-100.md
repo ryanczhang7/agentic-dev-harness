@@ -5,7 +5,7 @@ slug: ci-local-runs-only-workflows-that-trigge
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-100-ci-local-runs-only-workflows-that-trigge
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/ci-local.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -475,6 +475,8 @@ name, below the table.
 - PLANNED, `lead-po`: ran on **opus** (`claude-opus-5-5`, Opus 5.5), not the planned `fable`, by the user's decision (2026-11-09), because the account's Fable usage limit was reached - an earlier Fable dispatch stopped on HTTP 429 before writing anything.
 - RED - `test-developer`, planned `opus`, resolved **claude-opus-5-5**
   (2026-11-09), self-reported; `model: opus` passed. As planned.
+- GREEN - `feature-developer`, planned `opus`, resolved **claude-opus-5-5**
+  (2026-11-09), self-reported; `model: opus` passed. As planned.
 
 Brief for RED: the oracle partition is the Contract's C-6 - AC-1 to AC-6 and
 AC-8 mechanical (pin exact whole lines and the verbatim note text), AC-9
@@ -759,6 +761,27 @@ what they see.
 **Discovered.** Nothing that changes the approach. The Contract's C-1..C-8
 stand as written; no amendment.
 
+### GREEN
+
+feature-developer, resolved model `claude-opus-5-5`, no override.
+clean_calendar's `ci-local.sh.patch` applied with `git apply` unchanged (191
+-> 230 lines). Comment edits made in place, line count held at 230: the
+example now names `deploy.yml.template` (renamed to deploy.yml, its `push`
+deploy would have run locally), the reference reads `(HARNESS-100, from
+clean_calendar's HARNESS-052)`, and the block's closing clause "in the same
+voice as a skipped step" was dropped to keep the five-line count. No code
+line differs from C-2. `dirty=` is at **208**. VERSION line 34 -> `119
+(2026-11-09)`.
+
+Controls against the shipped script: patched script `ci-local: 48 passed,
+0 failed` (floor 48 met) and `sigpipe: 91 passed, 0 failed`, matching RED's
+predictions. Each DV target occurs exactly once in the shipped file:
+`if triggers_on_pull_request "$f"; then` (1), `found = (v ~` (1), the
+inline-branch `pull_request([^A-Za-z0-9_]|$)/` (1), the block-branch
+`pull_request["\047]?[[:space:]]*(:|#|$)/` (1, at line 118 as the handoff
+says), and `^  pull_request:$` in `.github/workflows/boundaries.yml` (line
+9). DV mutations not run: GATES owns them.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -879,3 +902,15 @@ stand as written; no amendment.
     `sigpipe.test.sh` changes line 577 only (169 → 208); `ci-local`'s floor
     goes 32 → 48 in both files; `sigpipe` stays at 91. `scripts/ci-local.sh`
     and VERSION are untouched.
+- GREEN verified by the orchestrator (2026-11-09): `attest.sh check` said
+  `fresh` for all three of GREEN's commands, so none was re-run.
+  - `bash scripts/selftest.sh ci-local`: exit 0, `ci-local: 48 passed, 0
+    failed`, log `20261109T214840Z.2088783.log`.
+  - `bash scripts/selftest.sh sigpipe`: exit 0, `sigpipe: 91 passed, 0
+    failed`, log `20261109T214141Z.2077815.log`.
+  - `bash scripts/gates.sh --fast`: exit 0.
+  - Diff read: `scripts/ci-local.sh` is 230 lines with `dirty=` at 208, the
+    pinned line. With comments removed it is identical to clean_calendar's
+    patched copy (C-2 holds exactly). Only the comment wording differs, as
+    the handoff asked. Line endings are LF, matching `git ls-files --eol`
+    `i/lf w/lf attr/text eol=lf`. VERSION is 119.
