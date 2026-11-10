@@ -5,7 +5,7 @@ slug: ci-local-runs-only-workflows-that-trigge
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-100-ci-local-runs-only-workflows-that-trigge
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/ci-local.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -504,6 +504,36 @@ note: not running deploy.yml: it does not trigger on pull_request
 stdout byte-identical to clean_calendar's own script: yes (11 lines); run: steps missing: 0
 ```
 
+*Re-run after R-1 (orchestrator, 2026-11-10, tree `4fe2e73`):* all four pass again on the fixed script.
+
+- **DV-1:** the same reds as before plus the two R-1 push-only assertions, 40 passed and 12 failed. With the filter neutralised, the column-0 push-only workflow is listed and is not noted. The restore was verified.
+- **DV-2:** 25 passed, 27 failed. AC-3 and AC-4 are red, and AC-1 and all four R-1 assertions stay green, because neither uses an inline `on:` value. The restore was verified.
+- **DV-3(a):** with the real `boundaries.yml` made push-only, its note is printed and the `check-boundaries.sh` step is dropped; unmutated, 0 notes. The restore was verified.
+- **DV-3(b):** with the template renamed to `deploy.yml`, the branch lists no deploy step and prints the note. The `main` control lists both steps.
+- **DV-4:** clean_calendar's real workflows produce 0 supabase lines and 11 steps. Stdout is byte-identical to clean_calendar's own script, and the `deploy.yml` notes are identical. R-1 diverges from clean_calendar only on column-0 `on:` sequences, which its workflows do not use.
+
+```
+    FAIL AC-1: a push-only workflow's step is not listed
+    FAIL AC-5: pull_request mentioned outside on: does not count
+    FAIL AC-6: an excluded workflow is named on stderr
+    FAIL AC-6: so is the one that only mentions pull_request
+    FAIL AC-8: on: [pull_request_target] is not listed
+    FAIL AC-8: a block on: holding only pull_request_target: is not listed
+    FAIL AC-8: the inline pull_request_target workflow is named on stderr
+    FAIL AC-8: the block pull_request_target workflow is named on stderr
+    FAIL R-1: a column-0 on: sequence holding only - push is not listed, though jobs: mentions pull_request
+    FAIL R-1: the column-0 push-only workflow is named on stderr
+    FAIL AC-2: the push-only workflow's step did not run
+    FAIL AC-6: a real run names the excluded workflow too
+ci-local: 40 passed, 12 failed
+    FAIL AC-3: on: [push, pull_request] is listed
+    FAIL AC-4: a bare on: pull_request is listed
+ci-local: 25 passed, 27 failed
+note: not running boundaries.yml: it does not trigger on pull_request
+DV-3(b) 4fe2e73: build=0 target=0 note=1 | main 94acc3f: build=1 target=1 note=0
+DV-4 supabase=0 steps=11 stdout byte-identical to clean_calendar's script: yes
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -561,6 +591,8 @@ name, below the table.
   **claude-opus-5-5** (2026-11-09), self-reported. As planned.
 - GREEN (after R-1) - `feature-developer`, planned `opus`, resolved
   **claude-opus-5-5** (2026-11-09), self-reported. As planned.
+- GATES (after R-1) - `feature-developer` (full gates run), planned `opus`,
+  resolved **claude-opus-5-5** (2026-11-10), self-reported. As planned.
 
 Brief for RED: the oracle partition is the Contract's C-6 - AC-1 to AC-6 and
 AC-8 mechanical (pin exact whole lines and the verbatim note text), AC-9
@@ -1135,9 +1167,9 @@ story returns to RED.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-09T22:25:37Z
-    commit: c5a37a0
-    tree:   53357409aae40a7c75140d0d6057d66e7c88f167
+    run:    2026-11-10T00:26:16Z
+    commit: 4fe2e73
+    tree:   d0e1b97f893e2752d44c4f6c73bbea8e19be956c
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1282,3 +1314,9 @@ story returns to RED.
     R-1 guard, `if (this == 0 && $0 !~ /^-[[:space:]]/) exit`; the other
     moves `--help` from `2,32p` to `2,33p`. The file is still 230 lines,
     `dirty=` is still at 208, and line endings are LF (`i/lf w/lf`).
+- GATES after R-1 verified by the orchestrator (2026-11-10): I ran DV-1 to
+  DV-4 again on `4fe2e73`, and all passed; the results are under `## Deferred
+  verifications`. The full run was dispatched; `attest.sh check -- bash
+  scripts/gates.sh` said `fresh` (exit 0, 2 s, log
+  `20261110T002614Z.2135480.log`, verdict `All required gates passed (0 ran,
+  7 unconfigured, 0 known).`), so it was not re-run.
