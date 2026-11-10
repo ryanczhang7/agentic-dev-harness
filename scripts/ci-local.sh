@@ -42,7 +42,7 @@ BASE=""
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY=1 ;;
-    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) printf '[ci-local] unknown option %s\n' "$a" >&2; exit 2 ;;
     *) BASE="$a" ;;
   esac
@@ -111,7 +111,7 @@ triggers_on_pull_request() { # <workflow file>
     inon {
       if ($0 ~ /^[[:space:]]*(#|$)/) next
       match($0, /^[[:space:]]*/); this = RLENGTH
-      if (this == 0) exit
+      if (this == 0 && $0 !~ /^-[[:space:]]/) exit
       if (ind < 0) ind = this
       if (this != ind) next
       line = $0; sub(/^[[:space:]]*(-[[:space:]]+)?/, "", line)

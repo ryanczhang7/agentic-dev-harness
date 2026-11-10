@@ -5,7 +5,7 @@ slug: ci-local-runs-only-workflows-that-trigge
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-100-ci-local-runs-only-workflows-that-trigge
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/ci-local.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -559,6 +559,8 @@ name, below the table.
   **claude-opus-5-5** (2026-11-09), self-reported. Ship, with Should fix 1 (R-1).
 - RED (return, R-1) - `test-developer`, planned `opus`, resolved
   **claude-opus-5-5** (2026-11-09), self-reported. As planned.
+- GREEN (after R-1) - `feature-developer`, planned `opus`, resolved
+  **claude-opus-5-5** (2026-11-09), self-reported. As planned.
 
 Brief for RED: the oracle partition is the Contract's C-6 - AC-1 to AC-6 and
 AC-8 mechanical (pin exact whole lines and the verbatim note text), AC-9
@@ -948,6 +950,28 @@ unconfigured in this tree, so this run judges nothing.
 records are on tree `6a408038`, and `attest.sh check` on the ci-local record
 says `fresh`.
 
+### GREEN (after R-1)
+
+feature-developer, model **`claude-opus-5-5`** (Opus 5.5), with no override.
+Two lines changed in `scripts/ci-local.sh`, each edited in place. Line 114:
+`if (this == 0) exit` became `if (this == 0 && $0 !~ /^-[[:space:]]/) exit`.
+Line 45: `sed -n '2,32p'` became `sed -n '2,33p'`. The file is still 230
+lines with LF endings (`i/lf w/lf`). `dirty=` is still on line 208.
+VERSION is unchanged at `119`. `--help` now ends with
+`story if the PR's own checks never ran.`
+
+Records, all `fresh` under `attest.sh check`:
+
+    ci-local  exit: 0  last: 1 harness suite(s) passed.  log: .claude/state/attest-logs/20261110T001310Z.2119232.log
+              ci-local: 52 passed, 0 failed (floor 52 met)
+    sigpipe   exit: 0  last: 1 harness suite(s) passed.  log: .claude/state/attest-logs/20261110T001404Z.2120064.log
+              sigpipe: 91 passed, 0 failed (floor 91 met)
+    --fast    exit: 0  last: All required gates passed (0 ran, 5 unconfigured, 0 known).  log: .claude/state/attest-logs/20261110T002146Z.2131618.log
+
+The negative controls match RED. The planned fix gives `52 passed, 0 failed`,
+the number the scratch clone predicted. The unfixed and over-broad rows were
+measured in RED and not re-run here. The sigpipe prediction (91) is confirmed.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -1246,3 +1270,15 @@ story returns to RED.
     `if (this != ind) next` whatever ends the block. That shape could not go
     red against an over-broad fix, and the column-0 shape it used instead
     can. Accepted.
+- GREEN after R-1 verified by the orchestrator (2026-11-10): `attest.sh
+  check` said `fresh` for all three of GREEN's commands, so none was re-run.
+  - `bash scripts/selftest.sh ci-local`: exit 0, `ci-local: 52 passed, 0
+    failed`, log `20261110T001310Z.2119232.log`. This matches RED's
+    scratch-clone prediction.
+  - `bash scripts/selftest.sh sigpipe`: exit 0, `91 passed, 0 failed`, log
+    `20261110T001404Z.2120064.log`.
+  - `bash scripts/gates.sh --fast`: exit 0.
+  - Diff read: exactly two lines changed in `scripts/ci-local.sh`. One is the
+    R-1 guard, `if (this == 0 && $0 !~ /^-[[:space:]]/) exit`; the other
+    moves `--help` from `2,32p` to `2,33p`. The file is still 230 lines,
+    `dirty=` is still at 208, and line endings are LF (`i/lf w/lf`).
