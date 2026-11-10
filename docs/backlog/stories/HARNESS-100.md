@@ -4,8 +4,8 @@ title: ci-local runs only workflows that trigger on pull_request
 slug: ci-local-runs-only-workflows-that-trigge
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-100-ci-local-runs-only-workflows-that-trigge
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/ci-local.sh, .claude/tests/ci-local.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -239,7 +239,7 @@ the amended block says.** The acceptance criteria are not in that licence.
       }
 
   plus the six-line comment block that opens `# ONLY WORKFLOWS A PULL REQUEST
-  TRIGGERS.` above `workflow_files()` and the seven-line comment above
+  TRIGGERS.` above `workflow_files()` and the six-line comment above
   `triggers_on_pull_request()`. In the comment, the downstream reference
   `(HARNESS-052)` becomes `(HARNESS-100, from clean_calendar's HARNESS-052)`
   and the example names upstream's `deploy.yml.template` rather than supabase,
@@ -592,6 +592,10 @@ name, below the table.
 - GREEN (after R-1) - `feature-developer`, planned `opus`, resolved
   **claude-opus-5-5** (2026-11-09), self-reported. As planned.
 - GATES (after R-1) - `feature-developer` (full gates run), planned `opus`,
+  resolved **claude-opus-5-5** (2026-11-10), self-reported. As planned.
+- GATES (after R-1) - `feature-developer` (second diff review, fresh), planned
+  `opus`, resolved **claude-opus-5-5** (2026-11-10), self-reported. Ship.
+- GATES (after R-1) - `feature-developer` (`--changed` self-test), planned `opus`,
   resolved **claude-opus-5-5** (2026-11-10), self-reported. As planned.
 
 Brief for RED: the oracle partition is the Contract's C-6 - AC-1 to AC-6 and
@@ -1163,6 +1167,55 @@ Verdict: Ship.
 and is taken here, since cause, reproduction and fix are all in hand. The
 story returns to RED.
 
+### Second review (2026-11-10, at `582b157`, after R-1)
+
+Fresh `feature-developer` with the `diff-review` skill over the whole diff
+`94acc3f..582b157`. It resolved **claude-opus-5-5**, with no override. It
+changed no file in the worktree and ran nothing there; its probes ran on
+copies in the scratchpad. Condensed; its measurements are kept.
+
+- **The R-1 guard does not over-match.** I ran 18 hand-written files
+  against the shipped check.
+  - Read correctly (IN): a column-0 list with a blank line or a column-0
+    `# comment` inside it; a leading `---`; `- "pull_request"`; CRLF; and
+    `push:` with indented `branches:`, then `pull_request:`.
+  - Dropped (OUT): a `---` or `...` inside the list; an empty `on:`
+    followed by `jobs:` / `- pull_request`; `- pull_request_target`;
+    `-pull_request` with no space; and a top-level `env:` before a column-0
+    item.
+  - A column-0 `- ` line keeps the block open only while no other column-0
+    key has come first. To misread someone else's list, a file would need a
+    column-0 item under `on:` that does not belong to `on:`. YAML gives such
+    an item no other parent, and GitHub rejects workflows that do not parse.
+- **`ind` interaction:** three mixed layouts (all invalid YAML) all come out
+  OUT; no false IN.
+- **R-1 assertions:** both positive checks and the "not listed" check are
+  whole-line `has_line` checks. Each of the two substring absences reads an
+  output on which a required whole line is also checked, so neither can
+  pass on empty output. The column-0 step `- run: touch .m-compact-push` is
+  readable by `workflow_steps`, so the "not listed" check is not passing
+  merely because the step went unread.
+- **`--help`:** prints exactly source lines 2-33, 32 lines, from `Run,
+  locally and in order, …` to `story if the PR's own checks never ran.`,
+  and no code.
+- **Numbers:** the describe block holds 20 unconditional assertions. 32 +
+  16 = 48, with 38/10 against the unfixed script; then 52, with 50/2
+  before R-1's GREEN and 52/0 after. Both floor files say 52, and the
+  sigpipe pin's line 208 matches.
+- **C-2 matches the shipped code** byte for byte, except for whitespace.
+  Two prose slips: "seven-line comment" should say six (now corrected), and
+  C-2 does not mention `--help`, which is recorded under the first review
+  and in Notes.
+- **Nice to have 1:** the `--help` range is a hard-coded line number, which
+  is how `2,32p` went wrong. Suggested replacement: stop at the first
+  non-comment line.
+
+Verdict: Ship.
+
+*Orchestrator (2026-11-10):* the prose slip was corrected, story only.
+Nice to have 1 is not taken, because it is a code change with no test and
+would restart GATES. It is offered to the user as a follow-up.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -1320,3 +1373,23 @@ story returns to RED.
   scripts/gates.sh` said `fresh` (exit 0, 2 s, log
   `20261110T002614Z.2135480.log`, verdict `All required gates passed (0 ran,
   7 unconfigured, 0 known).`), so it was not re-run.
+- Diff review at GATES → REVIEW: the first review (`8ca43b0`) said Ship
+  with Should fix 1, which was taken as R-1. The second review (`582b157`)
+  said `Verdict: Ship.`. Both are in `## Diff review`.
+- Self-test at GATES → REVIEW (2026-11-10): `selftest-needed: run`.
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` was dispatched,
+  detached, and ran alone. `attest.sh check` said `fresh`, `exit: 0`,
+  `last: 12 harness suite(s) passed.`, `duration: 2196s`, log
+  `20261110T004905Z.2141876.log`. Header:
+  `selftest: --changed — 12 of 34 suite(s) selected: boundaries ci-local doctor grep-count host-load lib procedure refresh run-lock selftest sigpipe worktree`.
+  All 12 floors were met (2140 executed, 2140 declared), and the log has
+  no FAIL line. `--changed` is enough here: `ci-local.sh` is not invoked by
+  any other script (`gates.sh` and `host-load.sh` mention it only in
+  comments), so case (b) does not apply.
+- Follow-ups offered to the user, both outside this story:
+  - `--help` uses a hard-coded line range; the second review suggests
+    stopping at the first non-comment line.
+  - `merge_group`-only and unfiltered `on: push` workflows are now
+    skipped, and CLAUDE.md, the README and the script header still say
+    "every step CI runs".
+- This unblocks the clean_calendar 93 → 119 refresh.
