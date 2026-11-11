@@ -5,7 +5,7 @@ slug: opus-runs-the-story-loop-fable-plans-rev
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-101-opus-runs-the-story-loop-fable-plans-rev
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/security-audit.md, .claude/harness/models.conf, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, .claude/agents/lead-po.md, .claude/tests/plan.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/procedure.test.sh, .claude/tests/security-audit.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -370,6 +370,38 @@ that holds the assertion.
   `WAIVED: no assertion passed on arrival` here with the handoff line that
   says so. **Owner: GATES.**
 
+**Results, run in GATES by the orchestrator, 2026-11-11.** Each through
+`scripts/mutate.sh` against the one suite holding the assertion; every
+mutation exited 1, was restored and verified byte-for-byte, and
+`bash scripts/mutate.sh --check` printed `mutate: no stranded mutation;
+nothing of a previous run is in the tree.` afterwards.
+
+DV-1 (`s/^model: opus$/model: fable/` on `advance-story.md`, `selftest.sh plan`):
+
+    === mutate: .claude/commands/advance-story.md (1 line(s) changed by s/^model: opus$/model: fable/) ===
+      3 - model: opus
+      3 + model: fable
+        FAIL HARNESS-101 AC-1: the story loop and the security audit run on opus, the planning commands on fable
+             actual:   advance-story fable
+    plan: 285 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_commands_advance-story.md.20261111T180920Z.244834.bak) ===
+
+DV-2 (`s/DIFF-REVIEW row of/GATES row of/` on `advance-story.md`, step 1 only, `selftest.sh dispatch`):
+
+        FAIL HARNESS-101: row_problems over the real tree prints nothing: ...
+             expected: 
+             actual:   .claude/commands/advance-story.md: GATES → REVIEW step 1 still says `GATES row`
+    dispatch: 144 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_commands_advance-story.md.20261111T181519Z.276224.bak) ===
+
+DV-3 (RED's one entry: `s/lock with `bash scripts\/phase.sh clear`/lock/` on `advance-story.md`, `selftest.sh dispatch`), exactly the one line predicted:
+
+        FAIL HARNESS-101: row_problems over the real tree prints nothing: ...
+             expected: 
+             actual:   .claude/commands/advance-story.md: REVIEW → DONE does not say `bash scripts/phase.sh clear`
+    dispatch: 144 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_commands_advance-story.md.20261111T181555Z.277207.bak) ===
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -416,6 +448,9 @@ name, below the table.
 
 - PLANNED (2026-11-11, `/plan-story`): `lead-po`, planned `fable`, resolved **claude-fable-5-2** (Fable 5.2). Dispatched as a subagent by the session that ran `/plan-story`; no override was reported to it, and the agent declares `model: fable`.
 - No departure from the plan. Note for the orchestrator: the DIFF-REVIEW row does not exist until this story merges, so this story's own diff review runs as today, on a fresh `feature-developer` on the GATES row; record what it resolved to.
+- RED (2026-11-11): `test-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5).
+- GREEN (2026-11-11): `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5).
+- GATES full run (2026-11-11): `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5). `attest.sh check -- bash scripts/gates.sh`: `fresh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, log `20261111T181703Z.1852`; it changed no file.
 ## Out of scope
 
 - **Adjudicating a claim that the contract is wrong** (decisions 5 and 6): the
@@ -774,10 +809,21 @@ turns it red.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-11T18:17:04Z
+    commit: d43d73e
+    tree:   4134e8d0047519a3678abac6325a68d1b3bba2be
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
