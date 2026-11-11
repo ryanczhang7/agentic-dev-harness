@@ -4,8 +4,8 @@ title: Opus runs the story loop; fable plans, reviews the diff and reads review 
 slug: opus-runs-the-story-loop-fable-plans-rev
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-101-opus-runs-the-story-loop-fable-plans-rev
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/security-audit.md, .claude/harness/models.conf, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, .claude/agents/lead-po.md, .claude/tests/plan.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/procedure.test.sh, .claude/tests/security-audit.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -936,3 +936,4 @@ Verdict: Ship.
 - Self-test at GATES → REVIEW, run 1 (2026-11-11, tree `ca9098e`): `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `fresh`, exit 1, `1 of 24 harness suite(s) FAILED.`, 2043 s, log `20261111T194017Z.1944`. Header: `selftest: --changed — 24 of 34 suite(s) selected: attest boundaries dispatch doctor gate-reminder grep-count host-load lib mutate phase plan policy procedure refresh reporting rules-trim run-lock security-audit selftest settings shipped-docs sigpipe story worktree`. Failure: `boundaries`, `FAIL AC-7: advance-story.md says to commit the story while it is still PLANNED` / `anchor 'Create and switch to the story's branch' not found`. Fixed in GATES (see `## Diff review`, Review 3).
 - Self-test at GATES → REVIEW, run 2 (2026-11-11, tree `3651122`): `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `fresh`, exit 0, `24 harness suite(s) passed.`, 1484 s, log `20261111T203613Z.51647`. Header as run 1. Floors: all 24 met (3475 executed, 3474 declared). Both runs by a GATES-row `feature-developer`, resolved **claude-opus-5-5**.
 - **User decision, 2026-11-11:** open the PR with Review 3's RED-routed finding (no test pins AC-3's read-before-commit sentence) left open, and carry it to HARNESS-102 rather than return to RED. Both follow-ups are written into HARNESS-102's `## Notes`.
+- Merged as #191 (2026-11-11, merge `89c4c22`). CI: `boundaries` 31 s, `gates` 5 min 43 s, both SUCCESS; no job sets `timeout-minutes`, so nothing near a limit.
