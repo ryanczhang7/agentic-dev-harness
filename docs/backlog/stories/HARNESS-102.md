@@ -4,8 +4,8 @@ title: A contract-is-wrong claim is adjudicated on fable, and the PR is refused 
 slug: a-contract-is-wrong-claim-is-adjudicated
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-102-a-contract-is-wrong-claim-is-adjudicated
 depends_on: [HARNESS-101]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/harness/models.conf, .claude/tests/plan.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -287,6 +287,25 @@ independently` (advance-story), `verify it yourself` (complete-story) or
 At `b10546e` the three begin at `advance-story.md:474`, `complete-story.md:71`
 and `lead-po.md:175`; find them by their opening words, not the numbers.
 
+*Amended in RED (2026-11-11, test-developer), two things, both for the same
+reason: the three needles above pin who adjudicates and that a record exists,
+and leave four of AC-1's own clauses with no assertion that fails when they
+are dropped.* (1) **Four more needles in each of the three bullets**:
+`upheld` and `rejected` (AC-1: "answers upheld or rejected"), `## Notes` (AC-1:
+"a rejected claim gets a line in `## Notes`") and `AMEND` (AC-1: an entry
+"routed `RED` or `AMEND`" is adjudicated by that dispatch). Each is a word AC-1
+already uses; none fixes a sentence. (2) **The locator.** Each bullet is the
+first line beginning `- **A claim that the contract`, to just before the next
+line beginning `- `, a blank line or a `#` heading. Those opening words are
+common to all three today and are what `dispatch.test.sh` finds them by, so
+GREEN keeps them; everything after them in the bold lead is GREEN's to rewrite.
+Also pinned in the same guard, from the paragraph above: `lead-po.md`'s
+`## When you are dispatched inside a story` says `ADJUDICATE row` and no longer
+`Three pieces of work`; its `description:` says `PLANNED`, `DIFF-REVIEW` and
+`ADJUDICATE`; `diff-review/SKILL.md`'s `## 5. What happens to a finding` says
+`**Adjudicated`. The two headings are matched as whole lines and must not be
+renamed.
+
 What each of the three says about the mechanics, so that they agree:
 
 - **Who is dispatched.** A fresh `lead-po`, on the model
@@ -541,6 +560,7 @@ name, below the table.
 
 - PLANNED (2026-11-11, `/plan-story`): `lead-po`, planned `fable`, resolved **claude-fable-5-2** (Fable 5.2). Dispatched as a subagent by the session that ran `/plan-story`; no override was reported to it, and the agent declares `model: fable`.
 - PLANNED review (2026-11-11, /advance-story): lead-po, planned fable, resolved claude-fable-5-2
+- RED (2026-11-11, /advance-story): `test-developer`, planned `opus`, resolved **claude-opus-5-5**; no override reported.
 - No departure from the plan. The table was re-rendered at the PLANNED review, after HARNESS-101 merged, so it carries the DIFF-REVIEW row. It has no ADJUDICATE row: that row is this story's own. If this story needs an adjudication before its GREEN adds the row, dispatch a fresh `lead-po` with `fable` named explicitly and record what it resolved to; after GREEN, `bash scripts/plan.sh models HARNESS-102` on the branch gives the row.
 
 ## Out of scope
@@ -584,6 +604,32 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All four suites are bash, under `.claude/tests/`, run by `scripts/selftest.sh`.
+The level is the one the contract lives at: the `boundaries` cases build a
+two-branch fixture repository and run the real `scripts/check-boundaries.sh`
+in it (integration); `dispatch`, `plan` and `new-story` read the real tree
+or run the real script against fixtures.
+
+| AC | Suite | Assertions (describe block) | Over |
+|---|---|---|---|
+| AC-1 | `dispatch` | `adj_problems` (new guard): the three contract-is-wrong bullets, `lead-po.md`'s description and `## When you are dispatched inside a story`, `diff-review`'s `## 5. What happens to a finding` - "HARNESS-102 AC-1 the real tree" (red), the compliant/CRLF/wrapped fixtures, today's words verbatim (28 lines), one case per needle per bullet (21), per forbidden phrase (3), region ends (next bullet, blank line), no region (3), the dispatch section, the description (3), section 5, missing files (4) | real tree + fixtures |
+| AC-1 | `dispatch` | `row_problems`: `RU_NEEDLES` gains `ADJUDICATE` (rules.md); its own real-tree line count (red) | real tree + fixtures |
+| AC-2 | `plan` | `SHIP_EXPECTED` with eight rows, for four story shapes; `SHIP_ORDER` ending `REVIEW SCAFFOLD ADJUDICATE`; `plan.sh write` renders exactly one `| ADJUDICATE | \`lead-po\` | \`fable\` | <why> |` row (C-6) | shipped `models.conf` in a fixture |
+| AC-3 | `boundaries` | "block 3k": a new id without a record gives one FAIL per id naming the story, section and id, non-zero exit; two ids; `R-12` is not `R-1`; `AM-1`; the four head spellings | fixture repo |
+| AC-4 | `boundaries` | the record accepted (ok line, exit 0) for R-1, two ids, AM-1; refused in a comment (inline, multi-line), in a ``` fence, in a ~~~ fence, for another id (R-2, R-12), in the other section, an unknown model, no `(resolved ...)`, no backticks, an empty name, mid-line; a fence does not swallow a record after it; heads in a fence/comment are not heads; a story from `new-story.sh` plus one head is refused, and untouched says nothing; an id the base has is not judged (and its twin); prose under an old id; a section equal to the base; comment-only sections and absent sections say nothing | fixture repo |
+| AC-5 | `boundaries` | headless new content refused in both sections, naming `R-<n>` / `AM-<n>`; `### Return 1`; an `AM-` head in `## Regressions`; twin: the same content on the base | fixture repo |
+| AC-6 | `boundaries` | `sonnet` record vs `fable` row accepted with one note naming R-1, sonnet, fable; `fable` vs `opus`; twin `fable`/`fable` no note; no row and no file: no note, accepted | fixture repo, `models.conf` written per case |
+| AC-7 | `boundaries` | `requested by the user` accepted for AM-1; refused for R-1 | fixture repo |
+| C-9 | `boundaries` | HARNESS-089, -095 and -099's own `## Regressions` and `## Amendments`, read verbatim from the real files: one FAIL for R-1, one for AM-1, no headless FAIL, non-zero | real entries in a fixture repo |
+| AC-8 | `new-story` | the template's `## Amendments` and `## Regressions` comments name `AM-<n>` / `R-<n>`, show `**Adjudicated AM-<n>:**` / `**Adjudicated R-<n>:**` and `(resolved <name>)`, say `fable` and `fresh`; Amendments no longer says "orchestrator's own reproduction" (any case); `sections.md`'s two sections name the head, the record and `fable`; `story-authoring/SKILL.md`'s paragraph loses the old sentence and says `fable` and `ADJUDICATE` | generated story + real skill files |
+| AC-9 | `dispatch` | `row_problems`: advance-story's PLANNED → RED region must say `read what it returned` (`PL_ADV_NEEDLES`); complete-story's dispatch bullet must say `before you commit at PLANNED` (a second line, `CB_PL_READ`); real-tree counts (green on arrival, earned in RED, see Handoff); fixture cases: without, wrapped, after the marker, in the other bullet | real tree + fixtures |
+| AC-10 | `dispatch` | `RD_NEEDLES` gains `records a departure for that row`; real-tree count (red); the words only in GATES → REVIEW step 1 do not count; wrapped | real tree + fixtures |
+
+The AC-4 case "a story fresh from `new-story.sh` plus one bare entry head is
+refused" sits in `boundaries.test.sh` (C-9 left the choice to RED): it needs
+`check-boundaries.sh` run over a fixture repository, which that suite already
+builds and `new-story.test.sh` does not.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -603,6 +649,550 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written 2026-11-11 by the test-developer, dispatched planned `opus`, resolved
+**claude-opus-5-5** (no override was reported to it).
+
+### The command
+
+    bash scripts/selftest.sh boundaries plan dispatch new-story
+
+Run through attest exactly as `bash scripts/attest.sh -- bash scripts/selftest.sh boundaries plan dispatch new-story`.
+The record and the fast gates are at the end of this section.
+
+### What fails, and why it is the right failure
+
+Every fixture control in all four suites is green; no suite fails to load. What
+is red is exactly the new assertions over the real tree, and the `boundaries`
+refusals that block 3k does not exist yet to make:
+
+- `boundaries`: 565 passed, 56 failed. The 56 are the block 3k describe: every refusal (no 3k line is printed, and the spike fixtures exit 0) and every ok line. The other 20 assertions of that block pass on arrival (listed below, DV-3). The rest of the suite is green, the T-43 caller included.
+- `plan`: 281 passed, 6 failed - the four `SHIP_EXPECTED` sets (seven rows printed, eight expected), `SHIP_ORDER`, and the `plan.sh write` ADJUDICATE row: `models.conf` has no ADJUDICATE row.
+- `dispatch`: 201 passed, 4 failed - the four real-tree assertions: `row_problems` (2 lines: the AC-10 clause, `rules.md` ADJUDICATE), its AC-10 and `rules.md` line counts, and `adj_problems` (28 lines). The AC-9 counts are green (the sentences exist).
+- `new-story`: 59 passed, 20 failed - every AC-8 needle over the generated template, `sections.md` and `story-authoring/SKILL.md`; the one precondition passes.
+
+The FAIL lines, verbatim from the log (each assertion name, cut at 200 characters by `cut -c1-200`; the full text, with expected and actual, is in the log):
+
+```
+    FAIL HARNESS-102 AC-3: a new `### R-1` with no record, on a story the base has no copy of, gives exactly one FAIL naming the story, ## Regressions and R-1
+    FAIL HARNESS-102 AC-3: and the run exits non-zero
+    FAIL HARNESS-102 AC-3: two new ids with no record give one FAIL each: R-1 once, R-2 once
+    FAIL HARNESS-102 AC-3: a new `### R-12` with no record gives one FAIL for R-12 and none for R-1
+    FAIL HARNESS-102 AC-3: a new `- **AM-1` in ## Amendments with no record gives exactly one FAIL naming ## Amendments and AM-1
+    FAIL HARNESS-102 AC-3: and the run exits non-zero
+    FAIL HARNESS-102 AC-3: the head spelled `### R-1 (the count)` is an entry head: one FAIL for R-1
+    FAIL HARNESS-102 AC-3: the head spelled `**R-1 (the count).**` is an entry head: one FAIL for R-1
+    FAIL HARNESS-102 AC-3: the head spelled `- **R-1 (the count).**` is an entry head: one FAIL for R-1
+    FAIL HARNESS-102 AC-3: the head spelled `   ### R-1 (indented three)` is an entry head: one FAIL for R-1
+    FAIL HARNESS-102 AC-4: a new R-1 with its `- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2)` record prints the ## Regressions ok line
+    FAIL HARNESS-102 AC-4: a new AM-1 with its record prints the ## Amendments ok line
+    FAIL HARNESS-102 AC-4: the record inside an HTML comment: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record inside an HTML comment: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record on its own line inside a multi-line HTML comment: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record on its own line inside a multi-line HTML comment: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record inside a backtick-fenced block: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record inside a backtick-fenced block: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record inside a tilde-fenced block: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record inside a tilde-fenced block: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record names a different id (R-2): refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record names a different id (R-2): and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record names R-12, which is not R-1: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record names R-12, which is not R-1: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record sits in the other section (## Amendments): refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record sits in the other section (## Amendments): and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record names a model that is not opus, fable, sonnet or haiku: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record names a model that is not opus, fable, sonnet or haiku: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record has no (resolved <name>): refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record has no (resolved <name>): and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record's model is not backticked and it has no resolved name (PLANNED's own refused example): refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record's model is not backticked and it has no resolved name (PLANNED's own refused example): and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record's resolved name is empty: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record's resolved name is empty: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record words in the middle of a prose line, not at its start: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record words in the middle of a prose line, not at its start: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: twin: a fence before the record does not swallow the record after it: the ok line
+    FAIL HARNESS-102 AC-5: and the section, which has new content and no head outside them, is refused as headless
+    FAIL HARNESS-102 AC-4: the same story with one entry head added and nothing else is refused: one FAIL for R-1 - the template's own comments do not discharge it
+    FAIL HARNESS-102 AC-4: and the new R-2, recorded, gives the ok line
+    FAIL HARNESS-102 AC-4: twin: the new R-2 without its record is refused, and the old R-1 still is not judged
+    FAIL HARNESS-102 AC-5: new ## Regressions content with no entry head gives one FAIL naming ## Regressions and the head `R-<n>`
+    FAIL HARNESS-102 AC-5: and the run exits non-zero
+    FAIL HARNESS-102 AC-5: new ## Amendments content with no entry head gives one FAIL naming ## Amendments and the head `AM-<n>`
+    FAIL HARNESS-102 AC-5: and the run exits non-zero
+    FAIL HARNESS-102 AC-5: `### Return 1` is not an entry head: the headless FAIL
+    FAIL HARNESS-102 AC-5: an `AM-1` head in ## Regressions is not a Regressions head: the headless FAIL, and no FAIL for AM-1
+    FAIL HARNESS-102 AC-6: a record naming `sonnet` where the ADJUDICATE row plans `fable` is accepted: the ok line
+    FAIL HARNESS-102 AC-6: and one note line naming R-1, the model recorded (sonnet) and the model planned (fable)
+    FAIL HARNESS-102 AC-6: a `fable` record where the row plans `opus` gives the note naming R-1, fable and opus
+    FAIL HARNESS-102 AC-7: `**Adjudicated AM-1:** requested by the user` is accepted for an amendment: the ok line
+    FAIL HARNESS-102 AC-7: the same words for an R- entry in ## Regressions are refused: one FAIL for R-1
+    FAIL HARNESS-102 AC-7: and the run exits non-zero
+    FAIL HARNESS-102 C-9: HARNESS-089's own ## Regressions and ## Amendments, verbatim, are refused: one FAIL for R-1, one for AM-1, no headless FAIL, non-zero
+    FAIL HARNESS-102 C-9: HARNESS-095's own ## Regressions and ## Amendments, verbatim, are refused: one FAIL for R-1, one for AM-1, no headless FAIL, non-zero
+    FAIL HARNESS-102 C-9: HARNESS-099's own ## Regressions and ## Amendments, verbatim, are refused: one FAIL for R-1, one for AM-1, no headless FAIL, non-zero
+    FAIL HARNESS-101: row_problems over the real tree prints nothing: advance-story's PLANNED → RED dispatches a lead-po on the PLANNED row; GATES → REVIEW step 1 dispatches a lead-po on the DIFF-
+    FAIL HARNESS-102 AC-10: advance-story's REVIEW → DONE region, over the real tree, says the PR-feedback dispatch's model comes from plan.sh unless `## Model guidance` `records a departure for tha
+    FAIL HARNESS-102 AC-1: rules.md's # The model each agent runs on, over the real tree, names ADJUDICATE among the fable rows
+    FAIL HARNESS-102 AC-1: adj_problems over the real tree prints nothing: advance-story, complete-story and lead-po.md each say a fresh lead-po on the ADJUDICATE row adjudicates the claim, upheld or 
+    FAIL HARNESS-102 AC-8: the template's ## Amendments comment names the entry head `AM-<n>`
+    FAIL HARNESS-102 AC-8: the template's ## Amendments comment shows the record line `**Adjudicated AM-<n>:**`
+    FAIL HARNESS-102 AC-8: the template's ## Amendments record line carries `(resolved <name>)`
+    FAIL HARNESS-102 AC-8: the template's ## Amendments comment says a `fable` dispatch writes the judgement
+    FAIL HARNESS-102 AC-8: the template's ## Amendments comment says the dispatch is a fresh one
+    FAIL HARNESS-102 AC-8: the template's ## Regressions comment names the entry head `R-<n>`
+    FAIL HARNESS-102 AC-8: the template's ## Regressions comment shows the record line `**Adjudicated R-<n>:**`
+    FAIL HARNESS-102 AC-8: the template's ## Regressions record line carries `(resolved <name>)`
+    FAIL HARNESS-102 AC-8: the template's ## Regressions comment says a `fable` dispatch writes the judgement
+    FAIL HARNESS-102 AC-8: the template's ## Regressions comment says the dispatch is a fresh one
+    FAIL HARNESS-102 AC-8: the template's ## Amendments comment no longer asks for the orchestrator's own reproduction
+    FAIL HARNESS-102 AC-8: story-authoring's sections.md ## Amendments names the entry head `AM-<n>`
+    FAIL HARNESS-102 AC-8: story-authoring's sections.md ## Amendments shows the record line `**Adjudicated AM-<n>:**`
+    FAIL HARNESS-102 AC-8: story-authoring's sections.md ## Amendments says a `fable` dispatch writes the judgement
+    FAIL HARNESS-102 AC-8: story-authoring's sections.md ## Regressions names the entry head `R-<n>`
+    FAIL HARNESS-102 AC-8: story-authoring's sections.md ## Regressions shows the record line `**Adjudicated R-<n>:**`
+    FAIL HARNESS-102 AC-8: story-authoring's sections.md ## Regressions says a `fable` dispatch writes the judgement
+    FAIL HARNESS-102 AC-8: story-authoring's SKILL.md no longer says the orchestrator reproduces the finding itself
+    FAIL HARNESS-102 AC-8: story-authoring's SKILL.md says the finding is adjudicated by a `fable` dispatch
+    FAIL HARNESS-102 AC-8: story-authoring's SKILL.md names the ADJUDICATE row
+    FAIL an ordinary story: fable plans and reviews, opus writes and tests the code
+    FAIL with no contract, the plan is the same
+    FAIL with a contract the lock cannot police, the plan is the same
+    FAIL for a bootstrap story, the plan is the same
+    FAIL HARNESS-101 AC-2, HARNESS-102 AC-2: the plan lists DIFF-REVIEW after GATES and before REVIEW, and ADJUDICATE last, after SCAFFOLD, the other six in today's order, for all four story shapes
+    FAIL HARNESS-102 C-6: plan.sh write puts exactly one `| ADJUDICATE | `lead-po` | `fable` | <why> |` row in ## Model guidance, with a reason
+```
+
+The two real-tree aggregates, in full (dispatch):
+
+```
+    FAIL HARNESS-101: row_problems over the real tree prints nothing: advance-story's PLANNED → RED dispatches a lead- ...
+         expected: 
+         actual:   .claude/commands/advance-story.md: REVIEW → DONE does not say `records a departure for that row`
+         .claude/harness/rules.md: # The model each agent runs on does not say `ADJUDICATE`
+    FAIL HARNESS-102 AC-1: adj_problems over the real tree prints nothing: advance-story, complete-story and lead-po.md  ...
+         expected: 
+         actual:   .claude/commands/advance-story.md: its contract-is-wrong bullet does not say `lead-po`
+         .claude/commands/advance-story.md: its contract-is-wrong bullet does not say `ADJUDICATE row`
+         .claude/commands/advance-story.md: its contract-is-wrong bullet does not say `upheld`
+         .claude/commands/advance-story.md: its contract-is-wrong bullet does not say `rejected`
+         .claude/commands/advance-story.md: its contract-is-wrong bullet does not say `**Adjudicated`
+         .claude/commands/advance-story.md: its contract-is-wrong bullet does not say `## Notes`
+         .claude/commands/advance-story.md: its contract-is-wrong bullet does not say `AMEND`
+         .claude/commands/advance-story.md: its contract-is-wrong bullet still says `you reproduce independently`
+         .claude/commands/complete-story.md: its contract-is-wrong bullet does not say `lead-po`
+         .claude/commands/complete-story.md: its contract-is-wrong bullet does not say `ADJUDICATE row`
+         .claude/commands/complete-story.md: its contract-is-wrong bullet does not say `upheld`
+         .claude/commands/complete-story.md: its contract-is-wrong bullet does not say `rejected`
+         .claude/commands/complete-story.md: its contract-is-wrong bullet does not say `**Adjudicated`
+         .claude/commands/complete-story.md: its contract-is-wrong bullet does not say `## Notes`
+         .claude/commands/complete-story.md: its contract-is-wrong bullet does not say `AMEND`
+         .claude/commands/complete-story.md: its contract-is-wrong bullet still says `verify it yourself`
+         .claude/agents/lead-po.md: its description does not say `ADJUDICATE`
+         .claude/agents/lead-po.md: ## When you are dispatched inside a story does not say `ADJUDICATE row`
+         .claude/agents/lead-po.md: ## When you are dispatched inside a story still says `Three pieces of work`
+         .claude/agents/lead-po.md: its contract-is-wrong bullet does not say `lead-po`
+         .claude/agents/lead-po.md: its contract-is-wrong bullet does not say `ADJUDICATE row`
+         .claude/agents/lead-po.md: its contract-is-wrong bullet does not say `upheld`
+         .claude/agents/lead-po.md: its contract-is-wrong bullet does not say `rejected`
+         .claude/agents/lead-po.md: its contract-is-wrong bullet does not say `**Adjudicated`
+         .claude/agents/lead-po.md: its contract-is-wrong bullet does not say `## Notes`
+         .claude/agents/lead-po.md: its contract-is-wrong bullet does not say `AMEND`
+         .claude/agents/lead-po.md: its contract-is-wrong bullet still says `reproduce it on different inputs`
+         .claude/skills/diff-review/SKILL.md: ## 5. What happens to a finding does not say `**Adjudicated`
+```
+
+One `boundaries` refusal in full, for the shape (block 3k does not exist, so the run prints no 3k line and the spike exits 0):
+
+```
+    FAIL HARNESS-102 AC-3: a new `### R-1` with no record, on a story the base has no copy of, gives exactly one FAIL naming the story, ## Regressions and R-1 ...
+         expected: 1
+         actual:   0
+    FAIL HARNESS-102 AC-3: and the run exits non-zero
+         expected: non-zero
+```
+
+### Files touched
+
+- `.claude/tests/boundaries.test.sh` - the block 3k describe (AC-3 to AC-7,
+  C-9), appended before `summary`; the HARNESS-097 T-43 fixture (the one caller,
+  below).
+- `.claude/tests/plan.test.sh` - `SHIP_EXPECTED` gains the ADJUDICATE row,
+  `SHIP_ORDER` ends `ADJUDICATE`, one `plan.sh write` row assertion (AC-2, C-6).
+- `.claude/tests/dispatch.test.sh` - `row_problems` gains AC-9 and AC-10 and
+  the `rules.md` ADJUDICATE needle; a new guard `adj_problems` for the rest of
+  AC-1.
+- `.claude/tests/new-story.test.sh` - the AC-8 block.
+- `docs/backlog/stories/HARNESS-102.md` - `## Contract` C-7 amended in place
+  (four needles and the locator, with the reason), `## Test plan`, this section.
+
+Nothing else. Floors are not raised (GREEN's, C-9 / "Floors and release").
+
+### What GREEN builds, as the tests already pin it
+
+**Block 3k in `scripts/check-boundaries.sh`.** The tests run the real script in
+a fixture and read its output; there is no function to import. What they read:
+
+| Needle | Exact form | Where pinned |
+|---|---|---|
+| a missing record | one line beginning `FAIL  ` that contains the story id, `## <Section>` and `**Adjudicated <id>:**` (C-4: the problem spells the record line out, so the id appears inside its own record). One such line per id; the exit is non-zero | `k_fail` |
+| headless new content | one line beginning `FAIL  ` with the story id, `## <Section>` and the literal `R-<n>` (Regressions) or `AM-<n>` (Amendments); non-zero exit | `k_headless` |
+| accepted | the whole line `ok    ## Regressions: every new entry carries an adjudication record` (or `## Amendments`), exactly once (C-4 step 6) | `k_ok` |
+| AC-6 note | one line beginning with two spaces (`note`'s prefix) that contains the id, the recorded model and the planned model | `k_note` |
+| "no adjudication line at all" | no line matching `/adjudicat/` in any case, nor containing `R-<n>` or `AM-<n>` | `k_adj` |
+| "no FAIL about adjudication" | the same, among lines beginning `FAIL  ` | `k_adj_fail` |
+
+So: every 3k `problem` and `ok` should carry the word "adjudication" or the
+head form, and **no other line of the script may** - an unrelated message that
+says "adjudicated" would break the "says nothing" cases. Every 3k fixture is a
+`spike` at REVIEW that changes no source, so its exit status is 3k's alone: an
+accepted case asserts exit 0.
+
+The planned model for AC-6 is read from `.claude/harness/models.conf` in the
+directory the script runs in (the fixture writes it per case: the shipped file
+with any ADJUDICATE row replaced by `model  | ADJUDICATE | lead-po | <m> | ...`,
+or without one, or deleted).
+
+Not constrained: the rest of each message's wording, the order of 3k's lines
+relative to each other, what a FAIL says beyond the needles, how the block is
+factored, and whether the base copy is read once or per section (C-3 still says
+through `$cp`).
+
+**`dispatch.test.sh` needles.** `row_problems` lines GREEN must clear, verbatim:
+
+    .claude/commands/advance-story.md: REVIEW → DONE does not say `records a departure for that row`
+    .claude/harness/rules.md: # The model each agent runs on does not say `ADJUDICATE`
+
+and `adj_problems` (new) prints today the 28 lines in the failure output
+above. To clear them: each of the three bullets that begin
+`- **A claim that the contract` (keep those words; the bullet runs to the next
+`- ` line, blank line or heading) says `lead-po`, `ADJUDICATE row`, `upheld`,
+`rejected`, `**Adjudicated`, `## Notes` and `AMEND`, and loses
+`you reproduce independently` (advance-story), `verify it yourself`
+(complete-story), `reproduce it on different inputs` (lead-po). `lead-po.md`'s
+`description:` says `PLANNED`, `DIFF-REVIEW` and `ADJUDICATE`; its
+`## When you are dispatched inside a story` says `ADJUDICATE row` and not
+`Three pieces of work`. `diff-review/SKILL.md`'s `## 5. What happens to a
+finding` says `**Adjudicated`. Needles are matched after flattening, so a
+phrase may wrap. The two headings are matched as whole lines: do not rename
+them. C-7 (amended in RED) has the reason for the four extra needles.
+
+The `REVIEW → DONE` region is the HARNESS-101 one (from `**REVIEW → DONE.**` to
+the next paragraph that begins `**`); the clause goes in the PR-feedback
+paragraph. GATES → REVIEW step 1 saying it does not count (fixture case).
+
+**AC-9's choice (C-10).** The complete-story check prints a **second** line,
+`.claude/commands/complete-story.md: its PLANNED → RED dispatch bullet does not say \`before you commit at PLANNED\``,
+only when a dispatch bullet (one saying both `lead-po` and `PLANNED row`)
+exists and none of them has the phrase; with no dispatch bullet the existing
+`L_CB_PL` line stands alone. `pl_region` reaches `advance-story.md:115-116`:
+the region runs from line 43 (`**PLANNED → RED.**`) to the next marker at line
+168 (`**RED → GREEN.**`), and the C-10 mutation below shows the sentence is
+read.
+
+**`plan.test.sh`.** `plan.sh models <id>` prints eight rows, the eighth
+`ADJUDICATE lead-po fable`, last; `plan.sh write` renders
+`| ADJUDICATE | \`lead-po\` | \`fable\` | <why> |` once with a non-blank reason.
+Not constrained: the `<why>` text, and the header comment (C-6 says to change
+it; no assertion reads it - `MC_NEEDLES` is unchanged).
+
+**`new-story.test.sh`.** Each of the two template comments contains, after
+whitespace is collapsed: `AM-<n>` / `R-<n>`, `**Adjudicated AM-<n>:**` /
+`**Adjudicated R-<n>:**`, `(resolved <name>)`, `fable`, `fresh`; the Amendments
+one no longer contains "orchestrator's own reproduction" in any case.
+`sections.md`'s `## Amendments ...` and `## Regressions ...` sections contain
+the head, `**Adjudicated <p>-<n>:**` and `fable`. `story-authoring/SKILL.md`'s
+paragraph beginning `If the Test Developer reports that a criterion` (to the
+next blank line) keeps those opening words, loses "after the orchestrator has
+reproduced the finding independently, on its own inputs", and says `fable`
+and `ADJUDICATE`. Not constrained: the rest of the wording.
+
+### The caller list (Contract, "Callers")
+
+`grep -n '## Regressions\|## Amendments' .claude/tests/boundaries.test.sh`
+gave the 36 lines the contract counted, before this story's block. Read case
+by case, and then measured: a candidate 3k (written in a scratch copy of the
+tree, never in `scripts/`, from C-1 to C-4) appended to a copy of
+`check-boundaries.sh` and the unchanged suite run against it gave
+`boundaries: 544 passed, 1 failed`. The one:
+
+- **HARNESS-097, "AC-1 twin: with the plain file gone, the same fixture exits
+  0"** (story T-43). Its `## Amendments` entry has no head, so 3k adds an AC-5
+  FAIL and the twin exits 1 for 3k's reason. **Updated**: the entry is headed
+  `- **AM-1.**` and carries `- **Adjudicated AM-1:** requested by the user,
+  2026-11-11.`; 3d reads only that the section has content, so every other
+  assertion of that case is unchanged. Green today and green against the
+  candidate.
+
+Every other case on those 36 lines gains a line under 3k and still passes:
+they match a substring (`refused`, `assert_contains`, `assert_not_contains` of
+a 3d or 3g phrase, `whole_line` of a 3d/3g line) and their fixtures are
+`feature` stories at REVIEW with no `## Gate results`, which already exit 1.
+The two "says nothing about `## Regressions`" cases (an absent section, an
+untouched template block) have no content outside comments, so 3k is silent
+there by C-4 step 1.
+
+### "Existing assertions these edits meet", checked against the tree
+
+- `plan.test.sh` `SHIP_EXPECTED` / `SHIP_ORDER`: changed here, with AC-2.
+- `dispatch.test.sh` HARNESS-101 block: `RU_NEEDLES` gains `ADJUDICATE`, and
+  the compliant `R_RU_GOOD` and both sections around it in `write_r_rules`
+  carry it; `RD_NEEDLES` gains the departure clause and `R_RD_GOOD` and
+  `R_AFTER` carry it; `PL_ADV_NEEDLES` and `CB_PL_READ` are new and `R_PL_GOOD`,
+  `R_RG`, `R_CB_PL_GOOD` and `write_r_complete`'s trailing line carry them.
+  "the fixture: compliant by construction" is green with all of them. The
+  controls that print today's lines were extended by the new lines (pl-today
+  3, pl-after-marker 3, rd-today 4, rd-bold-paragraph 5, the HARNESS-101
+  whole-tree case 34). `RU_NOT` still refuses `PLANNED and REVIEW on`;
+  `MC_NEEDLES`/`MC_NOT` and `LP_NEEDLES` are unchanged.
+- `rules-trim`, `sigpipe`, `procedure`, and `new-story.test.sh` lines 139-148:
+  not edited, and nothing here reads them differently. `rules.md` is **370
+  lines at the cap** (`wc -l`, `CAP=370` in `rules-trim.test.sh`): GREEN's three
+  edits there are word-level and must leave it at 370 or fewer (C-7).
+  `sigpipe.test.sh` pins `check-boundaries.sh:399`, `:438` and `:630` - block
+  3k goes after 3j, before the last line, so none moves (C-4).
+- `bash scripts/selftest-needed.sh --suites` on the branch is the full list for
+  the final self-test.
+
+### Green on arrival, and what earns each (DV-3)
+
+**AC-9, earned in RED** by the two C-10 mutations, each against the one
+suite. Before them the suite stood at `dispatch: 201 passed, 4 failed`; under
+each, exactly one more assertion went red - the one the mutation targets - and
+`mutate.sh` restored the file byte for byte. Output, the 28 lines of the
+already-red AC-1 real-tree assertion elided where marked:
+
+C-10 mutation 1, `bash scripts/mutate.sh .claude/commands/advance-story.md 's/read what it$/skim what it/' -- bash scripts/selftest.sh dispatch` (blank lines removed):
+
+```
+=== mutate: .claude/commands/advance-story.md (1 line(s) changed by s/read what it$/skim what it/) ===
+  115 - That is the end of the brief. Once the dispatch is back, read what it
+  115 + That is the end of the brief. Once the dispatch is back, skim what it
+=== mutate: running bash scripts/selftest.sh dispatch ===
+=== dispatch ===
+  the real tree (AC-1 to AC-5)
+  the fixture: compliant by construction
+  AC-1: the GREEN → GATES region dispatches the full gate run
+  AC-2: the self-test step dispatches the run and checks its verdict
+  AC-3: check-boundaries stays the orchestrator's own run, after the commit
+  AC-4: complete-story's bullet and lead-po's ## Orchestrating
+  AC-5: feature-developer.md has ## Run and report
+  missing files, and the order of the lines
+  HARNESS-095 AC-4: the self-test step names the `--changed` run, and the full-run spelling does not
+  HARNESS-095 AC-3: complete-story's bullet and lead-po's long-run paragraph name the `--changed` run and its check
+  HARNESS-095 AC-4: the lines the tree at HARNESS-094 prints, in order
+  HARNESS-101 the real tree: who is dispatched on which row (AC-3, AC-4, AC-6, AC-7)
+    FAIL HARNESS-101: row_problems over the real tree prints nothing: advance-story's PLANNED → RED dispatches a lead-po on the PLANNED row; GATES → REVIEW step 1 dispatches a lead-po on the DIFF-REVIEW row, read from `bash scripts/plan.sh models`, with a Route checked by `bash scripts/classify.sh`, and not on the GATES row; REVIEW → DONE has PR feedback read by a lead-po on the REVIEW row with a Route; complete-story's bullets say the same; diff-review's description and ## Who runs it name the lead-po on the DIFF-REVIEW row and no feature-developer; rules.md's model section states the 2026-11-11 split; models.conf's header names DIFF-REVIEW; lead-po.md names the DIFF-REVIEW row; and (HARNESS-102) advance-story's PLANNED → RED says `read what it returned`, complete-story's dispatch bullet says `before you commit at PLANNED`, the PR-feedback paragraph `records a departure for that row`, and rules.md's model section names ADJUDICATE
+         expected: 
+         actual:   .claude/commands/advance-story.md: PLANNED → RED does not say `read what it returned`
+         .claude/commands/advance-story.md: REVIEW → DONE does not say `records a departure for that row`
+         .claude/harness/rules.md: # The model each agent runs on does not say `ADJUDICATE`
+    FAIL HARNESS-102 AC-9: advance-story's PLANNED → RED region, over the real tree, says `read what it returned` (HARNESS-101 AC-3's read-before-commit sentence)
+         expected: 0
+         actual:   1
+    FAIL HARNESS-102 AC-10: advance-story's REVIEW → DONE region, over the real tree, says the PR-feedback dispatch's model comes from plan.sh unless `## Model guidance` `records a departure for that row`
+         expected: 0
+         actual:   1
+    FAIL HARNESS-102 AC-1: rules.md's # The model each agent runs on, over the real tree, names ADJUDICATE among the fable rows
+         expected: 0
+         actual:   1
+  HARNESS-101 the fixture: compliant by construction
+  HARNESS-101 AC-3: advance-story's PLANNED → RED is a lead-po dispatch on the PLANNED row
+  HARNESS-101 AC-4: GATES → REVIEW step 1 is a lead-po dispatch on the DIFF-REVIEW row
+  HARNESS-101 AC-6: PR feedback at REVIEW is read by a lead-po on the REVIEW row
+  HARNESS-101 AC-3, AC-4: complete-story's PLANNED → RED and GATES → REVIEW bullets
+  HARNESS-101 AC-4: diff-review's description and ## Who runs it
+  HARNESS-101 AC-7: rules.md, models.conf's header and lead-po.md state the split
+  HARNESS-101: missing files, and every line a tree at 9a10054 prints, in order
+  HARNESS-102 AC-1 the real tree: a contract-is-wrong claim goes to a fresh lead-po on the ADJUDICATE row
+    FAIL HARNESS-102 AC-1: adj_problems over the real tree prints nothing: advance-story, complete-story and lead-po.md each say a fresh lead-po on the ADJUDICATE row adjudicates the claim, upheld or rejected, with the record (`**Adjudicated`) in the entry, a rejected claim in ## Notes, and a Route'd RED or AMEND entry adjudicated by that dispatch, and none tells the orchestrator to reproduce it itself; lead-po.md's dispatch section and description name the ADJUDICATE row; diff-review's section 5 says a Route'd entry carries a `**Adjudicated` record
+         expected: 
+         actual:   .claude/commands/advance-story.md: its contract-is-wrong bullet does not say `lead-po`
+         [... the rest of the 28 AC-1 real-tree lines elided ...]
+         .claude/skills/diff-review/SKILL.md: ## 5. What happens to a finding does not say `**Adjudicated`
+  HARNESS-102 AC-1 the fixture: compliant by construction, and today's words
+  HARNESS-102 AC-1: each of the three statements, one clause at a time
+  HARNESS-102 AC-1: lead-po.md's dispatch section and description, diff-review's section 5
+dispatch: 200 passed, 5 failed
+assertion floors: all 1 suite(s) met their declared floor (200 assertions executed, 145 declared).
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_advance-story.md.20261111T220732Z.119391.bak) ===
+  115: That is the end of the brief. Once the dispatch is back, read what it
+```
+
+C-10 mutation 2, `bash scripts/mutate.sh .claude/commands/complete-story.md 's/before you commit at PLANNED/before you move on/' -- bash scripts/selftest.sh dispatch` (blank lines removed):
+
+```
+=== mutate: .claude/commands/complete-story.md (1 line(s) changed by s/before you commit at PLANNED/before you move on/) ===
+  97 -   and record the model it resolved to, before you commit at PLANNED.
+  97 +   and record the model it resolved to, before you move on.
+=== mutate: running bash scripts/selftest.sh dispatch ===
+=== dispatch ===
+  the real tree (AC-1 to AC-5)
+  the fixture: compliant by construction
+  AC-1: the GREEN → GATES region dispatches the full gate run
+  AC-2: the self-test step dispatches the run and checks its verdict
+  AC-3: check-boundaries stays the orchestrator's own run, after the commit
+  AC-4: complete-story's bullet and lead-po's ## Orchestrating
+  AC-5: feature-developer.md has ## Run and report
+  missing files, and the order of the lines
+  HARNESS-095 AC-4: the self-test step names the `--changed` run, and the full-run spelling does not
+  HARNESS-095 AC-3: complete-story's bullet and lead-po's long-run paragraph name the `--changed` run and its check
+  HARNESS-095 AC-4: the lines the tree at HARNESS-094 prints, in order
+  HARNESS-101 the real tree: who is dispatched on which row (AC-3, AC-4, AC-6, AC-7)
+    FAIL HARNESS-101: row_problems over the real tree prints nothing: advance-story's PLANNED → RED dispatches a lead-po on the PLANNED row; GATES → REVIEW step 1 dispatches a lead-po on the DIFF-REVIEW row, read from `bash scripts/plan.sh models`, with a Route checked by `bash scripts/classify.sh`, and not on the GATES row; REVIEW → DONE has PR feedback read by a lead-po on the REVIEW row with a Route; complete-story's bullets say the same; diff-review's description and ## Who runs it name the lead-po on the DIFF-REVIEW row and no feature-developer; rules.md's model section states the 2026-11-11 split; models.conf's header names DIFF-REVIEW; lead-po.md names the DIFF-REVIEW row; and (HARNESS-102) advance-story's PLANNED → RED says `read what it returned`, complete-story's dispatch bullet says `before you commit at PLANNED`, the PR-feedback paragraph `records a departure for that row`, and rules.md's model section names ADJUDICATE
+         expected: 
+         actual:   .claude/commands/advance-story.md: REVIEW → DONE does not say `records a departure for that row`
+         .claude/commands/complete-story.md: its PLANNED → RED dispatch bullet does not say `before you commit at PLANNED`
+         .claude/harness/rules.md: # The model each agent runs on does not say `ADJUDICATE`
+    FAIL HARNESS-102 AC-9: complete-story's PLANNED → RED dispatch bullet, over the real tree, names `lead-po` and `PLANNED row` and says `before you commit at PLANNED`
+         expected: 0 0
+         actual:   0 1
+    FAIL HARNESS-102 AC-10: advance-story's REVIEW → DONE region, over the real tree, says the PR-feedback dispatch's model comes from plan.sh unless `## Model guidance` `records a departure for that row`
+         expected: 0
+         actual:   1
+    FAIL HARNESS-102 AC-1: rules.md's # The model each agent runs on, over the real tree, names ADJUDICATE among the fable rows
+         expected: 0
+         actual:   1
+  HARNESS-101 the fixture: compliant by construction
+  HARNESS-101 AC-3: advance-story's PLANNED → RED is a lead-po dispatch on the PLANNED row
+  HARNESS-101 AC-4: GATES → REVIEW step 1 is a lead-po dispatch on the DIFF-REVIEW row
+  HARNESS-101 AC-6: PR feedback at REVIEW is read by a lead-po on the REVIEW row
+  HARNESS-101 AC-3, AC-4: complete-story's PLANNED → RED and GATES → REVIEW bullets
+  HARNESS-101 AC-4: diff-review's description and ## Who runs it
+  HARNESS-101 AC-7: rules.md, models.conf's header and lead-po.md state the split
+  HARNESS-101: missing files, and every line a tree at 9a10054 prints, in order
+  HARNESS-102 AC-1 the real tree: a contract-is-wrong claim goes to a fresh lead-po on the ADJUDICATE row
+    FAIL HARNESS-102 AC-1: adj_problems over the real tree prints nothing: advance-story, complete-story and lead-po.md each say a fresh lead-po on the ADJUDICATE row adjudicates the claim, upheld or rejected, with the record (`**Adjudicated`) in the entry, a rejected claim in ## Notes, and a Route'd RED or AMEND entry adjudicated by that dispatch, and none tells the orchestrator to reproduce it itself; lead-po.md's dispatch section and description name the ADJUDICATE row; diff-review's section 5 says a Route'd entry carries a `**Adjudicated` record
+         expected: 
+         actual:   .claude/commands/advance-story.md: its contract-is-wrong bullet does not say `lead-po`
+         [... the rest of the 28 AC-1 real-tree lines elided ...]
+         .claude/skills/diff-review/SKILL.md: ## 5. What happens to a finding does not say `**Adjudicated`
+  HARNESS-102 AC-1 the fixture: compliant by construction, and today's words
+  HARNESS-102 AC-1: each of the three statements, one clause at a time
+  HARNESS-102 AC-1: lead-po.md's dispatch section and description, diff-review's section 5
+dispatch: 200 passed, 5 failed
+assertion floors: all 1 suite(s) met their declared floor (200 assertions executed, 145 declared).
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_commands_complete-story.md.20261111T220903Z.122218.bak) ===
+  97:   and record the model it resolved to, before you commit at PLANNED.
+```
+
+**Listed for GATES (DV-3), not run in RED** - the block they need to break does
+not exist. Each is green today because there is no block 3k at all:
+
+| Assertion (boundaries, block 3k) | The mutation of the built 3k that turns it red |
+|---|---|
+| AC-3 "no ok line for ## Regressions beside the FAIL" | print the `ok` whatever step 4 found |
+| AC-4 "and no FAIL about adjudication" / "the spike exits 0" (R-1), "two ids ... exit 0", AM-1 "no FAIL ..., exit 0", AC-6 "no FAIL ..., exit 0", AC-7 "no FAIL ..., exit 0" | make the record never match (e.g. `Adjudicated` -> `Adjudicatd` in the C-2 pattern) |
+| AC-4 "a head inside a fence or a comment is not an entry head" | read heads from the section without skipping fenced lines (R-1 is then a head) |
+| AC-4 "a story fresh from new-story.sh, untouched, gets no adjudication line" | judge the section without stripping comments (the template's `R-<n>` text is then content) |
+| AC-4 "an R-1 the base copy already has is not judged", "the spike exits 0", "prose added under an id the base already has", "a section identical to the base copy's says nothing" | take the base id set as empty |
+| AC-5 twin "the same headless content already on the base is not new" | drop C-4 step 2 (the comparison with the base copy) |
+| AC-4 "two sections holding only comments get no adjudication line" | test the raw section for non-whitespace instead of `has_content` |
+| AC-4 "a story with neither section gets no adjudication line" | print each section's `ok` unconditionally (DV-3's own example) |
+| AC-6 twin "a fable record where the row plans fable gives no note" | note when the models are equal (`!=` -> `=`) |
+| AC-6 "no ADJUDICATE row: no note", "no models.conf: no note" | default the planned model to `fable` when there is no row |
+| AC-4 "precondition: new-story.sh wrote a story with a branch and a ## Regressions heading" | a fixture precondition, not a behaviour; remove the heading from `new-story.sh` and it goes red |
+
+In `new-story`, "story-authoring's SKILL.md still has the paragraph that opens
+..." is green on arrival: it is the region's precondition, and renaming the
+paragraph's opening words turns it red. In `dispatch`, every fixture case is
+green on arrival by design (they test the guard, not the tree); the "today's
+words" controls, which print every line, are what show the guard reading the
+real wording.
+
+### Deferred verifications
+
+- **DV-1 (the defect put back): declined in RED - I cannot run it.** It
+  disables block 3k's refusal for a new id without a record, and there is no
+  block 3k to disable. GATES owns it, with the expression written against
+  GREEN's line; the assertion it must turn red is AC-3's
+  "a new `### R-1` with no record ... gives exactly one FAIL ...".
+- **DV-2 (a real line of the tree): declined in RED - I cannot run it.** It
+  needs the block to print a FAIL naming `R-9` over this story's own file, and
+  the block does not exist. GATES owns it; the command is in the entry.
+- **DV-3**: listed above, mutation by mutation, for GATES. AC-9's two are not
+  in it: earned here.
+
+### Floors, for GREEN to raise (C-9, "Floors and release")
+
+Executed in RED (passed + failed): `boundaries` 621 (545 + 76), `plan` 287
+(286 + 1), `dispatch` 205 (145 at b10546e + 60), `new-story` 79 (58 + 21). The
+floor counts passes, so once green each should pass that many; GREEN records
+the counts it measures, in `floors.conf` and `selftest.test.sh` both.
+
+### Expected values of the controls
+
+Every control below ran in RED, because no suite failed to load. The 3k
+column is a claim about GREEN's block: it was measured against a **candidate**
+3k in a scratch copy, so GREEN confirms each against the shipped block.
+
+| Control | Expected | Measured in RED (no 3k) | Measured, candidate 3k |
+|---|---|---|---|
+| block 3k describe in `boundaries` | 76 assertions, 0 failed | 20 passed, 56 failed | 76 passed, 0 failed |
+| the rest of `boundaries` (unchanged cases) | all green | all green | 544 of 545 before the T-43 update; the T-43 twin is the only one |
+| `dispatch` "the fixture: compliant by construction" (HARNESS-101 and HARNESS-102) | silent | silent | - |
+| `dispatch` today's words, `adj_problems` | 28 lines | 28 lines (= the real tree's output) | - |
+| `dispatch` today's words, `row_problems` | 34 lines | 34 | - |
+| `dispatch` real tree, `row_problems` | 2 lines in RED, 0 after GREEN | 2 | - |
+| `dispatch` real tree, `adj_problems` | 28 lines in RED, 0 after GREEN | 28 | - |
+| C-10 mutation 1 / 2 | one more red, the AC-9 assertion it targets | 200 passed, 5 failed (from 201/4), each | - |
+| C-1 heads over the real stories, fence skipping on or off | HARNESS-089 R-1 AM-1; -094 R-1 R-2 AM-1 AM-2; -095 R-1 AM-1; -099 R-1 AM-1; -100 R-1; -101, -082 none | identical with fences skipped (any indent or column 0) and not skipped, over every story in `docs/backlog/stories` | - |
+
+The last row answers the contract's question: no real entry is lost to fence
+skipping. Over every story file, the C-1 ids with fenced lines skipped and
+without are the same set (HARNESS-008, -014, -015, -060, -087, -089, -090,
+-091, -094, -095, -099, -100 carry ids).
+
+### Discovered, for GREEN
+
+- **The C-1 pattern needs an awk with interval expressions** (`{0,3}`,
+  `{3,6}`). Git Bash's gawk has them; so does any POSIX awk, but mawk before
+  1.3.4 does not. The candidate wrote `([*][*])?` for `(\*\*)?` because gawk
+  warns on `\*` inside a string regex; either works as a dynamic regex only if
+  written that way.
+- **A fixture's `docs/backlog/stories` disappears** on `git checkout main` in
+  the boundaries fixture once main holds no story files - the suite's block
+  makes the directory before writing. Not a GREEN concern; noted for whoever
+  extends the block.
+- The real `pl_region` and `para_region` already reach the sentences AC-9 and
+  AC-10 name; no region code changed.
+
+### The record
+
+The test command, through attest (the record's own lines):
+
+    command:  bash scripts/selftest.sh boundaries plan dispatch new-story
+    tree:     5a3895695a53c66f4eb9eff66620aab70567b148
+    status:   ok
+    exit:     1
+    duration: 1938s
+    last:     4 of 4 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261111T221223Z.127173.log
+
+`plan`'s floor line in that log, `FAIL plan  did 281 units of work, below the
+floor of 286`, is the six red assertions (the floor counts passes); 287 run.
+No suite fails to load: the log has no `unbound variable`, `No such file`,
+`syntax error` or `command not found`.
+
+The fast gates, through attest:
+
+    command:  bash scripts/gates.sh --fast
+    tree:     5a3895695a53c66f4eb9eff66620aab70567b148
+    exit:     0
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261111T224458Z.209967.log
+
+That is the shape this repository gives: every gate is unconfigured here
+(`required_gates: []`), so the suites above are what judge the story, under
+their floors. Also run, clean: `bash scripts/check-sigpipe.sh` (0 findings over
+62 files), `bash scripts/check-grep-count.sh` (0 findings), and the two suites
+`selftest-needed.sh --suites` adds for a scanned `*.sh`, `grep-count` 38/0 and
+`host-load` 72/0; `sigpipe` 91/0.
+
+Timings: every duration above is a local run on a loaded host (two other test
+runs and another project's `gates.sh` were running). None of the new cases
+carries a timeout; the suites have none.
 
 ## Regressions
 
@@ -674,3 +1264,4 @@ name, below the table.
   1. `.claude/tests/dispatch.test.sh:988`: the PLANNED → RED needle list `row_problems` checks only `lead-po` and `PLANNED row`, so deleting HARNESS-101 AC-3's read-before-commit sentence ("Once the dispatch is back, read what it returned." in `advance-story.md`; "before you commit at PLANNED" in `complete-story.md`) leaves every suite green. Add a needle per file with a control, earned by mutation since the text exists (Route: RED).
   2. `.claude/commands/advance-story.md` ~line 410: the REVIEW-row PR-feedback dispatch should carry the same "unless the story's `## Model guidance` records a departure for that row" clause as GATES → REVIEW step 1 (Route: GATES).
 - **User answers, 2026-11-11 (PLANNED review):** Q1 confirmed — a REVIEW-row PR-feedback item routed `RED` or `AMEND` counts as adjudicated by that dispatch, as a diff-review finding does (AC-1 as extended). PO decision 2 confirmed — the adjudicating dispatch writes its own record line; the orchestrator writes it only for a Route'd entry. Asked in chat before the story left PLANNED; no criterion changed beyond the PLANNED review's.
+- **RED verified by the orchestrator, 2026-11-11.** Changed files: the four suites and this story only. `attest.sh check -- bash scripts/selftest.sh boundaries plan dispatch new-story` `fresh` on tree `5a38956`, exit 1, `4 of 4 harness suite(s) FAILED.`, log `.claude/state/attest-logs/20261111T221223Z.127173.log`: boundaries 565/56, dispatch 201/4, new-story 59/20, plan 281/6. Every FAIL line is a HARNESS-102 criterion (AC-1..AC-8, AC-10, C-6, C-9) or a HARNESS-101 pin extended by it; no load error. The plan suite's floor miss (281 < 286) counts passes; GREEN raises the floors to the handoff's 621/287/205/79. `attest.sh check -- bash scripts/gates.sh --fast` `fresh`, exit 0 (no gate configured in this repository). AC-9's two C-10 mutations are in the handoff, each 201/4 → 200/5 and restored. `mutate.sh --check` clean. The C-7 in-place amendment (four needles taken from AC-1's own words, and the locator) is accepted; no acceptance criterion changed.
