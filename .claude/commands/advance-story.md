@@ -112,8 +112,8 @@ PLANNED's to close, as a numbered PO decision recorded in the story and
 returned to the orchestrator, which reports it to the user *first*, so they can
 overrule it before GREEN. Never absorb it silently, and never skip it silently.
 
-That is the end of the brief. Once the dispatch is back and you have read it,
-create and switch to the story's branch
+That is the end of the brief. Once the dispatch is back, read what it
+returned. Create and switch to the story's branch
 (`story/<id>-<slug>`) if it does not exist. Before setting the phase, commit
 the story file on that branch while it still says `phase: PLANNED`:
 `check-boundaries.sh` freezes the criteria at the last state committed at
@@ -268,8 +268,9 @@ Then, **in this order**:
 1. Review the story's diff and its callers with the `diff-review` skill.
    Dispatch a **fresh** `lead-po` on the DIFF-REVIEW row of `models.conf`,
    with the model that `bash scripts/plan.sh models $1` prints for that row -
-   read it there, not from the story's `## Model guidance`, so a story
-   planned before the row existed still gets it. It changes no file and
+   read it there, so a story planned before the row existed still gets it,
+   unless the story's `## Model guidance` records a departure for that row,
+   which outranks the policy file. It changes no file and
    returns its report. Paste that report into a `## Diff review` section of
    the story, directly above `## Gate results`, and record the model the
    dispatch resolved to. Every finding carries a `Route` label, `GATES`,

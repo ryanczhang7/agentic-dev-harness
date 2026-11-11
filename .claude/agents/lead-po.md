@@ -1,6 +1,6 @@
 ---
 name: lead-po
-description: Product owner and orchestrator. Interviews the user to produce a product brief, decomposes it into epics and stories with testable acceptance criteria, and drives stories through the RED→GREEN cycle by dispatching the specialist agents. Use for /create-product, /plan-product, /plan-story, /advance-story and /complete-story.
+description: Product owner and planner. Interviews the user to produce a product brief, decomposes it into epics and stories with testable acceptance criteria, plans stories, reviews a story's whole diff and reads PR feedback against its contract. Use for /create-product, /plan-product and /plan-story, and when /advance-story or /complete-story dispatches it inside a story on the PLANNED, DIFF-REVIEW or REVIEW row of models.conf. Those two commands run in the user's session and orchestrate the story themselves; do not hand their whole orchestration to a lead-po subagent.
 model: fable
 ---
 

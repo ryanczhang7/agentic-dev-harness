@@ -4,8 +4,8 @@ title: Opus runs the story loop; fable plans, reviews the diff and reads review 
 slug: opus-runs-the-story-loop-fable-plans-rev
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-101-opus-runs-the-story-loop-fable-plans-rev
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/security-audit.md, .claude/harness/models.conf, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, .claude/agents/lead-po.md, .claude/tests/plan.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/procedure.test.sh, .claude/tests/security-audit.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -451,6 +451,7 @@ name, below the table.
 - RED (2026-11-11): `test-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5).
 - GREEN (2026-11-11): `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5).
 - GATES full run (2026-11-11): `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5). `attest.sh check -- bash scripts/gates.sh`: `fresh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, log `20261111T181703Z.1852`; it changed no file.
+- Diff review (2026-11-11, GATES → REVIEW): two fresh `feature-developer` dispatches on the GATES row (the whole diff, then the fix), planned `opus` per the note above, both resolved **claude-opus-5-5** (Opus 5.5). The fix itself: one GATES-row `feature-developer`, resolved **claude-opus-5-5**.
 ## Out of scope
 
 - **Adjudicating a claim that the contract is wrong** (decisions 5 and 6): the
@@ -807,12 +808,82 @@ turns it red.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Two dispatches, both a fresh `feature-developer` on the GATES row (the DIFF-REVIEW row does not exist until this story merges; see `## Model guidance`). Neither changed a file.
+
+### Review 1 — the whole diff against `main` at `9c8788f` (resolved claude-opus-5-5)
+
+What this change does: moves `/advance-story`, `/complete-story` and `/security-audit` to `model: opus`; the orchestrating session reaches fable by dispatching a `lead-po` on the PLANNED row, a new `DIFF-REVIEW | lead-po | fable` row, and the REVIEW row; each finding from those dispatches carries a `**Route:**` label (`GATES` / `RED` / `AMEND`) that the orchestrator follows and checks with `bash scripts/classify.sh`; `rules.md`, the `models.conf` header and `lead-po.md` describe the new split.
+
+Checked:
+- Readers of `models.conf`: `scripts/plan.sh` (`cmd_models`, `cmd_both`, `write`), `doctor.sh` (existence only), `refresh-harness.sh` (copies whole file), `_lib.sh` (copies into fixtures). None validates the phase column against `phases.conf`. `next_phase` reads `phases.conf`, so `board`/`next` are unaffected; `check-boundaries.sh` and `phase.sh` do not read `## Model guidance` rows. Only side effect: the 2-column misalignment in `plan.sh <id>`'s human listing, which C-2 already accepts.
+- Stale wording: grep over `.claude/commands`, `.claude/agents`, `.claude/skills`, `docs/wiki`, `CLAUDE.md`, `scripts/new-story.sh` for diff review on a feature-developer / GATES row, and "orchestrating commands ... fable": nothing outside test fixtures. Remaining `GATES row` mentions are the full-gates, self-test and code-fix dispatches, as AC-4 requires.
+- `advance-story` vs `complete-story`: PLANNED and GATES → REVIEW wording consistent. The PLANNED checklist brief no longer tells the dispatch to talk to the user; done-when gaps and untestable criteria return to the orchestrator.
+- Frontmatter `model:` lines match AC-1. `floors.conf` and the `selftest.test.sh` mirror changed identically (dispatch 145, plan 286, procedure 183, security-audit 52). The new `M` needle kind in `security-audit.test.sh` and the order/row checks in `plan.test.sh` compare whole values and can fail.
+
+**Should fix:**
+
+1. **The model for the fable rows ignores a story's own departure from the plan** (`.claude/commands/advance-story.md:269-272`)
+   - **What this is:** the instruction giving the DIFF-REVIEW dispatch its model.
+   - **Problem:** step 1 said read it from `plan.sh models` "not from the story's `## Model guidance`", but `scripts/plan.sh:16-17` says the story's own `## Model guidance` outranks the policy file, and `rules.md` says a departure is recorded there. A story whose guidance says "DIFF-REVIEW on opus, success condition X" would be dispatched on fable, silently. `lead-po.md`'s `## Orchestrating` says the opposite.
+   - **Fix:** "read it there, so a story planned before the row existed still gets it, unless the story's `## Model guidance` records a departure for that row".
+   - **If we skip it:** a deliberate per-story model experiment is overruled and the two documents disagree.
+   - **Route:** GATES
+
+**Nice to have:**
+
+2. **`lead-po`'s description still names it for `/advance-story` and `/complete-story`** (`.claude/agents/lead-po.md:3`)
+   - **What this is:** the frontmatter `description` the runtime uses to pick an agent.
+   - **Problem:** "Use for ... /advance-story and /complete-story" invites handing the whole orchestration to a fable `lead-po` subagent.
+   - **Fix:** name the dispatched work (PLANNED, DIFF-REVIEW, REVIEW rows) instead. C-8 freezes only the `model:` line and the long-runs paragraph.
+   - **If we skip it:** a misrouted orchestration lands on fable, the usage this story cuts.
+   - **Route:** GATES
+
+Verdict: Ship.
+
+**Orchestrator:** both findings followed as labelled. Route GATES checked: `classify.sh` calls both paths `harness`, writable in GATES. Fixed by a GATES-row `feature-developer` (resolved claude-opus-5-5); it also changed "Product owner and orchestrator" to "Product owner and planner" in the same description, kept. On the fixed tree (`ca9098e`): `attest.sh check -- bash scripts/selftest.sh plan dispatch procedure security-audit rules-trim` `fresh`, exit 0, `5 harness suite(s) passed.`, 370 s, log `20261111T193033Z.1794`; `attest.sh check -- bash scripts/gates.sh` `fresh`, exit 0, log `20261111T193654Z.1863`.
+
+### Review 2 — the fix only, `git diff HEAD` on `ca9098e` (resolved claude-opus-5-5)
+
+Checked the new wording against `scripts/plan.sh:16-17` (`cmd_models` has no departure handling, so "read it there unless the story records a departure" matches the script and its header), `rules.md` "# The model each agent runs on", `lead-po.md` `## Orchestrating` and lines 104-109 (matches the new description), `advance-story.md:13` / `complete-story.md:13` ("Act as the **lead-po** orchestrator" — the session takes the role, no subagent; no contradiction), `complete-story.md:38-39` (silent on departures, defers to step 1), and the test needles (`STEP1_NEEDLES` at `dispatch.test.sh:989` still present, `STEP1_NOT` 'GATES row' absent, `LP_NEEDLES` still matched; no test reads lead-po's `description:` or the removed phrase).
+
+**Nice to have:**
+
+1. **The REVIEW-row dispatch does not mention the departure step 1 now names** (`.claude/commands/advance-story.md:408-410`)
+   - **What this is:** the PR-feedback `lead-po` dispatch, "the model from `bash scripts/plan.sh models $1`".
+   - **Problem:** a story whose guidance records "REVIEW: opus" could be dispatched on fable by an orchestrator reading step 1's caveat as DIFF-REVIEW-only. Pre-existing; the fix makes it visible. PLANNED (line 44) has no real case, since that dispatch writes the guidance.
+   - **Fix:** the same clause at line 410.
+   - **If we skip it:** a review on the wrong model, not a wrong merge.
+   - **Route:** GATES
+
+Verdict: Ship.
+
+**Orchestrator:** not taken here; deferred to HARNESS-102, which edits `advance-story.md`'s REVIEW region anyway (recorded in `## Notes`).
+
+### Review 3 — the anchor fix, `git diff --cached` on `3651122` (resolved claude-opus-5-5)
+
+The first `--changed` self-test (below, `## Notes`) failed in `boundaries`: GREEN had folded "Create and switch to the story's branch" into a lowercase clause, hiding the case-sensitive anchor of `boundaries.test.sh:505-516` (HARNESS-033 AC-7). A GATES-row `feature-developer` (resolved claude-opus-5-5) split the sentence: "Once the dispatch is back, read what it returned. Create and switch to the story's branch ...". On the fixed tree: `attest.sh check -- bash scripts/selftest.sh boundaries procedure dispatch` `fresh`, exit 0, `3 harness suite(s) passed.`, 1131 s, log `20261111T201555Z.923`; `attest.sh check -- bash scripts/gates.sh` `fresh`, exit 0, log `20261111T203500Z.50815`.
+
+The review checked: AC-3's read-before-commit still holds, now as its own imperative; the AC-7 anchor matches and the segment after it still contains ``while it still says `phase: PLANNED` ``; no test pins the removed wording (only the anchor and a capitalised fixture at `story.test.sh:436`); `complete-story.md` carries no copy of the lowercase sentence.
+
+**Should fix:**
+
+1. **AC-3's "reads what came back before it commits" clause has no test that fails when it is removed** (`.claude/tests/dispatch.test.sh:988`)
+   - **What this is:** the needle list `row_problems` uses for the PLANNED → RED regions of `advance-story.md` and `complete-story.md`.
+   - **Problem:** it checks only `lead-po` and `PLANNED row`; deleting "Once the dispatch is back, read what it returned." leaves every suite green. Pre-existing since RED; this fix made it visible.
+   - **Fix:** a read-before-commit needle per file in `dispatch.test.sh`, with a control, earned by mutation since the text exists.
+   - **If we skip it:** a later edit can drop the read step AC-3 requires, unnoticed.
+   - **Route:** RED
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-11T18:17:04Z
-    commit: d43d73e
+    run:    2026-11-11T20:35:03Z
+    commit: 9c8788f (working tree had uncommitted changes)
     tree:   4134e8d0047519a3678abac6325a68d1b3bba2be
     result: pass (0 ran, 7 unconfigured, 0 known)
 
@@ -861,3 +932,7 @@ turns it red.
 - **User answer, 2026-11-11:** AC-6 confirmed — PR feedback is read by a fresh `lead-po` dispatch on the REVIEW row. Asked in chat before the story left PLANNED; no criterion changed.
 - RED verified by the orchestrator (2026-11-11): `attest.sh check` answered `fresh` for both `bash scripts/selftest.sh plan dispatch procedure security-audit` (exit 1, `4 of 4 harness suite(s) FAILED.`, log `20261111T173709Z.139081`) and `bash scripts/gates.sh --fast` (exit 0, every gate unconfigured), so neither was re-run. Read from the log: every red assertion is a real-tree read finding the old text (31 `row_problems` lines, 12 `route_problems` lines, the six-command model set, the seven-row plan, the security-audit frontmatter line); no load error; every fixture green. RED resolved to **claude-opus-5-5** (test-developer, planned `opus`).
 - GREEN verified by the orchestrator (2026-11-11): the four RED suites are byte-identical to `ec3df9e`; `attest.sh check` answered `fresh` for `bash scripts/selftest.sh plan dispatch procedure security-audit rules-trim` (exit 0, `5 harness suite(s) passed.`, log `20261111T180018Z.213909`) and `bash scripts/gates.sh --fast` (exit 0, every gate unconfigured), so neither was re-run. The six commands' `model:` lines and the seven `models.conf` rows read as AC-1/AC-2 say. GREEN resolved to **claude-opus-5-5** (feature-developer, planned `opus`). Its own notes: `rules.md` is now exactly at `rules-trim`'s 370-line cap; floors raised to dispatch 145, plan 286, procedure 183, security-audit 52; `VERSION` 120 (2026-11-11). `selftest-needed --suites` selects 24 of 34 suites, `selftest` among them, for GATES → REVIEW.
+- Follow-up for HARNESS-102 (2026-11-11): the second diff review's nice-to-have — `advance-story.md`'s REVIEW-row PR-feedback dispatch (~line 410) should carry the same "unless the story's `## Model guidance` records a departure for that row" clause as GATES → REVIEW step 1. HARNESS-102 edits that region.
+- Self-test at GATES → REVIEW, run 1 (2026-11-11, tree `ca9098e`): `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `fresh`, exit 1, `1 of 24 harness suite(s) FAILED.`, 2043 s, log `20261111T194017Z.1944`. Header: `selftest: --changed — 24 of 34 suite(s) selected: attest boundaries dispatch doctor gate-reminder grep-count host-load lib mutate phase plan policy procedure refresh reporting rules-trim run-lock security-audit selftest settings shipped-docs sigpipe story worktree`. Failure: `boundaries`, `FAIL AC-7: advance-story.md says to commit the story while it is still PLANNED` / `anchor 'Create and switch to the story's branch' not found`. Fixed in GATES (see `## Diff review`, Review 3).
+- Self-test at GATES → REVIEW, run 2 (2026-11-11, tree `3651122`): `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `fresh`, exit 0, `24 harness suite(s) passed.`, 1484 s, log `20261111T203613Z.51647`. Header as run 1. Floors: all 24 met (3475 executed, 3474 declared). Both runs by a GATES-row `feature-developer`, resolved **claude-opus-5-5**.
+- **User decision, 2026-11-11:** open the PR with Review 3's RED-routed finding (no test pins AC-3's read-before-commit sentence) left open, and carry it to HARNESS-102 rather than return to RED. Both follow-ups are written into HARNESS-102's `## Notes`.
