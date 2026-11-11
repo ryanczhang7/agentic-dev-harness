@@ -81,35 +81,36 @@ other way.
 
 Every definition in `.claude/agents/` declares `model:`, so which model a role
 runs on is a fact of the harness rather than of whoever's session dispatched it.
-The roles split by kind of work, and that is a decision rather than a default:
-the planning roles (`lead-po`, `lead-designer`) and the orchestrating commands
-declare `fable`; the roles that write or judge tests (`test-developer`,
-`feature-developer`, `mutation-tester`) declare `opus`. The user's judgement
-since release 78 is that Opus 5.5 is the stronger model for development and
-testing and Fable for planning, architecture and running a multi-stage
-workflow. Until then all five said `opus`, with `fable` used only as the weaker
-model in RED - resting on the one controlled measurement this harness has, that
-a partitioned RED brief on the weaker model produced sharper negative controls
-than the stronger model without it. What survives that change is the
-asymmetry: GREEN and GATES stay on the model judged stronger at the work,
-because a weaker model's failure there is precisely the one this harness exists
-to prevent, reaching green by weakening a test.
+The roles split by kind of work, a decision rather than a default. The user's
+split of 2026-11-11: `/advance-story`, `/complete-story` and `/security-audit`
+declare `opus`, as do `test-developer`, `feature-developer` and
+`mutation-tester`; the planning commands, `lead-po` and `lead-designer` declare
+`fable`. Inside a story `fable` is reached by dispatch, on the PLANNED,
+DIFF-REVIEW and REVIEW rows: a `lead-po` plans, reviews the whole diff, and
+reads PR feedback against the contract. The reason is usage: an orchestrating
+session re-sends its whole context every turn and mostly runs a script, checks
+a record and dispatches, so that high-volume work moves to `opus` and `fable`
+keeps the highest-leverage judgement (release 78 had the orchestrating
+commands on `fable`; `models.conf`'s header has the earlier history). What
+survives every change is the asymmetry: GREEN and GATES stay on the model
+judged stronger at the work, because a weaker model's failure there, reaching
+green by weakening a test, is the one this harness exists to prevent.
 
 Change it deliberately, per role, and record the decision and the outcome. What
 you may not do is leave it unstated: a session setting or an explicit override
 can still win, and the orchestrator cannot see which did (the case: `tdd-cycle`,
 `reference/cases.md`, ""The default model" against itself"). Hence the other
-half of the rule: **`lead-po` records the
-resolved model of every dispatch, by name, in the story.**
+half of the rule: **`lead-po` records the resolved model of every dispatch, by
+name, in the story.**
 
 **The per-phase plan is `.claude/harness/models.conf`, not a judgement made
 fresh each story.** `bash scripts/plan.sh write <id>` renders it into the
 story's `## Model guidance` at the end of PLANNED, once the contract exists. Its
-rows split by kind of work, as above: PLANNED and REVIEW on `fable`, every phase
-that writes or tests code on `opus`, with no row moving with the story. GREEN
-and GATES never move to a model judged weaker at the work, because a weaker
-model's failure there is reaching green by weakening a test. A story that wants
-a different answer says
+rows split by kind of work, as above: the PLANNED, DIFF-REVIEW and REVIEW rows
+on `fable`, each a `lead-po` dispatch, every phase that writes or tests code on
+`opus`, with no row moving with the story. GREEN and GATES never move to a
+model judged weaker at the work, because a weaker model's failure there is
+reaching green by weakening a test. A story that wants a different answer says
 so in its own `## Model guidance` with a success condition that could come out
 either way - it does not edit the policy file. And the plan is still not the
 record: what each dispatch RESOLVED to goes in underneath it, by name.

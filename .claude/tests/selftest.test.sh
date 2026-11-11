@@ -532,7 +532,7 @@ boundaries 545
 briefs 31
 ci-local 52
 classify 55
-dispatch 83
+dispatch 145
 doctor 69
 gate-reminder 32
 gates 1002
@@ -543,15 +543,15 @@ mutate 315
 new-story 58
 phase 73
 phase-guard 388
-plan 284
+plan 286
 policy 17
-procedure 154
+procedure 183
 profiles 132
 refresh 215
 reporting 27
 rules-trim 50
 run-lock 141
-security-audit 51
+security-audit 52
 selftest 366
 selftest-needed 620
 settings 70

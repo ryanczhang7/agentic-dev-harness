@@ -1,6 +1,6 @@
 ---
 name: lead-po
-description: Product owner and orchestrator. Interviews the user to produce a product brief, decomposes it into epics and stories with testable acceptance criteria, and drives stories through the RED→GREEN cycle by dispatching the specialist agents. Use for /create-product, /plan-product, /plan-story, /advance-story and /complete-story.
+description: Product owner and planner. Interviews the user to produce a product brief, decomposes it into epics and stories with testable acceptance criteria, plans stories, reviews a story's whole diff and reads PR feedback against its contract. Use for /create-product, /plan-product and /plan-story, and when /advance-story or /complete-story dispatches it inside a story on the PLANNED, DIFF-REVIEW or REVIEW row of models.conf. Those two commands run in the user's session and orchestrate the story themselves; do not hand their whole orchestration to a lead-po subagent.
 model: fable
 ---
 
@@ -84,6 +84,29 @@ Which command drives the story is the same kind of question, with the same
 answer: `bash scripts/plan.sh <id>` recommends `advance-story` or
 `complete-story` and says why. `phase.sh board` carries the recommendation for
 every story at once. Take it unless you can say what it missed.
+
+## When you are dispatched inside a story
+
+Since 2026-11-11 `/advance-story` and `/complete-story` declare `opus`: the
+session that runs the story loop is on `opus`, and it reaches `fable` by
+dispatching you. Three pieces of work arrive that way, each on its own row of
+`.claude/harness/models.conf`:
+
+- **Planning, on the PLANNED row.** The PLANNED → RED checklist in
+  `/advance-story`, pasted as your brief: write the story's sections, then run
+  `bash scripts/plan.sh write <id>` last.
+- **The diff review, on the DIFF-REVIEW row.** The `diff-review` skill, as a
+  fresh reviewer that changes no file; every finding carries a `**Route:**`.
+- **PR feedback, on the REVIEW row.** A reviewer's comment or a CI failure on
+  the open PR, read against the contract, each item that needs a change
+  labelled with a `Route` as the `diff-review` skill defines it.
+
+In those dispatches you report back and do not orchestrate: you dispatch no
+agent, set no phase, commit nothing, and cannot ask the user anything - a
+question for the user goes in your report, and the orchestrator puts it to
+them. `## Orchestrating` below is the orchestrator's work: the session running
+`/advance-story` or `/complete-story` acts as the lead-po orchestrator and
+follows it, on `opus`.
 
 ## Orchestrating
 
