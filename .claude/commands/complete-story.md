@@ -1,6 +1,6 @@
 ---
 description: Drive one story from its current phase all the way to a merged-ready PR
-model: fable
+model: opus
 argument-hint: <story-id>
 allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(bash scripts/story.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
@@ -35,9 +35,12 @@ approval between phases is exactly when they get quietly reordered:
   which it was; `fresh` says it ran
   here, not that it passed, so read `exit:`, `last:` and the log it names.
 - **GATES → REVIEW opens with a review of the diff and its callers**, by the
-  `diff-review` skill on a fresh feature-developer dispatch, and goes on only
-  on `Verdict: Ship.`; a fix it asks for changes the tree, so it comes before
-  the self-test. `bash scripts/selftest-needed.sh` decides whether
+  `diff-review` skill on a fresh `lead-po` dispatch on the DIFF-REVIEW row,
+  its model read from `bash scripts/plan.sh models $1`, and goes on only on
+  `Verdict: Ship.`; each finding carries a `Route` label that you follow and
+  check with `bash scripts/classify.sh`, never choose, as step 1 of
+  advance-story's GATES → REVIEW says; a fix it asks for changes the tree, so
+  it comes before the self-test. `bash scripts/selftest-needed.sh` decides whether
   `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`, the suites the
   diff can break, runs at all - only when the diff touches a `harness`
   path; on `skip` its line goes into `## Notes` and CI runs the self-test
@@ -87,6 +90,11 @@ approval between phases is exactly when they get quietly reordered:
   do not retry it on a hunch, and do not treat it as a code defect. The path —
   a PO decision recorded in the story, REVIEW with the gate *pending CI*, DONE
   only once the PR's CI log for it is quoted — is in `/advance-story`.
+- **PLANNED → RED is a `lead-po` dispatch on the PLANNED row**, briefed with
+  advance-story's checklist, not work you do inline. It cannot ask the user
+  anything, so its questions come back to you and you put them to the user;
+  read the `Contract`, `Deferred verifications` and `Model guidance` it wrote,
+  and record the model it resolved to, before you commit at PLANNED.
 - **PLANNED → RED pins the `## Contract` and lists the callers of every changed
   signature.** RED cannot find those callers itself: the old signature still
   exists during RED, so they still compile and never appear in its typecheck.

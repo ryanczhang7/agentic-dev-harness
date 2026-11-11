@@ -5,7 +5,7 @@ slug: opus-runs-the-story-loop-fable-plans-rev
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-101-opus-runs-the-story-loop-fable-plans-rev
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/security-audit.md, .claude/harness/models.conf, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, .claude/agents/lead-po.md, .claude/tests/plan.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/procedure.test.sh, .claude/tests/security-audit.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -814,3 +814,4 @@ turns it red.
 - C-2's measurement was made on a scratch copy of the tree outside the repository, then deleted; nothing in the tree was changed to make it.
 - **User answer, 2026-11-11:** AC-6 confirmed — PR feedback is read by a fresh `lead-po` dispatch on the REVIEW row. Asked in chat before the story left PLANNED; no criterion changed.
 - RED verified by the orchestrator (2026-11-11): `attest.sh check` answered `fresh` for both `bash scripts/selftest.sh plan dispatch procedure security-audit` (exit 1, `4 of 4 harness suite(s) FAILED.`, log `20261111T173709Z.139081`) and `bash scripts/gates.sh --fast` (exit 0, every gate unconfigured), so neither was re-run. Read from the log: every red assertion is a real-tree read finding the old text (31 `row_problems` lines, 12 `route_problems` lines, the six-command model set, the seven-row plan, the security-audit frontmatter line); no load error; every fixture green. RED resolved to **claude-opus-5-5** (test-developer, planned `opus`).
+- GREEN verified by the orchestrator (2026-11-11): the four RED suites are byte-identical to `ec3df9e`; `attest.sh check` answered `fresh` for `bash scripts/selftest.sh plan dispatch procedure security-audit rules-trim` (exit 0, `5 harness suite(s) passed.`, log `20261111T180018Z.213909`) and `bash scripts/gates.sh --fast` (exit 0, every gate unconfigured), so neither was re-run. The six commands' `model:` lines and the seven `models.conf` rows read as AC-1/AC-2 say. GREEN resolved to **claude-opus-5-5** (feature-developer, planned `opus`). Its own notes: `rules.md` is now exactly at `rules-trim`'s 370-line cap; floors raised to dispatch 145, plan 286, procedure 183, security-audit 52; `VERSION` 120 (2026-11-11). `selftest-needed --suites` selects 24 of 34 suites, `selftest` among them, for GATES → REVIEW.
