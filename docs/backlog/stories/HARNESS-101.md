@@ -4,8 +4,8 @@ title: Opus runs the story loop; fable plans, reviews the diff and reads review 
 slug: opus-runs-the-story-loop-fable-plans-rev
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-101-opus-runs-the-story-loop-fable-plans-rev
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/commands/security-audit.md, .claude/harness/models.conf, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, .claude/agents/lead-po.md, .claude/tests/plan.test.sh, .claude/tests/dispatch.test.sh, .claude/tests/procedure.test.sh, .claude/tests/security-audit.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -191,16 +191,64 @@ to keep them whole.
 | Region | Must contain | Must not contain |
 |---|---|---|
 | `advance-story.md`, **PLANNED → RED** region (from that marker to the next `**X → Y.**` marker) | `lead-po`, `PLANNED row` | - |
-| `complete-story.md`, the **PLANNED → RED** bullets | `lead-po`, `PLANNED row` in at least one of them | - |
-| `advance-story.md`, step 1 of **GATES → REVIEW** (from `1. ` to `2. `) | `lead-po`, `DIFF-REVIEW row`, `bash scripts/plan.sh models`, `Route`, `bash scripts/classify.sh` | `GATES row` |
+| `complete-story.md`, the **PLANNED → RED** bullets (each from a line beginning `- **PLANNED → RED` to the next `- ` line or blank line) | `lead-po` and `PLANNED row`, both in the same one of them *(RED amendment A-1)* | - |
+| `advance-story.md`, step 1 of **GATES → REVIEW** (from `1. ` to `2. `) | `lead-po`, `DIFF-REVIEW row`, `bash scripts/plan.sh models`, `Route`, `bash scripts/classify.sh`, `follows the label` *(A-2)* | `GATES row` |
 | `complete-story.md`, the **GATES → REVIEW** bullet | `lead-po`, `DIFF-REVIEW row` | `fresh feature-developer` |
 | `diff-review/SKILL.md`, frontmatter `description` | `lead-po` | `feature-developer` |
 | `diff-review/SKILL.md`, `## Who runs it` (to the next `## `) | `lead-po`, `DIFF-REVIEW row` | `feature-developer`, `GATES row` |
-| `diff-review/SKILL.md`, output section | `**Route:**`, and each of `GATES`, `RED`, `AMEND` as a route value; a `**Route:**` line inside the indented example | - |
-| `diff-review/SKILL.md`, what happens to a finding | `follows the label`, `bash scripts/classify.sh`, `DIFF-REVIEW row` | - |
-| `advance-story.md`, the REVIEW statement of AC-6 | `lead-po`, `REVIEW row`, `Route` | - |
-| `rules.md`, `# The model each agent runs on` (to the next `# `) | `advance-story`, `complete-story`, `security-audit`, `DIFF-REVIEW`, `2026-11-11` | `and the orchestrating commands` |
+| `diff-review/SKILL.md`, output section (from the `## ` heading ending `Output` to the next `## `) | `**Route:**`; each of `` `GATES` ``, `` `RED` ``, `` `AMEND` `` as a backticked span *(A-3)*; inside the four-space-indented example, a line that trimmed is exactly `- **Route:** GATES`, `- **Route:** RED` or `- **Route:** AMEND`, after the example's `- **If we skip it:**` line *(A-3)* | `all four parts` *(A-4)* |
+| `diff-review/SKILL.md`, what happens to a finding (from the `## ` heading containing `What happens to a finding` to the next `## `) | `follows the label`, `bash scripts/classify.sh`, `DIFF-REVIEW row` | - |
+| `advance-story.md`, the REVIEW statement of AC-6: the **REVIEW → DONE** region, from the line beginning `**REVIEW → DONE.**` to just before the next paragraph that begins `**` *(A-5)* | `lead-po`, `REVIEW row` (matched with every `DIFF-REVIEW row` taken out first), `Route`; and, staying the orchestrator's own, `bash scripts/phase.sh clear`, `bash scripts/plan.sh after`, `read the timings` *(A-5)* | - |
+| `rules.md`, `# The model each agent runs on` (to the next `# `) | `advance-story`, `complete-story`, `security-audit`, `DIFF-REVIEW`, `2026-11-11` | `and the orchestrating commands`, `PLANNED and REVIEW on` *(A-6)* |
+| `models.conf`, the header comment (every line beginning `#`, the `#` removed) *(A-7)* | `DIFF-REVIEW` | `The orchestrating commands and the planning agents` |
 | `lead-po.md` | `DIFF-REVIEW row` | - |
+
+**RED amendments to C-3 and C-9 (test-developer, 2026-11-11).** Each is in
+place above or below; GREEN builds what the amended block says.
+
+- *Matching.* Every region is flattened before it is searched - its lines
+  trimmed and joined by one space - so a needle GREEN wraps across a line
+  break still counts, and a forbidden phrase wrapped across one is still
+  present. The "each needle sits on one line" sentence above is therefore no
+  longer a requirement on GREEN; keeping needles whole is still the safer
+  prose.
+- *A-1.* "in at least one of them" read as: one bullet carries both needles.
+  Two bullets each carrying one would let the PLANNED dispatch and its row be
+  said in unrelated sentences.
+- *A-2.* AC-5 says step 1 states that the orchestrator follows the label; C-3
+  listed `Route` and `classify.sh` for step 1 but not `follows the label`.
+  The procedure suite pins it there, as it does in the skill.
+- *A-3.* "as a route value" made exact. A bare `GATES` or `RED` is in half
+  the prose of any file here (`GATES → REVIEW`, `a return to RED`) and would
+  float, so the values are backticked spans in the output section, and the
+  example's line is matched whole, so `- **Route:** GATES or RED` is not a
+  route and nothing may follow the value (C-4: "nothing after it on the line").
+- *A-4.* AC-5: every finding has a FIFTH part. The section today says "Every
+  finding has all four parts"; left as it is, it contradicts the criterion.
+- *A-5.* C-3 named "the REVIEW statement of AC-6" without a region. It is
+  pinned to the REVIEW → DONE region, the existing place advance-story
+  speaks about a story at REVIEW; the statement must therefore not open a
+  paragraph with `**`, which would end the region. `REVIEW row` is a
+  substring of `DIFF-REVIEW row`, so it is matched only after every
+  `DIFF-REVIEW row` is removed. AC-6's "stay the orchestrator's own" is
+  pinned as presence of the three duties in that same region (green on
+  arrival; see the handoff's DV-3 list).
+- *A-6.* AC-7: the section "no longer says ... that every row but PLANNED and
+  REVIEW is `opus`". Today's sentence is "PLANNED and REVIEW on `fable`";
+  C-3 had no needle for it.
+- *A-7.* AC-7: "The header comment of `models.conf` ... say[s] the same and
+  nothing that contradicts it", and C-2 asks the format comment to name
+  `DIFF-REVIEW`. C-3 had no row for it. Only comment lines are read, so the
+  new `model | DIFF-REVIEW | ...` row cannot stand in for the header. The
+  must-not is today's header sentence "The orchestrating commands and the
+  planning agents (`lead-po`, `lead-designer`) declare `fable`".
+- *C-9, `security-audit.test.sh`.* The `F` needle `model: fable` becomes
+  `F	model: opus` as written, but an `F` row is a fixed string anywhere in the
+  file, and that command's body already says `` `model: opus` `` twice (the
+  hunters' and research agents' lines). Alone it would be green on arrival and
+  green with the frontmatter still on `fable`. The suite also reads the
+  frontmatter `model:` value of the real command and compares it whole with
+  `opus`.
 
 Step 1 of GATES → REVIEW still says a code fix is made by a feature-developer
 dispatch; that word is allowed there. What may not be there is `GATES row`.
@@ -405,28 +453,299 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All seven criteria are mechanical (a frontmatter value, a row, a fixed string
+in a named region), so every check is a structural read of the shipped files:
+the shape `tdd-cycle` calls "code no machine you have can execute: grep for the
+shape". Each guard runs three ways: over the real tree (must be silent / equal
+the pinned value), over a fixture compliant by construction (silent), and over
+fixtures with one thing regressed (exactly the pinned lines). Needles are
+anchored to a region, a forbidden phrase is checked wherever C-3 gives one, and
+every region is flattened so reflowed prose neither hides a needle nor hides a
+forbidden phrase.
+
+| AC | Suite | Assertion(s) |
+|---|---|---|
+| AC-1 | `plan` | "HARNESS-101 AC-1: the story loop and the security audit run on opus, the planning commands on fable" - one whole-set compare of six commands' frontmatter `model:` (replaces "each orchestrating command runs on fable"). "each agent declares the model of its kind of work" - unchanged, the agent half of AC-1. |
+| AC-1 | `security-audit` | NEEDLES row 2 is now `M	model: opus` (a frontmatter line, compared whole); "command_problems over the real command prints nothing" reads it; "HARNESS-101 AC-1 control: a frontmatter on `model: fable` with `model: opus` in the body gives exactly the frontmatter line"; the existing "with needle 2 removed ..." loop entry now exercises the M kind. |
+| AC-2 | `plan` | `SHIP_EXPECTED` gains `DIFF-REVIEW lead-po fable`, so the four whole-set compares (ordinary, no contract, unenforced contract, bootstrap) each demand exactly seven rows; "HARNESS-101 AC-2: the plan lists DIFF-REVIEW after GATES and before REVIEW ..." (unsorted phase order, all four shapes); "HARNESS-101 AC-2: plan.sh write puts exactly one `\| DIFF-REVIEW \| ...` row ..., with a reason". |
+| AC-3 | `dispatch` | `row_problems` real-tree assertion (PLANNED → RED region; complete-story's PLANNED → RED bullets); fixtures `pl-today` (control), `pl-without-*` (each needle), `pl-after-marker`, `pl-none`, `cb-pl-today` (control), `cb-pl-split`, `cb-pl-next-bullet`. |
+| AC-4 | `dispatch` | `row_problems` real-tree assertion (step 1 needles + `GATES row` absent; complete-story's GATES → REVIEW bullet; SKILL description; `## Who runs it`); fixtures `step1-today` (control), `step1-without-*`, `step1-gates-row`, `step1-in-step2`, `step1-none`, `cb-gr-today` (control), `cb-gr-without-*`, `cb-gr-fresh-wrapped`, `sk-today` (control), `sk-desc-body`, `sk-desc-fd`, `sk-desc-none`, `sk-who-without-*`, `sk-who-with-*`, `sk-who-none`. The HARNESS-085/095 needles for the long runs on the GATES row (`dispatch_problems`, `LONG_NEEDLES`, `BULLET_NEEDLES`) are not edited and still hold. |
+| AC-5 | `procedure` | `route_problems` real-tree assertion; fixtures `example-AMEND`/`example-RED` (other values pass), `output-today` (control), `output-without-GATES/RED/AMEND`, `output-without-part`, `output-four-parts`, `example-no-route`, `example-two-values`, `example-other-value`, `example-unindented`, `example-route-first`, `output-none`, `what-today` (control), `what-without-*`, `what-none`, `step1-today` (control), `step1-without-*`, `step1-none`, missing files. |
+| AC-6 | `dispatch` | `row_problems` real-tree assertion (REVIEW → DONE region: `lead-po`, `REVIEW row` with `DIFF-REVIEW row` removed first, `Route`, and the three duties that stay the orchestrator's); fixtures `rd-today` (control), `rd-without-*` (six needles), `rd-only-diff-review`, `rd-bold-paragraph`, `rd-none`. |
+| AC-7 | `dispatch` (RED's choice) | `row_problems` real-tree assertion (rules.md section needles and the two must-nots; models.conf header; lead-po.md); fixtures `ru-today` (control), `ru-without-*`, `ru-with-*`, `ru-none`, `mc-today` (control), `lp-without`. `rules-trim.test.sh` is not edited; none of its needles quotes the old split (read at RED: its WHOLE/PREFIXES/NEEDLES/POINTED lists), so C-7 needs no amendment. |
+| all | `dispatch` | "a tree with today's wording in all six files prints all 31 lines, file by file in C-3's order" - the today-shaped fixture prints exactly the 31 lines the real tree printed in RED. |
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+Written by the test-developer, 2026-11-11. Model resolved: `opus`
+(claude-opus-5-5), the agent's own declaration; no override in the dispatch.
+
+**Command.**
+
+    bash scripts/selftest.sh plan dispatch procedure security-audit
+
+Run through attest as
+`bash scripts/attest.sh -- bash scripts/selftest.sh plan dispatch procedure security-audit`.
+Record: `exit: 1`, `last: 4 of 4 harness suite(s) FAILED.`, `duration: 338s`
+(local, a loaded Windows host), tree `1446ed528101f154e8b0fed62552c59cd7d163f1`,
+log `.claude/state/attest-logs/20261111T173709Z.139081.log`;
+`attest.sh check -- <same words>` answered `fresh` after the run.
+
+`bash scripts/attest.sh -- bash scripts/gates.sh --fast`: `exit: 0`,
+`last: All required gates passed (0 ran, 5 unconfigured, 0 known).`, log
+`.claude/state/attest-logs/20261111T174248Z.167459.log`. Every gate is
+UNCONFIGURED here (lint, typecheck, unit, coverage; mutation ON REQUEST;
+integration and build skipped by `--fast`), so `--fast` has nothing to judge:
+no timeout, config error or lint rule is in play. The harness's own judge is
+the self-test, above.
+
+**Files written (RED's four, per Contract "Who writes which").**
+`.claude/tests/plan.test.sh`, `.claude/tests/dispatch.test.sh`,
+`.claude/tests/procedure.test.sh`, `.claude/tests/security-audit.test.sh`; and
+this story (`## Contract` C-3/C-9 amendments, `## Test plan`, this section).
+Nothing else. Not touched: the commands, `models.conf`, `rules.md`, the skill,
+`lead-po.md`, `VERSION`, `floors.conf`, `selftest.test.sh`.
+
+**The failure, and why it is the right one.** Every red assertion is a
+real-tree read that still finds today's text; every fixture assertion (the
+guard against twins compliant and regressed) is green, and no suite failed to
+load. Per suite, executed = passed + failed:
+
+| Suite | Result in RED | Executed | Floor now | Floor GREEN writes |
+|---|---|---|---|---|
+| `plan` | 279 passed, 7 failed | 286 | 284 | 286 |
+| `dispatch` | 144 passed, 1 failed | 145 | 83 | 145 |
+| `procedure` | 182 passed, 1 failed | 183 | 154 | 183 |
+| `security-audit` | 51 passed, 1 failed | 52 | 51 | 52 |
+
+The floor counts PASSED units, so `plan` also prints
+`FAIL plan  did 279 units of work, below the floor of 284` until GREEN lands -
+expected in RED, as HARNESS-065 recorded. GREEN raises the four values in
+`.claude/tests/floors.conf` and the mirror table in
+`.claude/tests/selftest.test.sh` to the executed counts it measures (the right
+column is what RED measured; with the probe tree below all four were green at
+exactly those counts).
+
+`plan` (7 failures, log lines 82-150):
+
+```
+FAIL an ordinary story: fable plans and reviews, opus writes and tests the code
+     expected: DIFF-REVIEW lead-po fable / GATES ... / SCAFFOLD lead-po opus  (seven rows)
+     actual:   GATES feature-developer opus / ... / SCAFFOLD lead-po opus     (six rows, no DIFF-REVIEW)
+FAIL with no contract, the plan is the same                      (same seven vs six)
+FAIL with a contract the lock cannot police, the plan is the same (same)
+FAIL for a bootstrap story, the plan is the same                 (same)
+FAIL HARNESS-101 AC-2: the plan lists DIFF-REVIEW after GATES and before REVIEW, the other six in today's order, for all four story shapes
+     expected: S-1: PLANNED RED GREEN GATES DIFF-REVIEW REVIEW SCAFFOLD (x4)
+     actual:   S-1: PLANNED RED GREEN GATES REVIEW SCAFFOLD (x4)
+FAIL HARNESS-101 AC-2: plan.sh write puts exactly one `| DIFF-REVIEW | `lead-po` | `fable` | <why> |` row in ## Model guidance, with a reason
+     expected: 1 row-with-reason
+     actual:   0 not the row: []
+FAIL HARNESS-101 AC-1: the story loop and the security audit run on opus, the planning commands on fable
+     expected: advance-story opus / complete-story opus / create-product fable / plan-product fable / plan-story fable / security-audit opus
+     actual:   advance-story fable / complete-story fable / create-product fable / plan-product fable / plan-story fable / security-audit fable
+```
+
+(The four set compares are abbreviated with `/` here; the log has them one row
+per line.)
+
+`dispatch` (1 failure, the real-tree `row_problems`; actual, verbatim):
+
+```
+.claude/commands/advance-story.md: PLANNED → RED does not say `lead-po`
+.claude/commands/advance-story.md: PLANNED → RED does not say `PLANNED row`
+.claude/commands/advance-story.md: GATES → REVIEW step 1 does not say `lead-po`
+.claude/commands/advance-story.md: GATES → REVIEW step 1 does not say `DIFF-REVIEW row`
+.claude/commands/advance-story.md: GATES → REVIEW step 1 does not say `bash scripts/plan.sh models`
+.claude/commands/advance-story.md: GATES → REVIEW step 1 does not say `Route`
+.claude/commands/advance-story.md: GATES → REVIEW step 1 does not say `bash scripts/classify.sh`
+.claude/commands/advance-story.md: GATES → REVIEW step 1 still says `GATES row`
+.claude/commands/advance-story.md: REVIEW → DONE does not say `lead-po`
+.claude/commands/advance-story.md: REVIEW → DONE does not say `REVIEW row`
+.claude/commands/advance-story.md: REVIEW → DONE does not say `Route`
+.claude/commands/complete-story.md: no PLANNED → RED bullet says both `lead-po` and `PLANNED row`
+.claude/commands/complete-story.md: its GATES → REVIEW bullet does not say `lead-po`
+.claude/commands/complete-story.md: its GATES → REVIEW bullet does not say `DIFF-REVIEW row`
+.claude/commands/complete-story.md: its GATES → REVIEW bullet still says `fresh feature-developer`
+.claude/skills/diff-review/SKILL.md: its description does not say `lead-po`
+.claude/skills/diff-review/SKILL.md: its description still says `feature-developer`
+.claude/skills/diff-review/SKILL.md: ## Who runs it does not say `lead-po`
+.claude/skills/diff-review/SKILL.md: ## Who runs it does not say `DIFF-REVIEW row`
+.claude/skills/diff-review/SKILL.md: ## Who runs it still says `feature-developer`
+.claude/skills/diff-review/SKILL.md: ## Who runs it still says `GATES row`
+.claude/harness/rules.md: # The model each agent runs on does not say `advance-story`
+.claude/harness/rules.md: # The model each agent runs on does not say `complete-story`
+.claude/harness/rules.md: # The model each agent runs on does not say `security-audit`
+.claude/harness/rules.md: # The model each agent runs on does not say `DIFF-REVIEW`
+.claude/harness/rules.md: # The model each agent runs on does not say `2026-11-11`
+.claude/harness/rules.md: # The model each agent runs on still says `and the orchestrating commands`
+.claude/harness/rules.md: # The model each agent runs on still says `PLANNED and REVIEW on`
+.claude/harness/models.conf: its header comment does not say `DIFF-REVIEW`
+.claude/harness/models.conf: its header comment still says `The orchestrating commands and the planning agents`
+.claude/agents/lead-po.md: the file does not say `DIFF-REVIEW row`
+```
+
+`procedure` (1 failure, the real-tree `route_problems`; actual, verbatim):
+
+```
+.claude/skills/diff-review/SKILL.md: its output section does not say `**Route:**`
+.claude/skills/diff-review/SKILL.md: its output section does not name the route value `GATES`
+.claude/skills/diff-review/SKILL.md: its output section does not name the route value `RED`
+.claude/skills/diff-review/SKILL.md: its output section does not name the route value `AMEND`
+.claude/skills/diff-review/SKILL.md: its output section still says `all four parts`
+.claude/skills/diff-review/SKILL.md: its example has no `- **Route:** GATES`, `RED` or `AMEND` line
+.claude/skills/diff-review/SKILL.md: what happens to a finding does not say `follows the label`
+.claude/skills/diff-review/SKILL.md: what happens to a finding does not say `bash scripts/classify.sh`
+.claude/skills/diff-review/SKILL.md: what happens to a finding does not say `DIFF-REVIEW row`
+.claude/commands/advance-story.md: GATES → REVIEW step 1 does not say `follows the label`
+.claude/commands/advance-story.md: GATES → REVIEW step 1 does not say `bash scripts/classify.sh`
+.claude/commands/advance-story.md: GATES → REVIEW step 1 does not say `DIFF-REVIEW row`
+```
+
+`security-audit` (1 failure):
+
+```
+FAIL command_problems over the real command prints nothing
+     expected:
+     actual:   security-audit.md: its frontmatter has no line `model: opus`
+```
+
+**What each new or rewritten assertion pins (one line each).**
+
+- plan, the four `SHIP_EXPECTED` compares - `plan.sh models` prints exactly the seven (phase, agent, model) rows, DIFF-REVIEW/lead-po/fable added, for ordinary / no-contract / unenforced / bootstrap stories (AC-2).
+- plan, "the plan lists DIFF-REVIEW after GATES and before REVIEW ..." - the unsorted phase column is `PLANNED RED GREEN GATES DIFF-REVIEW REVIEW SCAFFOLD` for all four shapes (AC-2).
+- plan, "plan.sh write puts exactly one ... row" - the written story holds one line beginning ``| DIFF-REVIEW | `lead-po` | `fable` | `` with a non-blank reason cell (AC-2).
+- plan, "the story loop and the security audit run on opus ..." - six commands' frontmatter `model:`, one whole-set compare (AC-1).
+- security-audit, NEEDLES row 2 `M	model: opus` and the real-tree `command_problems` - the command's frontmatter has the line `model: opus`, compared whole (AC-1).
+- security-audit, "HARNESS-101 AC-1 control" - a frontmatter on `fable` with `model: opus` in the body prints exactly the M line (the float the F row had).
+- dispatch, `row_problems` over the real tree - every C-3 region and needle of AC-3, AC-4, AC-6, AC-7, as amended (silent once GREEN lands).
+- dispatch, the HARNESS-101 fixture cases - each region's needles, forbidden words and boundaries, one line per regression (AC-3, AC-4, AC-6, AC-7); see `## Test plan` for the list.
+- procedure, `route_problems` over the real tree - the Route part, its three values, the example line, and the follow-the-label wording in the skill and step 1 (AC-5).
+- procedure, the HARNESS-101 AC-5 fixture cases - see `## Test plan`.
+
+**Interface GREEN must meet - the "export shape" of a prose story.** No code
+module is imported; what the tests pin is file paths, regions and strings:
+
+- Paths read: `.claude/commands/{advance-story,complete-story,security-audit,create-product,plan-product,plan-story}.md`, `.claude/agents/{lead-po,lead-designer,test-developer,feature-developer,mutation-tester}.md`, `.claude/skills/diff-review/SKILL.md`, `.claude/harness/rules.md`, `.claude/harness/models.conf`.
+- Frontmatter: the first `model:` line between the first two `---` lines, its second whitespace field; `advance-story`, `complete-story`, `security-audit` must be exactly `opus`; `security-audit.md` must have a frontmatter line exactly `model: opus`.
+- `models.conf`: a `model` row whose second field is `DIFF-REVIEW`, agent `lead-po`, model `fable`, a non-blank reason, placed between the GATES row and the REVIEW row (the plan's printed order follows the file's). `plan.sh` is not changed (C-2), and the probe below shows it renders the row as is. Its comment lines (beginning `#`) must contain `DIFF-REVIEW` and must not contain `The orchestrating commands and the planning agents` (today's header line 18 reads "...the contract). The orchestrating commands and the planning agents").
+- Regions, exactly as C-3 (amended) defines them. Two that GREEN must not trip over: the **PLANNED → RED** region ends at the next line that begins `**`, contains ` → ` and then `.**` (so `**Pin the ...**` inside it is fine, `**RED → GREEN.**` ends it); the **REVIEW → DONE** region ends at the first paragraph after a blank line that begins `**` - put the AC-6 statement in a paragraph that does NOT open with bold, anywhere before `**Returning to RED from GREEN or GATES.**`. Step 1 is the GATES → REVIEW step numbered `1.` plus its whitespace-indented continuation lines; a blank line ends it.
+- Output section of the skill: a line beginning `## ` and ending `Output` (today `## 4. Output`); the example is the block of lines indented by four spaces inside it; the route line, trimmed, must be exactly one of `- **Route:** GATES`, `- **Route:** RED`, `- **Route:** AMEND` and come after the example's `- **If we skip it:**` line. Today's example indents its parts by seven spaces; any indent of four or more counts.
+- "What happens to a finding": a line beginning `## ` containing `What happens to a finding` (today `## 5. What happens to a finding`).
+- Matching is a fixed-string search over the region flattened (lines trimmed, joined by one space), case-sensitive. `Route` matches `**Route:**` too.
+
+Not constrained (GREEN's choice): the wording around every needle; where in
+each region the needles sit; whether the route table of C-4 is a table or
+prose; the reason text of the DIFF-REVIEW row; the rest of the `rules.md`
+section beyond its needles, its must-nots and what `rules-trim` pins; the
+order of sections in the skill; anything in `lead-po.md` beyond containing
+`DIFF-REVIEW row` (C-8's other content is not checked by these suites).
+
+**Contract amendments made in RED.** In place in `## Contract`, under C-3's
+table, A-1 to A-7 plus the C-9 note, each with its reason: one bullet carrying
+both PLANNED needles (A-1); `follows the label` in step 1 (A-2); backticked
+route values and a whole-line example route after `**If we skip it:**` (A-3);
+must-not `all four parts` (A-4); the AC-6 region pinned to REVIEW → DONE, with
+`REVIEW row` matched after `DIFF-REVIEW row` is removed and the three
+orchestrator duties present (A-5); must-not `PLANNED and REVIEW on` in
+`rules.md` (A-6); a models.conf header row (A-7); and the security-audit model
+row as an `M` (frontmatter) row rather than `F`, because `model: opus` already
+floats in that command's body. No acceptance criterion changed. Also: C-3's
+sentence "each needle sits on one line" is relaxed - the guards flatten.
+
+**The callers grep.** Grepped `fable`, `GATES row` and `feature-developer`
+across `.claude/tests/` at RED (after the Contract's list was handled). Beyond
+the Contract's Callers list, nothing else pins the old values:
+`plan.test.sh`'s remaining `fable` hits are MECHANISM_POLICY fixture rows and
+comments; `dispatch.test.sh`'s `GATES row` / `feature-developer` hits are the
+HARNESS-085/095 long-run needles and fixtures, which stay true; `story.test.sh:448`
+writes a lead-po fixture with `model: fable`, which stays true;
+`attest.test.sh` and `briefs.test.sh` name `feature-developer.md` as a file.
+The Contract's list was right: `SHIP_EXPECTED`, the command-model assertion,
+the security-audit needle, and the two step-1 fixtures (`S1` in dispatch,
+`RV` in procedure) - all four updated. `procedure.test.sh`'s other step-1
+fixtures (the `needed-earlier-step` case and the HARNESS-094 historical
+`changed-all-absent` tree) are left: they do not quote today's dispatch words
+and the second is a record of an earlier tree. One header comment in
+`dispatch.test.sh` ("The orchestrator runs on `fable`") was made historical.
+
+Other suites read the files GREEN rewrites and may pin other words in them:
+attest, boundaries, gate-reminder, gates, lib, mutate, new-story,
+phase-guard, phase, policy, refresh, reporting, rules-trim, settings,
+shipped-docs, sigpipe, story. None of them was found to pin a word this story
+changes, but that is a grep, not a run; GATES' `--changed` self-test is what
+will say.
+
+**Positive control (the probe tree), local.** On a scratch copy of this tree
+outside the repository (`git archive HEAD` plus these four suites), with a
+minimal compliant edit of each file GREEN owns - the three `model:` lines, the
+DIFF-REVIEW row between GATES and REVIEW, one sentence per C-3 region - the
+suites ran: `plan: 286 passed, 0 failed`, `security-audit: 52 passed, 0
+failed`, `dispatch: 145 passed, 0 failed`, `procedure: 183 passed, 0 failed`,
+`rules-trim: 50 passed, 0 failed`. So every new assertion can be satisfied by
+prose in the shapes the Contract asks for, `plan.sh` needs no change, the
+regions parse the real files as intended, and the existing HARNESS-085/095
+assertions survive a compliant rewrite. That copy was discarded; it is not
+GREEN's text.
+
+**Negative controls and their expected values.** Unlike a code story these
+suites loaded in RED and every assertion executed, controls included; the
+values below were MEASURED in the RED run, not predicted.
+
+| Control | Expected | Measured in RED |
+|---|---|---|
+| dispatch `today` fixture (today's wording in all six files) | exactly 31 lines, in C-3 order | 31, and identical line-for-line to what the real tree printed |
+| dispatch `step1-today` (today's step 1, verbatim) | 5 "does not say" + 1 `GATES row` line | 6 |
+| dispatch `rd-only-diff-review` (`DIFF-REVIEW row` only, in REVIEW → DONE) | 1 line, `REVIEW row` | 1 |
+| dispatch `sk-today` | 6 lines | 6 |
+| dispatch `ru-today` | 5 + 2 lines | 7 |
+| dispatch `mc-today` (header still old; the DIFF-REVIEW row present) | 2 lines | 2 |
+| procedure `output-today` | 6 lines | 6 |
+| procedure `example-two-values` (`- **Route:** GATES or RED`) | the example line | 1 |
+| procedure `example-route-first` | the order line | 1 |
+| security-audit `HARNESS-101 AC-1 control` | exactly the M line | 1 |
+| real tree, `row_problems` | 31 lines today, 0 after GREEN | 31 |
+| real tree, `route_problems` | 12 lines today, 0 after GREEN | 12 |
+
+GREEN's job is the last two rows' right-hand value: 0 against the shipped
+files.
+
+**Deferred verifications.** DV-1 (`advance-story.md` back on `model: fable`,
+the `plan` command-set assertion must fail) and DV-2 (`DIFF-REVIEW row` put
+back to `GATES row` in the real step 1, the `dispatch` real-tree assertion must
+fail naming step 1) are owned by GATES. I cannot run them: both mutate the
+implementation, which in RED does not exist, and DV-2's expression is written
+against GREEN's wording. I decline both and claim neither. (The probe tree
+above is not DV-2: it was my text, not the shipped one.)
+
+**DV-3, assertions green on their first run.** One, and it is folded into a
+real-tree whole-output compare, so it is listed out of caution rather than
+because the DV-3 rule strictly requires it: the AC-6 "stays the
+orchestrator's own" needles (`bash scripts/phase.sh clear`,
+`bash scripts/plan.sh after`, `read the timings` in the REVIEW → DONE region).
+They are present today, so in RED they add no line to the real-tree output.
+After GREEN, this mutation must make the dispatch real-tree assertion print
+exactly one line, `.claude/commands/advance-story.md: REVIEW → DONE does not say \`bash scripts/phase.sh clear\``:
+
+    bash scripts/mutate.sh .claude/commands/advance-story.md 's/lock with `bash scripts\/phase.sh clear`/lock/' -- bash scripts/selftest.sh dispatch
+
+(It reads advance-story.md at 9a10054, line 354: "lock with `bash scripts/phase.sh clear`, and relay the report that". If GREEN rewords that line, write the expression against the new line.) Every other assertion I wrote or rewrote was red on its first run against
+the real tree, or is a fixture assertion seen both silent and firing. The
+pre-existing "each agent declares the model of its kind of work" (`plan`, the
+agent half of AC-1) is unchanged and green, as it was before this story; it is
+not mine to earn, and a mutation of `lead-po.md`'s `model: fable` to `opus`
+turns it red.
+
+**For GREEN, discovered here.**
+
+- `DIFF-REVIEW row` contains `REVIEW row`. The tests handle it; the prose
+  should still say `REVIEW row` plainly in the AC-6 statement.
+- The diff-review frontmatter `description` must lose `feature-developer`
+  entirely; it today also says "a four-part explanation", which no assertion
+  checks, but AC-5's fifth part makes it stale.
+- The AC-6 paragraph must not begin with `**`; see the regions above.
+- `security-audit.md`'s body keeps its two `` `model: opus` `` lines; only its
+  frontmatter line changes (C-1).
 
 ## Regressions
 
@@ -494,3 +813,4 @@ name, below the table.
 - AC-6 (PR feedback read by a `lead-po` dispatch on the REVIEW row) is an inference from "the REVIEW row stays fable", not one of the seven decisions. It is reported to the user for a yes or no before this story leaves PLANNED.
 - C-2's measurement was made on a scratch copy of the tree outside the repository, then deleted; nothing in the tree was changed to make it.
 - **User answer, 2026-11-11:** AC-6 confirmed — PR feedback is read by a fresh `lead-po` dispatch on the REVIEW row. Asked in chat before the story left PLANNED; no criterion changed.
+- RED verified by the orchestrator (2026-11-11): `attest.sh check` answered `fresh` for both `bash scripts/selftest.sh plan dispatch procedure security-audit` (exit 1, `4 of 4 harness suite(s) FAILED.`, log `20261111T173709Z.139081`) and `bash scripts/gates.sh --fast` (exit 0, every gate unconfigured), so neither was re-run. Read from the log: every red assertion is a real-tree read finding the old text (31 `row_problems` lines, 12 `route_problems` lines, the six-command model set, the seven-row plan, the security-audit frontmatter line); no load error; every fixture green. RED resolved to **claude-opus-5-5** (test-developer, planned `opus`).
