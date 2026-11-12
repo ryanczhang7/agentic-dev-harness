@@ -5,7 +5,7 @@ slug: a-contract-is-wrong-claim-is-adjudicated
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-102-a-contract-is-wrong-claim-is-adjudicated
 depends_on: [HARNESS-101]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/harness/models.conf, .claude/tests/plan.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -513,6 +513,144 @@ AC-8 and AC-10 are red in RED over the real tree, which is their watched
 failure. The one orchestrator mutation `/advance-story` asks for after GREEN
 comes out of RED's table as usual and is not listed here.
 
+
+**Results, GATES, 2026-11-12 (orchestrator, `scripts/mutate.sh` against `bash scripts/selftest.sh boundaries` unless noted; every run restored and verified byte for byte; `mutate.sh --check` clean after).**
+
+- **DV-2 - discharged.** The command in the entry, over the real story file, printed a FAIL naming R-9; restored:
+
+```
+=== mutate: docs/backlog/stories/HARNESS-102.md (1 line(s) changed by /^## Regressions$/a - **R-9 (probe).**) ===
+  1199 + - **R-9 (probe).**
+FAIL  story HARNESS-102: ## Regressions entry R-9 is new and has no adjudication record. A claim that the contract is wrong is judged by a fresh lead-po dispatch on the ADJUDICATE row (the model from 
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/docs_backlog_stories_HARNESS-102.md.20261112T062704Z.1641.bak) ===
+```
+
+- **DV-1 - discharged.** `1226s/^      problem "story/      : "story/` (step 4's refusal disabled): 40 red, AC-3's assertion first among them, plus every AC-4 refused-record case, AC-7's R- refusal and the three C-9 real-entry cases. First lines:
+
+```
+### DV1 :: 1226s/^      problem "story/      : "story/
+exit 1
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by 1226s/^      problem "story/      : "story/) ===
+boundaries: 581 passed, 40 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T062801Z.6716.bak) ===
+    FAIL HARNESS-102 AC-3: a new `### R-1` with no record, on a story the base has no copy of, gives exactly one FAIL naming the story, ## Regressions and R-1
+    FAIL HARNESS-102 AC-3: and the run exits non-zero
+    FAIL HARNESS-102 AC-3: two new ids with no record give one FAIL each: R-1 once, R-2 once
+    FAIL HARNESS-102 AC-3: a new `### R-12` with no record gives one FAIL for R-12 and none for R-1
+    FAIL HARNESS-102 AC-3: a new `- **AM-1` in ## Amendments with no record gives exactly one FAIL naming ## Amendments and AM-1
+    FAIL HARNESS-102 AC-3: and the run exits non-zero
+    FAIL HARNESS-102 AC-3: the head spelled `### R-1 (the count)` is an entry head: one FAIL for R-1
+    FAIL HARNESS-102 AC-3: the head spelled `**R-1 (the count).**` is an entry head: one FAIL for R-1
+    FAIL HARNESS-102 AC-3: the head spelled `- **R-1 (the count).**` is an entry head: one FAIL for R-1
+```
+
+- **DV-3 - discharged, mutation by mutation (the handoff's table).** One survivor, explained below; the table's last row (the new-story.sh precondition) is not run: it pins the fixture, not block 3k.
+
+```
+### M1-ok-despite-fail :: 1233s/\[ "\$adj_bad" -eq 0 \]/true/
+exit 1
+boundaries: 620 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T064501Z.62121.bak) ===
+    FAIL HARNESS-102 AC-3: and there is no ok line for ## Regressions beside the FAIL
+### M2-record-never-matches :: 1167s/Adjudicated /Adjudicatd /
+exit 1
+boundaries: 603 passed, 18 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T070126Z.113540.bak) ===
+    FAIL AC-1 twin: with the plain file gone, the same fixture exits 0
+    FAIL HARNESS-102 AC-4: a new R-1 with its `- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2)` record prints the ## Regressions ok line
+    FAIL HARNESS-102 AC-4: and no FAIL about adjudication
+    FAIL HARNESS-102 AC-4: and the spike exits 0
+    FAIL HARNESS-102 AC-4: two ids, each with its record (the second without its leading `- `), are accepted: no FAIL about adjudication, exit 0
+    FAIL HARNESS-102 AC-4: a new AM-1 with its record prints the ## Amendments ok line
+    FAIL HARNESS-102 AC-4: and no FAIL about adjudication, exit 0
+    FAIL HARNESS-102 AC-4: twin: a fence before the record does not swallow the record after it: the ok line
+    FAIL HARNESS-102 AC-4: and the new R-2, recorded, gives the ok line
+    FAIL HARNESS-102 AC-4: and the spike exits 0
+    FAIL HARNESS-102 AC-6: a record naming `sonnet` where the ADJUDICATE row plans `fable` is accepted: the ok line
+    FAIL HARNESS-102 AC-6: and no FAIL about adjudication, exit 0
+    FAIL HARNESS-102 AC-6: and one note line naming R-1, the model recorded (sonnet) and the model planned (fable)
+    FAIL HARNESS-102 AC-6: a `fable` record where the row plans `opus` gives the note naming R-1, fable and opus
+    FAIL HARNESS-102 AC-6: with no ADJUDICATE row in models.conf there is no note, and the record is still accepted
+    FAIL HARNESS-102 AC-6: with no models.conf at all there is no note, and the record is still accepted
+    FAIL HARNESS-102 AC-7: `**Adjudicated AM-1:** requested by the user` is accepted for an amendment: the ok line
+    FAIL HARNESS-102 AC-7: and no FAIL about adjudication, exit 0
+### M3-fence-not-skipped :: 1173s/if (fence) continue/if (0) continue/
+exit 1
+boundaries: 615 passed, 6 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T071820Z.164993.bak) ===
+    FAIL HARNESS-102 AC-4: the record inside a backtick-fenced block: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record inside a backtick-fenced block: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: the record inside a tilde-fenced block: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record inside a tilde-fenced block: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: a head inside a fence or a comment is not an entry head: no FAIL for R-1 or R-2
+    FAIL HARNESS-102 AC-5: and the section, which has new content and no head outside them, is refused as headless
+### M4-comments-not-stripped :: 1204s/has_content < "\$adj_cur" ||/true ||/;1206s/strip_comments < /cat < /;1161s/> 0) {/> 999999999) {/
+exit 1
+boundaries: 616 passed, 5 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T073545Z.216424.bak) ===
+    FAIL an untouched template block is not a claim
+         FAIL  story T-1: ## Gate results was not written by scripts/gates.sh. Run 'bash scripts/gates.sh' - it records its own result; a pasted summary is not evidence.
+         FAIL  story T-1: ## Regressions has new content and no entry head, so nothing can say which entry it is or whether it was adjudicated. An entry is headed R-<n> (`### R-<n> (...)`, `**R-<n> (.
+    FAIL HARNESS-102 AC-4: the record on its own line inside a multi-line HTML comment: refused, one FAIL for R-1
+    FAIL HARNESS-102 AC-4: the record on its own line inside a multi-line HTML comment: and the run exits non-zero
+    FAIL HARNESS-102 AC-4: a story fresh from new-story.sh, untouched, gets no adjudication line at all
+    FAIL HARNESS-102 AC-4: two sections holding only comments get no adjudication line at all, neither ok nor FAIL, and exit 0
+### M5-base-ids-empty :: 1210s/adj_scan "\$adj_old" "\$adj_p"/:/
+exit 1
+boundaries: 616 passed, 5 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T075416Z.270724.bak) ===
+    FAIL HARNESS-102 AC-4: an R-1 the base copy already has is not judged: no FAIL for R-1
+    FAIL HARNESS-102 AC-4: and the new R-2, recorded, gives the ok line
+    FAIL HARNESS-102 AC-4: and the spike exits 0
+    FAIL HARNESS-102 AC-4: twin: the new R-2 without its record is refused, and the old R-1 still is not judged
+    FAIL HARNESS-102 AC-4: prose added under an id the base already has is not judged: no adjudication line at all, exit 0
+### M6-no-step-2 :: 1208s/ && continue/ \&\& :/
+exit 1
+boundaries: 620 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T081235Z.322095.bak) ===
+    FAIL HARNESS-102 AC-5: twin: the same headless ## Amendments content already on the base is not new: no adjudication line, exit 0
+### M7-raw-nonwhitespace :: 1204s/has_content < "\$adj_cur" ||/grep -q "[^[:space:]]" "$adj_cur" ||/
+exit 0
+boundaries: 621 passed, 0 failed
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T083123Z.373521.bak) ===
+### M8-ok-unconditional :: 1203s/^/  ok "## $adj_sec: every new entry carries an adjudication record"; /
+exit 1
+boundaries: 606 passed, 15 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T155004Z.433722.bak) ===
+    FAIL an absent section is not a failure
+         FAIL  story T-1: ## Gate results was not written by scripts/gates.sh. Run 'bash scripts/gates.sh' - it records its own result; a pasted summary is not evidence.
+    FAIL an untouched template block is not a claim
+         FAIL  story T-1: ## Gate results was not written by scripts/gates.sh. Run 'bash scripts/gates.sh' - it records its own result; a pasted summary is not evidence.
+    FAIL HARNESS-102 AC-3: and there is no ok line for ## Regressions beside the FAIL
+    FAIL HARNESS-102 AC-4: a new R-1 with its `- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2)` record prints the ## Regressions ok line
+    FAIL HARNESS-102 AC-4: a new AM-1 with its record prints the ## Amendments ok line
+    FAIL HARNESS-102 AC-4: twin: a fence before the record does not swallow the record after it: the ok line
+    FAIL HARNESS-102 AC-4: a story fresh from new-story.sh, untouched, gets no adjudication line at all
+    FAIL HARNESS-102 AC-4: and the new R-2, recorded, gives the ok line
+    FAIL HARNESS-102 AC-4: prose added under an id the base already has is not judged: no adjudication line at all, exit 0
+    FAIL HARNESS-102 AC-4: a section identical to the base copy's says nothing: no adjudication line at all, exit 0
+    FAIL HARNESS-102 AC-4: two sections holding only comments get no adjudication line at all, neither ok nor FAIL, and exit 0
+    FAIL HARNESS-102 AC-4: a story with neither section gets no adjudication line at all, and exits 0
+    FAIL HARNESS-102 AC-5: twin: the same headless ## Amendments content already on the base is not new: no adjudication line, exit 0
+    FAIL HARNESS-102 AC-6: a record naming `sonnet` where the ADJUDICATE row plans `fable` is accepted: the ok line
+    FAIL HARNESS-102 AC-7: `**Adjudicated AM-1:** requested by the user` is accepted for an amendment: the ok line
+### M9-note-when-equal :: 1229s/\[ "\$adj_m" != "\$adj_planned" \]/[ "$adj_m" = "$adj_planned" ]/
+exit 1
+boundaries: 618 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T161620Z.485231.bak) ===
+    FAIL HARNESS-102 AC-6: and one note line naming R-1, the model recorded (sonnet) and the model planned (fable)
+    FAIL HARNESS-102 AC-6: a `fable` record where the row plans `opus` gives the note naming R-1, fable and opus
+    FAIL HARNESS-102 AC-6: twin: a `fable` record where the row plans `fable` gives no note
+### M10-default-fable :: 1201s/^/[ -n "$adj_planned" ] || adj_planned=fable; /
+exit 1
+boundaries: 619 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_check-boundaries.sh.20261112T164458Z.549364.bak) ===
+    FAIL HARNESS-102 AC-6: with no ADJUDICATE row in models.conf there is no note, and the record is still accepted
+    FAIL HARNESS-102 AC-6: with no models.conf at all there is no note, and the record is still accepted
+```
+
+  M7 survives (621/0), and is equivalent: with step 1 replaced by a raw non-whitespace test, a comment-only section still reaches step 2, where both sides are compared after `strip_comments` - the base side is empty or the same comments - so it returns before any judging. The "two sections holding only comments" case is earned instead by M4 (which disables both steps) and M8. M4 and M8 also turned two pre-existing assertions red ("an untouched template block is not a claim", "an absent section is not a failure"), which pin the same property from 3j's side.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -562,6 +700,7 @@ name, below the table.
 - PLANNED review (2026-11-11, /advance-story): lead-po, planned fable, resolved claude-fable-5-2
 - RED (2026-11-11, /advance-story): `test-developer`, planned `opus`, resolved **claude-opus-5-5**; no override reported.
 - GREEN (2026-11-11, /advance-story): `feature-developer`, planned `opus`, resolved **claude-opus-5-5**; no override reported.
+- GATES (2026-11-12, /advance-story): `feature-developer` for the full gate run, planned `opus`, resolved **claude-opus-5-5**; no override. DV-1..DV-3 run by the orchestrator (claude-opus-5-5).
 - No departure from the plan. The table was re-rendered at the PLANNED review, after HARNESS-101 merged, so it carries the DIFF-REVIEW row. It has no ADJUDICATE row: that row is this story's own. If this story needs an adjudication before its GREEN adds the row, dispatch a fresh `lead-po` with `fable` named explicitly and record what it resolved to; after GREEN, `bash scripts/plan.sh models HARNESS-102` on the branch gives the row.
 
 ## Out of scope
@@ -1222,10 +1361,21 @@ carries a timeout; the suites have none.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-12T17:15:48Z
+    commit: 41c0f9a
+    tree:   d30611bde389021beae1436d14581fc8a205570b
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -1268,3 +1418,4 @@ carries a timeout; the suites have none.
 - **RED verified by the orchestrator, 2026-11-11.** Changed files: the four suites and this story only. `attest.sh check -- bash scripts/selftest.sh boundaries plan dispatch new-story` `fresh` on tree `5a38956`, exit 1, `4 of 4 harness suite(s) FAILED.`, log `.claude/state/attest-logs/20261111T221223Z.127173.log`: boundaries 565/56, dispatch 201/4, new-story 59/20, plan 281/6. Every FAIL line is a HARNESS-102 criterion (AC-1..AC-8, AC-10, C-6, C-9) or a HARNESS-101 pin extended by it; no load error. The plan suite's floor miss (281 < 286) counts passes; GREEN raises the floors to the handoff's 621/287/205/79. `attest.sh check -- bash scripts/gates.sh --fast` `fresh`, exit 0 (no gate configured in this repository). AC-9's two C-10 mutations are in the handoff, each 201/4 → 200/5 and restored. `mutate.sh --check` clean. The C-7 in-place amendment (four needles taken from AC-1's own words, and the locator) is accepted; no acceptance criterion changed.
 - **GREEN, 2026-11-11** (`feature-developer`, planned `opus`, resolved claude-opus-5-5, no override). Changed: `scripts/check-boundaries.sh` (block 3k appended after 3j, before `exit $fail`; the three sigpipe pins 399/438/630 unmoved; regexes spelled without interval expressions for an older mawk), `.claude/harness/models.conf` (the `ADJUDICATE | lead-po | fable` row, last, and the header), `.claude/commands/advance-story.md` (the contract-is-wrong bullet; the PR-feedback paragraph's `records a departure for that row`), `.claude/commands/complete-story.md`, `.claude/agents/lead-po.md` (description, `## When you are dispatched inside a story` now four pieces of work, the bullet), `.claude/harness/rules.md` (three word-level edits, still 370 lines), `.claude/skills/diff-review/SKILL.md` (section 5, the record), `scripts/new-story.sh` (both template comments), `.claude/skills/story-authoring/SKILL.md` and `reference/sections.md`, `.claude/harness/VERSION` 120 -> 121. Floors raised in `floors.conf` and the `selftest.test.sh` mirror: boundaries 545 -> 621, plan 286 -> 287, dispatch 145 -> 205, new-story 58 -> 79, each the passing count measured. Controls confirmed against the shipped block: block 3k describe 76/0, the rest of boundaries green (621/0 total, as the candidate measured), `adj_problems` and `row_problems` silent over the real tree.
 - **GREEN verified by the orchestrator, 2026-11-12.** Changed files are the Contract's harness files, `VERSION` (121), and of `.claude/tests/` only the floor rows in `floors.conf` and the `selftest.test.sh` mirror (545→621, 286→287, 145→205, 58→79, the handoff's counts). `attest.sh check -- bash scripts/selftest.sh boundaries plan dispatch new-story` `fresh` on tree `739c5a6`, exit 0, `4 harness suite(s) passed.`, 1582 s, log `.claude/state/attest-logs/20261111T234901Z.118097.log`; `attest.sh check -- bash scripts/gates.sh --fast` `fresh`, exit 0 (no gate configured), log `20261112T001543Z.214788`. `rules.md` 370 lines; `mutate.sh --check` clean. Feature-developer's doubts for GATES and diff review: (1) the AC-10 needle's `REVIEW → DONE` region may reach the orchestrator-rules bullets, so the phrase could be satisfied from outside the PR-feedback paragraph; GREEN keeps it in that paragraph only; (2) it aborted one attested run and deleted a `run.lock` whose holder pid was dead; (3) `selftest-needed.sh --suites` lists 27 of 34 suites for this diff, for the self-test at GATES → REVIEW.
+- **GATES, 2026-11-12.** `attest.sh check -- bash scripts/gates.sh` `fresh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, log `20261112T171547Z.613246` - as in every harness story, `project.conf` configures no gate here, so the evidence for this code is the self-test at GATES → REVIEW and `check-boundaries.sh` after the commit. Mutation 7 of the DV-3 table ran for about 7 hours (02:31 to 09:50 local) against the usual ~17 minutes, and finished and restored cleanly; the log shows no cause.
