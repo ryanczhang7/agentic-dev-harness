@@ -407,7 +407,9 @@ and the run URL, or `check-boundaries.sh` refuses to call the story DONE.
 While the story is at REVIEW, feedback on the open PR that asks for a change -
 a reviewer's comment, a CI failure - is not yours to judge inline. Dispatch a
 `lead-po` on the REVIEW row of `models.conf` (the model from
-`bash scripts/plan.sh models $1`) with the feedback, the story id and its
+`bash scripts/plan.sh models $1`, unless the story's `## Model guidance`
+records a departure for that row, which outranks the policy file) with the
+feedback, the story id and its
 `Acceptance criteria` and `Contract` sections; it reads each item against the
 contract, changes no file, and labels each item that needs a change with a
 `Route`, `GATES`, `RED` or `AMEND`, exactly as the `diff-review` skill defines
@@ -472,16 +474,30 @@ Rules for you as orchestrator:
 - Verify every subagent claim against the filesystem and a real command run. A
   report of success is a claim.
 - **A claim that the contract itself is wrong — an acceptance criterion, a
-  threshold, a frozen test — you reproduce independently before accepting it:
-  different inputs, and without reusing the subagent's own code.** Running its
-  probe again is not verification. Record the reproduction in the story next to
-  the `## Amendments` or `## Regressions` entry it justifies. This is the exact
-  shape of claim an agent makes when it wants to stop failing — *the
-  specification is wrong, not my work* — and it is also the shape of the two
-  most valuable escalations this harness has seen. Independent reproduction is
-  the only thing that separates them, and it is cheap: a fresh probe on
-  different inputs, or reading the fixture and enumerating the cases the file
-  asserts to show no rule satisfies all of them.
+  threshold, a frozen test — is adjudicated by a fresh `lead-po` dispatch on
+  the ADJUDICATE row of `models.conf`, not by you.** Its model comes from
+  `bash scripts/plan.sh models $1`, or from the story's `## Model guidance`
+  where it departs from the plan for ADJUDICATE. Brief it with the claim, the story's
+  `Acceptance criteria` and `Contract`, and the paths involved — not the
+  claimant's probe as something to re-run: running that probe again is not
+  verification. It reproduces the claim on different inputs, without reusing
+  the claimant's code, and answers upheld or rejected. This is the exact shape
+  of claim an agent makes when it wants to stop failing — *the specification is
+  wrong, not my work* — and it is also the shape of the two most valuable
+  escalations this harness has seen; only an independent reproduction, by a
+  judge that does not want either answer, separates them. For an upheld claim
+  the dispatch writes the entry head under the next free id (`R-<n>` in
+  `## Regressions`, `AM-<n>` in `## Amendments`) if it does not exist yet, the
+  record line ``**Adjudicated <id>:** `<model>` (resolved <name>), <date>, ...``
+  and its reproduction beneath; the section's owner fills in the rest, and an
+  upheld `AC` claim still goes to the user for approval, a second line of the
+  entry. For a rejected claim it writes one line in `## Notes` and no entry. It
+  sets no phase and commits nothing; record the model it resolved to. An entry
+  that follows a diff-review finding or a REVIEW-row PR-feedback item routed
+  `RED` or `AMEND` was adjudicated by that dispatch: you write its record,
+  naming the review round and finding number or the PR-feedback item and the
+  model that dispatch was planned on and resolved to, with no second dispatch.
+  `check-boundaries.sh` refuses a new entry without its record.
 - **And it runs the other way: an instruction of yours that names a *mechanism*
   is a claim too.** When you tell a subagent *how* — call this function to force
   the work to complete, read the value from here, use that API — you are asserting
