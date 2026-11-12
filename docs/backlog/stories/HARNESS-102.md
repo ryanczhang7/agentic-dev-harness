@@ -5,7 +5,7 @@ slug: a-contract-is-wrong-claim-is-adjudicated
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-102-a-contract-is-wrong-claim-is-adjudicated
 depends_on: [HARNESS-101]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/harness/models.conf, .claude/tests/plan.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -244,10 +244,13 @@ sections, in this order:
    after comments are removed, it ends inside a fence (an odd number of fence
    lines, whatever opened the last one - an ordinary unclosed block, or a line
    that opens and closes a fence on the same line, which C-1's fence rule reads
-   as an opener). One `problem` naming the story (`$sid`), `## <section>` and
-   containing the word `unreadable`, saying that nothing after that point can
-   be judged and what to fix (close the comment, close the fence, or put the
-   quoted opener in a fenced block of its own); then nothing else for this
+   as an opener); or it has an entry head outside comments and fences, and a
+   line matching C-1's head pattern was removed with a comment or skipped
+   inside a fence whose id is not also a head outside them. One `problem`
+   naming the story (`$sid`), `## <section>` and
+   containing the word `unreadable`, saying that what was hidden cannot
+   be judged and what to fix (close the comment, close the fence, or quote the
+   opener together with its closer, or name it in words); then nothing else for this
    section - no step 3 to 6, so no FAIL for an id and no `ok`. Steps 1 and 2
    are unchanged and come first, so a section identical to the base copy is
    not judged by this step.
@@ -276,6 +279,23 @@ are readable. A section whose only text after an unclosed opener is the rest of
 the section still counts as having no content under step 1 (AC-4: "nothing
 outside comments ... no adjudication line at all"), and step 2a does not
 override that.*
+
+*Amended in RED (2026-11-12, test-developer, return 2 from GATES, `## Regressions`
+R-3): step 2a's end-of-section tests miss a stray PAIR - two one-line fences,
+a quoted opener and a later quoted closer, a quoted opener and a later
+ordinary comment - which balances both counts and hides a new entry between
+them while the run says `ok` (diff review 2, finding 1). The hidden-head test
+is added to the end-of-section tests, not in place of them: an unclosed
+opener or fence still hides everything after it, head-shaped or not, and the
+R-1 cases keep passing. It applies only where the section has a head outside
+comments and fences: with none, step 3's headless `problem` (AC-5) is the
+refusal, as the AC-5 case "a head inside a fence or a comment" already pins,
+and the section is refused either way. A fenced example whose head-shaped line
+repeats a real head's id hides nothing and is read as usual; one whose id is
+no head outside is refused like the pair. The remedy's third clause was wrong
+(diff review 2, finding 2): comments are removed before fences are read, so a
+fenced opener is still unclosed; it now says to quote the opener with its
+closer, or name it in words. The tests pin the same needles as return 1.*
 
 **C-5. A limit, stated.** Prose added under an id the base copy already has is
 not judged, and neither is an entry on a story that never returns to a PR.
@@ -1460,6 +1480,86 @@ did not pin a FAIL there; C-4's amendment states it as a limit.
 Comment stripping ignores fences, so a comment opener inside a fenced block
 also counts as unclosed. The story's own `## Regressions` holds none (checked).
 
+### Return 2 (from GATES)
+
+Diff review 2 sent the story back for finding 1 (`## Diff review`, Review 2;
+`## Regressions` R-3 holds the reason and the watched red). RED added tests
+only, to `.claude/tests/boundaries.test.sh`, after the R-2 cases and before
+the block's "Put main back" lines; the two R-1 helpers `k_unread_refused` and
+`k_readable` gained an optional third argument, the name tag (default `R-1`,
+so every R-1 name is byte-identical). Contract C-4 step 2a is amended in
+place. Model: planned `opus`, resolved claude-opus-5-5, no override.
+
+**Command.** `bash scripts/selftest.sh boundaries`. The attest records of it
+and of `bash scripts/gates.sh --fast` were made on the final tree, after this
+section was written, and are in the RED report to the orchestrator; the plain
+run the red in R-3 was read from took 42 minutes on this host.
+
+**Counts.** Now: `boundaries: 664 passed, 15 failed` (679 executed; floor 652
+met). 27 assertions are new: 15 red, all listed in R-3, and 12 green on
+arrival (the controls, below); no other assertion fails. After GREEN: **679
+passed, 0 failed**, and GREEN raises the `boundaries` floor to the passed
+count it measures (679 if nothing else moves) in `floors.conf` and
+`selftest.test.sh`. RED did not touch either.
+
+**The new assertions** (prefix `HARNESS-102 R-3:`).
+
+| Fixture | Assertions | Red now |
+|---|---|---|
+| (a) one-line fence, new unrecorded R-2, one-line fence | exactly one FAIL, unreadable / exits non-zero / no ok line | 3 of 3 |
+| (b) prose quoting the opener, R-2, prose quoting the closer | same three | 3 of 3 |
+| (c) prose quoting the opener, R-2, an ordinary complete comment | same three | 3 of 3 |
+| (d) `## Amendments`: AM-1 recorded, (a)'s pair around a new AM-2 | same three | 3 of 3 |
+| (e) a closed fence holding a head-shaped line whose id is no head outside it | same three | 3 of 3 |
+| twin (a), (b), (c), (d): the pair with only prose between, R-2/AM-2 recorded after it | ok line / no FAIL at all, exit 0 | green |
+| twin (e): a closed fence holding a head-shaped line whose id IS a head outside | same two | green |
+| twin: heads only inside a fence and a comment, none outside | the headless FAIL and no unreadable one | green |
+| twin (f): this story's own `## Regressions`, verbatim at run time | no unreadable FAIL, the ok line | green |
+
+**What GREEN builds** (C-4 step 2a as amended): in addition to the two
+end-of-section tests, `unreadable` when the section has at least one head
+outside comments and fences and a line matching C-1's head pattern was removed
+with a comment or skipped inside a fence whose id is not one of those heads.
+With no visible head at all, step 3's headless problem stays the refusal: the
+AC-5 case "a head inside a fence or a comment" (`k_headless` = 1) and the new
+twin pin that, and a hidden-head test placed before step 3 without the
+condition would break both. The needles are return 1's: a line beginning
+`FAIL  ` with the story id, `## <section>` and `unreadable`, the only FAIL in
+the run. Not constrained: how `adj_scan` finds the hidden lines, the wording
+beyond those needles.
+
+**Built against a candidate, outside the suite.** Unlike return 1, the
+candidate was not run through the whole suite (one run is 42 minutes here). A
+scratch copy of `adj_scan` with two edits (before stripping, collect the ids of
+every raw line matching the head pattern; at the end, print `unreadable` also
+when one of those ids is not in `H` and `H` is non-empty) was run directly on
+each new fixture body and on the R-1 bodies: `unreadable` for (a)-(e) and for
+R-1's comment and one-line-fence cases; not for any twin; nothing at all for
+the AC-5 body (headless, step 3); this section scans
+`head R-1, rec R-1, head R-2, rec R-2, head R-3, rec R-3` under both today's
+and the candidate scan. Over all 179 non-empty `## Regressions` and
+`## Amendments` sections in `docs/backlog/stories/`, the candidate prints
+`unreadable` for none. The rest of the run for these fixtures is today's,
+which gives no FAIL for any of them (the red's `actual: 0 0`), so the one
+problem step 2a adds is the only FAIL. GREEN's suite run is what confirms 679.
+
+**Negative controls, expected values.**
+
+| Control | Expected after GREEN | Measured now (suite) | Candidate (scan only) |
+|---|---|---|---|
+| the 12 R-3 twin assertions | green | green | no `unreadable` |
+| return 1's 31 assertions (R-1 and R-2) | green | green | R-1's red bodies `unreadable`, its twins not |
+| AC-5 "a head inside a fence or a comment" | headless FAIL = 1 | green | no `unreadable` |
+| the 15 new red assertions | green | red | `unreadable` |
+
+**Also GREEN's: review 2, finding 2.** Step 2a's message ends "... or put the
+quoted opener in a fenced block of its own"; it must say instead "or quote the
+opener together with its closer, or name it in words" (C-4 step 2a, amended).
+Comments are removed before fences are read, so a fenced opener is still
+unclosed and the old remedy leads back to the refusal. No test pins the
+clause; the review routed it to GATES and the orchestrator to the GREEN that
+follows.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -1602,6 +1702,86 @@ The watched red, from the same run (`.claude/state/attest-logs/20261112T180754Z.
          actual:   1 non-zero
 ```
 
+
+### R-3 (diff review 2, finding 1: a pair of stray lines hides the entry between them)
+
+- **Adjudicated R-3:** `fable` (resolved claude-fable-5-2), 2026-11-12, diff review round 2, finding 1.
+
+No test was wrong; tests were missing. Step 2a judges the end of the section, so an even number of one-line fences, or a quoted opener with a later quoted closer or a later ordinary comment, hides a new unrecorded entry between them and the run says ok. Found by the review of the fix. What the tests should assert: in each of the three reproductions, the section is refused as unreadable (exactly one FAIL, non-zero, no ok line); each with a twin where nothing head-shaped is hidden (accepted). The new assertions fail against today's block; RED pastes the red below.
+
+**RED, return 2 (2026-11-12, test-developer, resolved claude-opus-5-5).** The
+tests, in `.claude/tests/boundaries.test.sh` after the R-2 cases, under
+"Return 2 (R-3, ...)": each has a recorded `### R-1` and a new unrecorded
+`### R-2` with the stray pair around it - two one-line fences; a prose line
+quoting the opener and a later one quoting the closer; the quoted opener and a
+later ordinary comment; the first again in `## Amendments` with AM-1 and AM-2;
+and, decided here, a closed fence whose head-shaped line names an id that is
+no head outside it. Each asserts what the R-1 cases assert (exactly one FAIL in
+the run, naming the story, the section and `unreadable`; non-zero; no ok
+line). Twins, green on arrival and the controls: each pair with only prose
+between it and R-2 recorded after it; a closed fence whose head-shaped line
+repeats a real head's id; heads only inside a fence and a comment, which keeps
+step 3's headless FAIL and is not unreadable; and this section itself, read
+verbatim from the file at run time, which gets the ok line. Contract C-4 step
+2a is amended in place: the hidden-head test is added, the end-of-section
+tests stay, and the remedy's third clause is corrected.
+
+The watched red, against today's block 3k (plain run of
+`bash scripts/selftest.sh boundaries`, `boundaries: 664 passed, 15 failed`;
+these 15 are all the failures, and every one is R-3's; the attest record of
+the same command on the final tree is in the handoff, Return 2):
+
+```
+    FAIL HARNESS-102 R-3: a one-line fence before a new unrecorded R-2 and another after it: exactly one FAIL in the run, and it names the story, ## Regressions and says the section is unreadable
+         expected: 1 1
+         actual:   0 0
+    FAIL HARNESS-102 R-3: a one-line fence before a new unrecorded R-2 and another after it: and the run exits non-zero
+         expected: non-zero
+         actual:   0
+    FAIL HARNESS-102 R-3: a one-line fence before a new unrecorded R-2 and another after it: and there is no ok line for ## Regressions
+         expected: 0
+         actual:   1
+    FAIL HARNESS-102 R-3: a prose line quoting the comment opener before a new unrecorded R-2, and a later prose line quoting the closer: exactly one FAIL in the run, and it names the story, ## Regressions and says the section is unreadable
+         expected: 1 1
+         actual:   0 0
+    FAIL HARNESS-102 R-3: a prose line quoting the comment opener before a new unrecorded R-2, and a later prose line quoting the closer: and the run exits non-zero
+         expected: non-zero
+         actual:   0
+    FAIL HARNESS-102 R-3: a prose line quoting the comment opener before a new unrecorded R-2, and a later prose line quoting the closer: and there is no ok line for ## Regressions
+         expected: 0
+         actual:   1
+    FAIL HARNESS-102 R-3: a prose line quoting the comment opener before a new unrecorded R-2, and a later ordinary complete comment: exactly one FAIL in the run, and it names the story, ## Regressions and says the section is unreadable
+         expected: 1 1
+         actual:   0 0
+    FAIL HARNESS-102 R-3: a prose line quoting the comment opener before a new unrecorded R-2, and a later ordinary complete comment: and the run exits non-zero
+         expected: non-zero
+         actual:   0
+    FAIL HARNESS-102 R-3: a prose line quoting the comment opener before a new unrecorded R-2, and a later ordinary complete comment: and there is no ok line for ## Regressions
+         expected: 0
+         actual:   1
+    FAIL HARNESS-102 R-3: ## Amendments: AM-1 recorded, a one-line fence before a new unrecorded AM-2 and another after it: exactly one FAIL in the run, and it names the story, ## Amendments and says the section is unreadable
+         expected: 1 1
+         actual:   0 0
+    FAIL HARNESS-102 R-3: ## Amendments: AM-1 recorded, a one-line fence before a new unrecorded AM-2 and another after it: and the run exits non-zero
+         expected: non-zero
+         actual:   0
+    FAIL HARNESS-102 R-3: ## Amendments: AM-1 recorded, a one-line fence before a new unrecorded AM-2 and another after it: and there is no ok line for ## Amendments
+         expected: 0
+         actual:   1
+    FAIL HARNESS-102 R-3: a closed fence holding a head-shaped line whose id is no head outside it: exactly one FAIL in the run, and it names the story, ## Regressions and says the section is unreadable
+         expected: 1 1
+         actual:   0 0
+    FAIL HARNESS-102 R-3: a closed fence holding a head-shaped line whose id is no head outside it: and the run exits non-zero
+         expected: non-zero
+         actual:   0
+    FAIL HARNESS-102 R-3: a closed fence holding a head-shaped line whose id is no head outside it: and there is no ok line for ## Regressions
+         expected: 0
+         actual:   1
+```
+
+`actual: 0 0` with exit 0 and the ok line present is the defect: R-2 (or
+AM-2) between the pair is never judged.
+
 ## Diff review
 
 ### Review 1 — the whole diff against main at d5edacc (resolved claude-fable-5-2)
@@ -1658,6 +1838,38 @@ Not checked: behaviour under mawk (only GNU Awk 5.4.1 here; the regexes were rea
 Verdict: Fix first.
 
 **Orchestrator (2026-11-12):** all four followed as labelled. `classify.sh` calls every path the fixes name `harness` (`scripts/check-boundaries.sh`, `.claude/tests/boundaries.test.sh`, `scripts/new-story.sh`, `.claude/commands/advance-story.md`), so the lock permits both phases and the labels decide. Findings 1 and 4 return the story to RED (`## Regressions` R-1, R-2), adding tests that fail against today's block, so their red is watched in the ordinary way. Findings 2 and 3 are made by the GREEN that follows, with the source fixes for 1 and 4. The fixed tree gets a review of the fix before the self-test.
+
+### Review 2 — the fix only, git diff d5edacc ad4c303 (resolved claude-fable-5-2)
+
+A fresh `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved claude-fable-5-2, no override. It changed no file; scratch copies of `section`, `strip_comments`, `has_content` and `adj_scan` were run in its scratchpad.
+
+Round 1's findings: **1 fixed for the cases round 1 named, not for the class** (finding 1 below); **2 fixed** (the template's record line matches 3k's pattern); **3 fixed** (word for word in both commands, consistent with `advance-story.md:479-503`); **4 fixed** (bare `R-2 of ...` / `AM-2 of ...` not heads; prefixed spellings still are; four-space indent, `* R-9`, seven hashes are not). Real stories: none newly refused - 45 sections with content, 44 identical to `main`; HARNESS-102's own `## Regressions` scans `head R-1, rec R-1 fable, head R-2, rec R-2 fable` and gets the ok line. Portability: no interval expressions; same output under `gawk --posix` and `--traditional`; `check-sigpipe.sh` exit 0, pins unmoved.
+
+**Must fix:**
+
+1. **A pair of stray lines still hides the entry between them, and the run says ok** (`scripts/check-boundaries.sh:1165-1170`, `:1175-1176`, flag at `:1192`)
+   - **What this is:** `adj_scan`'s two "unreadable" tests: an opener with no closer anywhere after it, and an odd count of fence lines.
+   - **Problem:** both test the end of the section, not what was skipped. Reproduced, each with a recorded `### R-1` then a new unrecorded `### R-2`: (a) a one-line fence before R-2 and another after it; (b) a prose line quoting the opener in backticks before R-2 and a later line quoting the closer; (c) the same opener and a later ordinary comment. All three print only `head R-1`, `rec R-1 fable`, no `unreadable`; 3k prints ok and R-2 is never judged.
+   - **Fix:** in `adj_scan`, also print `unreadable` when a line matching the head pattern was removed with a comment or skipped inside a fence and its id is not printed as a head. Cases (a)-(c), each with a twin, in `.claude/tests/boundaries.test.sh`; C-4 step 2a amended in place. No real section trips it (45 checked).
+   - **If we skip it:** the ok line still depends on wording, as round 1's finding 1 said it must not.
+   - **Route:** RED
+
+**Should fix:**
+
+2. **The refusal recommends a remedy that does not clear it** (`scripts/check-boundaries.sh:1217`)
+   - **What this is:** step 2a's message, ending "... or put the quoted opener in a fenced block of its own."
+   - **Problem:** comments are removed before fences are read, so an opener inside a closed fence is still unclosed. Reproduced: a three-line fence holding only the opener, then `### R-2`: still `unreadable`.
+   - **Fix:** replace the third remedy with "or quote the opener together with its closer, or name it in words". No test pins the clause; C-4's sentence corrected with finding 1's amendment.
+   - **If we skip it:** a refusal whose own instructions lead back to it.
+   - **Route:** GATES
+
+**The known limit, judged: no finding.** An unclosed opener as the section's first content makes `has_content` false, so step 1 stops; every block that reads the section through `has_content`, and the rendered story, treat it as empty at once. Not worth amending AC-4; if ever closed, it is a `has_content` change for the whole file, in a story of its own.
+
+Not checked: a real mawk; a full `check-boundaries.sh` run on this branch (steps 1-2a emulated); the boundaries suite not re-run.
+
+Verdict: Fix first.
+
+**Orchestrator (2026-11-12):** both followed as labelled; `classify.sh` calls `scripts/check-boundaries.sh` and `.claude/tests/boundaries.test.sh` `harness`, so the labels decide. Finding 1 returns the story to RED (`## Regressions` R-3); finding 2 is made by the GREEN that follows.
 
 ## Gate results
 
@@ -1723,3 +1935,4 @@ Verdict: Fix first.
 - **GREEN after return 1, 2026-11-12** (`feature-developer`, planned `opus`, resolved claude-opus-5-5, no override). Changed: `scripts/check-boundaries.sh` block 3k only (C-4 step 2a: `adj_scan` sets a flag where a comment opener has no closer and prints a last line `unreadable` when that flag or `fence` is set at the end; after the working tree's scan, one `problem` naming `$sid`, `## <section>` and `unreadable`, then `continue`; the amended C-1 head regex, interval-free, `^ ? ? ?((####?#?#? |- )([*][*])?|[*][*])`; the header comment's head pattern updated to match; all lines appended inside 3k, nothing above it moved), `scripts/new-story.sh` (diff review finding 2: both template comments say the judgement is never the orchestrator's, and that an entry following a diff-review or PR-feedback finding routed RED or AMEND carries a record the orchestrator writes, naming the round and finding, with the record line shown), `.claude/commands/advance-story.md` (finding 3: one sentence in the first bullet of "Returning to RED from GREEN or GATES") and the same sentence in `complete-story.md`'s "A return to RED ends with pasted red" bullet. Floor `boundaries` 621 -> 652 in `floors.conf` (dated comment) and the `selftest.test.sh` mirror. Real-tree check of the new scan against HEAD's, over both sections of every story under `docs/backlog/stories/`: identical output for all 17 sections that carry a head, none `unreadable`, no head lost to the prefix requirement.
 - **Return 1, GREEN verified by the orchestrator, 2026-11-12.** `feature-developer`, planned `opus`, resolved claude-opus-5-5. Diff review findings 1-4 made (block 3k step 2a and the C-1 head prefix; `new-story.sh` comments; the return-to-RED bullet in `advance-story.md`, and the same sentence in `complete-story.md`'s return bullet). Of `.claude/tests/`, only the boundaries floor (621→652) and its mirror. `attest.sh check -- bash scripts/selftest.sh boundaries new-story dispatch procedure` `fresh` on tree `93d529f`, exit 0, `4 harness suite(s) passed.` (652/79/205/183), log `20261112T190444Z.137793`; `--fast` `fresh`, exit 0. Step 2a's watched red is RED return 1's 20 failures against the old block; no further defect-put-back run was made.
 - **Return 1, GATES, 2026-11-12.** The full run was made by the orchestrator directly, not dispatched: it takes 2 s here because no gate is configured. `attest.sh check -- bash scripts/gates.sh` `fresh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, log `20261112T193428Z.219900`. No GATES-owned deferred verification is new in this return.
+- **Return 2 to RED verified by the orchestrator, 2026-11-12.** `test-developer`, planned `opus`, resolved claude-opus-5-5, no override. Changed: `boundaries.test.sh` and this story only (C-4 step 2a amended in place with the hidden-head test and review 2 finding 2's remedy wording; R-3 red pasted; handoff "Return 2 (from GATES)"). `attest.sh check -- bash scripts/selftest.sh boundaries` `fresh` on tree `53e0c03`, exit 1, `boundaries: 664 passed, 15 failed`, log `20261112T202918Z.287245`: the 15 are exactly the new `HARNESS-102 R-3:` assertions (five fixtures, three each); 12 new twins green on arrival; `--fast` `fresh`, exit 0. Decisions accepted: the hidden-head test applies only when the section has a head outside comments and fences, so AC-5's headless FAIL (boundaries.test.sh:4066-4070) is unchanged; the fifth fixture (a closed fence quoting a head with no real twin) follows from review 2's fix as written. Review 2 finding 2 has no test; GREEN makes it from the amended C-4.

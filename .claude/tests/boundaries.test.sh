@@ -4230,15 +4230,17 @@ k_r1r2() {
   [ -n "${2:-}" ] && printf '\n%s\n' "$2"
   return 0
 }
-k_unread_refused() { # <what> <sec>
-  assert_eq "HARNESS-102 R-1: $1: exactly one FAIL in the run, and it names the story, ## $2 and says the section is unreadable" \
+k_unread_refused() { # <what> <sec> [tag, default R-1]
+  local t="${3:-R-1}"
+  assert_eq "HARNESS-102 $t: $1: exactly one FAIL in the run, and it names the story, ## $2 and says the section is unreadable" \
     "1 1" "$(k_fails) $(k_unreadable "$2")"
-  assert_eq "HARNESS-102 R-1: $1: and the run exits non-zero" non-zero "$(k_rc)"
-  k_no_ok "$2" "HARNESS-102 R-1: $1: and there is no ok line for ## $2"
+  assert_eq "HARNESS-102 $t: $1: and the run exits non-zero" non-zero "$(k_rc)"
+  k_no_ok "$2" "HARNESS-102 $t: $1: and there is no ok line for ## $2"
 }
-k_readable() { # <what> <sec>
-  k_ok "$2" "HARNESS-102 R-1: twin: $1: the ok line for ## $2"
-  assert_eq "HARNESS-102 R-1: twin: $1: no unreadable FAIL, no FAIL at all, exit 0" \
+k_readable() { # <what> <sec> [tag, default R-1]
+  local t="${3:-R-1}"
+  k_ok "$2" "HARNESS-102 $t: twin: $1: the ok line for ## $2"
+  assert_eq "HARNESS-102 $t: twin: $1: no unreadable FAIL, no FAIL at all, exit 0" \
     "0 0 0" "$(k_unreadable "$2") $(k_fails) $(k_rc)"
 }
 
@@ -4296,6 +4298,81 @@ assert_eq "HARNESS-102 R-2: and the run exits 0" 0 "$(k_rc)"
 printf '## Amendments\n\n- **AM-1 (AC-2).** AC-2 said seven rows and says eight, as\nAM-2 of HARNESS-094 also did.\n%s\n' "$K_REC_AM1" > "$KB"; k_branch T-114
 assert_eq "HARNESS-102 R-2: in ## Amendments, a wrapped line beginning \`AM-2 of\` is not an entry head: no FAIL for AM-2, exit 0" \
   "0 0" "$(k_fail Amendments AM-2) $(k_rc)"
+
+# --- Return 2 (R-3, diff review 2 finding 1): a stray PAIR hides what is between
+# Step 2a judges the END of the section: an opener with no closer, an odd count
+# of fence lines. A pair of stray lines balances both - two one-line fences, a
+# quoted opener with a later quoted closer, a quoted opener with a later
+# ordinary comment - and a new unrecorded R-2 between them is never judged:
+# the run says ok. C-4, amended in RED (return 2): a section whose head-shaped
+# line was removed with a comment or skipped inside a fence, and whose id is
+# not also a head outside them, is unreadable too - when the section has a head
+# outside them at all; with none, step 3's headless FAIL (AC-5) is the refusal,
+# which the AC-5 case above ("a head inside a fence or a comment") pins.
+#
+# Every fixture: a recorded `### R-1`, then a new `### R-2`, the stray lines
+# around it. Refused exactly as the R-1 cases are (k_unread_refused). The
+# stray lines live in variables so that no assertion name carries one: the
+# names are pasted into the story's own ## Regressions, which block 3k reads.
+K_CLOSE='-->'
+K_STRAY_CL="The closer, \`$K_CLOSE\`, is what ends a comment."
+K_STRAY_CC="$K_OPEN a note left by the reviewer, closed as usual $K_CLOSE"
+# k_r3 <before> <after> <R-2 record-or-empty>   ## Regressions: R-1 with its
+# result and record; <before>; a new R-2 with its result; <after>; the record.
+k_r3() {
+  k_reg '### R-1 (the AC-2 count)' "$K_REC_R1"
+  printf '%s\n\n### R-2 (the timeout)\n\nToo slow under coverage.\n\n%s\n\n%s\n' "$1" "$K_RESULT" "$2"
+  [ -n "${3:-}" ] && printf '\n%s\n' "$3"
+  return 0
+}
+# k_r3_twin <before> <after>   The same pair with only prose between them, and
+# R-2, recorded, after the pair: nothing head-shaped is hidden.
+k_r3_twin() {
+  k_reg '### R-1 (the AC-2 count)' "$K_REC_R1"
+  printf '%s\n\nA sentence of prose about the timeout.\n\n%s\n\n### R-2 (the timeout)\n\nToo slow under coverage.\n\n%s\n\n%s\n' "$1" "$2" "$K_RESULT" "${K_REC_R1//R-1/R-2}"
+}
+
+# (a) A one-line fence before R-2 and another after it.
+k_r3 "$K_STRAY_F" "$K_STRAY_F" '' > "$KB"; k_branch T-116
+k_unread_refused "a one-line fence before a new unrecorded R-2 and another after it" Regressions R-3
+k_r3_twin "$K_STRAY_F" "$K_STRAY_F" > "$KB"; k_branch T-116
+k_readable "two one-line fences with only prose between them, R-2 recorded after them" Regressions R-3
+# (b) A prose line quoting the opener in backticks before R-2, and a later prose
+# line quoting the closer in backticks.
+k_r3 "$K_STRAY_C" "$K_STRAY_CL" '' > "$KB"; k_branch T-116
+k_unread_refused "a prose line quoting the comment opener before a new unrecorded R-2, and a later prose line quoting the closer" Regressions R-3
+k_r3_twin "$K_STRAY_C" "$K_STRAY_CL" > "$KB"; k_branch T-116
+k_readable "the quoted opener and the quoted closer with only prose between them, R-2 recorded after them" Regressions R-3
+# (c) The quoted opener before R-2, and a later ordinary, complete HTML comment.
+k_r3 "$K_STRAY_C" "$K_STRAY_CC" '' > "$KB"; k_branch T-116
+k_unread_refused "a prose line quoting the comment opener before a new unrecorded R-2, and a later ordinary complete comment" Regressions R-3
+k_r3_twin "$K_STRAY_C" "$K_STRAY_CC" > "$KB"; k_branch T-116
+k_readable "the quoted opener and a later ordinary comment with only prose between them, R-2 recorded after them" Regressions R-3
+# (d) (a) in ## Amendments, with AM- ids.
+printf '## Amendments\n\n- **AM-1 (AC-2).** AC-2 said seven rows and says eight.\n%s\n\n%s\n\n- **AM-2 (AC-3).** AC-3 said one FAIL and says two.\n\n%s\n' "$K_REC_AM1" "$K_STRAY_F" "$K_STRAY_F" > "$KB"; k_branch T-116
+k_unread_refused "## Amendments: AM-1 recorded, a one-line fence before a new unrecorded AM-2 and another after it" Amendments R-3
+printf '## Amendments\n\n- **AM-1 (AC-2).** AC-2 said seven rows and says eight.\n%s\n\n%s\n\nA sentence of prose.\n\n%s\n\n- **AM-2 (AC-3).** AC-3 said one FAIL and says two.\n%s\n' "$K_REC_AM1" "$K_STRAY_F" "$K_STRAY_F" "${K_REC_AM1//AM-1/AM-2}" > "$KB"; k_branch T-116
+k_readable "## Amendments: two one-line fences with only prose between them, AM-2 recorded after them" Amendments R-3
+# (e) A legitimately fenced example holding a head-shaped line. Decided in RED:
+# where its id IS also a head outside the fence, nothing is hidden and the
+# section is read as usual - accepted. Where it is NOT, the fenced line is the
+# same shape as (a) and is refused: the pair below differs in that one id.
+k_r1r2 '' "${K_REC_R1//R-1/R-2}" > "$KB"; printf '\nThe head as the template spells it:\n\n~~~\n### R-2 (the timeout)\n~~~\n' >> "$KB"; k_branch T-116
+k_readable "a closed fence holding a head-shaped line whose id is also a head outside it" Regressions R-3
+k_r1r2 '' "${K_REC_R1//R-1/R-2}" > "$KB"; printf '\nThe head as the template spells it:\n\n~~~\n### R-3 (the next one)\n~~~\n' >> "$KB"; k_branch T-116
+k_unread_refused "a closed fence holding a head-shaped line whose id is no head outside it" Regressions R-3
+# The position of the new test: a section with NO head outside its fences and
+# comments is refused by step 3 (AC-5), not as unreadable.
+printf '## Regressions\n\nA note about a test, with its output:\n\n```\n### R-1 (inside a fence)\n 1 failed\n```\n\n<!-- ### R-2 (inside a comment) -->\n' > "$KB"; k_branch T-116
+assert_eq "HARNESS-102 R-3: twin: heads only inside a fence and a comment, none outside: the headless FAIL and no unreadable one" \
+  "1 0" "$(k_headless Regressions R) $(k_unreadable Regressions)"
+# (f) This story's own ## Regressions, R-1 to R-3, read verbatim from the real
+# file at run time (as the C-9 cases are), on a story the base has no copy of:
+# every id is new and recorded, and its pasted output holds no hidden head.
+awk 'index($0, "## Regressions") == 1 { on = 1 } on && /^## / && index($0, "## Regressions") != 1 { exit } on { print }' \
+  "$REPO_ROOT/docs/backlog/stories/HARNESS-102.md" > "$KB"; k_branch T-117
+assert_eq "HARNESS-102 R-3: twin: HARNESS-102's own ## Regressions, verbatim, is not refused as unreadable and gets the ok line" \
+  "0 1" "$(k_unreadable Regressions) $(grep -cxF -- "ok    ## Regressions: every new entry carries an adjudication record" <<< "$out")"
 
 # Put main back as this block found it, for anything appended after it.
 git -C "$FIX" checkout -q main 2>/dev/null
