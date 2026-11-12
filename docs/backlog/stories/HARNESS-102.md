@@ -5,7 +5,7 @@ slug: a-contract-is-wrong-claim-is-adjudicated
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-102-a-contract-is-wrong-claim-is-adjudicated
 depends_on: [HARNESS-101]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/harness/models.conf, .claude/tests/plan.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1875,9 +1875,9 @@ Verdict: Fix first.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-12T19:34:29Z
-    commit: 920b16a
-    tree:   fdb799455e0b765cc82e4ee90a650cd84a79453a
+    run:    2026-11-12T21:47:20Z
+    commit: 4c8a597
+    tree:   fcc43cd5c610709fd98bfdfde38e1f43a1c09cda
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1938,3 +1938,4 @@ Verdict: Fix first.
 - **Return 2 to RED verified by the orchestrator, 2026-11-12.** `test-developer`, planned `opus`, resolved claude-opus-5-5, no override. Changed: `boundaries.test.sh` and this story only (C-4 step 2a amended in place with the hidden-head test and review 2 finding 2's remedy wording; R-3 red pasted; handoff "Return 2 (from GATES)"). `attest.sh check -- bash scripts/selftest.sh boundaries` `fresh` on tree `53e0c03`, exit 1, `boundaries: 664 passed, 15 failed`, log `20261112T202918Z.287245`: the 15 are exactly the new `HARNESS-102 R-3:` assertions (five fixtures, three each); 12 new twins green on arrival; `--fast` `fresh`, exit 0. Decisions accepted: the hidden-head test applies only when the section has a head outside comments and fences, so AC-5's headless FAIL (boundaries.test.sh:4066-4070) is unchanged; the fifth fixture (a closed fence quoting a head with no real twin) follows from review 2's fix as written. Review 2 finding 2 has no test; GREEN makes it from the amended C-4.
 - **GREEN after return 2, 2026-11-12** (`feature-developer`, planned `opus`, resolved claude-opus-5-5, no override). Changed: `scripts/check-boundaries.sh` block 3k only - `adj_scan` keeps a copy of the raw section and counts the visible heads it prints (`nh`); at the end, when `nh > 0`, every raw line matching C-1's head pattern whose id is not one of the visible heads sets `hid`, and `unreadable` is printed when `open`, `fence` or `hid` is set (C-4 step 2a as amended; with no visible head nothing new, so step 3's headless problem stays the refusal); the header comment says so; step 2a's message gains a sentence for the hidden-head case and its remedy now ends "or quote the opener together with its closer, or name it in words" (diff review 2, finding 2). All lines inside 3k; nothing above it moved. Floor `boundaries` 652 -> 679 in `floors.conf` (dated comment) and the `selftest.test.sh` mirror. Real-tree check of the new scan against HEAD's, over both sections of every story under `docs/backlog/stories/`: 176 non-empty sections, identical output for all, none `unreadable`. The attest records of the suite and `--fast` are in the GREEN report to the orchestrator.
 - **Return 2, GREEN verified by the orchestrator, 2026-11-12.** `feature-developer`, planned `opus`, resolved claude-opus-5-5. Changed: block 3k of `scripts/check-boundaries.sh` only (the hidden-head test in `adj_scan`, conditional on a visible head; step 2a's message with review 2 finding 2's remedy), and of `.claude/tests/` only the boundaries floor (652→679) and its mirror. `attest.sh check -- bash scripts/selftest.sh boundaries new-story dispatch procedure` `fresh` on tree `dd90ad5`, exit 0, `4 harness suite(s) passed.` (679/79/205/183), log `20261112T211655Z.348227`; `--fast` `fresh`, exit 0. Accepted limit: a head-shaped line wholly inside a one-line comment (`<!-- ### R-5 -->`) does not trip the hidden-head test; it is invisible when rendered too, so it hides no visible entry.
+- **Return 2, GATES, 2026-11-12.** Full run by the orchestrator directly (2 s, no gate configured). `attest.sh check -- bash scripts/gates.sh` `fresh`, exit 0, log `20261112T214719Z.406244`. No GATES-owned deferred verification is new in this return; R-3's red was watched against the old block in RED.
