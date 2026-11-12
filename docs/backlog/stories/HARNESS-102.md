@@ -1871,6 +1871,54 @@ Verdict: Fix first.
 
 **Orchestrator (2026-11-12):** both followed as labelled; `classify.sh` calls `scripts/check-boundaries.sh` and `.claude/tests/boundaries.test.sh` `harness`, so the labels decide. Finding 1 returns the story to RED (`## Regressions` R-3); finding 2 is made by the GREEN that follows.
 
+### Review 3 — the fix of the fix, git diff ad4c303 HEAD (503acc3, 4c8a597, f6e94d9) (resolved claude-fable-5-2)
+
+A fresh `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved claude-fable-5-2, no override. It changed no file in the repository and ran neither the self-test nor `gates.sh`. Scratch copies of `section`, `strip_comments`, `has_content` and `adj_scan`, extracted with `sed` from `scripts/check-boundaries.sh` at HEAD, were run in its scratchpad.
+
+What this change does: `adj_scan` now also prints `unreadable` when the section has at least one entry head outside comments and fences and some raw line shaped like a head names an id that is none of those heads; step 2a's message describes the new cause and replaces the remedy that did not work; 27 assertions (R-3) are added to `boundaries.test.sh`, and the `boundaries` floor goes 652 → 679 in both records.
+
+Checked: the whole diff of the three commits; block 3k line by line against C-1 and C-4 as amended; the R-3 fixtures and twins; 14 hiding candidates, 10 remedy inputs and every story's two sections through the extracted scan.
+
+Review 2's findings: **1 fixed as a class**, **2 fixed**, with one gap in the new wording (finding 1 below).
+
+1. **The class is closed.** The new test reads every raw line, so it does not depend on how the line was hidden; a head escapes it only if its raw line does not match the head pattern, and such a line is no head under C-1 hidden or not. Each candidate had a recorded `### R-1` first; what the scan printed after `head R-1` / `rec R-1 fable`:
+
+   | Candidate | Scan output after R-1's two lines |
+   |---|---|
+   | two one-line tilde fences around a new `### R-2` | `unreadable` |
+   | backtick opener, tilde closer around `### R-2` | `unreadable` |
+   | fences indented five spaces around `### R-2` | `unreadable` |
+   | two one-line fences around `- **R-2 (new)**` | `unreadable` |
+   | hidden `### R-01` and `- **AM-2` in `## Regressions` | `unreadable` |
+   | CRLF line endings, fenced `### R-2` | `unreadable` |
+   | a blockquoted fence, then a real fence around `### R-3` | `unreadable` |
+   | multi-line complete comment holding `### R-5` | `unreadable` |
+   | record hidden in a fence, head `### R-2` visible | `head R-2`, no `rec` (step 4 refuses it) |
+   | quoted opener, then a line `--> ### R-2 (new)` | nothing more (not a head in C-1 or in rendered Markdown) |
+   | fenced `### R-1 (a different, new claim)`, repeating the visible id | nothing more (C-5's stated limit; the same text unfenced is not judged either) |
+
+2. **The condition is sound.** Step 2a is reached only when the section has content and differs from the base; with no visible head the scan prints no `head` line, so step 3 refuses. Reproduced: prose plus a fenced `### R-1 (new)` prints nothing, step 3's headless FAIL; the R-3 twin pins it.
+3. **No existing section is refused.** 102 story files, 204 sections, 45 with content, 17 with heads: `unreadable` for none. HARNESS-102's own `## Regressions` scans `head R-1, rec R-1 fable, head R-2, rec R-2 fable, head R-3, rec R-3 fable`. The `new-story.sh` template comments indent their example lines five spaces, so a new story cannot trip the test.
+4. **The four listed remedies each clear the cause they are for** (quote the opener with its closer, name it in words, close the comment, close the fence). The new third cause has no listed remedy: finding 1.
+5. **Neither accepted limit is a finding.** A one-line complete comment holding a head is not rendered and AC-4 says text inside a comment is nothing; a fenced example naming an id that exists nowhere outside has fixture (a)'s shape and fails closed, and no real section does it today.
+
+**Nice to have:**
+
+1. **The refusal names the hidden-head cause but gives no remedy for it** (`scripts/check-boundaries.sh:1230`)
+   - **What this is:** step 2a's message, which now lists three causes and ends "Close the comment, close the fence, or quote the opener together with its closer, or name it in words."
+   - **Problem:** all four remedies are for the first two causes. Reproduced: recorded `### R-1`, then a closed three-line tilde fence holding `### R-3 (the next one)` (fixture (e)) prints `unreadable`; there is no comment to close, the fence is closed, no opener to quote.
+   - **Fix:** one clause: for a head-shaped line, move the entry's head outside the comment or fence, or, if it is only an example, indent it four spaces or quote it inline; write a fence's markers on lines of their own. Verified: fixture (e)'s line indented four spaces, or as inline code, scans with no `unreadable`. No test pins the clause.
+   - **If we skip it:** an author with a legitimate fenced example works the remedy out from the description of the cause, which is accurate.
+   - **Route:** GATES
+
+**Limits seen, judged: no finding.** A quoted opener-and-closer pair already in the base copy, with a head added between them, leaves the comment-stripped text identical, so step 2 says nothing; it needs a story whose section has content on `main` while still in flight, which this loop does not produce. A head misspelled outside C-1's grammar (`###  R-2`, two spaces) is not a head; C-1 as planned, a story of its own if ever worth closing.
+
+Not checked: a real mawk (the new lines use only `split`, `match`, `in`, `substr`); a full `check-boundaries.sh` run on this branch; the boundaries suite not re-run (679 from the GREEN and GATES records).
+
+Verdict: Ship.
+
+**Orchestrator (2026-11-12):** verdict Ship, so GATES → REVIEW goes on. The one finding is Nice to have, routed GATES, and is deferred rather than made here: making it changes the tree and restarts these steps with a fourth review, for a message clause whose cause description is already accurate. It is offered to the user as a follow-up. Neither limit is acted on.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
