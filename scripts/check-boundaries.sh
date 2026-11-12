@@ -1158,11 +1158,15 @@ fi
 # `unreadable` when the section cannot be read to its end (C-4 step 2a): a
 # comment opener with no closer after it, or, comments removed, an odd number
 # of fence lines - a line that opens and closes a fence on one line is read as
-# an opener, so it counts as one.
+# an opener, so it counts as one. Also `unreadable` when the section has a head
+# outside comments and fences and some line of the raw section shaped like a
+# head names an id that is none of those heads: a stray pair (two one-line
+# fences, a quoted opener and a later closer) balances both counts and hides
+# what lies between. With no head at all, step 3's headless problem refuses it.
 adj_scan() {
   awk -v p="$2" '{ s = s $0 "\n" }
     END {
-      open = 0
+      open = 0; raw = s; nh = 0
       while ((i = index(s, "<!--")) > 0) {
         r = substr(s, i); j = index(r, "-->")
         if (j == 0) { s = substr(s, 1, i - 1); open = 1; break }
@@ -1178,7 +1182,7 @@ adj_scan() {
         if (fence) continue
         if (l ~ hre) {
           match(l, p "-[0-9]+"); id = substr(l, RSTART, RLENGTH)
-          if (!(id in H)) { H[id] = 1; print "head " id }
+          if (!(id in H)) { H[id] = 1; nh++; print "head " id }
         }
         if (match(l, rre)) {
           head = substr(l, 1, RLENGTH); rest = substr(l, RLENGTH + 1)
@@ -1189,7 +1193,16 @@ adj_scan() {
           if (who != "" && !(id in R)) { R[id] = 1; print "rec " id " " who }
         }
       }
-      if (open || fence) print "unreadable"
+      hid = 0
+      if (nh > 0) {
+        n = split(raw, L, "\n")
+        for (k = 1; k <= n; k++)
+          if (L[k] ~ hre) {
+            match(L[k], p "-[0-9]+")
+            if (!(substr(L[k], RSTART, RLENGTH) in H)) hid = 1
+          }
+      }
+      if (open || fence || hid) print "unreadable"
     }' "$1"
 }
 adj_dir="$ROOT/.claude/state/check-boundaries"
@@ -1214,7 +1227,7 @@ for adj_sec in Regressions Amendments; do
   [ "$adj_a" = "$adj_b" ] && continue                                    # step 2
   adj_scan "$adj_cur" "$adj_p" > "$adj_cs"
   if grep -qx unreadable "$adj_cs"; then                                 # step 2a
-    problem "story $sid: ## $adj_sec is unreadable: it holds an HTML comment opener (\`<!--\`) with no closer after it, or it ends inside a fenced block (an odd number of lines beginning with three backticks or three tildes; a line that opens and closes a fence on the same line counts as an opener). Nothing after that point can be judged, so an entry there could pass unadjudicated. Close the comment, close the fence, or put the quoted opener in a fenced block of its own."
+    problem "story $sid: ## $adj_sec is unreadable: it holds an HTML comment opener (\`<!--\`) with no closer after it, or it ends inside a fenced block (an odd number of lines beginning with three backticks or three tildes; a line that opens and closes a fence on the same line counts as an opener). Or a line shaped like an entry head sits inside a comment or a fence and names an id that is no head outside them: a pair of stray lines (two one-line fences, or a quoted opener and a later closer) hides what lies between. Nothing hidden can be judged, so an entry there could pass unadjudicated. Close the comment, close the fence, or quote the opener together with its closer, or name it in words."
     continue
   fi
   adj_scan "$adj_old" "$adj_p" > "$adj_os"
