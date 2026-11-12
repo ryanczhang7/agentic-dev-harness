@@ -5,7 +5,7 @@ slug: a-contract-is-wrong-claim-is-adjudicated
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-102-a-contract-is-wrong-claim-is-adjudicated
 depends_on: [HARNESS-101]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/harness/models.conf, .claude/tests/plan.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1663,9 +1663,9 @@ Verdict: Fix first.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-12T17:15:48Z
-    commit: 41c0f9a
-    tree:   d30611bde389021beae1436d14581fc8a205570b
+    run:    2026-11-12T19:34:29Z
+    commit: 920b16a
+    tree:   fdb799455e0b765cc82e4ee90a650cd84a79453a
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1722,3 +1722,4 @@ Verdict: Fix first.
 - **Return 1 to RED verified by the orchestrator, 2026-11-12.** `test-developer`, planned `opus`, resolved claude-opus-5-5. Changed: `boundaries.test.sh` and this story only (C-1, C-4 amended in place; R-1/R-2 red pasted; handoff "Return 1"). `attest.sh check -- bash scripts/selftest.sh boundaries` `fresh`, exit 1, `boundaries: 632 passed, 20 failed`, log `20261112T180754Z.11317`: the 20 are exactly the new `HARNESS-102 R-1:`/`R-2:` assertions; `--fast` `fresh`, exit 0. Known limit, not pinned: an unclosed comment opener that is the section's first content leaves nothing outside comments, so step 1 says nothing (AC-4's "only comments" case); markdown renders that section empty too.
 - **GREEN after return 1, 2026-11-12** (`feature-developer`, planned `opus`, resolved claude-opus-5-5, no override). Changed: `scripts/check-boundaries.sh` block 3k only (C-4 step 2a: `adj_scan` sets a flag where a comment opener has no closer and prints a last line `unreadable` when that flag or `fence` is set at the end; after the working tree's scan, one `problem` naming `$sid`, `## <section>` and `unreadable`, then `continue`; the amended C-1 head regex, interval-free, `^ ? ? ?((####?#?#? |- )([*][*])?|[*][*])`; the header comment's head pattern updated to match; all lines appended inside 3k, nothing above it moved), `scripts/new-story.sh` (diff review finding 2: both template comments say the judgement is never the orchestrator's, and that an entry following a diff-review or PR-feedback finding routed RED or AMEND carries a record the orchestrator writes, naming the round and finding, with the record line shown), `.claude/commands/advance-story.md` (finding 3: one sentence in the first bullet of "Returning to RED from GREEN or GATES") and the same sentence in `complete-story.md`'s "A return to RED ends with pasted red" bullet. Floor `boundaries` 621 -> 652 in `floors.conf` (dated comment) and the `selftest.test.sh` mirror. Real-tree check of the new scan against HEAD's, over both sections of every story under `docs/backlog/stories/`: identical output for all 17 sections that carry a head, none `unreadable`, no head lost to the prefix requirement.
 - **Return 1, GREEN verified by the orchestrator, 2026-11-12.** `feature-developer`, planned `opus`, resolved claude-opus-5-5. Diff review findings 1-4 made (block 3k step 2a and the C-1 head prefix; `new-story.sh` comments; the return-to-RED bullet in `advance-story.md`, and the same sentence in `complete-story.md`'s return bullet). Of `.claude/tests/`, only the boundaries floor (621→652) and its mirror. `attest.sh check -- bash scripts/selftest.sh boundaries new-story dispatch procedure` `fresh` on tree `93d529f`, exit 0, `4 harness suite(s) passed.` (652/79/205/183), log `20261112T190444Z.137793`; `--fast` `fresh`, exit 0. Step 2a's watched red is RED return 1's 20 failures against the old block; no further defect-put-back run was made.
+- **Return 1, GATES, 2026-11-12.** The full run was made by the orchestrator directly, not dispatched: it takes 2 s here because no gate is configured. `attest.sh check -- bash scripts/gates.sh` `fresh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, log `20261112T193428Z.219900`. No GATES-owned deferred verification is new in this return.
