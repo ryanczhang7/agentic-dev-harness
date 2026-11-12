@@ -4,8 +4,8 @@ title: The unreadable-section refusal says how to fix a hidden entry head
 slug: the-unreadable-section-refusal-says-how
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-103-the-unreadable-section-refusal-says-how
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -236,6 +236,49 @@ the step 2a message line.
 
       bash scripts/mutate.sh scripts/check-boundaries.sh 's/hre = "^ ? ? ?((/hre = "((/' -- bash scripts/selftest.sh boundaries
 
+  **DV-2 result (RED, 2026-11-12, test-developer on claude-opus-5-5).** Run
+  exactly as above, after the AC-1 and AC-2 cases were written. It changed one
+  line, line 1175. The suite reports 5 failed: the AC-1 assertion (red anyway in
+  RED) and all four assertions from the two AC-2 `k_readable` calls. Fixture
+  (a) scanned unreadable (`1 1 non-zero`) and fixture (b) gave one FAIL that is
+  not the unreadable one (`0 1 non-zero`), which matches the scan the story
+  predicted. One difference from the story's expectation: no other `boundaries`
+  assertion failed under this mutation, where the story said many would. That
+  makes the earning narrower, not weaker. `mutate.sh` restored the file and
+  checked it byte for byte, and `mutate.sh --check` reports no stranded
+  mutation. Both AC-2 names start `HARNESS-102 HARNESS-103 AC-2` because
+  `k_readable` adds the `HARNESS-102` prefix to the tag it is given. Excerpt
+  of the full log (the mutation header, the block-3k failures, the summary and
+  the restore):
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/hre = "^ ? ? ?((/hre = "((/) ===
+  1175 -       hre = "^ ? ? ?((####?#?#? |- )([*][*])?|[*][*])" p "-[0-9]+([^0-9]|$)"
+  1175 +       hre = "((####?#?#? |- )([*][*])?|[*][*])" p "-[0-9]+([^0-9]|$)"
+
+  HARNESS-102: a new ## Regressions or ## Amendments entry carries an adjudication record (block 3k)
+    FAIL HARNESS-103 AC-1: a closed fence holding an example head for the next id: exactly one FAIL, it says ## Regressions is unreadable, and it ends with the kept remedy sentence followed by the remedy for a hidden head
+         expected: 1 1 1
+         actual:   1 1 0
+    FAIL HARNESS-102 HARNESS-103 AC-2: twin: the example head in the closed fence indented four spaces, as the message advises: the ok line for ## Regressions
+         expected: 1
+         actual:   0
+    FAIL HARNESS-102 HARNESS-103 AC-2: twin: the example head in the closed fence indented four spaces, as the message advises: no unreadable FAIL, no FAIL at all, exit 0
+         expected: 0 0 0
+         actual:   1 1 non-zero
+    FAIL HARNESS-102 HARNESS-103 AC-2: twin: the example head quoted inline in a sentence of prose with no fence, as the message advises: the ok line for ## Regressions
+         expected: 1
+         actual:   0
+    FAIL HARNESS-102 HARNESS-103 AC-2: twin: the example head quoted inline in a sentence of prose with no fence, as the message advises: no unreadable FAIL, no FAIL at all, exit 0
+         expected: 0 0 0
+         actual:   0 1 non-zero
+
+boundaries: 680 passed, 5 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/wizardly-nash-14c13c/.claude/state/mutations/scripts_check-boundaries.sh.20261112T233041Z.625941.bak) ===
+  1175:       hre = "^ ? ? ?((####?#?#? |- )([*][*])?|[*][*])" p "-[0-9]+([^0-9]|$)"
+```
+
 Not owed, and stated so that nobody adds one: a probe against a real line of
 the tree. This story changes the text of a refusal, not the rule that decides
 what is refused (C-2); HARNESS-102's own DV-2 probed that rule against a real
@@ -335,28 +378,127 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+All cases are at one level: integration. Each builds a fixture repository,
+commits a spike story at REVIEW on its own branch, and runs the real
+`scripts/check-boundaries.sh` over it, using the existing block-3k harness in
+`.claude/tests/boundaries.test.sh`. They sit inside the HARNESS-102 block-3k
+describe, after case (f) and before main is put back (C-3). The fixture story
+id is T-118, which was unused before this story.
+
+The head-shaped line and the tilde fence marker are held in the variables
+`K_HID` and `K_TILDE`. The full expected remedy text (C-1, both sentences) is
+held in `K_REMEDY`. No assertion name contains a head-shaped string, a comment
+marker or a fence marker (C-4).
+
+| Assertion | What it pins | AC |
+|---|---|---|
+| `HARNESS-103 AC-1: a closed fence holding an example head for the next id: exactly one FAIL, ...` | one `assert_eq` with three counts, expected `1 1 1`: `k_fails` (every FAIL in the run), `k_unreadable Regressions`, and `k_ends_remedy` (FAIL lines whose END is exactly `K_REMEDY`; an awk fixed-string suffix compare, never a floating grep) | AC-1 |
+| `HARNESS-103 AC-1: and the run exits non-zero` | `k_rc` is `non-zero`. Green on arrival, because the section is already refused today. Kept because AC-1 names the exit status. | AC-1 |
+| `HARNESS-102 HARNESS-103 AC-2: twin: the example head in the closed fence indented four spaces, ...` (two assertions from `k_readable`) | the ok line for `## Regressions`; and `0 0 0` for unreadable FAILs, all FAILs and the exit status | AC-2 (a) |
+| `HARNESS-102 HARNESS-103 AC-2: twin: the example head quoted inline in a sentence of prose with no fence, ...` (two assertions from `k_readable`) | the same two checks | AC-2 (b) |
+
+DV-1 is the control for AC-1 and belongs to GATES. DV-2 is the control for
+AC-2; RED ran it, and its result is under `## Deferred verifications`.
 
 ## Handoff: RED -> GREEN
 
-<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
-     to the Feature Developer, whose context is fresh. Must contain:
-       * the exact command that runs the new tests
-       * the failure output, and why it is the RIGHT failure
-       * every file touched, and which AC each test covers
-       * the EXPORT SHAPE the tests already pin: every module they import, the
-         exact exported names and signatures, and the types the assertions
-         destructure. Not a suggestion - a test already imports them, so a
-         wrong guess is a compile error. Say what the tests do NOT constrain
-         too, so it stays the implementer's choice.
-       * any test that passed on arrival, and the probe or negative control
-         that earns it
-       * the EXPECTED VALUE of every negative control, as a table: threshold,
-         candidate range, and the number the control measured. In RED the
-         suite fails at import, so no assertion in it has run - the controls
-         are claims until GREEN confirms them against the shipped module
-       * anything discovered that changes the approach -->
+**Command.** `bash scripts/selftest.sh boundaries`. It takes about 27 minutes
+on this host (1607 s, measured locally).
+
+**Attested runs** (machine-local records, tree `7b7ef56f9a9dc1122ca908d61e50c511be5d026b`):
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh boundaries
+      exit: 1   last: 1 of 1 harness suite(s) FAILED.
+      log:  .claude/state/attest-logs/20261112T230253Z.564508.log
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+      exit: 0   last: All required gates passed (0 ran, 5 unconfigured, 0 known).
+      log:  .claude/state/attest-logs/20261112T233031Z.625754.log
+
+**The failure, verbatim from the log.** This is the assertion's own line plus
+the summary. The step 2a FAIL line is deliberately not pasted (C-4).
+
+```
+  HARNESS-102: a new ## Regressions or ## Amendments entry carries an adjudication record (block 3k)
+    FAIL HARNESS-103 AC-1: a closed fence holding an example head for the next id: exactly one FAIL, it says ## Regressions is unreadable, and it ends with the kept remedy sentence followed by the remedy for a hidden head
+         expected: 1 1 1
+         actual:   1 1 0
+
+boundaries: 684 passed, 1 failed
+
+assertion floors: all 1 suite(s) met their declared floor (684 assertions executed, 679 declared).
+1 of 1 harness suite(s) FAILED.
+```
+
+**Why this is the right failure.** The fixture is refused today, exactly once
+and as unreadable (the first two counts are already 1). The only count that is
+wrong is the third: no FAIL line ends with the C-1 text, because the hidden-head
+sentence is not there yet. The suite has exactly one failure, and it is this
+assertion. Nothing else broke.
+
+**The floor count.** The floors line above says 684 executed, but that matches
+the passed count, not passed plus failed. In the DV-2 run it said 680, again
+equal to the passed count. So the floor line appears to count passes only.
+The suite holds 685 assertions: 684 + 1 here, 680 + 5 under DV-2. RED added 6 assertions: 2 for AC-1
+(because the exit-status assertion was kept) and 4 for AC-2. That is one more
+than C-5's "684 if RED adds nothing else". GREEN should take the number it
+measures. Expect 685 executed, and the floor in `floors.conf` and in
+`selftest.test.sh` should go from 679 to that number.
+
+**Files touched.**
+- `.claude/tests/boundaries.test.sh`: the new cases only, inserted after case (f).
+- `docs/backlog/stories/HARNESS-103.md`: `## Test plan`, this handoff, and the
+  DV-2 result.
+
+**Shape the tests pin.** There is no module or export; the interface is the
+output of `scripts/check-boundaries.sh`. For the AC-1 fixture, the tests pin:
+- exactly one line beginning `FAIL  ` in the whole run;
+- that line contains `T-118`, `## Regressions` and `unreadable`;
+- that line ENDS with exactly the text below, with no trailing space or
+  character after the final period:
+
+      Close the comment, close the fence, or quote the opener together with its closer, or name it in words. For a hidden head: move the entry's head outside the comment or fence, or, if it is only an example, indent it four spaces or quote it inline; and write a fence's markers on lines of their own.
+
+  That is C-1, read out unchanged. It is one space after `in words.` and the
+  appended sentence, all inside the existing `problem` string;
+- a non-zero exit.
+
+For the two AC-2 fixtures, the tests pin the existing ok line
+`ok    ## Regressions: every new entry carries an adjudication record`, no FAIL
+line at all, and exit 0.
+
+**What the tests do not constrain.** Everything in the message before
+`Close the comment` (the cause text) is held only by the `unreadable` needle.
+They also do not check that the edit stays on line 1230. C-1 requires that
+for the sake of `sigpipe.test.sh`, and that suite, not these tests, catches a
+moved line.
+
+**Passed on arrival.** Five assertions:
+- the AC-1 exit-status assertion. It is green because the fixture is already
+  refused; the `k_fails` count in the main AC-1 assertion would catch the same
+  break;
+- the four AC-2 assertions. DV-2 earns them, and RED ran it: all four go red
+  under the anchor-removal mutation, and the file was restored byte for byte.
+  The output is under `## Deferred verifications`, DV-2.
+
+**Negative controls, expected values.** This suite does not fail at import, so
+the controls ran in RED. Only DV-1 could not run.
+
+| Control | Threshold | Expected | Measured |
+|---|---|---|---|
+| AC-1 assertion, without the new sentence (today's tree) | `1 1 1` | `1 1 0` | `1 1 0` (RED run, local) |
+| DV-1: the appended sentence deleted after GREEN | `1 1 1` | `1 1 0`, and `boundaries` reports exactly 1 failed | **not run by RED.** The sentence does not exist yet, so there is nothing to delete. Owner: GATES |
+| DV-2: head-pattern anchor removed, fixture (a) | `0 0 0`, ok line 1 | unreadable | `1 1 non-zero`, ok line 0 (local) |
+| DV-2: head-pattern anchor removed, fixture (b) | `0 0 0`, ok line 1 | a new unrecorded head, not unreadable | `0 1 non-zero`, ok line 0 (local) |
+
+**Timings.** Every timing here is from a local run; none comes from CI. The
+suite has no per-test timeout.
+
+**Findings that may change the approach.** None for the implementation. Two
+cosmetic points:
+- `k_readable` puts `HARNESS-102` before the tag it is given, so the AC-2
+  names read `HARNESS-102 HARNESS-103 AC-2: ...`. That is expected, not a bug.
+- DV-2 broke fewer assertions than the story predicted (only the five above).
+  This changes no assertion.
 
 ## Regressions
 
@@ -431,3 +573,4 @@ name, below the table.
 
 ## Notes
 
+- RED verified by the orchestrator (2026-11-12): `attest.sh check -- bash scripts/selftest.sh boundaries` was `fresh` (exit 1, tree 7b7ef56); its log holds exactly one FAIL, the HARNESS-103 AC-1 assertion (`1 1 0` against `1 1 1`). Not re-run. Test-developer resolved to claude-opus-5-5.
