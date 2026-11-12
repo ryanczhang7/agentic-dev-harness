@@ -64,7 +64,10 @@ approval between phases is exactly when they get quietly reordered:
   it, so it passes immediately and forever; the Test Developer earns it by
   mutating the specific behaviour it pins, watching that assertion fail,
   reverting, and pasting the output into `## Regressions`. `check-boundaries.sh`
-  refuses the PR otherwise. GREEN on re-entry may legitimately be a no-op you
+  refuses the PR otherwise. The entry is headed `R-<n>` and carries its
+  `**Adjudicated R-<n>:**` record; a return no review finding routed gets an
+  ADJUDICATE dispatch before the test changes, mechanical returns included,
+  as `/advance-story` says. GREEN on re-entry may legitimately be a no-op you
   verify yourself rather than delegate.
 - **GREEN confirms the negative-control values RED recorded**, not just that
   the control tests pass. RED could not run them: its suite failed at import.

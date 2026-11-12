@@ -437,7 +437,10 @@ narrower than it did the first time, because the implementation already exists
 and may well be correct:
 
 - Set the phase back to RED and say in `## Regressions` what is wrong with the
-  test, how it was found, and what it should assert instead.
+  test, how it was found, and what it should assert instead. The entry is
+  headed `R-<n>` and carries its `**Adjudicated R-<n>:**` record; a return no
+  review finding routed gets an ADJUDICATE dispatch before the test changes,
+  mechanical returns included.
 - The **test-developer**'s remit is the defective test and nothing else. Source
   is frozen again by the lock, which is correct — do not treat that as a signal
   to change phase.

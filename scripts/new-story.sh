@@ -152,10 +152,16 @@ cat >> "$file" <<'TEMPLATE'
      wants to stop failing, so it is judged by a fresh `fable` dispatch - a
      `lead-po` on the ADJUDICATE row of models.conf, on different inputs, not
      the claimant's code - and that dispatch writes the judgement and the
-     record line, never the orchestrator. Its being upheld does not replace
-     the user's approval; both go in the entry. A change the user asked for
-     unprompted is not a claim: `- **Adjudicated AM-<n>:** requested by the
-     user, <date>`. -->
+     record line; the judgement is never the orchestrator's. An entry that
+     follows a diff-review or PR-feedback finding routed RED or AMEND was
+     judged by that review, so the orchestrator writes its record, naming the
+     round and finding (or the PR-feedback item) and the model the review was
+     planned on and resolved to:
+       - **Adjudicated AM-<n>:** `fable` (resolved <name>), <date>, diff review round <r>, finding <f>
+     Its being upheld does not replace the user's approval; both go in the
+     entry. A change
+     the user asked for unprompted is not a claim: `- **Adjudicated AM-<n>:**
+     requested by the user, <date>`. -->
 
 ## Suppressions
 
@@ -242,9 +248,15 @@ cat >> "$file" <<'TEMPLATE'
      R-<n> (`### R-1 (the count test)`), and carrying its adjudication
      record - a line of its own, outside any comment or fence, written by
      the fresh `fable` dispatch (a `lead-po` on the ADJUDICATE row of
-     models.conf) that judged the claim the test is wrong, never by the
-     orchestrator; check-boundaries.sh refuses a new entry without one:
+     models.conf) that judged the claim the test is wrong; the judgement is
+     never the orchestrator's. check-boundaries.sh refuses a new entry
+     without one:
        - **Adjudicated R-<n>:** `fable` (resolved <name>), <date>, <what it reproduced>
+     A return that follows a diff-review or PR-feedback finding routed RED
+     or AMEND was judged by that review, so the orchestrator writes the
+     record, naming the round and finding (or the PR-feedback item) and the
+     model the review was planned on and resolved to:
+       - **Adjudicated R-<n>:** `fable` (resolved <name>), <date>, diff review round <r>, finding <f>
      Then:
        * which test, what it asserted, and what was wrong with it
        * how the defect was found

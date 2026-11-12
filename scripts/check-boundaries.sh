@@ -1142,7 +1142,7 @@ fi
 # The grammar is the story's Contract (C-1, C-2), read after HTML comments are
 # removed and with lines inside a fence skipped:
 #
-#   entry head  ^ {0,3}(#{3,6} |- )?(\*\*)?(R|AM)-[0-9]+([^0-9]|$)
+#   entry head  ^ {0,3}((#{3,6} |- )(\*\*)?|\*\*)(R|AM)-[0-9]+([^0-9]|$)
 #               R- in ## Regressions only, AM- in ## Amendments only
 #   record      ^ {0,3}(- )?\*\*Adjudicated <id>:\*\* <who>
 #               <who> = `<opus|fable|sonnet|haiku>` (resolved <name>)
@@ -1154,16 +1154,21 @@ fi
 # through the scratch file $cp, never a here-string or a pipe (3d says why).
 #
 # adj_scan <section-file> <R|AM>   One line per entry head, `head <id>`, and one
-# per well-formed record, `rec <id> <model|user>`; each id once.
+# per well-formed record, `rec <id> <model|user>`; each id once. Last, the line
+# `unreadable` when the section cannot be read to its end (C-4 step 2a): a
+# comment opener with no closer after it, or, comments removed, an odd number
+# of fence lines - a line that opens and closes a fence on one line is read as
+# an opener, so it counts as one.
 adj_scan() {
   awk -v p="$2" '{ s = s $0 "\n" }
     END {
+      open = 0
       while ((i = index(s, "<!--")) > 0) {
         r = substr(s, i); j = index(r, "-->")
-        if (j == 0) { s = substr(s, 1, i - 1); break }
+        if (j == 0) { s = substr(s, 1, i - 1); open = 1; break }
         s = substr(s, 1, i - 1) substr(r, j + 3)
       }
-      hre = "^ ? ? ?(####?#?#? |- )?([*][*])?" p "-[0-9]+([^0-9]|$)"
+      hre = "^ ? ? ?((####?#?#? |- )([*][*])?|[*][*])" p "-[0-9]+([^0-9]|$)"
       rre = "^ ? ? ?(- )?[*][*]Adjudicated " p "-[0-9]+:[*][*] "
       mre = "^`(opus|fable|sonnet|haiku)` [(]resolved [A-Za-z0-9._-]+[)]"
       n = split(s, L, "\n"); fence = 0
@@ -1184,6 +1189,7 @@ adj_scan() {
           if (who != "" && !(id in R)) { R[id] = 1; print "rec " id " " who }
         }
       }
+      if (open || fence) print "unreadable"
     }' "$1"
 }
 adj_dir="$ROOT/.claude/state/check-boundaries"
@@ -1207,6 +1213,10 @@ for adj_sec in Regressions Amendments; do
   adj_b="$(strip_comments < "$adj_old" | sed 's/[[:space:]]*$//')"
   [ "$adj_a" = "$adj_b" ] && continue                                    # step 2
   adj_scan "$adj_cur" "$adj_p" > "$adj_cs"
+  if grep -qx unreadable "$adj_cs"; then                                 # step 2a
+    problem "story $sid: ## $adj_sec is unreadable: it holds an HTML comment opener (\`<!--\`) with no closer after it, or it ends inside a fenced block (an odd number of lines beginning with three backticks or three tildes; a line that opens and closes a fence on the same line counts as an opener). Nothing after that point can be judged, so an entry there could pass unadjudicated. Close the comment, close the fence, or put the quoted opener in a fenced block of its own."
+    continue
+  fi
   adj_scan "$adj_old" "$adj_p" > "$adj_os"
   adj_heads="$(awk '$1 == "head" { print $2 }' "$adj_cs")"
   if [ -z "$adj_heads" ]; then                                           # step 3
