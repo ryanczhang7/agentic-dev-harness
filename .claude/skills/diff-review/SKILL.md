@@ -164,6 +164,14 @@ decides nothing.
 - **A finding that says an acceptance criterion is wrong** (`AMEND`) is an
   `## Amendments` question for the user. Nobody resolves it by editing the
   criterion.
+- **The record.** A `RED` or `AMEND` finding has already been adjudicated by
+  this review, a fresh dispatch on the DIFF-REVIEW row, so the
+  `## Regressions` or `## Amendments` entry that follows it needs no second
+  dispatch. The orchestrator writes its record line in the same section,
+  naming the review round and finding number and the model the review was
+  planned on and resolved to, as `## Model guidance` records them:
+  ``- **Adjudicated R-1:** `fable` (resolved <name>), <date>, diff review round 1, finding 2.``
+  `check-boundaries.sh` refuses a new entry without one.
 - **A Should-fix the orchestrator declines** is recorded in `## Diff review`
   with a one-line reason, never dropped silently.
 - **A Nice-to-have** is listed, and that is all.

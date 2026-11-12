@@ -86,8 +86,8 @@ split of 2026-11-11: `/advance-story`, `/complete-story` and `/security-audit`
 declare `opus`, as do `test-developer`, `feature-developer` and
 `mutation-tester`; the planning commands, `lead-po` and `lead-designer` declare
 `fable`. Inside a story `fable` is reached by dispatch, on the PLANNED,
-DIFF-REVIEW and REVIEW rows: a `lead-po` plans, reviews the whole diff, and
-reads PR feedback against the contract. The reason is usage: an orchestrating
+DIFF-REVIEW, REVIEW and ADJUDICATE rows: a `lead-po` plans, reviews the diff,
+reads PR feedback, judges a contract claim. The reason is usage: an orchestrating
 session re-sends its whole context every turn and mostly runs a script, checks
 a record and dispatches, so that high-volume work moves to `opus` and `fable`
 keeps the highest-leverage judgement (release 78 had the orchestrating
@@ -106,7 +106,7 @@ name, in the story.**
 **The per-phase plan is `.claude/harness/models.conf`, not a judgement made
 fresh each story.** `bash scripts/plan.sh write <id>` renders it into the
 story's `## Model guidance` at the end of PLANNED, once the contract exists. Its
-rows split by kind of work, as above: the PLANNED, DIFF-REVIEW and REVIEW rows
+rows split by kind of work, as above: PLANNED, DIFF-REVIEW, REVIEW, ADJUDICATE
 on `fable`, each a `lead-po` dispatch, every phase that writes or tests code on
 `opus`, with no row moving with the story. GREEN and GATES never move to a
 model judged weaker at the work, because a weaker model's failure there is
@@ -275,7 +275,7 @@ inspect.
   change under `## Amendments` - which AC, what it said, what it says now, who
   approved it and why. `check-boundaries.sh` fails a PR whose criteria differ
   from their last committed PLANNED state (else the base branch) without an
-  entry there.
+  entry there, and a new entry without its `**Adjudicated` record (block 3k).
 - `## Gate results` is written by `scripts/gates.sh`, never by hand. It carries
   the commit and a hash of the code the gates ran against, and
   `check-boundaries.sh` refuses a PR where that hash does not match the code

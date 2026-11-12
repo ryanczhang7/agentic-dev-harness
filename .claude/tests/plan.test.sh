@@ -109,14 +109,20 @@ GATES feature-developer opus
 DIFF-REVIEW lead-po fable
 REVIEW lead-po fable
 SCAFFOLD lead-po opus
+ADJUDICATE lead-po fable
 ROWS
 )"
 # HARNESS-101 (AC-2, C-2): the seventh row is the diff review that opens
 # GATES -> REVIEW, on `lead-po` / `fable`. The sorted set above cannot see
 # WHERE it sits, so the order of the phase column, unsorted, is compared whole
 # as well: after GATES, before REVIEW, and the other six in today's order.
+# HARNESS-102 (AC-2, C-6): the eighth row is ADJUDICATE, on `lead-po` /
+# `fable` - the fresh dispatch that judges a claim that the contract is wrong.
+# It can be needed in any phase, so it goes LAST, after SCAFFOLD, and the seven
+# rows before it do not move. The sorted set above gains the row; the order
+# below gains it at the end and nowhere else.
 ship_order() { ship models "$1" | awk -F'\t' 'NF >= 4 { printf "%s%s", sep, $1; sep = " " } END { print "" }'; }
-SHIP_ORDER='PLANNED RED GREEN GATES DIFF-REVIEW REVIEW SCAFFOLD'
+SHIP_ORDER='PLANNED RED GREEN GATES DIFF-REVIEW REVIEW SCAFFOLD ADJUDICATE'
 ship_story() { # <id> <type> <contract line, or empty>
   mkdir -p "$SHIP/docs/backlog/stories"
   printf -- '---\nid: %s\ntitle: Fixture story\nslug: fixture\ntype: %s\nstatus: todo\nphase: PLANNED\nbranch: story/%s-fixture\n---\n\n## Acceptance criteria\n\n- **AC-1** - it works.\n\n## Contract\n\n%s\n\n## Model guidance\n\n## Notes\n' \
@@ -138,7 +144,7 @@ assert_eq "for a bootstrap story, the plan is the same" "$SHIP_EXPECTED" "$(ship
 
 # HARNESS-101 AC-2: where the DIFF-REVIEW row sits, for the same four shapes.
 order_got="$(for s in S-1 S-2 S-3 S-4; do printf '%s: %s\n' "$s" "$(ship_order "$s")"; done)"
-assert_eq "HARNESS-101 AC-2: the plan lists DIFF-REVIEW after GATES and before REVIEW, the other six in today's order, for all four story shapes" \
+assert_eq "HARNESS-101 AC-2, HARNESS-102 AC-2: the plan lists DIFF-REVIEW after GATES and before REVIEW, and ADJUDICATE last, after SCAFFOLD, the other six in today's order, for all four story shapes" \
 "S-1: $SHIP_ORDER
 S-2: $SHIP_ORDER
 S-3: $SHIP_ORDER
@@ -155,6 +161,18 @@ dr_why="${dr_line#"$dr_prefix"}"; dr_why="${dr_why% |}"
 if [ "${dr_line:0:${#dr_prefix}}" = "$dr_prefix" ] && [ -n "${dr_why//[[:space:]|]/}" ]; then dr_shape=row-with-reason; else dr_shape="not the row: [$dr_line]"; fi
 assert_eq "HARNESS-101 AC-2: plan.sh write puts exactly one \`| DIFF-REVIEW | \`lead-po\` | \`fable\` | <why> |\` row in ## Model guidance, with a reason" \
   "1 row-with-reason" "$dr_rows $dr_shape"
+
+# HARNESS-102 C-6: plan.sh is not changed, and renders a step row exactly like
+# a phase row, so the same write puts the ADJUDICATE row in the table too.
+# Same needle shape as the DIFF-REVIEW row above: anchored, first three cells
+# whole, a reason that is not blank.
+aj_rows="$(grep -c '^| ADJUDICATE |' "$SHIP/docs/backlog/stories/S-1.md" || true)"
+aj_line="$(grep '^| ADJUDICATE |' "$SHIP/docs/backlog/stories/S-1.md" | head -n 1)"
+aj_prefix='| ADJUDICATE | `lead-po` | `fable` | '
+aj_why="${aj_line#"$aj_prefix"}"; aj_why="${aj_why% |}"
+if [ "${aj_line:0:${#aj_prefix}}" = "$aj_prefix" ] && [ -n "${aj_why//[[:space:]|]/}" ]; then aj_shape=row-with-reason; else aj_shape="not the row: [$aj_line]"; fi
+assert_eq "HARNESS-102 C-6: plan.sh write puts exactly one \`| ADJUDICATE | \`lead-po\` | \`fable\` | <why> |\` row in ## Model guidance, with a reason" \
+  "1 row-with-reason" "$aj_rows $aj_shape"
 
 # The agents' own `model:` is what a dispatch gets when nobody passes the plan's
 # model - /audit-mutations, a designer review, a lead-po interview. It follows

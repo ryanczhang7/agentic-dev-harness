@@ -64,16 +64,27 @@ approval between phases is exactly when they get quietly reordered:
   it, so it passes immediately and forever; the Test Developer earns it by
   mutating the specific behaviour it pins, watching that assertion fail,
   reverting, and pasting the output into `## Regressions`. `check-boundaries.sh`
-  refuses the PR otherwise. GREEN on re-entry may legitimately be a no-op you
+  refuses the PR otherwise. The entry is headed `R-<n>` and carries its
+  `**Adjudicated R-<n>:**` record; a return no review finding routed gets an
+  ADJUDICATE dispatch before the test changes, mechanical returns included,
+  as `/advance-story` says. GREEN on re-entry may legitimately be a no-op you
   verify yourself rather than delegate.
 - **GREEN confirms the negative-control values RED recorded**, not just that
   the control tests pass. RED could not run them: its suite failed at import.
-- **A claim that the contract is wrong is reproduced before it is accepted.**
-  When a subagent reports that an acceptance criterion, a threshold or a frozen
-  test is wrong, verify it yourself on different inputs, without reusing the
-  subagent's code, and record the reproduction in the story. Running unattended
-  is exactly when this gets skipped, and it is the difference between a correct
-  escalation and a plausible excuse for not failing.
+- **A claim that the contract is wrong is adjudicated before it is accepted,
+  and not by you.** When a subagent reports that an acceptance criterion, a
+  threshold or a frozen test is wrong, dispatch a fresh `lead-po` on the
+  ADJUDICATE row of `models.conf` (the model from
+  `bash scripts/plan.sh models <id>`), as `/advance-story` says: it reproduces
+  the claim on different inputs, without reusing the claimant's code, and
+  answers upheld or rejected. An upheld claim's `## Regressions` or
+  `## Amendments` entry carries the record it writes,
+  ``**Adjudicated <id>:** `<model>` (resolved <name>), ...``; a rejected one
+  gets a line in `## Notes` and no entry. An entry that follows a diff-review
+  finding or a PR-feedback item routed `RED` or `AMEND` was adjudicated by that
+  dispatch, and its record names it. Running unattended is exactly when this
+  gets skipped, and it is the difference between a correct escalation and a
+  plausible excuse for not failing.
 - **A mutation table in the handoff is a claim until you run one.** When RED
   says the suite discriminates, run **one** mutation it predicts a count for —
   the one whose predicted catch is a single assertion — with
