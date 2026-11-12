@@ -4,8 +4,8 @@ title: A contract-is-wrong claim is adjudicated on fable, and the PR is refused 
 slug: a-contract-is-wrong-claim-is-adjudicated
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-102-a-contract-is-wrong-claim-is-adjudicated
 depends_on: [HARNESS-101]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/harness/models.conf, .claude/tests/plan.test.sh, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/lead-po.md, .claude/harness/rules.md, .claude/skills/diff-review/SKILL.md, scripts/new-story.sh, .claude/tests/new-story.test.sh, .claude/skills/story-authoring/SKILL.md, .claude/skills/story-authoring/reference/sections.md, .claude/tests/dispatch.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1988,3 +1988,4 @@ Verdict: Ship.
 - **Return 2, GREEN verified by the orchestrator, 2026-11-12.** `feature-developer`, planned `opus`, resolved claude-opus-5-5. Changed: block 3k of `scripts/check-boundaries.sh` only (the hidden-head test in `adj_scan`, conditional on a visible head; step 2a's message with review 2 finding 2's remedy), and of `.claude/tests/` only the boundaries floor (652→679) and its mirror. `attest.sh check -- bash scripts/selftest.sh boundaries new-story dispatch procedure` `fresh` on tree `dd90ad5`, exit 0, `4 harness suite(s) passed.` (679/79/205/183), log `20261112T211655Z.348227`; `--fast` `fresh`, exit 0. Accepted limit: a head-shaped line wholly inside a one-line comment (`<!-- ### R-5 -->`) does not trip the hidden-head test; it is invisible when rendered too, so it hides no visible entry.
 - **Return 2, GATES, 2026-11-12.** Full run by the orchestrator directly (2 s, no gate configured). `attest.sh check -- bash scripts/gates.sh` `fresh`, exit 0, log `20261112T214719Z.406244`. No GATES-owned deferred verification is new in this return; R-3's red was watched against the old block in RED.
 - **Self-test at GATES → REVIEW, 2026-11-12.** `selftest-needed: run` (17 harness paths); dispatched to a `feature-developer` (planned `opus`). `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `fresh` on tree `dd90ad5`, exit 0, `27 harness suite(s) passed.`, 2727 s, log `20261112T215234Z.408554`; floors met (4421 executed, 4420 declared). Deferred to a follow-up: diff review 3's Nice-to-have finding 1 (step 2a's message gives no remedy for the hidden-head cause).
+- **DONE, 2026-11-12.** Merged as #192 (4adc9de). PR CI: `boundaries` pass 6 s, `gates` pass 5m31s, far inside the 45-minute job limit.
