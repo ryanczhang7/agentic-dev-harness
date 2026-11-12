@@ -4201,6 +4201,102 @@ for real in HARNESS-089 HARNESS-095 HARNESS-099; do
     "1 1 0 0 non-zero" "$(k_fail Regressions R-1) $(k_fail Amendments AM-1) $(k_headless Regressions R) $(k_headless Amendments AM) $(k_rc)"
 done
 
+# --- Return 1 (R-1, diff review 1 finding 1): a section 3k cannot read -------
+# adj_scan drops everything after a comment opener that never closes, and a
+# line that opens AND closes a fence on the same line toggles the fence open
+# for the rest of the section. Either way an entry after that point is never
+# judged, and the run says ok. The fix fails closed (C-4 step 2a, amended in
+# RED): a section with new content that holds an unclosed comment opener, or
+# that ends inside a fence, gets exactly one FAIL naming the story, the section
+# and the word `unreadable`, and nothing else about that section - no FAIL for
+# an id (the scan cannot be trusted either way), no ok line.
+#
+# Needles: k_unreadable counts FAIL lines naming the story, `## <sec>` and
+# `unreadable`; k_fails counts every FAIL line in the run, so "exactly one"
+# means one in the whole output. The opener is held in a variable only so that
+# no assertion NAME below carries it: a name is pasted into the story's own
+# ## Regressions, which block 3k reads.
+k_unreadable() { awk -v s="$KSID" -v h="## $1" 'index($0, "FAIL  ") == 1 && index($0, s) && index($0, h) && index($0, "unreadable") { n++ } END { print n + 0 }' <<< "$out"; }
+k_fails()      { awk 'index($0, "FAIL  ") == 1 { n++ } END { print n + 0 }' <<< "$out"; }
+K_OPEN='<!--'
+K_STRAY_C="The review quoted \`$K_OPEN\` in its finding, and nothing after it closes it."
+K_STRAY_F='```bash x```'
+# k_r1r2 <stray-line-or-empty> <R-2 record-or-empty>   ## Regressions: R-1 with
+# its result and record, then the stray line, then a new R-2 with its result.
+k_r1r2() {
+  k_reg '### R-1 (the AC-2 count)' "$K_REC_R1"
+  [ -n "$1" ] && printf '%s\n\n' "$1"
+  printf '### R-2 (the timeout)\n\nToo slow under coverage.\n\n%s\n' "$K_RESULT"
+  [ -n "${2:-}" ] && printf '\n%s\n' "$2"
+  return 0
+}
+k_unread_refused() { # <what> <sec>
+  assert_eq "HARNESS-102 R-1: $1: exactly one FAIL in the run, and it names the story, ## $2 and says the section is unreadable" \
+    "1 1" "$(k_fails) $(k_unreadable "$2")"
+  assert_eq "HARNESS-102 R-1: $1: and the run exits non-zero" non-zero "$(k_rc)"
+  k_no_ok "$2" "HARNESS-102 R-1: $1: and there is no ok line for ## $2"
+}
+k_readable() { # <what> <sec>
+  k_ok "$2" "HARNESS-102 R-1: twin: $1: the ok line for ## $2"
+  assert_eq "HARNESS-102 R-1: twin: $1: no unreadable FAIL, no FAIL at all, exit 0" \
+    "0 0 0" "$(k_unreadable "$2") $(k_fails) $(k_rc)"
+}
+
+# (a) An unclosed comment opener, quoted in inline code, before an unrecorded R-2.
+k_r1r2 "$K_STRAY_C" '' > "$KB"; k_branch T-114
+k_unread_refused "a prose line quoting an unclosed comment opener in inline code, then a new R-2 with no record" Regressions
+# The reverse the review named: the record AFTER the opener is not seen, which
+# today reads as "R-1 has no record" - a refusal for the wrong reason.
+{ k_reg '### R-1 (the AC-2 count)' ''; printf '%s\n\n%s\n' "$K_STRAY_C" "$K_REC_R1"; } > "$KB"; k_branch T-114
+k_unread_refused "an unclosed comment opener between R-1 and its record: the refusal is the unreadable one, not a missing record" Regressions
+# (b) A one-line fence, opened and closed on the same line, before an unrecorded R-2.
+k_r1r2 "$K_STRAY_F" '' > "$KB"; k_branch T-114
+k_unread_refused "a line that opens and closes a backtick fence on the same line, then a new R-2 with no record" Regressions
+# (e) An ordinary multi-line fence that is never closed: the section ends inside
+# it, and the R-2 head inside it is hidden. Decided in RED: "ends inside a
+# fence" is the rule, whatever opened the fence, so this is unreadable too.
+{ k_reg '### R-1 (the AC-2 count)' "$K_REC_R1"; printf '```\n 1 failed, 27 passed\n\n### R-2 (the timeout)\n\nToo slow under coverage.\n'; } > "$KB"; k_branch T-114
+k_unread_refused "a multi-line fence that is never closed, so the section ends inside it, with a new R-2 head after the opener" Regressions
+# (d) The same for ## Amendments.
+printf '## Amendments\n\n- **AM-1 (AC-2).** AC-2 said seven rows and says eight.\n%s\n\n%s\n\n- **AM-2 (AC-3).** AC-3 said one FAIL and says two.\n' "$K_REC_AM1" "$K_STRAY_C" > "$KB"; k_branch T-114
+k_unread_refused "## Amendments: AM-1 recorded, a prose line quoting an unclosed comment opener, then a new AM-2 with no record" Amendments
+printf '## Amendments\n\n- **AM-1 (AC-2).** AC-2 said seven rows and says eight.\n%s\n\n%s\n\n- **AM-2 (AC-3).** AC-3 said one FAIL and says two.\n' "$K_REC_AM1" "$K_STRAY_F" > "$KB"; k_branch T-114
+k_unread_refused "## Amendments: AM-1 recorded, a one-line fence, then a new AM-2 with no record" Amendments
+
+# (c) Twins: the same sections with the stray line removed and R-2 recorded.
+k_r1r2 '' "${K_REC_R1//R-1/R-2}" > "$KB"; k_branch T-114
+k_readable "the comment and one-line-fence cases without the stray line, R-2 recorded" Regressions
+# A comment opener quoted WITH its closer is readable: the rule is "unclosed".
+k_r1r2 "The review quoted \`$K_OPEN x -->\` in its finding." "${K_REC_R1//R-1/R-2}" > "$KB"; k_branch T-114
+k_readable "a prose line quoting a comment opener that is closed on the same line" Regressions
+# A fence that is closed is readable (the existing "fence before the record"
+# twin is the same claim for a fence before a record; this one ends the section).
+k_r1r2 '' "${K_REC_R1//R-1/R-2}" > "$KB"; printf '\n```\n 1 failed\n```\n' >> "$KB"; k_branch T-114
+k_readable "a fence that is closed as the last thing in the section" Regressions
+printf '## Amendments\n\n- **AM-1 (AC-2).** AC-2 said seven rows and says eight.\n%s\n\n- **AM-2 (AC-3).** AC-3 said one FAIL and says two.\n%s\n' "$K_REC_AM1" "${K_REC_AM1//AM-1/AM-2}" > "$KB"; k_branch T-114
+k_readable "## Amendments without the stray line, AM-2 recorded" Amendments
+# The step's position: after step 2. A section holding the opener that is
+# identical to the base copy says nothing - the stories already on main are not
+# re-judged by this rule.
+k_r1r2 "$K_STRAY_C" '' > "$KB"; k_base T-115
+k_r1r2 "$K_STRAY_C" '' > "$KB"; k_branch T-115
+assert_eq "HARNESS-102 R-1: twin: an unreadable section identical to the base copy's says nothing: no unreadable FAIL, no adjudication line, exit 0" \
+  "0 0 0" "$(k_unreadable Regressions) $(k_adj) $(k_rc)"
+
+# --- Return 1 (R-2, diff review 1 finding 4): a wrapped prose line is not a head
+# C-1, amended in RED: a head carries one of the prefixes `#{3,6} `, `- ` or
+# `**`. A prose line that wraps to begin with an id is prose. The twin - the
+# three prefixed spellings still ARE heads, and give a FAIL when unrecorded - is
+# the head-spelling loop under AC-3 above, not repeated here.
+{ k_reg '### R-1 (the AC-2 count)' "$K_REC_R1"; printf 'The same defect as\nR-2 of HARNESS-094 did the same thing to a different suite.\n'; } > "$KB"; k_branch T-114
+assert_eq "HARNESS-102 R-2: a prose line that wraps to begin \`R-2 of HARNESS-094\` is not an entry head: no FAIL for R-2" \
+  0 "$(k_fail Regressions R-2)"
+k_ok Regressions "HARNESS-102 R-2: and the section, whose only entry R-1 is recorded, gets the ok line"
+assert_eq "HARNESS-102 R-2: and the run exits 0" 0 "$(k_rc)"
+printf '## Amendments\n\n- **AM-1 (AC-2).** AC-2 said seven rows and says eight, as\nAM-2 of HARNESS-094 also did.\n%s\n' "$K_REC_AM1" > "$KB"; k_branch T-114
+assert_eq "HARNESS-102 R-2: in ## Amendments, a wrapped line beginning \`AM-2 of\` is not an entry head: no FAIL for AM-2, exit 0" \
+  "0 0" "$(k_fail Amendments AM-2) $(k_rc)"
+
 # Put main back as this block found it, for anything appended after it.
 git -C "$FIX" checkout -q main 2>/dev/null
 git -C "$FIX" reset -q --hard "$k_main_before" 2>/dev/null
