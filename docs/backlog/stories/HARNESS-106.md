@@ -827,6 +827,29 @@ shifts those lines, which it should not (GREEN does not touch the suite).
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Review 1 (2026-11-13, lead-po on DIFF-REVIEW, resolved Fable 5.2 `claude-fable-5-2`, no override; at 3cfad7c)
+
+Reviewed `git diff origin/main...HEAD`, limited to the story's own paths. No file changed.
+
+Held: the four copies regenerated from `git show d686c39:...` are `cmp`-identical and match C-2's CRC/size pairs; `scripts/refresh-harness.sh:409-414` replaces `.claude/tests` wholesale (`rm -rf` + `cp -r`), so the copies and the nested `.gitattributes` arrive and stale files go (`git ls-files --eol`: `i/lf w/lf attr/-text`); `cksum < file` prints `<CRC> <bytes>` unpadded on GNU coreutils (Linux CI and Git Bash); the rule over the real tree's 36 files has no hits and does not match itself, and no other route to the real `docs/` exists in any suite; `selftest-needed.sh --suites` gives 10 suites, not `all`; `k_at_decoy` restores `REPO_ROOT` on every path.
+
+**Should fix:**
+
+1. **The local changed-suites run does not select the new rule** (`scripts/selftest-needed.sh:174-178`). The `SCANS` table has no row saying `shipped-docs` now scans `.claude/tests/*.sh`, so a later story adding a `docs/` read to some suite gets that suite, `grep-count` and `sigpipe` from `selftest.sh --changed`, and the rule runs only in CI's full run. Fix: a `shipped-docs add` row for `.claude/tests/*.sh` with its evidence comment, and the expected lists in `.claude/tests/selftest-needed.test.sh` (stub at line 509) plus one assertion for the row. Both paths are outside this story's **Writes:**, so a follow-up story. **Route:** RED
+
+**Nice to have:**
+
+2. **The pattern misses some unquoted or unusual spellings** (`.claude/tests/shipped-docs.test.sh:186`): `n=$(ls $REPO_ROOT/docs)`, `"${REPO_ROOT%/}/docs/a"`, `"$REPO_ROOT//docs/a"`. None in the tree today; the comment states only the data-flow limit. Fix: widen the tail to any non-filename character or end of line and add the `)` spelling to the fixture, or add these to the written limit. **Route:** RED
+3. **`K_DECOY` is not in the exit trap** (`.claude/tests/boundaries.test.sh:4225`, `:4461`; trap at line 12 removes `$FIX` only). An interrupted run leaves one stray temp directory; `$KB` has the same shape already. Fix: name `"${K_DECOY:-}"` in the trap. **Route:** RED
+
+Not checked: the `boundaries` suite and the full self-test were not re-run by the reviewer (DV-1/DV-2 output relied on); BSD `cksum` reasoned from POSIX, not run.
+
+**Orchestrator's disposition:** the verdict is Ship. Finding 1 is outside this story's **Writes:** and goes to a follow-up story, with findings 2 and 3 offered alongside it; none is taken into this story.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
