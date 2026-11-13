@@ -4,8 +4,8 @@ title: mutate.sh counts lines past the Windows path limit
 slug: mutate-sh-counts-lines-past-the-windows
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-105-mutate-sh-counts-lines-past-the-windows-path-limit
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -367,6 +367,25 @@ root. `$ROOT` below is this repository's root, and `$RUNNER` the copy.
   and says so; what is owed is that the diff again runs without the option,
   and that the expression changes exactly one line. Afterwards:
   `bash scripts/mutate.sh --check` is clean and the runner copy is removed.
+
+  **DV-1 result (GATES, 2026-11-13, Git Bash on Windows, local, orchestrator).**
+  The expression ran unchanged and changed exactly one line, the command. The
+  four AC-1 assertions, 2-5, went red and nothing else did; the file was
+  restored and verified, `git diff --quiet scripts/mutate.sh` held, `--check`
+  was clean and the runner copy was removed:
+
+  ```
+  === mutate: /d/agentic-dev-harness/.claude/worktrees/loving-elbakyan-3fe420/scripts/mutate.sh (1 line(s) changed by s/git -c core\.longpaths=true -c/git -c/) ===
+    393 - ( cd "$MUTDIR" && git -c core.longpaths=true -c core.autocrlf=false -c core.quotepath=off -c diff.noprefix=false \
+    393 + ( cd "$MUTDIR" && git -c core.autocrlf=false -c core.quotepath=off -c diff.noprefix=false \
+      FAIL HARNESS-105 AC-1: a long absolute target's header reports 1 line changed, as a whole line
+      FAIL HARNESS-105 AC-1: a long absolute target's preview lists the removed and the added line
+      FAIL HARNESS-105 AC-1: a long absolute target is logged with 1 line(s), not 0
+      FAIL HARNESS-105 AC-1: a long absolute target's restore listing names the line it put back
+  mutate: 324 passed, 4 failed
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/loving-elbakyan-3fe420/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harness_.claude_worktrees_loving-elbakyan-3fe420_scripts_mutate.sh.20261113T083930Z.265730.bak) ===
+  mutate: no stranded mutation; nothing of a previous run is in the tree.
+  ```
 
 - **DV-2, the assertion that passes on arrival (assertion 6, AC-2).** A short
   absolute target reports 1 today, so the twin is green the moment it is
@@ -752,12 +771,48 @@ amended.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Round 1, dispatched on the DIFF-REVIEW row (planned `fable`, resolved Fable 5.2, `claude-fable-5-2`), 2026-11-13. Report pasted as returned; it changed no file.
+
+No findings.
+
+What it checked:
+
+- **The diff against the Contract.** The command line and the six comment lines match C-1 exactly; the option sits directly after `git`, and the comment does not contain DV-1's anchor. Nothing else on the two lines moved (C-2). The floor in `floors.conf`, its mirror in `selftest.test.sh` and the dated comment agree at 328. Staged and unstaged changes are the story file only.
+- **The rest of the count, preview and listing path.** Git is the only native Windows program on it. The backup, the scratch copy, `sed`, `cmp`, `awk` and the `> "$DIFF"` redirect are MSYS programs and already worked past 260 characters, which is why only the count was wrong. The awk summary, `$LINES` and the restore listing are untouched.
+- **Callers.** No signature, output line, exit code or log format changes (C-7).
+- **Its own reproduction**, in a scratch repository outside the worktree, with `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`, Git Bash, git 2.55.0.windows.5:
+  - a 215-character absolute target, three lines, `s/^x /y /` changing lines 1 and 3: `origin/main`'s script printed `(0 line(s) changed ...)`, no preview, no listing; this branch's printed `(2 line(s) changed ...)`, preview `1 -`/`1 +`/`3 -`/`3 +`, listing `1: x one` / `3: x three`;
+  - a 192-character relative target under three nested 60-character directories, `2d`: 1 line, preview `2 - b`, listing `2: b`;
+  - a pure insertion at the long path (`1i\` + `added`): 1 line, preview `1 + added`, empty listing, as designed;
+  - the log recorded the right counts, the target was restored each time, no `.bak`/`.new`/`.diff`/`.active` left behind.
+- **The test block.** Assertion 1 turns an empty extraction into `under`; header needles are whole-line fixed strings; the config variables are set for the two calls only; the log is read before the twin's run. A fixture root long enough to make `h105_n` < 1 still yields a path of 200+ characters, so assertion 1 still measures it - harmless, not a finding.
+- **Recorded evidence.** DV-1 shows exactly assertions 2-5 red (`324 passed, 4 failed`); DV-2 shows the twin's FAIL line; the attested mutate log ends `328 passed, 0 failed`; `mutate.sh --check` is clean.
+- **Out of scope items** (`C:/` colon in `$SAFE`, CRLF 3-lines, discarded status/stderr, Linux not discriminating): the diff makes none worse.
+- **Load assumed:** one mutation at a time; the change adds no work per run.
+
+Not checked: the Linux CI run of the new block, and a re-run of the full `mutate` suite (it relied on the attested log and its own reproduction).
+
+Verdict: Ship.
+
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-13T08:49:08Z
+    commit: be9dab0
+    tree:   08d33291d7dd3747e19712311fbad117600421d7
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -830,3 +885,15 @@ assertion floors: all 1 suite(s) met their declared floor (328 assertions execut
   ```
 
   `attest.sh check -- bash scripts/gates.sh --fast`: fresh, exit 0.
+
+- GATES (2026-11-13, orchestrator): the full `bash scripts/attest.sh -- bash scripts/gates.sh` exited 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, check `fresh` (log `.claude/state/attest-logs/20261113T084900Z.298377.log`). Run by the orchestrator directly rather than through a GATES-row dispatch, because every gate here is unconfigured and there was nothing to fix. DV-1 run first; its result is pasted in its block.
+- Diff review round 1: Fable 5.2 (`claude-fable-5-2`), planned `fable`, verdict Ship, no findings.
+- Self-test at GATES → REVIEW (`--changed`), orchestrator-run, attested, check `fresh`:
+
+  ```
+  selftest: --changed — 17 of 34 suite(s) selected: attest boundaries dispatch doctor gates grep-count host-load lib mutate phase-guard refresh run-lock selftest settings sigpipe spawns worktree
+  exit:     0
+  duration: 6523s
+  last:     17 harness suite(s) passed.
+  assertion floors: all 17 suite(s) met their declared floor (4319 assertions executed, 4315 declared).
+  ```
