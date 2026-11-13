@@ -5,7 +5,7 @@ slug: mutate-sh-counts-the-lines-a-bracketed-p
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-104-mutate-sh-counts-the-lines-a-bracketed-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -361,6 +361,30 @@ repository's root, and `$RUNNER` the copy.
   nothing of a previous run is in the tree.` (rc 0), and
   `.claude/state/selfmut` was removed.
 
+  **DV-1 result (GATES, 2026-11-13, Git Bash on Windows, local, tree at
+  `1df1bbe`).** Run by the orchestrator, with the runner copy at
+  `.claude/state/selfmut/scripts/mutate.sh` (`cmp` identical to
+  `scripts/mutate.sh`), the expression as written, and the test run by its
+  absolute path (`bash /d/agentic-dev-harness/.claude/tests/mutate.test.sh`)
+  instead of `bash -c "cd $ROOT && ..."`, which is the same command without a
+  shell string. A first try with a relative test path exited 127: the copy
+  runs from its own root, so the suite was not found; nothing was judged and
+  the file was restored. The mutation changed one line, and exactly the four
+  owed assertions failed:
+
+      === mutate: /d/agentic-dev-harness/scripts/mutate.sh (1 line(s) changed by s|-- "\${BAK##\*/}" "\${NEW##\*/}"|-- "$BAK" "$NEW"|) ===
+      === mutate: running bash /d/agentic-dev-harness/.claude/tests/mutate.test.sh ===
+          FAIL HARNESS-104 AC-1: the header reports 1 line changed, as a whole line
+          FAIL HARNESS-104 AC-1: the preview lists the removed and the added line
+          FAIL HARNESS-104 AC-1: the log records 1 line(s), not 0
+          FAIL HARNESS-104 AC-2: the restore listing names the line it put back
+      mutate: 318 passed, 4 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harness_scripts_mutate.sh.20261113T045254Z.28994.bak) ===
+
+  Afterwards `bash scripts/mutate.sh --check` printed `mutate: no stranded
+  mutation; nothing of a previous run is in the tree.`, `scripts/mutate.sh`
+  is unchanged, and `.claude/state/selfmut` was removed.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -680,10 +704,21 @@ that the floor line agrees.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-13T04:54:56Z
+    commit: 1df1bbe
+    tree:   b2c1e328d37f37c53b1291c49948e49445b6d320
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -715,3 +750,4 @@ that the floor line agrees.
 
 - **RED verified by the orchestrator, 2026-11-13.** `test-developer`, planned `opus`, resolved claude-opus-5-5. Changed: `mutate.test.sh` (34 lines, TCF's block by line range, renamed) and this story. `attest.sh check -- bash scripts/selftest.sh mutate` `fresh`, exit 1, `mutate: 318 passed, 4 failed`, log `20261113T042418Z.9768`: the four are assertions 3, 4, 5, 7 of the HARNESS-104 block; `--fast` `fresh`, exit 0. DV-2 run in RED, both owed names red.
 - **GREEN, 2026-11-13.** `feature-developer`, planned `opus`, resolved claude-opus-5-5 (no override). Changed: `scripts/mutate.sh` (C-1, TCF `2d00f6e`'s edit with the id renamed: the `git diff --no-index` runs in a subshell inside `$MUTDIR` on `"${BAK##*/}"` and `"${NEW##*/}"`, seven comment lines added), `.claude/tests/floors.conf` and `.claude/tests/selftest.test.sh` (`mutate` 315 -> 322, with the dated comment), `.claude/harness/VERSION` (`123 (2026-11-13)`). Measured: `mutate: 322 passed, 0 failed`. Every Handoff control confirmed by running the block's scenario by hand against the shipped script in a fresh fixture: `${#before}` 40; header line `=== mutate: src/[slug].txt (1 line(s) changed by s/inline-size/normal/) ===`; preview `  1 - container-type: inline-size;` / `  1 + container-type: normal;`; log field `1 line(s)` with `exited 0` and `restored (verified)`; listing `  1: container-type: inline-size;`; hash `7fb43a8c791b6ef0485d6a4d153259157f28cf95` before and after; exit 0. No divergence from RED's numbers.
+- **GATES, 2026-11-13.** DV-1 run by the orchestrator (result under `## Deferred verifications`): exactly the four owed assertions red, file restored and verified. Full run by the orchestrator directly (2 s, no gate configured): `attest.sh check -- bash scripts/gates.sh` `fresh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, log `20261113T045455Z.32033`.
