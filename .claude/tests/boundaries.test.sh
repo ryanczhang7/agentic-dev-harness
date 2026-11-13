@@ -4374,6 +4374,37 @@ awk 'index($0, "## Regressions") == 1 { on = 1 } on && /^## / && index($0, "## R
 assert_eq "HARNESS-102 R-3: twin: HARNESS-102's own ## Regressions, verbatim, is not refused as unreadable and gets the ok line" \
   "0 1" "$(k_unreadable Regressions) $(grep -cxF -- "ok    ## Regressions: every new entry carries an adjudication record" <<< "$out")"
 
+# --- HARNESS-103: the unreadable refusal says how to fix a hidden head
+# Step 2a's one message names three causes, and its remedies answered the first
+# two only. HARNESS-103 Contract C-1 settles one more sentence, appended after
+# the kept remedy sentence; it is read out here, not redesigned. The fixture
+# (C-3): a recorded R-1, a prose line, then a closed tilde fence whose one line
+# is head-shaped and names an id that is no head outside it - refused today as
+# unreadable (case (e) above), so what is red is the message's text.
+#
+# Every head-shaped line and every fence marker lives in a variable, never in
+# an assertion name: a name is pasted into a story's ## Regressions or handoff,
+# which block 3k reads (HARNESS-103 C-4).
+K_HID='### R-3 (the next one)'
+K_TILDE='~~~'
+K_REMEDY="Close the comment, close the fence, or quote the opener together with its closer, or name it in words. For a hidden head: move the entry's head outside the comment or fence, or, if it is only an example, indent it four spaces or quote it inline; and write a fence's markers on lines of their own."
+# k_ends_remedy   FAIL lines that END with the whole of $K_REMEDY: a fixed-string
+# suffix compare, so it pins the kept sentence, the new one, their order, and
+# that nothing follows them. Never a floating grep.
+k_ends_remedy() { awk -v t="$K_REMEDY" 'index($0, "FAIL  ") == 1 && length($0) >= length(t) && substr($0, length($0) - length(t) + 1) == t { n++ } END { print n + 0 }' <<< "$out"; }
+# AC-1: the fence holding the example head; refused, and the one FAIL ends with
+# both remedy sentences. One assert_eq, so nothing in it is green on arrival.
+{ k_reg '### R-1 (the AC-2 count)' "$K_REC_R1"; printf 'The head as the template spells it:\n\n%s\n%s\n%s\n' "$K_TILDE" "$K_HID" "$K_TILDE"; } > "$KB"; k_branch T-118
+assert_eq "HARNESS-103 AC-1: a closed fence holding an example head for the next id: exactly one FAIL, it says ## Regressions is unreadable, and it ends with the kept remedy sentence followed by the remedy for a hidden head" \
+  "1 1 1" "$(k_fails) $(k_unreadable Regressions) $(k_ends_remedy)"
+assert_eq "HARNESS-103 AC-1: and the run exits non-zero" non-zero "$(k_rc)"
+# AC-2 (a): the same fence, its one line indented four spaces - not head-shaped.
+{ k_reg '### R-1 (the AC-2 count)' "$K_REC_R1"; printf 'The head as the template spells it:\n\n%s\n    %s\n%s\n' "$K_TILDE" "$K_HID" "$K_TILDE"; } > "$KB"; k_branch T-118
+k_readable "the example head in the closed fence indented four spaces, as the message advises" Regressions "HARNESS-103 AC-2"
+# AC-2 (b): no fence; the example head quoted in inline code mid-sentence.
+{ k_reg '### R-1 (the AC-2 count)' "$K_REC_R1"; printf 'The next entry would be headed `%s` in this section, as the template spells it.\n' "$K_HID"; } > "$KB"; k_branch T-118
+k_readable "the example head quoted inline in a sentence of prose with no fence, as the message advises" Regressions "HARNESS-103 AC-2"
+
 # Put main back as this block found it, for anything appended after it.
 git -C "$FIX" checkout -q main 2>/dev/null
 git -C "$FIX" reset -q --hard "$k_main_before" 2>/dev/null
