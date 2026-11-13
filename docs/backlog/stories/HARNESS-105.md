@@ -4,8 +4,8 @@ title: mutate.sh counts lines past the Windows path limit
 slug: mutate-sh-counts-lines-past-the-windows
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-105-mutate-sh-counts-lines-past-the-windows-path-limit
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -386,6 +386,36 @@ root. `$ROOT` below is this repository's root, and `$RUNNER` the copy.
   Afterwards: `bash scripts/mutate.sh --check` is clean and the runner copy is
   removed.
 
+  **DV-2 result (RED, 2026-11-13, Git Bash on Windows, local, tree hash
+  `fa967e2`, on `c95e174` plus the uncommitted RED block).** Run as written,
+  with `ROOT=/d/agentic-dev-harness/.claude/worktrees/loving-elbakyan-3fe420`
+  and `RUNNER=$ROOT/.claude/state/selfmut/scripts/mutate.sh`. The runner copy
+  was checked with `cmp` against `scripts/mutate.sh` (identical) and is
+  `git check-ignore`d. The mutation hit line 407, the intended line. The
+  HARNESS-105 twin (assertion 6) **failed** with `actual: 0`, so it is earned.
+  Assertions 2-5 failed as well, as they do in RED. Runner header, the twin's
+  FAIL line, the summary line and the runner's restore:
+
+```
+=== mutate: /d/agentic-dev-harness/.claude/worktrees/loving-elbakyan-3fe420/scripts/mutate.sh (1 line(s) changed by s/total += (b > d) ? b : d/total += 0/) ===
+  407 -     total += (b > d) ? b : d
+  407 +     total += 0
+
+    FAIL HARNESS-105 AC-2: the short absolute twin's header reports 1 line changed, as a whole line
+         expected: 1
+         actual:   0
+
+mutate: 305 passed, 23 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/loving-elbakyan-3fe420/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harness_.claude_worktrees_loving-elbakyan-3fe420_scripts_mutate.sh.20261113T074041Z.104258.bak) ===
+  407:     total += (b > d) ? b : d
+```
+
+  Afterwards `git diff --quiet -- scripts/mutate.sh` succeeded (no change),
+  `bash scripts/mutate.sh --check` printed `mutate: no stranded mutation;
+  nothing of a previous run is in the tree.` (rc 0), and
+  `.claude/state/selfmut` was removed.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -493,8 +523,35 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One new block in `.claude/tests/mutate.test.sh`, after the HARNESS-104 block
+and before `summary "mutate"`:
+`describe "HARNESS-105: a target whose backup path passes 260 characters reports the lines it really changed"`.
+Level: the suite's own integration level - the real `scripts/mutate.sh` run in
+a `make_project_fixture` copy, its stdout and its log read back. That is the
+cheapest level that can falsify the criteria: the defect is git.exe refusing a
+path, which no unit below the script can show. Built as C-3 says, unamended:
+
+- `LONG`: `pre="$FIX/src/"; n=$(( 200 - ${#pre} - 4 ))`, `n` letters `a`, `.txt`
+  - exactly 200 characters on any root; `SHORT="$FIX/src/b.txt"`. Both hold
+  the one line `container-type: inline-size;`.
+- Both `mutate` calls carry `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1`
+  as a prefix on that call only (checked on this host: a prefix on a shell
+  function is exported to its children for the call and gone after).
+- Command: `grep -c 'container-type: normal;' <target>`, exits 0 when the
+  mutation is seen.
+
+| # | Test name (as it reads in a FAIL) | AC | Needle |
+|---|---|---|---|
+| 1 | `HARNESS-105: control - the long run's backup path is over 260 characters (measured N; target M)` | AC-1, instrument | backup path pulled from the `restored (verified byte-for-byte against <path>) ===` line with `sed -n`, its length turned into `over`/`under`; empty extraction is length 0, so `under` |
+| 2 | `HARNESS-105 AC-1: a long absolute target's header reports 1 line changed, as a whole line` | AC-1 | `whole_lines` (`grep -cxF`) on the full header line, expected 1 |
+| 3 | `HARNESS-105 AC-1: a long absolute target's preview lists the removed and the added line` | AC-1 | `preview_of` exactly the `  1 - ` / `  1 + ` pair |
+| 4 | `HARNESS-105 AC-1: a long absolute target is logged with 1 line(s), not 0` | AC-1 | `last_log` contains `<TAB>$LONG<TAB>s/inline-size/normal/<TAB>1 line(s)<TAB>` (read before the twin's run) |
+| 5 | `HARNESS-105 AC-1: a long absolute target's restore listing names the line it put back` | AC-1 | `listing_of` exactly `  1: container-type: inline-size;` |
+| 6 | `HARNESS-105 AC-2: the short absolute twin's header reports 1 line changed, as a whole line` | AC-2 | `whole_lines` on `$SHORT`'s header, expected 1 |
+
+Every assertion unconditional, none in a loop. Cleanup `rm -f "$LONG" "$SHORT"`,
+`reset_src`, `h59_clear`. No helper changed. Assertions 1 and 6 pass on
+arrival; 1 is earned by the 100-character control (Handoff), 6 by DV-2.
 
 ## Handoff: RED -> GREEN
 
@@ -515,6 +572,147 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the RED test-developer, 2026-11-13, Git Bash on Windows, local.
+Dispatched on its declared `opus`; no override was stated in the dispatch.
+Every timing and count below is from a local run on this host (loaded by
+other sessions' suites); none is from CI.
+
+**Command.** `bash scripts/selftest.sh mutate` (attested form:
+`bash scripts/attest.sh -- bash scripts/selftest.sh mutate`). 1110 s here.
+
+**Attested runs (RED, tree hash `fa967e206031c7ff68dd8b3f6dd9a3a6f9e3c220`).**
+
+```
+bash scripts/attest.sh -- bash scripts/selftest.sh mutate
+last:     1 of 1 harness suite(s) FAILED.
+log:      .claude/state/attest-logs/20261113T071956Z.65324.log
+
+bash scripts/attest.sh -- bash scripts/gates.sh --fast
+last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+log:      .claude/state/attest-logs/20261113T075841Z.137877.log
+```
+
+The fast gates have nothing to judge (every gate is unconfigured, as on every
+HARNESS story; `required_gates: []`); the suite is the judge.
+
+**Verbatim failure, from the suite's log.** Exactly the four C-4 predicted,
+assertions 2, 3, 4 and 5; no other FAIL in the file (`grep -c FAIL` on the
+log is 5: these four plus the `1 of 1 harness suite(s) FAILED.` line):
+
+```
+  HARNESS-105: a target whose backup path passes 260 characters reports the lines it really changed
+    FAIL HARNESS-105 AC-1: a long absolute target's header reports 1 line changed, as a whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-105 AC-1: a long absolute target's preview lists the removed and the added line
+         expected:   1 - container-type: inline-size;
+           1 + container-type: normal;
+         actual:   
+    FAIL HARNESS-105 AC-1: a long absolute target is logged with 1 line(s), not 0
+         expected to contain: 	/tmp/tmp.nPKpvwdRlo/src/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt	s/inline-size/normal/	1 line(s)	
+         actual:               20261113T073806Z	/tmp/tmp.nPKpvwdRlo/src/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt	s/inline-size/normal/	0 line(s)	command: grep -c container-type: normal; /tmp/tmp.nPKpvwdRlo/src/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt	exited 0	restored (verified)
+    FAIL HARNESS-105 AC-1: a long absolute target's restore listing names the line it put back
+         expected:   1: container-type: inline-size;
+         actual:   
+
+mutate: 324 passed, 4 failed
+
+assertion floors: all 1 suite(s) met their declared floor (324 assertions executed, 322 declared).
+1 of 1 harness suite(s) FAILED.
+```
+
+**Why it is the right failure.** The mutation applied and the command saw it
+(the log record says `exited 0`, and `grep -c` exits 0 only on a match), the
+restore was verified, and the control (assertion 1) passed, so the backup
+path was over 260. What is missing is exactly what the one empty diff feeds:
+count, preview, log count, listing. The 100-character control below shows
+the same four assertions passing when only the length changes.
+
+**Tests, one line each.**
+
+| # | Asserts | AC | RED on Git Bash |
+|---|---|---|---|
+| 1 | control: backup path from the long run's `restored (verified byte-for-byte against ...)` line is over 260 characters (empty = 0 = `under`) | AC-1, instrument | pass |
+| 2 | long target's full header line with `1 line(s)` occurs exactly once (`whole_lines`) | AC-1 | **FAIL** (0) |
+| 3 | long target's preview is exactly `  1 - container-type: inline-size;` / `  1 + container-type: normal;` | AC-1 | **FAIL** (empty) |
+| 4 | last log record contains `<TAB>$LONG<TAB>s/inline-size/normal/<TAB>1 line(s)<TAB>` | AC-1 | **FAIL** (`0 line(s)`) |
+| 5 | long target's restore listing is exactly `  1: container-type: inline-size;` | AC-1 | **FAIL** (empty) |
+| 6 | twin `$FIX/src/b.txt`: full header line with `1 line(s)` occurs exactly once | AC-2 | pass (earned by DV-2, red there) |
+
+**Files touched.** `.claude/tests/mutate.test.sh` (one new block, after the
+HARNESS-104 block, before `summary "mutate"`; no helper changed) and this
+story (`## Test plan`, this section, DV-2's result).
+
+**Export shape pinned.** No module is imported; the contract is the script's
+output. Pinned exactly: the header line
+`=== mutate: <target as given> (N line(s) changed by <expr>) ===`, the
+`  N - ` / `  N + ` preview lines before `=== mutate: running`, the log record
+fields `<TAB><target><TAB><expr><TAB>N line(s)<TAB>`, the
+`restored (verified byte-for-byte against <backup path>) ===` verdict (its
+path is extracted with
+`sed -n 's/.*restored (verified byte-for-byte against \(.*\)) ===$/\1/p'`),
+and the `  N: <line>` restore listing. All unchanged by C-1; C-2 says none of
+them may change. Not constrained: anything about how the diff is obtained
+beyond its result, so C-1's text is checked by DV-1, not by this block.
+
+**Passed on arrival, and what earns each.**
+
+- Assertion 1 (the control). Built the long target at 100 characters instead
+  of 200 (`h105_n=$(( 100 - ...`), ran the suite, saw it fail, put 200 back
+  (`grep -n 'h105_n='` shows `200` at line 1289 in the tree attested above).
+  Plain run, not attested, 21 m 32 s:
+
+```
+  HARNESS-105: a target whose backup path passes 260 characters reports the lines it really changed
+    FAIL HARNESS-105: control - the long run's backup path is over 260 characters (measured 171; target 100)
+         expected: over
+         actual:   under
+
+mutate: 327 passed, 1 failed
+```
+
+  At 100 characters assertions 2-5 pass on the unfixed script, which is the
+  defect's length dependence shown directly.
+- Assertion 6 (the twin). DV-2, run in RED; result pasted under
+  `## Deferred verifications`: `actual: 0`, `mutate: 305 passed, 23 failed`.
+
+**Negative controls, expected values.** Unlike a suite that fails at import,
+every assertion here executed in RED, so these are measured against the real
+script, not claims:
+
+| Control | Threshold | Candidate range | Measured |
+|---|---|---|---|
+| assertion 1, 200-char target | > 260 → `over` | 13-char root or more gives > 260; 19-char `/tmp/tmp.XXXXXXXXXX` root gives about 270 as printed | passed (over); the exact length is printed only on failure. PLANNED measured 270 for the same construction |
+| assertion 1, 100-char target (probe) | > 260 | about 170 | 171, `under`, FAIL as intended |
+| DV-2 twin under `total += 0` | must be 0 | 0 | 0, FAIL as intended |
+| DV-1 (GATES) | 4 failed, assertions 2-5 | - | not run: the fix does not exist in RED. I cannot run this verification; it stays with GATES |
+
+**What GREEN must do.**
+
+1. C-1 exactly: `-c core.longpaths=true` as the first option of the
+   `git ... diff --no-index --no-color` command in `scripts/mutate.sh`
+   (lines 387-388 at `c95e174`, the option going on 387, the `git -c` line;
+   find it by text), plus the six comment lines;
+   the comment must not contain `git -c core.longpaths=true` (DV-1's
+   expression is anchored on that spelling).
+2. Run `bash scripts/attest.sh -- bash scripts/selftest.sh mutate`; expected
+   `mutate: 328 passed, 0 failed` on Git Bash.
+3. C-5: raise `mutate`'s floor from 322 to the measured executed count
+   (expected 328) in `.claude/tests/floors.conf` and in the table in
+   `.claude/tests/selftest.test.sh`, with the dated `floors.conf` comment;
+   `VERSION` to `124 (<date>)`. Note the floor line counts **passed**
+   assertions as "executed": RED's run printed `324 assertions executed`
+   for 328 run, and the 100-char run `327`. So read the number off a green
+   run.
+
+**Discovered.** Nothing changes the approach. C-3's construction held: with
+this host's 19-character fixture root `n` was 172, well above 1. The
+`GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1` prefix on the `mutate`
+shell function was checked to reach the child (`X=1 f` where `f` runs
+`bash -c 'echo $X'` prints 1, and nothing after), and this host has
+`core.longpaths` in neither global nor system config. No Contract block was
+amended.
 
 ## Regressions
 
