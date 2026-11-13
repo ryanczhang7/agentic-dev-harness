@@ -4,8 +4,8 @@ title: The unreadable-section refusal says how to fix a hidden entry head
 slug: the-unreadable-section-refusal-says-how
 epic: 
 type: fix
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-103-the-unreadable-section-refusal-says-how
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -222,6 +222,16 @@ the step 2a message line.
   sentence is not there to delete. **Owner: GATES.**
 
       bash scripts/mutate.sh scripts/check-boundaries.sh 's/ For a hidden head: .*lines of their own\.//' -- bash scripts/selftest.sh boundaries
+
+  **Result (GATES, 2026-11-13, orchestrator):** as predicted - exactly 1
+  failed, the AC-1 assertion; the file was restored and verified.
+
+      === mutate: scripts/check-boundaries.sh (1 line(s) changed by s/ For a hidden head: .*lines of their own\.//) ===
+      FAIL HARNESS-103 AC-1: a closed fence holding an example head for the next id: exactly one FAIL, it says ## Regressions is unreadable, and it ends with the kept remedy sentence followed by the remedy for a hidden head
+      boundaries: 684 passed, 1 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against .claude/state/mutations/scripts_check-boundaries.sh.20261113T001452Z.746975.bak) ===
+
+  `bash scripts/mutate.sh --check`: no stranded mutation.
 
 - **DV-2, the two assertions that pass on arrival (AC-2).** The scanner
   already accepts both rewritten examples, so both `k_readable` cases are
@@ -538,12 +548,78 @@ cosmetic points:
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Round 1 (2026-11-13): a fresh `lead-po` on the DIFF-REVIEW row, planned
+`fable`, resolved **Fable 5.2 (`claude-fable-5-2`)**. It changed no file.
+Its report, as returned:
+
+**What this change does.** It appends one sentence to the single refusal that
+block 3k step 2a of `scripts/check-boundaries.sh` prints when a Regressions or
+Amendments section is unreadable, saying how to fix the third cause (a
+head-shaped line hidden in a comment or fence). The rule that decides what is
+refused (`adj_scan`) is untouched. Six assertions are added to `boundaries`,
+the two floor records go 679 -> 685, VERSION 121 -> 122.
+
+**Checked:** the whole diff, `adj_scan` and step 2a, the block-3k helpers and
+the story's own sections; `adj_scan` was extracted and each remedy run against
+it on the reviewer's own inputs.
+
+No findings.
+
+**Each remedy the sentence gives is accepted by the scanner** (reviewer's own
+inputs): the baseline (recorded R-1, closed tilde fence holding the example
+head) scans unreadable; the line indented four spaces, in a fence or a
+comment, scans readable; the head in inline code mid-sentence, at line start
+or in a list item, scans readable; the head moved outside the fence is seen as
+a head and judged (with a record: readable; without: the ordinary no-record
+refusal, as C-1 says); two one-line backtick fences around the head scan
+unreadable, and the same content as two proper three-line fences scans
+readable with the head judged.
+
+**The two untested remedies need no tests.** They are existing scanner
+behaviour, not something this diff adds; the diff adds only message text,
+which AC-1 pins whole with an end-of-line suffix compare. Moving the head
+outside is already pinned by the HARNESS-102 head-spelling cases and the
+"head also outside" twin; markers on their own lines is pinned only
+indirectly, held by reproduction, and outside AC-2's scope.
+
+**Tests and floors.** `k_ends_remedy` is a fixed-string suffix compare joined
+with `k_fails` and `k_unreadable` in one `assert_eq`; it cannot pass with the
+sentence missing, reordered or followed by anything, and DV-1's result (684
+passed, 1 failed, that assertion) agrees. AC-2 is earned by DV-2. 685 in both
+floor records matches; the one over the Contract's 684 is the exit-status
+assertion C-3 allowed. No assertion name carries a head-shaped string, fence
+or comment marker. The appended sentence has no backtick, dollar or double
+quote and adds no line.
+
+**The story's own sections (C-4).** Regressions and Amendments hold only the
+template comment, so nothing is judged. Deferred verifications has no comment
+marker and the step 2a line is pasted nowhere; DV-1's block is indented six
+spaces (inside a list item), so the section's pasted-result check passes on
+DV-2's fence. Notes are plain bullets. Not checked by the reviewer: the full
+self-test and gates (as instructed), and the gate-stamp check, which did not
+print with the story at GATES.
+
+Verdict: Ship.
+
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-13T00:53:17Z
+    commit: d6ae595
+    tree:   7cc11739526deea33b9b4a99b4392a6177a54733
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -575,3 +651,7 @@ cosmetic points:
 
 - RED verified by the orchestrator (2026-11-12): `attest.sh check -- bash scripts/selftest.sh boundaries` was `fresh` (exit 1, tree 7b7ef56); its log holds exactly one FAIL, the HARNESS-103 AC-1 assertion (`1 1 0` against `1 1 1`). Not re-run. Test-developer resolved to claude-opus-5-5.
 - GREEN verified by the orchestrator (2026-11-12): `attest.sh check` `fresh` for `bash scripts/selftest.sh boundaries` (exit 0, 685 passed, tree db845ff) and `bash scripts/gates.sh --fast` (exit 0). Not re-run. Feature-developer resolved to claude-opus-5-5.
+- Self-test at GATES -> REVIEW (2026-11-13), run by the orchestrator directly (attested, not dispatched), as `bash scripts/attest.sh -- env SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`; `attest.sh check` with those words: `fresh`, tree db845ff.
+  - header: `selftest: --changed — 15 of 34 suite(s) selected: boundaries ci-local dispatch doctor grep-count host-load lib plan procedure refresh run-lock selftest sigpipe story worktree`
+  - `exit: 0`, `last: 15 harness suite(s) passed.`, `duration: 2145s`
+- DV-1 run by the orchestrator in GATES; full gates attested `fresh`, exit 0 (all five gates unconfigured). Diff review round 1 resolved to claude-fable-5-2: Ship, no findings.
