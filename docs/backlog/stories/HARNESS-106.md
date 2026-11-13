@@ -4,8 +4,8 @@ title: The boundaries suite reads vendored story sections, not upstream story fi
 slug: the-boundaries-suite-reads-vendored-stor
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-106-the-boundaries-suite-reads-vendored-stor
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/fixtures/boundaries/.gitattributes, .claude/tests/fixtures/boundaries/HARNESS-089.md, .claude/tests/fixtures/boundaries/HARNESS-095.md, .claude/tests/fixtures/boundaries/HARNESS-099.md, .claude/tests/fixtures/boundaries/HARNESS-102.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -492,6 +492,23 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All three criteria are mechanical (C-8): every expected value below is a
+literal read out of the story, none re-derived.
+
+| Test (suite, level) | Pins | AC |
+|---|---|---|
+| `boundaries`: the three existing C-9 assertions, the reader call now `k_at_decoy k_real "$real"` | under a decoy root with no 095/099/102 and an unrelated 089, each reads `1 1 0 0 non-zero` | AC-1 |
+| `boundaries`: the existing R-3 twin (f), now `k_at_decoy k_real_reg HARNESS-102` | reads `0 1` under the same decoy | AC-1 |
+| `boundaries`: new `HARNESS-106 AC-2: each vendored copy ...` (one `assert_eq`, four lines) | `<CRC> <bytes> <name>` of the four copies equals the C-2 table literals; a missing file yields a line with no CRC | AC-2 |
+| `shipped-docs`: `HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing ...` | no non-comment line of any `.claude/tests/*.sh` reads under the real checkout's `docs/` | AC-3 |
+| `shipped-docs`: `... the rule scans at least 30 shell files ...` | not vacuous (36 at `d686c39`) | AC-3 |
+| `shipped-docs`: `... a fixture holding each spelling ...` | exactly `_lib.sh:1`, `a.test.sh:3`, `:4`, `:5`, `:8` | AC-3 |
+| `shipped-docs`: `... twin: the same fixture with only the comment ...` | prints nothing | AC-3 |
+
+Level: these are suite-level tests of a suite's own reads, the cheapest level
+that can see a read of the real tree. The four AC-1 assertions run
+unconditionally on every tree (no `[ -f ]` guard anywhere).
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -511,6 +528,222 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the test-developer, RED, 2026-11-13. Dispatched on `opus`; resolved
+model: Claude Opus 5.5 (`claude-opus-5-5`), no override.
+
+**RED ends green, by design (C-1).** The fix is a test-file change, so it is
+done here. GREEN writes only C-7: `floors.conf`, `selftest.test.sh`, `VERSION`.
+No contract block was amended.
+
+### Command
+
+    bash scripts/selftest.sh boundaries shipped-docs
+
+### Files touched
+
+- `.claude/tests/boundaries.test.sh` - decoy root `K_DECOY` and `k_at_decoy`
+  (before the checksum assertion), `k_sums` and the AC-2 assertion directly
+  before the C-9 loop, `k_real` repointed, new `k_real_reg` beside it, (f)
+  rewritten to `k_at_decoy k_real_reg HARNESS-102 > "$KB"; k_branch T-117`,
+  both comments rewritten, one comment naming the five fixture paths,
+  `rm -rf "$K_DECOY"` beside `rm -f "$KB"`.
+- `.claude/tests/shipped-docs.test.sh` - `SDR_RE`, `suite_docs_files`,
+  `suite_docs_reads`, and a new `describe` with four assertions before
+  `summary`.
+- `.claude/tests/fixtures/boundaries/HARNESS-089.md`, `HARNESS-095.md`,
+  `HARNESS-099.md`, `HARNESS-102.md` - generated with C-2's command verbatim.
+  Measured on them: 679495376 6306, 1572516679 6026, 2058360084 6957,
+  3699688268 16374 (= the C-2 table); no carriage return; two `## ` lines
+  each, Amendments at 99, 81, 93, 223 (= the table). `k_real` over copy and
+  over story file: identical CRC and size for 089, 095, 099; the (f) awk over
+  the 102 copy: 1265526490 15659 (= C-2). Contents deliberately not pasted
+  here (C-6).
+- `.claude/tests/fixtures/boundaries/.gitattributes` - `* -text` under a
+  comment, as `fixtures/manifest/.gitattributes`. `git check-attr text` on a
+  copy: `unset`.
+- this story: `## Test plan`, this section.
+
+**All five fixture files are untracked: `git add` them with the suites.**
+`gates.sh --fast` names only the `.gitattributes` as an untracked gated file
+(the `.md` copies are evidently not in its gated set), but all five are part
+of the story.
+
+### Step 1 - the traps, readers still on the real tree, no fixture files
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh boundaries shipped-docs
+    last:     2 of 2 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261113T135957Z.1717.log
+    tree 7003efa2..., exit 1, duration 2014s (local, loaded host)
+
+Verbatim from the log (lines 108-137, 150-157):
+
+```
+    FAIL HARNESS-106 AC-2: each vendored copy under fixtures/boundaries holds the bytes taken at d686c39: its CRC, size and file name, all four
+         expected: 679495376 6306 HARNESS-089.md
+         1572516679 6026 HARNESS-095.md
+         2058360084 6957 HARNESS-099.md
+         3699688268 16374 HARNESS-102.md
+         actual:    HARNESS-089.md
+          HARNESS-095.md
+          HARNESS-099.md
+          HARNESS-102.md
+    FAIL HARNESS-102 C-9: HARNESS-089's own ## Regressions and ## Amendments, verbatim, are refused: one FAIL for R-1, one for AM-1, no headless FAIL, non-zero
+         expected: 1 1 0 0 non-zero
+         actual:   0 0 0 0 0
+awk: fatal: cannot open file `/tmp/tmp.6l4E0lo87w/docs/backlog/stories/HARNESS-095.md' for reading: No such file or directory
+awk: fatal: cannot open file `/tmp/tmp.6l4E0lo87w/docs/backlog/stories/HARNESS-095.md' for reading: No such file or directory
+    FAIL HARNESS-102 C-9: HARNESS-095's own ## Regressions and ## Amendments, verbatim, are refused: one FAIL for R-1, one for AM-1, no headless FAIL, non-zero
+         expected: 1 1 0 0 non-zero
+         actual:   0 0 0 0 0
+awk: fatal: cannot open file `/tmp/tmp.6l4E0lo87w/docs/backlog/stories/HARNESS-099.md' for reading: No such file or directory
+awk: fatal: cannot open file `/tmp/tmp.6l4E0lo87w/docs/backlog/stories/HARNESS-099.md' for reading: No such file or directory
+    FAIL HARNESS-102 C-9: HARNESS-099's own ## Regressions and ## Amendments, verbatim, are refused: one FAIL for R-1, one for AM-1, no headless FAIL, non-zero
+         expected: 1 1 0 0 non-zero
+         actual:   0 0 0 0 0
+awk: fatal: cannot open file `/tmp/tmp.6l4E0lo87w/docs/backlog/stories/HARNESS-102.md' for reading: No such file or directory
+    FAIL HARNESS-102 R-3: twin: HARNESS-102's own ## Regressions, verbatim, is not refused as unreadable and gets the ok line
+         expected: 0 1
+         actual:   0 0
+
+boundaries: 681 passed, 5 failed
+FAIL boundaries  did 681 units of work, below the floor of 685 in .claude/tests/floors.conf
+
+    FAIL HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing: no suite line reads the project's own docs, which a consumer does not share
+         expected: 
+         actual:   .claude/tests/boundaries.test.sh:4192
+         .claude/tests/boundaries.test.sh:4204
+
+shipped-docs: 17 passed, 1 failed
+assertion floors: 1 of 2 suite(s) met their declared floor.
+```
+
+Exactly C-1's expectation: `boundaries` 5 failed of 686 (three C-9 plus (f)
+with the consumer's values, plus the checksum), `shipped-docs` 1 failed of 18,
+naming the two reader lines (4192 `k_real`, 4204 `k_real_reg`, at step 1's
+line numbers). The `awk: fatal` lines show the reads went to the decoy, i.e.
+the swap works. **What the decoy 089 yields under the old reader** (the
+PLANNED "not measured" item): `0 0 0 0 0` - the file exists, holds neither
+section, so `k_real` emits the two bare headings, no FAIL, exit 0.
+
+### Step 2 - the fix
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh boundaries shipped-docs
+    last:     2 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261113T143447Z.240.log
+    tree 381dd84f..., exit 0, duration 1424s (local, loaded host)
+
+```
+boundaries: 686 passed, 0 failed
+shipped-docs: 18 passed, 0 failed
+assertion floors: all 2 suite(s) met their declared floor (704 assertions executed, 699 declared).
+```
+
+Counts are C-7's expectation: **boundaries 686, shipped-docs 18**; GREEN sets
+the floors from them. Floors are minimums, so the runner reports them *met*
+(686 >= 685, 18 >= 14), not unmet; nothing goes red until GREEN raises them,
+and nothing will tell GREEN to - C-7 is the instruction.
+
+### Other checks after step 2
+
+    bash scripts/selftest-needed.sh --suites
+    selftest-needed: suites — 4 of 34 selected from 7 harness path(s) changed against origin/main (merge-base d686c39)
+      boundaries    .claude/tests/boundaries.test.sh (itself)
+      grep-count    .claude/tests/boundaries.test.sh (scans *.sh)
+      shipped-docs  .claude/tests/shipped-docs.test.sh (itself)
+      sigpipe       .claude/tests/boundaries.test.sh (scans *.sh)
+
+Not `all`: the five fixture paths are mapped (C-4's naming comment). GREEN's
+`floors.conf`/`selftest.test.sh`/`VERSION` will widen the list; re-run it.
+
+    bash scripts/check-sigpipe.sh && bash scripts/check-grep-count.sh
+    check-sigpipe: scanned 62 shell file(s), 57 with pipefail, 0 finding(s)
+    check-grep-count: scanned 62 shell file(s), 0 finding(s)
+
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261113T145844Z.49.log
+
+(Every gate is unconfigured here, as Context says; `--fast` is not recorded.)
+
+### One line per test
+
+- C-9 x3 (`HARNESS-102 C-9: <id>'s own ...`): the copied sections of 089, 095,
+  099, read under the decoy root, are refused naming R-1 and AM-1, no headless
+  FAIL, non-zero. AC-1. Names, values and number unchanged.
+- (f) (`HARNESS-102 R-3: twin: HARNESS-102's own ...`): the copied 102
+  Regressions, read under the decoy, gets the ok line and no unreadable FAIL.
+  AC-1. Unchanged.
+- `HARNESS-106 AC-2: each vendored copy ...`: four `<CRC> <bytes> <name>` lines
+  equal the C-2 table. AC-2.
+- `HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing ...`. AC-3.
+- `HARNESS-106 AC-3: the rule scans at least 30 shell files ...` (`_ok`/`_bad`). AC-3.
+- `HARNESS-106 AC-3: a fixture holding each spelling ...`: the five lines. AC-3.
+- `HARNESS-106 AC-3: twin: ...`: prints nothing. AC-3.
+
+### Shape pinned (shell, no exports)
+
+- `k_real <story>` - name, argument, output unchanged (C-9); path
+  `"$TESTS_DIR/fixtures/boundaries/$1.md"` in the body (line 4202 now).
+- `k_real_reg <story>` - new; (f)'s awk unchanged, same path (line 4214 now).
+- `k_at_decoy CMD...` - exactly C-3's one-liner. `K_DECOY` built once, removed
+  beside `$KB`.
+- `k_sums` - new, prints the four lines; `{ cksum < f; } 2>/dev/null` so a
+  missing file gives ` <name>` silently.
+- `suite_docs_files <root>`, `suite_docs_reads <root>`, `SDR_RE` in
+  `shipped-docs.test.sh`. `SDR_RE` is C-5's ERE with `[.]` for `\.` (awk `-v`
+  processes backslash escapes; same language) and the root names spelled
+  `'REPO''_ROOT'` / `'TESTS''_DIR'`. The fixture lines are built from
+  `SDR_R`/`SDR_T` the same way, so the real-tree assertion passes on this
+  suite itself with no exemption.
+
+### Passed on arrival, negative controls
+
+Nothing passed on arrival that is not earned by step 1: all four AC-1
+assertions, the checksum and the real-tree rule were red in step 1 against the
+unfixed readers. The fixture and twin assertions of AC-3 and the "at least 30"
+check were green in step 1; they are earned by the real-tree assertion going
+red on real lines in the same run (the rule's detection is the same function),
+and the fixture expects five specific lines, so a vacuous rule fails it.
+
+| Control | Threshold | Measured (step 1, in-suite) | Measured (step 2) |
+|---|---|---|---|
+| scanned-file floor | >= 30 | 36 files (`ls .claude/tests/*.sh`) | 36 |
+| real-tree rule against the unfixed readers | must print the reader lines | `boundaries.test.sh:4192`, `:4204` | empty |
+| decoy swap: old reader, 095/099 absent | must not read `1 1 0 0 non-zero` | `0 0 0 0 0` | `1 1 0 0 non-zero` |
+| decoy swap: old reader, unrelated 089 | same | `0 0 0 0 0` | `1 1 0 0 non-zero` |
+| decoy swap: old (f) reader, 102 absent | must not read `0 1` | `0 0` | `0 1` |
+
+These are not import-time claims: the suites run, and the numbers are from
+the attested logs above.
+
+### Deferred verifications: declined here
+
+**DV-1 and DV-2: I cannot run them in RED, and did not; both are owned by
+GATES.** DV-1 needs the committed fix to put the defect back into (step 1 is
+an observation of the unfixed tree, not that mutation); DV-2 needs GREEN's
+floors and a commit to clone.
+
+DV-1 restated against the readers as built. The story's expression matches
+the built readers unchanged; its needle occurs on exactly two lines, 4202
+(`k_real`) and 4214 (`k_real_reg`), so `mutate.sh` should report 2 lines
+changed:
+
+    bash scripts/mutate.sh .claude/tests/boundaries.test.sh 's|"\$TESTS_DIR/fixtures/boundaries/\$1\.md"|"$REPO_ROOT/docs/backlog/stories/$1.md"|' -- bash scripts/selftest.sh boundaries shipped-docs
+
+Expected, from step 1 (which is that tree, plus the copies): `boundaries`
+exactly 4 failed (three C-9 `0 0 0 0 0` incl. 089 via the decoy, (f) `0 0`),
+checksum passing; `shipped-docs` exactly 1 failed, actual
+`.claude/tests/boundaries.test.sh:4202` and `:4214` - unless GREEN's commit
+shifts those lines, which it should not (GREEN does not touch the suite).
+
+### For GREEN
+
+- C-7 only: raise `boundaries` 685 -> 686 and `shipped-docs` 14 -> 18 in
+  `floors.conf` (lines 40, 66) and `selftest.test.sh` (531, 558), dated
+  comment; `VERSION` 125. RED added and dropped nothing beyond C-2's one and
+  C-5's four.
+- `boundaries` took 24-34 minutes per run on this host; plan one run.
 
 ## Regressions
 
