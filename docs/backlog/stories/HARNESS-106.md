@@ -5,7 +5,7 @@ slug: the-boundaries-suite-reads-vendored-stor
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-106-the-boundaries-suite-reads-vendored-stor
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/fixtures/boundaries/.gitattributes, .claude/tests/fixtures/boundaries/HARNESS-089.md, .claude/tests/fixtures/boundaries/HARNESS-095.md, .claude/tests/fixtures/boundaries/HARNESS-099.md, .claude/tests/fixtures/boundaries/HARNESS-102.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -849,3 +849,4 @@ shifts those lines, which it should not (GREEN does not touch the suite).
   was stopped unfinished, and it left no run lock behind). RED's step 1 is
   the first measurement; 5 failed of 686 and 1 failed of 18 are what C-1
   expects, and a different total is reported, not fitted.
+- **GREEN (2026-11-13, feature-developer, resolved Claude Opus 5.5 `claude-opus-5-5`, no override):** C-7 only - floors `boundaries` 685 -> 686 and `shipped-docs` 14 -> 18 in `floors.conf` (with dated history entry) and `selftest.test.sh`, `VERSION` 124 -> 125; measured `boundaries: 686 passed`, `shipped-docs: 18 passed`, `selftest: 366 passed`, floors all met (attest log `.claude/state/attest-logs/20261113T153932Z.64.log`, exit 0, 2592s); `gates.sh --fast` exit 0. No suite or fixture touched.
