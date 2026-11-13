@@ -702,6 +702,43 @@ that the floor line agrees.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Review 1 — the whole diff against main at 7925009 (resolved claude-fable-5-2)
+
+A fresh `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved claude-fable-5-2, no override; head reviewed `88f0b3b`. It changed no file and ran neither the self-test nor `gates.sh`; experiments ran in scratch fixtures on Git Bash, git 2.55.0.windows.5.
+
+What this change does: `mutate.sh` runs the `git diff` that counts and lists the changed lines from inside the mutations directory on the two bare names, instead of two absolute paths an MSYS shell does not translate for `git.exe` when they hold `[`. One test block (7 assertions) pins the bracketed case; the `mutate` floor goes 315 → 322 in both places; VERSION goes to 123.
+
+1. **The subshell is correct on every path tried.** Against HEAD's script in a fixture, each reported the right count, preview, log record and listing, exit 0: targets `src/[slug].txt`, `src/[[...all]].astro`, `src/{a,b}.txt`, `src/@resp.txt`, `src/~t.txt`, `src/x=y;z.txt`, `src/!b$c.txt`, `src/sp ace.txt`, `src/it's.txt`, `src/#h%20.txt`, `.env`; names beginning with `-` (`src/-dash.txt`, `./-dash.txt`, `-top.txt`); a project root named `a [b] c` (also wrong before the fix, right now); `CDPATH`, `GIT_DIR`, `GIT_WORK_TREE` and `diff.relative=true` (same at main and HEAD); a binary file and CRLF (same at main and HEAD). `$MUTDIR` cannot be relative (line 81). The caller's command still runs from `$ROOT`. Nothing reads the diff's `---`/`+++` lines. The `git diff` is the script's only native-program call; `gates.sh`, `attest.sh`, `lib.sh` and `phase-guard.sh` only call `--check`, read the sentinel or parse the command string. The suite's `sha` helper has the same defect, but no existing block passes it a bracketed path, and the new block uses `brk_sha` behind a 40-character control.
+2. **The ported block is faithful,** differing from TCF's only in the id, the provenance comment and `h59_clear`; `scripts/mutate.sh` is byte-identical to TCF's but for the id. Needles: the header by `grep -cxF`; preview and listing by exact equality; the log needle tab-bounded and literal in `case`. All seven assertions have been seen red (DV-1: 3, 4, 5, 7; DV-2: 2, 6; the Handoff: 1).
+3. **Linux CI: acceptable as stated.** The defect cannot occur on Linux; both criteria's negative controls say so, and a fake-`git` shim would pin the argument shape, not the behaviour.
+4. **Floors and VERSION consistent:** 322 in both places, 315 + 7; the `selftest` floor rightly unchanged.
+
+**Should fix:**
+
+1. **A long backup path still reports `0 line(s) changed`, by a second cause** (`scripts/mutate.sh:387-388`)
+   - **What this is:** the same `git diff` call; its status and error output are discarded, so whenever git cannot open the backup the count is 0.
+   - **Problem:** `git.exe` refuses paths over 260 characters unless `core.longpaths` is on, and the backup name is the whole flattened target path. Reproduced with a 110-character root: a 281-character backup path, `error: Could not access '_c_Users_..._crlf.txt.<stamp>.bak'`, header `(0 line(s) changed ...)`, no preview. Identical at main and HEAD; `git -c core.longpaths=true diff --no-index` diffs the same files correctly.
+   - **Fix:** add `-c core.longpaths=true` to that command's options, with its own test; cut as a follow-up story, since it is outside AC-1 and AC-2 and Out of scope defers other path defects.
+   - **If we skip it:** a probe run by absolute path from a deeply nested worktree can again report 0 lines; the mutation, command and restore are unaffected.
+   - **Route:** GATES
+
+**Nice to have:**
+
+2. **VERSION is dated by UTC, the last entries by local date** (`.claude/harness/VERSION:34`, `.claude/tests/floors.conf:1190`)
+   - **What this is:** the release stamp.
+   - **Problem:** `123 (2026-11-13)` from a commit at 2026-11-12 22:52 -0600; release 122 was stamped `2026-11-12` from 00:14 UTC on the 13th.
+   - **Fix:** nothing required; for consistency, `2026-11-12` in both places.
+   - **If we skip it:** nothing breaks; no script reads the date.
+   - **Route:** GATES
+
+Not checked: Linux (reasoned, not run); a `C:/...` absolute target reported 0, but that fixture was over the 260-character limit too, so a colon cause could not be separated from finding 1; on a CRLF file a one-line edit reports 3 lines changed, identically at main and HEAD, cause not examined.
+
+Verdict: Ship.
+
+**Orchestrator (2026-11-13):** verdict Ship, so GATES → REVIEW goes on. Finding 1 is deferred to a follow-up story, as the review itself recommends; finding 2 is not made (nothing reads the date, and a change would restart these steps). Both are offered to the user.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
