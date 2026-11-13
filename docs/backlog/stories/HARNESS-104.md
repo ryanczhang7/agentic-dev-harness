@@ -5,7 +5,7 @@ slug: mutate-sh-counts-the-lines-a-bracketed-p
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-104-mutate-sh-counts-the-lines-a-bracketed-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -714,3 +714,4 @@ that the floor line agrees.
 ## Notes
 
 - **RED verified by the orchestrator, 2026-11-13.** `test-developer`, planned `opus`, resolved claude-opus-5-5. Changed: `mutate.test.sh` (34 lines, TCF's block by line range, renamed) and this story. `attest.sh check -- bash scripts/selftest.sh mutate` `fresh`, exit 1, `mutate: 318 passed, 4 failed`, log `20261113T042418Z.9768`: the four are assertions 3, 4, 5, 7 of the HARNESS-104 block; `--fast` `fresh`, exit 0. DV-2 run in RED, both owed names red.
+- **GREEN, 2026-11-13.** `feature-developer`, planned `opus`, resolved claude-opus-5-5 (no override). Changed: `scripts/mutate.sh` (C-1, TCF `2d00f6e`'s edit with the id renamed: the `git diff --no-index` runs in a subshell inside `$MUTDIR` on `"${BAK##*/}"` and `"${NEW##*/}"`, seven comment lines added), `.claude/tests/floors.conf` and `.claude/tests/selftest.test.sh` (`mutate` 315 -> 322, with the dated comment), `.claude/harness/VERSION` (`123 (2026-11-13)`). Measured: `mutate: 322 passed, 0 failed`. Every Handoff control confirmed by running the block's scenario by hand against the shipped script in a fresh fixture: `${#before}` 40; header line `=== mutate: src/[slug].txt (1 line(s) changed by s/inline-size/normal/) ===`; preview `  1 - container-type: inline-size;` / `  1 + container-type: normal;`; log field `1 line(s)` with `exited 0` and `restored (verified)`; listing `  1: container-type: inline-size;`; hash `7fb43a8c791b6ef0485d6a4d153259157f28cf95` before and after; exit 0. No divergence from RED's numbers.
