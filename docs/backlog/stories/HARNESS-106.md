@@ -4,8 +4,8 @@ title: The boundaries suite reads vendored story sections, not upstream story fi
 slug: the-boundaries-suite-reads-vendored-stor
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-106-the-boundaries-suite-reads-vendored-stor
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/fixtures/boundaries/.gitattributes, .claude/tests/fixtures/boundaries/HARNESS-089.md, .claude/tests/fixtures/boundaries/HARNESS-095.md, .claude/tests/fixtures/boundaries/HARNESS-099.md, .claude/tests/fixtures/boundaries/HARNESS-102.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -929,3 +929,4 @@ Verdict: Ship.
   expects, and a different total is reported, not fitted.
 - **GREEN (2026-11-13, feature-developer, resolved Claude Opus 5.5 `claude-opus-5-5`, no override):** C-7 only - floors `boundaries` 685 -> 686 and `shipped-docs` 14 -> 18 in `floors.conf` (with dated history entry) and `selftest.test.sh`, `VERSION` 124 -> 125; measured `boundaries: 686 passed`, `shipped-docs: 18 passed`, `selftest: 366 passed`, floors all met (attest log `.claude/state/attest-logs/20261113T153932Z.64.log`, exit 0, 2592s); `gates.sh --fast` exit 0. No suite or fixture touched.
 - **Self-test at GATES -> REVIEW (2026-11-13, orchestrator):** `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` through attest, 10 of 34 suites (boundaries, doctor, grep-count, host-load, refresh, run-lock, selftest, shipped-docs, sigpipe, worktree): exit 0, `10 harness suite(s) passed.`, floors all met (1769 executed, 1769 declared). Diff review finding 1 (SCANS row for shipped-docs) goes to a follow-up story; findings 2 and 3 offered with it.
+- **DONE (2026-11-13):** PR #196 merged as a8e7b66.
