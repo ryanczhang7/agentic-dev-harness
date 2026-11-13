@@ -4,8 +4,8 @@ title: mutate.sh counts the lines a bracketed path changed
 slug: mutate-sh-counts-the-lines-a-bracketed-p
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-104-mutate-sh-counts-the-lines-a-bracketed-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -788,3 +788,4 @@ Verdict: Ship.
 - **RED verified by the orchestrator, 2026-11-13.** `test-developer`, planned `opus`, resolved claude-opus-5-5. Changed: `mutate.test.sh` (34 lines, TCF's block by line range, renamed) and this story. `attest.sh check -- bash scripts/selftest.sh mutate` `fresh`, exit 1, `mutate: 318 passed, 4 failed`, log `20261113T042418Z.9768`: the four are assertions 3, 4, 5, 7 of the HARNESS-104 block; `--fast` `fresh`, exit 0. DV-2 run in RED, both owed names red.
 - **GREEN, 2026-11-13.** `feature-developer`, planned `opus`, resolved claude-opus-5-5 (no override). Changed: `scripts/mutate.sh` (C-1, TCF `2d00f6e`'s edit with the id renamed: the `git diff --no-index` runs in a subshell inside `$MUTDIR` on `"${BAK##*/}"` and `"${NEW##*/}"`, seven comment lines added), `.claude/tests/floors.conf` and `.claude/tests/selftest.test.sh` (`mutate` 315 -> 322, with the dated comment), `.claude/harness/VERSION` (`123 (2026-11-13)`). Measured: `mutate: 322 passed, 0 failed`. Every Handoff control confirmed by running the block's scenario by hand against the shipped script in a fresh fixture: `${#before}` 40; header line `=== mutate: src/[slug].txt (1 line(s) changed by s/inline-size/normal/) ===`; preview `  1 - container-type: inline-size;` / `  1 + container-type: normal;`; log field `1 line(s)` with `exited 0` and `restored (verified)`; listing `  1: container-type: inline-size;`; hash `7fb43a8c791b6ef0485d6a4d153259157f28cf95` before and after; exit 0. No divergence from RED's numbers.
 - **GATES, 2026-11-13.** DV-1 run by the orchestrator (result under `## Deferred verifications`): exactly the four owed assertions red, file restored and verified. Full run by the orchestrator directly (2 s, no gate configured): `attest.sh check -- bash scripts/gates.sh` `fresh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, log `20261113T045455Z.32033`.
+- **Self-test at GATES → REVIEW, 2026-11-13.** `selftest-needed: run` (5 harness paths); dispatched to a `feature-developer` (planned `opus`, resolved claude-opus-5-5). `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` `fresh`, exit 0, `17 harness suite(s) passed.`, 3176 s, log `20261113T045948Z.34573`; floors met (4313 executed, 4309 declared). Deferred to a follow-up: diff review finding 1 (`core.longpaths`).
