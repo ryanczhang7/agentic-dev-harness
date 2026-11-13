@@ -340,6 +340,7 @@ repository's root, and `$RUNNER` the copy.
   Runner output, then the two FAIL lines and the summary line from the suite
   it ran:
 
+```
       === mutate: /d/agentic-dev-harness/scripts/mutate.sh (1 line(s) changed by s/^cp "\$BAK" "\$FILE" 2>\/dev\/null$/: no restore/) ===
         484 - cp "$BAK" "$FILE" 2>/dev/null
         484 + : no restore
@@ -355,6 +356,7 @@ repository's root, and `$RUNNER` the copy.
 
       === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harness_scripts_mutate.sh.20261113T042943Z.12954.bak) ===
         484: cp "$BAK" "$FILE" 2>/dev/null
+```
 
   Afterwards `git diff --quiet -- scripts/mutate.sh` succeeded (no change),
   `bash scripts/mutate.sh --check` printed `mutate: no stranded mutation;
@@ -372,6 +374,7 @@ repository's root, and `$RUNNER` the copy.
   the file was restored. The mutation changed one line, and exactly the four
   owed assertions failed:
 
+```
       === mutate: /d/agentic-dev-harness/scripts/mutate.sh (1 line(s) changed by s|-- "\${BAK##\*/}" "\${NEW##\*/}"|-- "$BAK" "$NEW"|) ===
       === mutate: running bash /d/agentic-dev-harness/.claude/tests/mutate.test.sh ===
           FAIL HARNESS-104 AC-1: the header reports 1 line changed, as a whole line
@@ -380,6 +383,7 @@ repository's root, and `$RUNNER` the copy.
           FAIL HARNESS-104 AC-2: the restore listing names the line it put back
       mutate: 318 passed, 4 failed
       === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harness_scripts_mutate.sh.20261113T045254Z.28994.bak) ===
+```
 
   Afterwards `bash scripts/mutate.sh --check` printed `mutate: no stranded
   mutation; nothing of a previous run is in the tree.`, `scripts/mutate.sh`
