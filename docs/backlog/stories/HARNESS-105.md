@@ -4,8 +4,8 @@ title: mutate.sh counts lines past the Windows path limit
 slug: mutate-sh-counts-lines-past-the-windows
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-105-mutate-sh-counts-lines-past-the-windows-path-limit
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -897,3 +897,4 @@ assertion floors: all 1 suite(s) met their declared floor (328 assertions execut
   last:     17 harness suite(s) passed.
   assertion floors: all 17 suite(s) met their declared floor (4319 assertions executed, 4315 declared).
   ```
+- REVIEW → DONE (2026-11-13): PR #195 merged as `d6dcb00` at 2026-11-13T13:56:53Z. CI: `boundaries` SUCCESS in 6 s, `gates` SUCCESS in 5 min 25 s (10:47:22 → 10:52:47), with no step near its limit. No PR feedback asked for a change.
