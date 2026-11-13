@@ -5,7 +5,7 @@ slug: the-boundaries-suite-reads-vendored-stor
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-106-the-boundaries-suite-reads-vendored-stor
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/boundaries.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/fixtures/boundaries/.gitattributes, .claude/tests/fixtures/boundaries/HARNESS-089.md, .claude/tests/fixtures/boundaries/HARNESS-095.md, .claude/tests/fixtures/boundaries/HARNESS-099.md, .claude/tests/fixtures/boundaries/HARNESS-102.md, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -368,6 +368,38 @@ is pasted here.
 
   RED's handoff restates this expression against the readers as built.
 
+  **Result (GATES, 2026-11-13, orchestrator, run on b4f19c2):** as required.
+  2 lines changed; `boundaries` exactly 4 failed (the three C-9 cases and
+  the (f) twin; the decoy's 089 reads `0 0 0 0 0`), the AC-2 checksum still
+  passing; `shipped-docs` exactly 1 failed, naming both mutated lines; the
+  file restored and verified. Output, from `.claude/state/dv1.out`:
+
+```
+=== mutate: .claude/tests/boundaries.test.sh (2 line(s) changed by s|"\$TESTS_DIR/fixtures/boundaries/\$1\.md"|"$REPO_ROOT/docs/backlog/stories/$1.md"|) ===
+    FAIL HARNESS-102 C-9: HARNESS-089's own ... verbatim, are refused: one FAIL for R-1, one for AM-1, no headless FAIL, non-zero
+         expected: 1 1 0 0 non-zero
+         actual:   0 0 0 0 0
+    FAIL HARNESS-102 C-9: HARNESS-095's own ... verbatim, are refused: ...
+         expected: 1 1 0 0 non-zero
+         actual:   0 0 0 0 0
+    FAIL HARNESS-102 C-9: HARNESS-099's own ... verbatim, are refused: ...
+         expected: 1 1 0 0 non-zero
+         actual:   0 0 0 0 0
+    FAIL HARNESS-102 R-3: twin: HARNESS-102's own ... verbatim, is not refused as unreadable and gets the ok line
+         expected: 0 1
+         actual:   0 0
+boundaries: 682 passed, 4 failed
+    FAIL HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing: no suite line reads the project's own docs, which a consumer does not share
+         expected:
+         actual:   .claude/tests/boundaries.test.sh:4202
+         .claude/tests/boundaries.test.sh:4214
+shipped-docs: 17 passed, 1 failed
+2 of 2 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_boundaries.test.sh.20261113T162523Z.243.bak) ===
+```
+
+  (Section names in the assertion names are elided as `...` here, per C-6.)
+
 - **DV-2, a consumer-shaped run (AC-1, at full scale, once).** The decoy in
   the suite covers the readers; this covers the whole run the field report
   was about. In a clone of the committed story branch, with every
@@ -384,6 +416,18 @@ is pasted here.
   Paste the two summary lines and the floors line. If the clone fails for a
   reason that is not a story file, paste that and say so; do not adjust the
   clone until it passes.
+
+  **Result (GATES, 2026-11-13, orchestrator):** as required. The command
+  above, run verbatim, with `git log --oneline -1` printed in the clone
+  first; output from `.claude/state/dv2.out`:
+
+```
+b4f19c2 HARNESS-106 GREEN: floors boundaries 686, shipped-docs 18; release 125
+boundaries: 686 passed, 0 failed
+shipped-docs: 18 passed, 0 failed
+assertion floors: all 2 suite(s) met their declared floor (704 assertions executed, 704 declared).
+2 harness suite(s) passed.
+```
 
 Not owed, and stated so that nobody adds one: a mutation earning the checksum
 assertion (it is red in step 1 with no files, and its expected values are the
@@ -785,10 +829,21 @@ shifts those lines, which it should not (GREEN does not touch the suite).
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-13T17:28:45Z
+    commit: b4f19c2
+    tree:   3f95eb8411ee9cd416e457957409e6afe682693f
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
