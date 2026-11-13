@@ -5,7 +5,7 @@ slug: mutate-sh-counts-lines-past-the-windows
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-105-mutate-sh-counts-lines-past-the-windows-path-limit
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -787,3 +787,46 @@ amended.
 
 ## Notes
 
+
+**GREEN (feature-developer, 2026-11-13, Git Bash on Windows, local).**
+Dispatched on its declared `opus`; resolved to Opus 5.5 (`claude-opus-5-5`),
+no override stated in the dispatch.
+
+- C-1: `scripts/mutate.sh` gains `-c core.longpaths=true` as the first option
+  of the `git ... diff --no-index --no-color` command, and the six C-1
+  comment lines directly above it. `git -c core.longpaths=true` occurs once in
+  the file (the command), so DV-1's anchored expression changes one line.
+  Nothing else in the script changed.
+- Suite, attested against the fixed script before the floor edits (tree
+  `1c220a7051ad499379d78fa4cf26a1a77176bb2c`, 491 s,
+  `.claude/state/attest-logs/20261113T081828Z.188596.log`):
+
+```
+mutate: 328 passed, 0 failed
+
+assertion floors: all 1 suite(s) met their declared floor (328 assertions executed, 322 declared).
+1 harness suite(s) passed.
+```
+
+- Control (assertion 1, backup path over 260): passed against the fixed
+  script, so the path is still over 260 and the four AC-1 assertions now pass
+  with it there. The exact length prints only on failure, so the measured
+  number is not available beyond "over", same as RED's 200-char run.
+- C-5: `mutate` floor 322 -> 328 in `.claude/tests/floors.conf` (line 51,
+  plus the dated HARNESS-105 entry at the end) and in the mirror table in
+  `.claude/tests/selftest.test.sh` (`mutate 328`). `.claude/harness/VERSION`
+  123 -> `124 (2026-11-13)`.
+- `bash scripts/attest.sh -- bash scripts/gates.sh --fast`: exit 0, `All
+  required gates passed (0 ran, 5 unconfigured, 0 known).`
+  (`.claude/state/attest-logs/20261113T082742Z.224266.log`).
+- Not run in GREEN: the `selftest` suite after the floor-table edit (it
+  checks the mirror against `floors.conf`), and DV-1. Both belong to GATES.
+
+- Orchestrator check at RED → GREEN (2026-11-13): `attest.sh check -- bash scripts/selftest.sh mutate` was `fresh` at RED (exit 1, the four AC-1 FAILs, `mutate: 324 passed, 4 failed`). At GREEN it was `stale`, because the floor and VERSION edits came after the dev's attested run, so the orchestrator ran it directly on the final tree:
+
+  ```
+  assertion floors: all 1 suite(s) met their declared floor (328 assertions executed, 328 declared).
+  1 harness suite(s) passed.
+  ```
+
+  `attest.sh check -- bash scripts/gates.sh --fast`: fresh, exit 0.
