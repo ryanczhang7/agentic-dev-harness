@@ -528,7 +528,7 @@ while read -r n v; do
   [ "$got" = "$v" ] || wrong="$wrong $n=${got:-<none>}(want $v)"
 done <<'COUNTS'
 attest 179
-boundaries 679
+boundaries 685
 briefs 31
 ci-local 52
 classify 55

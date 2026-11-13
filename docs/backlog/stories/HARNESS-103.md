@@ -5,7 +5,7 @@ slug: the-unreadable-section-refusal-says-how
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-103-the-unreadable-section-refusal-says-how
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -574,3 +574,4 @@ cosmetic points:
 ## Notes
 
 - RED verified by the orchestrator (2026-11-12): `attest.sh check -- bash scripts/selftest.sh boundaries` was `fresh` (exit 1, tree 7b7ef56); its log holds exactly one FAIL, the HARNESS-103 AC-1 assertion (`1 1 0` against `1 1 1`). Not re-run. Test-developer resolved to claude-opus-5-5.
+- GREEN verified by the orchestrator (2026-11-12): `attest.sh check` `fresh` for `bash scripts/selftest.sh boundaries` (exit 0, 685 passed, tree db845ff) and `bash scripts/gates.sh --fast` (exit 0). Not re-run. Feature-developer resolved to claude-opus-5-5.
