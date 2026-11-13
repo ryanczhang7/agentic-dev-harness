@@ -4,8 +4,8 @@ title: mutate.sh counts the lines a bracketed path changed
 slug: mutate-sh-counts-the-lines-a-bracketed-p
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-104-mutate-sh-counts-the-lines-a-bracketed-p
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/mutate.sh, .claude/tests/mutate.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -330,6 +330,37 @@ repository's root, and `$RUNNER` the copy.
   green, the mutation missed and RED picks the line that performs the restore
   on the ordinary path and records which.
 
+  **DV-2 result (RED, 2026-11-13, Git Bash on Windows, local, tree
+  `937d74e`).** Run as written. The runner copy was at
+  `.claude/state/selfmut/scripts/mutate.sh`, checked with `cmp` against
+  `scripts/mutate.sh` (identical) and `git check-ignore`d. The mutation hit
+  line 484, the intended line. Both HARNESS-104 names failed: assertion 2
+  (exit 90) and assertion 6 (the file was left mutated, so the hash differs).
+  The other four HARNESS-104 assertions failed as well, as they do in RED.
+  Runner output, then the two FAIL lines and the summary line from the suite
+  it ran:
+
+      === mutate: /d/agentic-dev-harness/scripts/mutate.sh (1 line(s) changed by s/^cp "\$BAK" "\$FILE" 2>\/dev\/null$/: no restore/) ===
+        484 - cp "$BAK" "$FILE" 2>/dev/null
+        484 + : no restore
+
+          FAIL HARNESS-104 AC-1: the command saw the mutated line (exit 0)
+               expected: 0
+               actual:   90
+          FAIL HARNESS-104 AC-2: the bracketed file is byte-identical afterwards
+               expected: 7fb43a8c791b6ef0485d6a4d153259157f28cf95
+               actual:   629c01db6accf0d61d1167e0cfc1c171ae3a9329
+
+      mutate: 280 passed, 42 failed
+
+      === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/selfmut/.claude/state/mutations/_d_agentic-dev-harness_scripts_mutate.sh.20261113T042943Z.12954.bak) ===
+        484: cp "$BAK" "$FILE" 2>/dev/null
+
+  Afterwards `git diff --quiet -- scripts/mutate.sh` succeeded (no change),
+  `bash scripts/mutate.sh --check` printed `mutate: no stranded mutation;
+  nothing of a previous run is in the tree.` (rc 0), and
+  `.claude/state/selfmut` was removed.
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -422,7 +453,174 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One block, at integration level: it runs the real `scripts/mutate.sh` inside
+the suite's `make_project_fixture` project against a real bracketed path. The
+defect sits in how a native program (`git.exe`) receives an argument, so
+nothing short of running the script would show it. The block is TCF's
+`HARNESS-089` block, taken from
+`D:/trump-crime-family/.claude/tests/mutate.test.sh` lines 1173-1204 by line
+range rather than retyped. Changes from TCF: `HARNESS-089` became
+`HARNESS-104` throughout, the comment's first line names this story and its
+TCF origin, and the final `clear_strays` became `h59_clear`, to match the
+neighbouring blocks. A `diff` of the inserted lines against the extracted and
+renamed text was empty.
+
+It sits in `.claude/tests/mutate.test.sh` after the last `HARNESS-059 AC-4`
+block (which ends `h59_clear`) and before `summary "mutate"`.
+
+| # | Assertion name | AC | Needle / oracle |
+|---|---|---|---|
+| 1 | `HARNESS-104: control - the hash helper can read the bracketed file` | instrument | `${#before}` = 40 |
+| 2 | `HARNESS-104 AC-1: the command saw the mutated line (exit 0)` | AC-1 | rc = 0 |
+| 3 | `HARNESS-104 AC-1: the header reports 1 line changed, as a whole line` | AC-1 | `whole_lines` (`grep -cxF`) of the full header = 1 |
+| 4 | `HARNESS-104 AC-1: the preview lists the removed and the added line` | AC-1 | `preview_of` = exactly `  1 - container-type: inline-size;` / `  1 + container-type: normal;` |
+| 5 | `HARNESS-104 AC-1: the log records 1 line(s), not 0` | AC-1 | `last_log` contains `TAB src/[slug].txt TAB s/inline-size/normal/ TAB 1 line(s) TAB` (tab on both sides, so `0`/`11 line(s)` cannot match) |
+| 6 | `HARNESS-104 AC-2: the bracketed file is byte-identical afterwards` | AC-2 | `brk_sha` before = after |
+| 7 | `HARNESS-104 AC-2: the restore listing names the line it put back` | AC-2 | `listing_of` = exactly `  1: container-type: inline-size;` |
+
 ## Handoff: RED -> GREEN
+
+**Command.**
+
+    bash scripts/selftest.sh mutate
+
+(About 4.5 minutes on this host. It has to run on Git Bash on Windows to
+discriminate. On Linux the four assertions pass without the fix; see Out of
+scope.)
+
+**Attested RED run** (local, Git Bash on Windows, 2026-11-13):
+
+    command:  bash scripts/selftest.sh mutate
+    tree:     937d74edd9cc905bc9552dbceb2f1d516cba790d
+    exit:     1
+    last:     1 of 1 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261113T042418Z.9768.log
+
+Verbatim failure (from that log):
+
+      HARNESS-104: a target path with [brackets] reports the lines it really changed
+        FAIL HARNESS-104 AC-1: the header reports 1 line changed, as a whole line
+             expected: 1
+             actual:   0
+        FAIL HARNESS-104 AC-1: the preview lists the removed and the added line
+             expected:   1 - container-type: inline-size;
+               1 + container-type: normal;
+             actual:   
+        FAIL HARNESS-104 AC-1: the log records 1 line(s), not 0
+             expected to contain: 	src/[slug].txt	s/inline-size/normal/	1 line(s)	
+             actual:               20261113T042848Z	src/[slug].txt	s/inline-size/normal/	0 line(s)	command: grep -c container-type: normal; src/[slug].txt	exited 0	restored (verified)
+        FAIL HARNESS-104 AC-2: the restore listing names the line it put back
+             expected:   1: container-type: inline-size;
+             actual:   
+
+    mutate: 318 passed, 4 failed
+
+    assertion floors: all 1 suite(s) met their declared floor (318 assertions executed, 315 declared).
+    1 of 1 harness suite(s) FAILED.
+
+This matches C-4's prediction: 322 assertions ran, 318 passed and 4 failed,
+and the four are assertions 3, 4, 5 and 7. **One point on wording, for C-5.**
+The floor line's "assertions executed" is `executed_count` in
+`scripts/selftest.sh`, which takes the **passed** count. In RED it therefore
+reads 318, not 322. In GREEN it should read 322, and 322 is the number C-5
+raises both floors to. These are the right failures. The mutation applied and
+the command saw it (assertion 2 passes, and the log shows `exited 0` and
+`restored (verified)`), so only the evidence built from the diff is empty:
+the count, the preview and the listing. That is the defect C-1 fixes.
+
+**Attested fast gates** (local):
+
+    command:  bash scripts/gates.sh --fast
+    tree:     937d74edd9cc905bc9552dbceb2f1d516cba790d
+    exit:     0
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261113T043357Z.15930.log
+
+Every gate is unconfigured in this repository, so `--fast` judges nothing
+here. The suite is the judge, and it holds no timeouts to budget.
+
+**Files touched in RED.** `.claude/tests/mutate.test.sh` (34 lines added,
+nothing else changed). This story file: `## Test plan`, this section, and
+the DV-2 result under `## Deferred verifications`.
+
+**Shape the tests pin.** There is no module and no export. What is pinned is
+`scripts/mutate.sh`'s observable output for a target path holding brackets,
+run from the project root:
+- exit status = the command's (0 here);
+- exactly one line `=== mutate: src/[slug].txt (1 line(s) changed by s/inline-size/normal/) ===`;
+- a preview of exactly `  1 - container-type: inline-size;` and `  1 + container-type: normal;` before `=== mutate: running`;
+- the last log record has the tab-separated fields `src/[slug].txt`, `s/inline-size/normal/`, `1 line(s)`;
+- exactly one indented line `  1: container-type: inline-size;` after `restored (verified`;
+- the file is byte-identical afterwards.
+
+**Not constrained:** how the diff is made to work. C-1's subshell with
+basenames is the contracted fix, but the tests would accept any change that
+produces the right diff. They do not read the diff's `---`/`+++` header lines.
+
+**Passed on arrival, and what earns each.**
+
+| # | Earned by | Result |
+|---|---|---|
+| 1 (instrument control) | pointed at `sha "$BRK"` (the absolute-path helper) for one full suite run, then put back | **failed as expected**: `expected: 40 / actual: 0`, with git's `fatal: could not open '/tmp/tmp.A0rbGX3Qkv/src/[slug].txt' for reading: No such file or directory`. `brk_sha` was restored and the block re-diffed against the port: identical |
+| 2 (exit 0) | DV-2 | failed under the mutation (`actual: 90`), see DV-2 |
+| 6 (byte-identical) | DV-2 | failed under the mutation (hash differs), see DV-2 |
+
+Control run output (suite run directly with `bash .claude/tests/mutate.test.sh`,
+not attested; it was a diagnostic edit, since reverted):
+
+      HARNESS-104: a target path with [brackets] reports the lines it really changed
+    fatal: could not open '/tmp/tmp.A0rbGX3Qkv/src/[slug].txt' for reading: No such file or directory
+        FAIL HARNESS-104: control - the hash helper can read the bracketed file
+             expected: 40
+             actual:   0
+        [... assertions 3, 4, 5, 7 failed as in RED ...]
+        FAIL HARNESS-104 AC-2: the bracketed file is byte-identical afterwards
+             expected: 
+             actual:   7fb43a8c791b6ef0485d6a4d153259157f28cf95
+    mutate: 316 passed, 6 failed
+
+(Assertion 6 also failed in that run because `before` was the empty
+absolute-path hash and `after` was `brk_sha`'s. That run tells us nothing
+about assertion 6; DV-2 is what earns it.)
+
+**Expected values for GREEN** (Git Bash on Windows):
+
+| What | RED measured | GREEN must measure |
+|---|---|---|
+| `${#before}` (control) | 40 | 40 |
+| header whole-line count | 0 | 1 |
+| preview | empty | `  1 - container-type: inline-size;` / `  1 + container-type: normal;` |
+| log count field | `0 line(s)` | `1 line(s)` |
+| restore listing | empty | `  1: container-type: inline-size;` |
+| bracketed file hash before = after | `7fb43a8c...cf95` both | equal |
+| suite summary | `mutate: 318 passed, 4 failed` | `mutate: 322 passed, 0 failed` |
+| floor line "executed" (passed count) | 318 | 322 |
+
+DV-1 (owner GATES) is not mine to run. The fix does not exist yet, so there
+is nothing to revert. I am leaving it to GATES, and its expected result is
+C-3's: exactly 4 failed, assertions 3, 4, 5 and 7.
+
+**C-7 "no callers", checked against the tree (tree `937d74e`).** In
+`scripts/`, `.claude/hooks/` and `.github/`, `scripts/mutate.sh` is invoked
+only by `scripts/gates.sh:268` and `scripts/attest.sh:161`, both as
+`mutate.sh --check`, which reads `.active` sentinels and not the diff or the
+count. `.claude/hooks/lib.sh` and `phase-guard.sh` only recognise a
+`mutate.sh` invocation in order to exempt its FILE argument. None of them
+reads the `$DIFF` content, the `---`/`+++` lines or the count. A grep for
+`mutate\.sh:[0-9]+` across the tree finds one live pin,
+`.claude/tests/mutate.test.sh:1215` (`mutate.sh:191`, a comment, above the
+edit at 381). The rest are historical citations in closed stories and in
+`docs/wiki/audits/harness-mutants-2026-10-15.md`. Some of those cite lines
+below 381 (`mutate.sh:462` in HARNESS-034, `:497` in HARNESS-045). They
+describe the script as it stood when those stories ran and are not
+assertions, so the seven added lines break nothing. C-1's search mentions
+only the lines above the edit; I am noting the older citations here, not
+correcting them.
+
+**Discovered.** Nothing changes the approach. The only point to carry
+forward is the floor-line wording above: it reports passed assertions, so
+GREEN should take 322 from the `mutate: N passed, 0 failed` line and check
+that the floor line agrees.
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
      to the Feature Developer, whose context is fresh. Must contain:
@@ -515,3 +713,4 @@ name, below the table.
 
 ## Notes
 
+- **RED verified by the orchestrator, 2026-11-13.** `test-developer`, planned `opus`, resolved claude-opus-5-5. Changed: `mutate.test.sh` (34 lines, TCF's block by line range, renamed) and this story. `attest.sh check -- bash scripts/selftest.sh mutate` `fresh`, exit 1, `mutate: 318 passed, 4 failed`, log `20261113T042418Z.9768`: the four are assertions 3, 4, 5, 7 of the HARNESS-104 block; `--fast` `fresh`, exit 0. DV-2 run in RED, both owed names red.
