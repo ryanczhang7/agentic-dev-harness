@@ -585,6 +585,8 @@ name, below the table.
 - PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
 - RED, `test-developer` (two dispatches: the first paused at the user's request while other hosts' self-tests ran, the second resumed from its recorded place), declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 - GREEN, `feature-developer`, declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override. The orchestrator then set VERSION's date to 2026-11-13, the local calendar date of the release (GREEN had used UTC).
+- GATES, run by the orchestrator (Opus 5.5, `claude-opus-5-5`): DV-1..DV-3 and `gates.sh` directly, no `feature-developer` dispatch, because no gate is configured here (the run takes a second) and the user's one-run-at-a-time rule made a separate dispatch add nothing.
+- DIFF-REVIEW, `lead-po`, declared `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override.
 ## Out of scope
 
 - **Data-flow reads in the rule.** A path built in a variable first, a `cd`
@@ -1000,13 +1002,88 @@ files, 0 findings) clean.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+**Review 1** - 2026-11-13, fresh `lead-po` on the DIFF-REVIEW row, planned
+`fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override was reported to
+this dispatch. Reviewed `git diff origin/main...HEAD` at `f8ca452` (merge-base
+`2934b16`), and the code connected to it: the whole `--suites` branch of
+`scripts/selftest-needed.sh` (the `SCANS` loop, the per-path rules, the
+selection awk), `suite_docs_files` / `suite_docs_reads` and their fixture in
+`.claude/tests/shipped-docs.test.sh`, every `mktemp` and `trap` in
+`.claude/tests/boundaries.test.sh`, and the prose that describes `--suites`
+(`.claude/commands/advance-story.md:308`, `CLAUDE.md`).
+
+What this change does: When a top-level `.claude/tests/*.sh` changes, the
+changed-suites self-test now also runs `shipped-docs`, the suite whose rule
+scans those files for reads of the project's own `docs/`. That rule's pattern
+now sees three more spellings of such a read and still ignores names that only
+start with `docs`. The `boundaries` suite's exit trap now removes all four temp
+paths it makes, and the floors and the release number follow.
+
+Load assumed: none stated beyond one developer machine and one CI runner; the
+change adds one 18-assertion suite to some `--changed` runs.
+
+What I checked, beyond reading: `bash scripts/selftest-needed.sh --suites` on
+this branch prints 14 of 34, `shipped-docs` among them with the reason
+`.claude/tests/boundaries.test.sh (scans .claude/tests/*.sh)`, and not `all`.
+The new row is `add`, so the loop leaves `hit` alone and the two "mapped by no
+rule" controls keep their meaning. The first-record-per-suite awk prints
+`shipped-docs` once when both rows match in one run. `KB`, `K_NS_COPY` and
+`K_DECOY` are each assigned once (3907, 4093, 4225), there is no other `mktemp`
+and no later `trap` in the file, so the trap names every temp path. "The five
+tree-scanning suites" in `advance-story.md` is still five. The pattern, run by
+hand over lines of my own: `ls $REPO_ROOT/docs*`, `x=$REPO_ROOT/docs$y` and
+`"$TESTS_DIR/../..//docs/a"` are reported; the misses are finding 1.
+
+**Nice to have:**
+
+1. **The rule's written limit no longer lists the direct spellings it still misses** (`.claude/tests/shipped-docs.test.sh:181-183`)
+   - **What this is:** The comment above `SDR_RE` that tells a reader what the docs-read rule cannot see.
+   - **Problem:** It names only data-flow cases. Measured with the pattern as
+     built, these one-line reads are also not reported:
+     `rm -rf "${REPO_ROOT:?}/docs/x"`, `cat "$REPO_ROOT/./docs/a"` and
+     `cat "$REPO_ROOT"/"docs"/a`. The story's `## Out of scope` says other
+     expansions stay a limit; the suite's own comment does not.
+   - **Fix:** One sentence added to the "Written limit" comment in
+     `.claude/tests/shipped-docs.test.sh`, naming an expansion other than
+     `%/`, a `/./` and a separately quoted `docs`. No pattern change, no
+     assertion change. None of the three occurs in the tree today.
+   - **If we skip it:** A later author reads the comment as "every direct
+     spelling is caught" and a suite line with `${REPO_ROOT:?}/docs/...`
+     passes the rule, then fails in a consumer.
+   - **Route:** RED
+
+2. **The floors comment dates GREEN a day later than the release line** (`.claude/tests/floors.conf:1210-1211`)
+   - **What this is:** The dated note that records why two floors were raised.
+   - **Problem:** It says `GREEN (2026-11-14)`, the UTC date. `VERSION` says
+     `126 (2026-11-13)`, the local calendar date the contract (C-5) asks
+     for, and the host's clock still reads 2026-11-13. The same change
+     carries two dates.
+   - **Fix:** `2026-11-14` becomes `2026-11-13` in that one comment line of
+     `.claude/tests/floors.conf`. Nothing reads the date.
+   - **If we skip it:** Someone matching a floor raise to a release finds the
+     dates disagree and has to work out that one is UTC.
+   - **Route:** GATES
+
+Not checked: no suite was run by this review (one full run at a time on this
+host); the 621/18/687 counts and DV-1..DV-3 are taken from the attested record
+and the pasted output. The gate record names commit `5de62a0` while HEAD is
+`f8ca452`; whether the stamp still matches is `check-boundaries.sh`'s to say.
+`trap -p` and the awk pattern on the CI runner are unmeasured, as `## Notes`
+already says.
+
+Verdict: Ship.
+
+**Orchestrator's disposition:** the verdict is Ship. Finding 2 (Route GATES) is taken: the floors comment now says 2026-11-13, matching VERSION. Finding 1 (Route RED) is not taken into this story: it is one comment sentence in a frozen test file and the story's Out of scope already accepts these spellings as limits; it is offered as a follow-up.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-14T01:19:54Z
-    commit: 5de62a0
-    tree:   9a7504cfbfa9bad0e3b5103db43be3452e09f62c
+    run:    2026-11-14T01:21:58Z
+    commit: f8ca452 (working tree had uncommitted changes)
+    tree:   4b630e9627feb94e453aa11171d2eaee979a641d
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
