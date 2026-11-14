@@ -64,12 +64,14 @@ and bash 3.2 compatibility, as for every harness script.
 
 ## Acceptance criteria
 
-In every criterion, "a run" is an invocation of `scripts/gates.sh` or
-`scripts/selftest.sh` that takes its tree's run lock (Contract C-5 lists
-them), "the queue" is the lock file of C-1, and two trees are two separate
-fixture roots sharing one queue directory. A holder is held open and released
-by the test (a gate command or a suite that waits for a marker file), never by
-timing. Every wait a test makes is bounded.
+In every criterion except AC-10, "a run" is a **full run**: `scripts/gates.sh`
+with none of `--fast`, `--gate`, `--skip`, `--required`, `--list`, `--audit`,
+or `scripts/selftest.sh` with no argument, which runs every suite (Contract
+C-5 has the whole table). Every other invocation is a non-full run and never
+joins the queue (AC-10). "The queue" is the lock file of C-1, and two trees
+are two separate fixture roots sharing one queue directory. A holder is held
+open and released by the test (a gate command or a suite that waits for a
+marker file), never by timing. Every wait a test makes is bounded.
 
 - **AC-1** — Given a run in tree A that holds the queue and is still running,
   when a run is started in tree B, then B's gate command (or first suite) has
@@ -112,8 +114,8 @@ timing. Every wait a test makes is bounded.
   lock whose recorded pid belongs to a live process that is not a harness run
   at all, the run waits exactly as in AC-1 and the lock is not removed: a
   live pid is never reclaimed.
-- **AC-6** — Given a `gates.sh` run in tree A that holds the queue, when its
-  gate command runs `selftest.sh` in tree A and then `selftest.sh` in tree B,
+- **AC-6** — Given a full `gates.sh` run in tree A that holds the queue, when its
+  gate command runs a full `selftest.sh` in tree A and then one in tree B,
   then both inner runs start at once, print no `run-queue:` line, and finish;
   the outer run finishes with its own status; and the queue lock still
   records the outer run's pid after each inner run has ended (an inner run
@@ -143,6 +145,18 @@ timing. Every wait a test makes is bounded.
   then it prints the one line of C-3 for that case to stderr and runs as it
   would have without the queue, with its own exit status. The queue never
   turns a run that could have run into one that did not.
+- **AC-10** — Given a full run in tree A that holds the queue, when a
+  non-full run is started in tree B - `gates.sh --fast`, `gates.sh --gate X`,
+  `gates.sh --skip X`, `gates.sh --required`, and `selftest.sh` with one
+  suite named - then each starts at once, while A still holds, prints no
+  `run-queue:` line, and creates, changes and removes nothing in the queue
+  directory; and given a non-full run still running in tree B and an empty
+  queue, a full run started in tree A takes the queue and starts at once.
+  A non-full run in a tree that A's run already holds is refused with exit 2
+  by the run lock, as today. And `run_lock_full` answers as Contract C-5's
+  table says for every row of it, `scripts/selftest.sh --changed` and
+  `scripts/gates.sh --story T-1` (full) and `scripts/gates.sh --story T-1
+  --fast` (not full) included.
 
 ## Contract
 
@@ -288,15 +302,19 @@ Taking exports `HARNESS_RUN_QUEUE_LOCK` (the lock's absolute path) and
 
 - *Join.* On every path of `run_lock_acquire` that returns 0 **having taken**
   the run lock (three call sites of `run_lock_taken` today), the queue is
-  joined before returning: unless `HARNESS_RUN_QUEUE` is `off`, source
-  `run-queue.sh` from the directory `run-lock.sh` itself is in (resolved from
-  `BASH_SOURCE`, not `$PWD`, not `<root>`: the sourcing script's own copy)
-  and call `run_queue_acquire "$root" "$self"`; a missing file prints C-3's
-  line and returns 0. The `off` test comes **first**, before the file is
-  looked for, so a run with the queue off prints nothing whatever the tree
-  holds. The nested path, step (1), returns as it does today and never joins:
-  a run nested under a run-lock holder in the same tree is covered by its
-  holder.
+  joined before returning, by three tests in this order:
+  (a) `HARNESS_RUN_QUEUE` is `off`: return 0;
+  (b) `run_lock_full "$self"` (C-5) says the run is not full: return 0;
+  (c) source `run-queue.sh` from the directory `run-lock.sh` itself is in
+  (resolved from `BASH_SOURCE`, not `$PWD`, not `<root>`: the sourcing
+  script's own copy) and call `run_queue_acquire "$root" "$self"`; a missing
+  file prints C-3's line and returns 0.
+  (a) and (b) come before the file is looked for and before anything is
+  read or written outside the tree, so a run with the queue off and every
+  non-full run print nothing and touch nothing, whatever the tree and the
+  queue directory hold. The nested path, step (1), returns as it does today
+  and never joins: a run nested under a run-lock holder in the same tree is
+  covered by its holder.
 - *Leave.* `run_lock_release` removes `run.lock` as today and then calls
   `run_queue_release` if it is defined. The queue goes last, so the next run
   starts only after this one has nothing left held.
@@ -322,26 +340,56 @@ a background job of a non-interactive shell starts with `INT` ignored and an
 ignored signal cannot be trapped, so AC-8 names `TERM`; RED tests `INT` only
 if it can deliver one, and says which in the handoff.
 
-**C-5. Which runs queue (decision 7).** Exactly the runs that take the run
-lock, with no second rule to drift from the first:
+**C-5. Which runs queue (decision 7; the user's answer of 2026-11-13: "Only
+full runs").** A run joins the queue if and only if it is a **full run**:
 
-| Run | Queues |
-|---|---|
-| `gates.sh` (full), `gates.sh --gate X`, `gates.sh --skip X`, `gates.sh --fast` | yes |
-| `selftest.sh` (full), `selftest.sh --changed` when it has suites to run, `selftest.sh <suite>...` | yes |
-| `gates.sh --list`, `gates.sh --audit` | no - they take no run lock |
-| `selftest.sh` ending before its run lock: a floors fault, `--changed` with nothing to run | no |
-| `selftest-needed.sh`, `check-boundaries.sh`, `ci-local.sh` itself, `attest.sh` itself | no - each run they start queues by itself |
+| Run | Full | Queues |
+|---|---|---|
+| `gates.sh` with none of `--fast`, `--gate`, `--skip`, `--required` (alone, or with `--story <id>`): the run of every gate, the one that writes `last-gate-run` | yes | yes |
+| `gates.sh --fast`, `--gate X`, `--skip X`, `--required` | no | no |
+| `gates.sh --list`, `--audit` | no | no - they take no run lock either |
+| `selftest.sh` with no argument at all: every suite | yes | yes |
+| `selftest.sh <suite>...` | no | no |
+| `selftest.sh --changed`, whatever it resolves to | no | no - a known gap, below |
+| `selftest-needed.sh`, `check-boundaries.sh`, `ci-local.sh` itself, `attest.sh` itself | - | no - each full run they start queues by itself |
 
-The user's words were "full self-tests and full gates", and this is wider:
-`--fast` and a run of named suites queue too. The reason is the trigger
-itself - the runs that slowed the two refresh self-tests were another
-session's runs of the single `boundaries` suite, and that suite alone was
-measured past 35 minutes on a loaded host - and that one rule, "the queue is
-joined where the run lock is taken", needs no code in either caller. The cost
-is that a ten-second `--fast` waits behind a full run. If the user wants the
-narrow reading, that is an amendment to AC-1's scope before RED, not a RED
-decision (`## Notes`).
+**A non-full run keeps today's behaviour exactly** (AC-10): its tree's run
+lock and nothing else. It does not wait behind a full run, a full run does
+not wait behind it, and it neither reads nor writes the queue directory.
+
+**How `run-lock.sh` learns it, without either caller being edited.** From
+the command string both callers already pass to `run_lock_acquire`
+(`scripts/gates.sh${*:+ $*}` and `scripts/selftest.sh${*:+ $*}`, their
+arguments verbatim). One function, in `run-lock.sh` and not in
+`run-queue.sh`, so that a non-full run is recognised before `run-queue.sh`
+is looked for:
+
+    run_lock_full <command>     # 0 if <command> is a full run, 1 otherwise
+
+- first word `scripts/gates.sh`: full unless one of the remaining words is
+  exactly `--fast`, `--gate`, `--skip` or `--required`. A `--story` value
+  cannot be mistaken for one: `valid_story_id` requires a letter or digit
+  first.
+- exactly `scripts/selftest.sh`, with no further word: full.
+- anything else, an empty string included: not full.
+
+Words are split on spaces, with no globbing (`set -f`, or a `case` over the
+padded string). The suite pins it as a table, directly, beside the runs.
+`--required` is in the list because `gates.sh` itself calls it a subset
+("the other three are already subsets", line 114); RED checks which
+invocations write `last-gate-run` and amends this block if that reading is
+wrong.
+
+**The `--changed` gap, and why it is left.** The self-test before a PR is
+`selftest.sh --changed`, and when it resolves to every suite it is as heavy
+as a full run. Whether it did is known only inside `selftest.sh`, after the
+selection (today the variable `CHANGED_HDR`), and HARNESS-107 is changing
+`--changed` in another worktree. Reading that state from `run-lock.sh`
+would tie this story to internals in flight, and passing it as an argument
+would mean editing `selftest.sh`. So `--changed` never queues here, and
+closing the gap is a follow-up story once HARNESS-107 has merged (Out of
+scope). Until then the user's rule for `--changed` runs is the one in force
+today: do not start one beside another run.
 
 **C-6. The numbers.**
 
@@ -422,8 +470,17 @@ RED: `scripts/run-queue.sh` does not exist, so cases that source it directly
 the if and the else alike, as HARNESS-074 did, so that the executed count is
 the same in RED and GREEN. Cases through `gates.sh` and `selftest.sh` fail
 for the right reason on their own: B starts beside A.
+`run_lock_full` does not exist in RED either, and its table cases use the same
+if and else. **AC-10's "starts at once" assertions pass on arrival in RED**,
+because nothing queues yet: the handoff lists them as green on arrival, and
+DV-3 earns them at GATES.
 
-**C-9. Oracle partition.** All nine criteria are **mechanical**: pin the
+A full `selftest.sh` in a fixture runs every suite the fixture holds
+(`run-lock.test.sh`'s fixture has three, one of them failing by design), so
+its exit status alone is not 0; compare it with the same run's status with
+the queue off.
+
+**C-9. Oracle partition.** All ten criteria are **mechanical**: pin the
 lines of C-3 whole, the exit statuses exactly (0, 130, 143 - never
 "non-zero"), the record's four fields, the variable names. Within them the
 defaults and the span format of C-6 are **settled**: read out, not tuned.
@@ -460,7 +517,8 @@ prose outside the table is not read by `settings.test.sh`.
 `run_lock_release` keep their names, arguments and return values (0, or 2 on
 refusal). Their callers, grep-listed 2026-11-13: `scripts/gates.sh` lines
 285-289 and `scripts/selftest.sh` lines 472, 507, 511-515; the suites call
-them only through those two scripts. `run_queue_*` are new.
+them only through those two scripts. `run_queue_*` and `run_lock_full` are
+new.
 
 **C-13. Commands.**
 
@@ -479,7 +537,8 @@ this story ships, nothing queues them for you.
 ## Deferred verifications
 
 The budget is `rules.md`, "Mutation work per story": one "defect put back"
-mutation for the central claim (DV-1). DV-2 is not a mutation: it is the
+mutation for the central claim (DV-1), and one that earns the assertions
+which pass on arrival in RED (DV-3). DV-2 is not a mutation: it is the
 probe against the real tree, which this story owes because its fixtures are
 all trees the suite built for itself.
 
@@ -498,25 +557,45 @@ all trees the suite built for itself.
 
   RED's handoff restates this expression against C-4 as amended.
 
-- **DV-2, the real tree against a held queue (AC-1, AC-3).** Not a fixture:
-  this checkout's own `scripts/selftest.sh` and `scripts/gates.sh`, with the
-  queue directory pointed at a temp directory (never the host's real queue,
-  which another session may be in) holding a lock whose recorded pid is a
-  live process the prober started. For each of
-  `bash scripts/selftest.sh policy` and `bash scripts/gates.sh --fast`, with
-  `HARNESS_RUN_QUEUE_POLL=1`: the run **must** print C-3's three queued lines
-  naming that pid and must print no suite or gate output while the lock is
-  there; when the prober kills the holder process, the run **must** print the
-  `reclaimed` line and then the `starting` line, run, and exit with the
-  status the same command has with `HARNESS_RUN_QUEUE=off` (measured first,
-  not assumed to be 0: every gate here is unconfigured). The suites inherit
-  nothing from this: the `policy` suite sources `_lib.sh` and is off the
-  queue. The prober pastes both runs' stderr, and
-  confirms the temp directory was removed and
-  `.claude/state/run.lock` is gone. This cannot run before GREEN, and it is
-  the only check that the wiring in `run-lock.sh` is reached by the real
-  callers of this tree rather than by a fixture's copy of them.
-  **Owner: GATES.**
+- **DV-2, the real tree against a held queue (AC-1, AC-3, AC-10).** Not a
+  fixture: this checkout's own `scripts/selftest.sh` and `scripts/gates.sh`,
+  with the queue directory pointed at a temp directory (never the host's
+  real queue, which another session may be in) holding a lock whose recorded
+  pid is a live process the prober started, and `HARNESS_RUN_QUEUE_POLL=1`.
+  Four runs, the cheapest set that shows both halves of the rule on the real
+  callers:
+  - *Full runs wait.* `bash scripts/selftest.sh` and `bash scripts/gates.sh`,
+    each started in the background: each **must** print C-3's three queued
+    lines naming that pid and no suite or gate output. The prober then sends
+    each `TERM` while it is still queued: each **must** exit 143 having run
+    nothing, leaving `.claude/state/run.lock` gone, the temp lock unchanged
+    and, for `gates.sh`, the story's `## Gate results` and
+    `.claude/state/last-gate-run` untouched. Neither full run is paid for:
+    that a queued run starts after the release is the fixtures' claim (AC-1),
+    and this probe's is that the real callers reach the queue at all.
+  - *Non-full runs do not.* `bash scripts/selftest.sh policy` and
+    `bash scripts/gates.sh --fast`, with the same lock still held: each
+    **must** run at once, print no `run-queue:` line, and exit with the
+    status it has with `HARNESS_RUN_QUEUE=off` (measured first, not assumed
+    to be 0: every gate here is unconfigured).
+  The prober pastes the four runs' stderr and exit statuses, and confirms the
+  holder process was killed and the temp directory removed. This cannot run
+  before GREEN, and it is the only check that the wiring in `run-lock.sh` is
+  reached by the real callers of this tree and not only by a fixture's copy
+  of them. **Owner: GATES.**
+
+- **DV-3, the non-full rule earned (AC-10).** AC-10's assertions that a
+  non-full run starts at once beside a held queue pass in RED, when nothing
+  queues at all, so nothing has watched them fail. With `run_lock_full`
+  answering "full" for every command, `gates.sh --fast` and a named-suite
+  `selftest.sh` join the queue: those assertions **must** go red (the run
+  waits, prints the queued lines, writes a temporary record), and the
+  `run_lock_full` table rows for non-full commands with them. RED's handoff
+  gives the one-line `sed` expression against `run_lock_full` as built and
+  predicts the count. RED cannot run it: the function does not exist until
+  GREEN. **Owner: GATES.**
+
+      bash scripts/mutate.sh scripts/run-lock.sh '<expression from the handoff>' -- bash scripts/selftest.sh run-queue
 
 ## Amendments
 
@@ -579,7 +658,8 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 
 - PLANNED (2026-11-13, `/plan-story`): `lead-po`, planned `fable`, resolved **claude-fable-5-2** (Fable 5.2). Dispatched as a subagent by the orchestrating session; no override was reported to it, and the agent declares `model: fable`.
-- No departure from the plan. All nine criteria are mechanical, with the defaults and the span format settled (Contract, C-9).
+- PLANNED, the scope change (2026-11-13, same dispatch continued): `lead-po`, resolved **claude-fable-5-2**. Rewrote the criteria and C-5 for the user's "Only full runs".
+- No departure from the plan. All ten criteria are mechanical, with the defaults and the span format settled (Contract, C-9).
 
 ## Out of scope
 
@@ -598,6 +678,13 @@ name, below the table.
   own `npm test` run by hand, `check-boundaries.sh`, `mutate.sh` with a test
   command that is not one of the two, `ci-local.sh` as a whole (its steps
   queue one by one, and another run may get in between them).
+- **`selftest.sh --changed`.** It never queues, even when it resolves to
+  every suite and is as heavy as a full run (C-5). A known gap: closing it
+  needs `selftest.sh` to say what `--changed` resolved to, and HARNESS-107 is
+  changing that code. A follow-up story after HARNESS-107 merges.
+- **Non-full runs.** `--fast`, `--gate`, `--skip`, `--required` and
+  named-suite runs neither wait nor are waited for (AC-10). Several of them
+  side by side, or one beside a full run, is today's behaviour and stays.
 - **Same-tree waiting.** A second run in the same tree is still refused with
   exit 2 by the run lock (HARNESS-034). Turning that refusal into a wait is a
   different decision with its own history, and not this story.
@@ -725,14 +812,17 @@ name, below the table.
   temp directory (C-7); `.github/workflows/` is not changed and `CI=true`
   does not disable the queue (C-7); the queue is joined inside
   `run-lock.sh`, so `gates.sh` and `selftest.sh` are not edited (C-4).
-- **Three questions for the user, none of which blocks RED as planned.**
-  (1) Scope: `--fast` and named-suite runs queue too, which is wider than
-  "full self-tests and full gates" (C-5). The narrow reading is a change to
-  the criteria and must be made before the story leaves PLANNED.
-  (2) A second run in the *same* tree is still refused with exit 2 and does
+- **2026-11-13, the user's answer on scope: "Only full runs".** Asked whether
+  `--fast` and named-suite runs should queue, the user chose the narrow
+  reading. The criteria and C-5 were rewritten before the story left PLANNED,
+  so no `## Amendments` entry is owed: only a full run queues (C-5), a
+  non-full run keeps today's behaviour exactly (AC-10), and
+  `selftest.sh --changed` never queues, which is a known gap (Out of scope).
+- **Two questions for the user, neither of which blocks RED as planned.**
+  (1) A second run in the *same* tree is still refused with exit 2 and does
   not wait (Out of scope); "started anywhere on the machine waits" could be
   read to include it.
-  (3) A queued run started in the foreground by an agent will be killed by
+  (2) A queued run started in the foreground by an agent will be killed by
   that agent's own command timeout; nothing here changes how agents start
   long runs.
 - **Bookkeeping conflict with HARNESS-107.** Both stories write
