@@ -4,8 +4,8 @@ title: The shipped-docs rule leaves a project's own suites alone
 slug: the-shipped-docs-rule-leaves-a-project-s
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-109-the-shipped-docs-rule-leaves-a-project-s
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -444,8 +444,24 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One suite, `.claude/tests/shipped-docs.test.sh`, one new `describe` block,
+`a project's own suites are not scanned (HARNESS-109)`, after the HARNESS-106/107
+twin and before `summary`. Level: the rule's own functions over a fixture tree
+under `$WORK` (cheapest level that falsifies it; the rule is two shell
+functions). Every assertion is mechanical and pinned exactly with `assert_eq` on
+the whole output, per C-3 and C-5.
+
+| # | Assertion (name starts) | Pins | AC |
+|---|---|---|---|
+| 1 | `HARNESS-109 AC-1: a consumer's own project-x.test.sh ...` | `suite_docs_reads` over a tree holding only `project-x.test.sh` is empty | AC-1 |
+| 2 | `HARNESS-109 AC-2: the same lines in an upstream-named suite, ...` | after copying the bytes to `x.test.sh`, `project-x.sh`, `my-project-x.test.sh`: exactly lines 2 and 3 of each of those three, in `LC_ALL=C` order | AC-2 (and keeps 1 honest) |
+| 3 | `HARNESS-109 AC-1, AC-2: suite_docs_files lists the three neighbours ...` | `suite_docs_files` on the four-file tree is exactly the three neighbours | AC-1, AC-2 |
+| - | `HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing ...` and `... scans at least 30 shell files ...` | unchanged; must still pass | AC-3 |
+
+The fixture lines are spelled with `$SDR_R` (the root name in pieces), so the
+suite's own text holds no offending line; the unchanged real-tree assertion is
+the check that this was done. Negative-direction controls for AC-3 and the
+defect put back are DV-1, DV-2, DV-3, owned by GATES.
 
 ## Handoff: RED -> GREEN
 
@@ -466,6 +482,58 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**Command.** The orchestrator asked for the suite run directly rather than
+through `selftest.sh` (C-7 names `bash scripts/selftest.sh shipped-docs`; the
+counts are the same suite's):
+
+    bash scripts/attest.sh -- bash .claude/tests/shipped-docs.test.sh
+
+**Step 1 (C-3): fixture and three assertions, `suite_docs_files` unchanged.**
+Local run, Git Bash on Windows, 2026-11-14. Record:
+
+    exit:     1
+    duration: 59s
+    last:     shipped-docs: 18 passed, 3 failed
+    log:      .claude/state/attest-logs/20261114T223359Z.517078.log
+
+Verbatim failure, from that log:
+
+    a project's own suites are not scanned (HARNESS-109)
+      FAIL HARNESS-109 AC-1: a consumer's own project-x.test.sh reading its project's docs/ is not reported
+           expected: 
+           actual:   .claude/tests/project-x.test.sh:2
+           .claude/tests/project-x.test.sh:3
+      FAIL HARNESS-109 AC-2: the same lines in an upstream-named suite, a project- helper without .test.sh and a suite with project- not at the start are each still reported, and project-x.test.sh still is not
+           expected: .claude/tests/my-project-x.test.sh:2
+           .claude/tests/my-project-x.test.sh:3
+           .claude/tests/project-x.sh:2
+           .claude/tests/project-x.sh:3
+           .claude/tests/x.test.sh:2
+           .claude/tests/x.test.sh:3
+           actual:   .claude/tests/my-project-x.test.sh:2
+           .claude/tests/my-project-x.test.sh:3
+           .claude/tests/project-x.sh:2
+           .claude/tests/project-x.sh:3
+           .claude/tests/project-x.test.sh:2
+           .claude/tests/project-x.test.sh:3
+           .claude/tests/x.test.sh:2
+           .claude/tests/x.test.sh:3
+      FAIL HARNESS-109 AC-1, AC-2: suite_docs_files lists the three neighbours and leaves out only the top-level project-x.test.sh
+           expected: .claude/tests/my-project-x.test.sh
+           .claude/tests/project-x.sh
+           .claude/tests/x.test.sh
+           actual:   .claude/tests/my-project-x.test.sh
+           .claude/tests/project-x.sh
+           .claude/tests/project-x.test.sh
+           .claude/tests/x.test.sh
+
+    shipped-docs: 18 passed, 3 failed
+
+The right failure: each actual is exactly C-3's `51239f3` column (two lines;
+the six plus the two `project-x.test.sh` lines, eight; the four files). All 18
+pre-existing assertions pass, the real-tree pair included. None of the three
+passed on arrival.
 
 ## Regressions
 

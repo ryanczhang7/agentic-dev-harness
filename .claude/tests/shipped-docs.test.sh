@@ -397,4 +397,33 @@ awk 'NR != 3 && NR != 4 && NR != 5 && NR != 8 && NR != 9 && NR != 10 && NR != 11
 assert_eq "HARNESS-106 AC-3, HARNESS-107 AC-3: twin: the same fixture with only the comment, the other roots, docs-shipped.conf and the docs-prefixed names left prints nothing" \
   "" "$(suite_docs_reads "$g")"
 
+# ---------------------------------------------------------------------------
+describe "a project's own suites are not scanned (HARNESS-109)"
+
+# Each fixture file holds the two shapes of the consumer's reading lines (the
+# story's Context), as lines 2 and 3. The root name is spelled in pieces with
+# $SDR_R from the block above, so no line of this suite is an offending line.
+p="$WORK/project-suites"; mkdir -p "$p/.claude/tests"
+{
+  printf '%s\n' '#!/usr/bin/env bash'
+  printf '%s\n' "DOC=\"\$$SDR_R/docs/wiki/x.md\""
+  printf '%s\n' "HANDOFF=\"\$$SDR_R/docs/wiki/handoff\""
+} > "$p/.claude/tests/project-x.test.sh"
+assert_eq "HARNESS-109 AC-1: a consumer's own project-x.test.sh reading its project's docs/ is not reported" \
+  "" "$(suite_docs_reads "$p")"
+for n in x.test.sh project-x.sh my-project-x.test.sh; do
+  cp "$p/.claude/tests/project-x.test.sh" "$p/.claude/tests/$n"
+done
+assert_eq "HARNESS-109 AC-2: the same lines in an upstream-named suite, a project- helper without .test.sh and a suite with project- not at the start are each still reported, and project-x.test.sh still is not" \
+  ".claude/tests/my-project-x.test.sh:2
+.claude/tests/my-project-x.test.sh:3
+.claude/tests/project-x.sh:2
+.claude/tests/project-x.sh:3
+.claude/tests/x.test.sh:2
+.claude/tests/x.test.sh:3" "$(suite_docs_reads "$p")"
+assert_eq "HARNESS-109 AC-1, AC-2: suite_docs_files lists the three neighbours and leaves out only the top-level project-x.test.sh" \
+  ".claude/tests/my-project-x.test.sh
+.claude/tests/project-x.sh
+.claude/tests/x.test.sh" "$(suite_docs_files "$p")"
+
 summary "shipped-docs"
