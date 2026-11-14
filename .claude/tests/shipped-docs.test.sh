@@ -168,9 +168,15 @@ REFS
 # suite_docs_reads <root>   One line `<file>:<line number>` per line of a
 # scanned file that is not a whole-line comment (first non-blank character `#`)
 # and matches SDR_RE: one of the two names _lib.sh gives the real checkout,
-# REPO_ROOT or TESTS_DIR/../.., then any of `}` and `"` (so the braced and the
-# quoted-root spellings count), then /docs as a whole path component (so
-# docs-shipped.conf and a docsy/ never match). Silent when nothing reads there.
+# REPO_ROOT or TESTS_DIR/../.., then optionally `%/` (the root with one
+# trailing slash stripped, still the root; nothing else may follow the `%`),
+# then any of `}` and `"` (so the braced and the quoted-root spellings count),
+# then one or more `/` (the shell collapses a doubled slash), then docs as a
+# whole path component: followed by end of line or by a character that cannot
+# continue a file name - anything but a letter, a digit, `_`, `.` or `-` - so
+# an unquoted $(ls ...docs) ends at `)` as a quoted one ends at `"`, and
+# docs-shipped.conf, docsy/, docs_old/ and docs.bak/ never match (HARNESS-107).
+# Silent when nothing reads there.
 # No exception for a `ship` entry either: docs/wiki/audits/TEMPLATE.md is added
 # only where the project has none, so in a consumer it is the consumer's.
 #
@@ -183,7 +189,7 @@ REFS
 # wherever /docs follows them, here and in the fixtures; no file is exempted
 # by name. The real-tree assertion is the check that this was done.
 # [.] rather than \. because awk -v processes backslash escapes.
-SDR_RE='(REPO''_ROOT|TESTS''_DIR/[.][.]/[.][.])[}"]*/docs(["'\''/ ]|$)'
+SDR_RE='(REPO''_ROOT|TESTS''_DIR/[.][.]/[.][.])(%/)?[}"]*/+docs([^A-Za-z0-9_.-]|$)'
 suite_docs_files() {
   local root="$1" f
   for f in "$root"/.claude/tests/*.sh; do
@@ -368,17 +374,27 @@ printf '%s\n' "X=\"\$$SDR_R/docs\"" > "$g/.claude/tests/_lib.sh"
   printf '%s\n' 'cat "$FIX/docs/backlog/stories/T-1.md" "$root/docs/wiki/stack.md"'
   printf '%s\n' "cat \"\$$SDR_R/.claude/harness/docs-shipped.conf\""
   printf '%s\n' "cat \"\$$SDR_T/../../docs/backlog/README.md\""
+  printf '%s\n' "n=\$(ls \$$SDR_R/docs)"
+  printf '%s\n' "f=\"\${$SDR_R%/}/docs/a\""
+  printf '%s\n' "f=\"\$$SDR_R//docs/a\""
+  printf '%s\n' "cat \"\$$SDR_R/docs-shipped.conf\""
+  printf '%s\n' "ls \"\$$SDR_R/docsy/a\""
+  printf '%s\n' "ls \"\$$SDR_R/docs_old/a\""
+  printf '%s\n' "ls \"\$$SDR_R/docs.bak/a\""
 } > "$g/.claude/tests/a.test.sh"
-assert_eq "HARNESS-106 AC-3: a fixture holding each spelling, in a suite and in _lib.sh, gets one file-and-line per reading line, and none for the comment, the other roots or docs-shipped.conf" \
+assert_eq "HARNESS-106 AC-3, HARNESS-107 AC-3: a fixture holding each spelling, in a suite and in _lib.sh, gets one file-and-line per reading line - the unquoted command substitution, the %/-stripped root and the doubled slash included - and none for the comment, the other roots, docs-shipped.conf or a docs-prefixed name" \
   ".claude/tests/_lib.sh:1
 .claude/tests/a.test.sh:3
 .claude/tests/a.test.sh:4
 .claude/tests/a.test.sh:5
-.claude/tests/a.test.sh:8" "$(suite_docs_reads "$g")"
+.claude/tests/a.test.sh:8
+.claude/tests/a.test.sh:9
+.claude/tests/a.test.sh:10
+.claude/tests/a.test.sh:11" "$(suite_docs_reads "$g")"
 : > "$g/.claude/tests/_lib.sh"
-awk 'NR != 3 && NR != 4 && NR != 5 && NR != 8' "$g/.claude/tests/a.test.sh" > "$g/a.tmp" \
+awk 'NR != 3 && NR != 4 && NR != 5 && NR != 8 && NR != 9 && NR != 10 && NR != 11' "$g/.claude/tests/a.test.sh" > "$g/a.tmp" \
   && mv "$g/a.tmp" "$g/.claude/tests/a.test.sh"
-assert_eq "HARNESS-106 AC-3: twin: the same fixture with only the comment, the other roots and docs-shipped.conf left prints nothing" \
+assert_eq "HARNESS-106 AC-3, HARNESS-107 AC-3: twin: the same fixture with only the comment, the other roots, docs-shipped.conf and the docs-prefixed names left prints nothing" \
   "" "$(suite_docs_reads "$g")"
 
 summary "shipped-docs"

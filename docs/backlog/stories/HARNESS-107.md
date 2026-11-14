@@ -4,8 +4,8 @@ title: The changed-suites self-test runs the shipped-docs rule over a changed su
 slug: the-changed-suites-self-test-runs-the-sh
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-107-the-changed-suites-self-test-runs-the-sh
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -538,6 +538,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 
 - PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
+- RED, `test-developer` (two dispatches: the first paused at the user's request while other hosts' self-tests ran, the second resumed from its recorded place), declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 ## Out of scope
 
 - **Data-flow reads in the rule.** A path built in a variable first, a `cd`
@@ -573,6 +574,30 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+All four criteria are mechanical (C-6): every test pins an exact list, count,
+line set or string. All tests are bash assertions in the harness's own suites,
+the cheapest level that can falsify each criterion: the `--suites` selection
+is a pure function of the changed paths in a fixture git repo
+(`selftest-needed`), the docs rule is an awk program over a fixture tree and
+the real tree (`shipped-docs`), and the trap is read from the running shell
+(`boundaries`).
+
+| AC | Test (file:line, as built) | What it asserts | Level |
+|---|---|---|---|
+| AC-1 | `.claude/tests/selftest-needed.test.sh:626` (`expect_suites`, edited gamma) | stdout exactly `gamma`/`grep-count`/`shipped-docs`/`sigpipe`, 4 lines, header `hdr 4 9 1`, from root and from `src/` (6 assertions) | fixture repo |
+| AC-1 | `.claude/tests/selftest-needed.test.sh:638` (`expect_suites`, new untracked delta) | stdout exactly `delta`/`grep-count`/`shipped-docs`/`sigpipe`, 4 lines, header `hdr 4 10 1`, both directories (6) | fixture repo |
+| AC-1 | `.claude/tests/selftest-needed.test.sh:633` (`HARNESS-107 AC-1` reason line) | exactly one stderr reason line for `shipped-docs` naming `.claude/tests/gamma.test.sh` and `scans .claude/tests/*.sh` | fixture repo |
+| AC-2 | `.claude/tests/selftest-needed.test.sh:647`, `:652` (unchanged) | `_lib.sh`, `_spawns.sh` still print `all`, whole stderr "is read by every suite" | fixture repo |
+| AC-2 | `.claude/tests/selftest-needed.test.sh:793`, and the deleted-gamma case after the comment at `:859` (unchanged) | untracked helper / deleted suite still print `all`, whole stderr "is mapped by no rule; defaulting to every suite" - the controls that fail if the row is written `map` | fixture repo |
+| AC-3 | `.claude/tests/shipped-docs.test.sh:385` (fixture assertion, corrected in place) | `suite_docs_reads` over the 15-line fixture reports exactly `_lib.sh:1`, `a.test.sh:3,4,5,8,9,10,11` - lines 9-11 are the three new spellings; 12-15 (`docs-shipped.conf`, `docsy`, `docs_old`, `docs.bak`) are absent | fixture tree |
+| AC-3 | `.claude/tests/shipped-docs.test.sh:397` (twin, corrected in place) | with the reporting lines removed, the remainder (2, 6, 7, 12-15) prints nothing | fixture tree |
+| AC-3 | `.claude/tests/shipped-docs.test.sh:354` (unchanged) | over the real tree, nothing is reported | real tree |
+| AC-4 | `.claude/tests/boundaries.test.sh:4463` (`HARNESS-107 AC-4`) | `trap -p EXIT` at the end of the suite is exactly `trap -- 'rm -rf "$FIX" "${KB:-}" "${K_NS_COPY:-}" "${K_DECOY:-}"' EXIT` | running shell |
+
+Out of scope and not pinned: the over-selection of
+`.claude/tests/fixtures/**/*.sh` by the new row (C-1); interrupting a real
+`boundaries` run to observe the trap fire (C-4).
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -592,6 +617,252 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+### RED complete (2026-11-13/14, test-developer, model `opus` as declared; no override)
+
+RED ends as C-0 says: `shipped-docs` and `boundaries` green, `selftest-needed`
+red on exactly the 13 assertions that need the new `SCANS` row. This dispatch
+resumed a paused one; the paused notes are folded in below.
+
+#### Files touched (all uncommitted)
+
+- `.claude/tests/selftest-needed.test.sh` - C-2: the gamma (`:626`) and delta
+  (`:638`) cases expect `shipped-docs` and `hdr 4 9 1` / `hdr 4 10 1`, labels
+  reworded; new `HARNESS-107 AC-1` reason-line assertion at `:633-634`. The
+  four AC-2 cases are untouched.
+- `.claude/tests/shipped-docs.test.sh` - C-3 both steps: fixture lines 9-15
+  appended (root names in pieces), fixture assertion (`:385`) and twin
+  (`:397`) corrected in place, `SDR_RE` replaced (now line **192**, the
+  Contract's text exactly), the comment above it rewritten (6 lines longer).
+  The written data-flow limit is unchanged.
+- `.claude/tests/boundaries.test.sh` - C-4 both steps: `HARNESS-107 AC-4`
+  assertion at `:4463-4464`, directly before `summary "boundaries"`; line 12
+  is now exactly `trap 'rm -rf "$FIX" "${KB:-}" "${K_NS_COPY:-}" "${K_DECOY:-}"' EXIT`.
+- `docs/backlog/stories/HARNESS-107.md` - `## Test plan` and this section.
+
+No production file, no `floors.conf`, no `selftest.test.sh`, no `VERSION`.
+No Contract block or criterion amended.
+
+#### Line numbers that moved (for GATES and anyone reading C-7)
+
+- DV-2 target `CM="$REPO_ROOT/CLAUDE.md"`: `selftest-needed.test.sh` line
+  **872** (868 at `a8e7b66`); still the only occurrence in
+  `.claude/tests/*.sh`.
+- C-7 callers of `suite_docs_reads` / `suite_docs_files` in
+  `shipped-docs.test.sh`: now **355, 356, 393, 398**. C-7 says 349, 350, 377,
+  382; the paused notes said 349, 350, 387, 392, which was before the comment
+  grew by 6 lines. `SDR_RE` is defined at 192 and used at 203 only. Names,
+  arguments and output format unchanged.
+- DV-3 target: the `^SDR_RE=` line, 192.
+
+#### Commands
+
+The per-suite form, each wrapped in `attest.sh`:
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed
+    bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs
+    bash scripts/attest.sh -- bash scripts/selftest.sh boundaries
+
+GREEN, after C-1 and C-5 (C-8's combined run measures all three floors at once):
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed shipped-docs boundaries
+    bash scripts/selftest-needed.sh --suites
+    bash scripts/check-sigpipe.sh && bash scripts/check-grep-count.sh
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+
+Machine rule from the user: one full self-test or gates run at a time on this
+host. Check `ps -ef | grep -E 'selftest|gates' | grep -v grep` before every
+run and wait while any other run, in any worktree or repo, is going.
+
+#### Runs, in order
+
+| Step | Command | Record | exit | `last:` |
+|---|---|---|---|---|
+| C-4 step 1 | `bash scripts/selftest.sh boundaries` (**not attested**: started by the paused dispatch, read after it finished) | scratchpad log `C:\Users\ryanc\AppData\Local\Temp\claude\448abf125ae995ab\ed47c881-7261-48d7-a518-80f814c11e15\scratchpad\boundaries-step1.log` (session-local; output pasted below) | 1 | `1 of 1 harness suite(s) FAILED.` |
+| C-3 step 1 | `bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs` | `.claude/state/attest-logs/20261113T233858Z.487441.log`, tree `dc274e83` | 1 | `1 of 1 harness suite(s) FAILED.` |
+| C-3 step 2 | `bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs` | `.claude/state/attest-logs/20261113T233940Z.505.log`, tree `7d9fc814` | 0 | `1 harness suite(s) passed.` |
+| C-4 step 2 | `bash scripts/attest.sh -- bash scripts/selftest.sh boundaries` | `.claude/state/attest-logs/20261113T234027Z.2019.log`, tree `9b6bb436`, 2271 s | 0 | `1 harness suite(s) passed.` |
+| end of RED | `bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed` | `.claude/state/attest-logs/20261114T001832Z.61.log`, tree `9b6bb436`, 376 s | 1 | `1 of 1 harness suite(s) FAILED.` |
+| end of RED | `bash scripts/attest.sh -- bash scripts/gates.sh --fast` | `.claude/state/attest-logs/20261114T002510Z.1418.log`, tree `9b6bb436` | 0 | `All required gates passed (0 ran, 5 unconfigured, 0 known).` |
+| end of RED | `bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs` (re-run on the final tree; `shipped-docs: 18 passed, 0 failed`) | `.claude/state/attest-logs/20261114T002953Z.525.log`, tree `9b6bb436` | 0 | `1 harness suite(s) passed.` |
+
+Every attested record is `status: ok` (the tree did not move during the run).
+The C-3 step-2 record is on an earlier tree (`7d9fc814`) because line 12 of
+`boundaries.test.sh` changed after it, so shipped-docs was re-run on the
+final tree. `attest.sh check` reports `fresh` on tree `9b6bb436` for the
+last four records, after this section was written (the story file is not in
+the gated tree hash). `gates.sh --fast` ran no
+gate: this repository's `project.conf` is not bootstrapped (5 gates
+UNCONFIGURED, warnings only), so the self-test suites are the only test
+instrument here and `--fast` has no shape to show.
+
+#### Verbatim failures
+
+C-4 step 1 (boundaries, line 12 unchanged; **not attested**, read from the
+log above):
+
+```
+    FAIL HARNESS-107 AC-4: the exit trap in force at the end of the suite removes every temp path the suite makes
+         expected: trap -- 'rm -rf "$FIX" "${KB:-}" "${K_NS_COPY:-}" "${K_DECOY:-}"' EXIT
+         actual:   trap -- 'rm -rf "$FIX"' EXIT
+
+boundaries: 686 passed, 1 failed
+
+assertion floors: all 1 suite(s) met their declared floor (686 assertions executed, 686 declared).
+1 of 1 harness suite(s) FAILED.
+```
+
+C-3 step 1 (shipped-docs, fixture in, `SDR_RE` unchanged): 17/1 as
+predicted, the actual value lacking exactly `:9`, `:10`, `:11`:
+
+```
+    FAIL HARNESS-106 AC-3, HARNESS-107 AC-3: a fixture holding each spelling, in a suite and in _lib.sh, gets one file-and-line per reading line - the unquoted command substitution, the %/-stripped root and the doubled slash included - and none for the comment, the other roots, docs-shipped.conf or a docs-prefixed name
+         expected: .claude/tests/_lib.sh:1
+         .claude/tests/a.test.sh:3
+         .claude/tests/a.test.sh:4
+         .claude/tests/a.test.sh:5
+         .claude/tests/a.test.sh:8
+         .claude/tests/a.test.sh:9
+         .claude/tests/a.test.sh:10
+         .claude/tests/a.test.sh:11
+         actual:   .claude/tests/_lib.sh:1
+         .claude/tests/a.test.sh:3
+         .claude/tests/a.test.sh:4
+         .claude/tests/a.test.sh:5
+         .claude/tests/a.test.sh:8
+
+shipped-docs: 17 passed, 1 failed
+FAIL shipped-docs  did 17 units of work, below the floor of 18 in .claude/tests/floors.conf
+```
+
+After C-3 step 2: `shipped-docs: 18 passed, 0 failed`. After C-4 step 2:
+`boundaries: 687 passed, 0 failed`, with
+`assertion floors: all 1 suite(s) met their declared floor (687 assertions executed, 686 declared).`
+
+End of RED, selftest-needed: `selftest-needed: 608 passed, 13 failed` (621
+executed, as C-2 predicts). The 13 are exactly the predicted ones - 6 gamma,
+6 delta, 1 reason line - and every one fails because `shipped-docs` is not
+selected. Representative, verbatim:
+
+```
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from root]: stdout is exactly the pinned list
+         expected: gamma
+         grep-count
+         shipped-docs
+         sigpipe
+         actual:   gamma
+         grep-count
+         sigpipe
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from root]: stdout has exactly 4 line(s)
+         expected: 4
+         actual:   3
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from root]: stderr's first line is exactly the pinned header
+         expected: selftest-needed: suites — 4 of 9 selected from 1 harness path(s) changed against main (merge-base d292bdf)
+         actual:   selftest-needed: suites — 3 of 9 selected from 1 harness path(s) changed against main (merge-base d292bdf)
+    FAIL HARNESS-107 AC-1: stderr names shipped-docs' path and the pattern that matched: (scans .claude/tests/*.sh)
+         expected: 1
+         actual:   0
+```
+
+All 13 FAIL lines, and the summary:
+
+```
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from root]: stdout is exactly the pinned list
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from root]: stdout has exactly 4 line(s)
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from root]: stderr's first line is exactly the pinned header
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from subdir]: stdout is exactly the pinned list
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from subdir]: stdout has exactly 4 line(s)
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from subdir]: stderr's first line is exactly the pinned header
+    FAIL HARNESS-107 AC-1: stderr names shipped-docs' path and the pattern that matched: (scans .claude/tests/*.sh)
+    FAIL a NEW untracked .claude/tests/delta.test.sh prints delta and the *.sh scanners, shipped-docs among them, and the count of suites is the tree's (10) [from root]: stdout is exactly the pinned list
+    FAIL a NEW untracked .claude/tests/delta.test.sh prints delta and the *.sh scanners, shipped-docs among them, and the count of suites is the tree's (10) [from root]: stdout has exactly 4 line(s)
+    FAIL a NEW untracked .claude/tests/delta.test.sh prints delta and the *.sh scanners, shipped-docs among them, and the count of suites is the tree's (10) [from root]: stderr's first line is exactly the pinned header
+    FAIL a NEW untracked .claude/tests/delta.test.sh prints delta and the *.sh scanners, shipped-docs among them, and the count of suites is the tree's (10) [from subdir]: stdout is exactly the pinned list
+    FAIL a NEW untracked .claude/tests/delta.test.sh prints delta and the *.sh scanners, shipped-docs among them, and the count of suites is the tree's (10) [from subdir]: stdout has exactly 4 line(s)
+    FAIL a NEW untracked .claude/tests/delta.test.sh prints delta and the *.sh scanners, shipped-docs among them, and the count of suites is the tree's (10) [from subdir]: stderr's first line is exactly the pinned header
+selftest-needed: 608 passed, 13 failed
+FAIL selftest-needed  did 608 units of work, below the floor of 620 in .claude/tests/floors.conf
+```
+
+Why it is the right failure: every red assertion is a missing `shipped-docs`
+in the output and nothing else in the suite moved; the four AC-2 controls
+(`:647`, `:652`, `:793`, and the deleted-gamma case after `:859`) pass.
+
+#### What the tests pin (the "export shape" of a bash change)
+
+No module is imported. The one production surface pinned is the output of
+`bash scripts/selftest-needed.sh --suites`. For a fixture branch changing one
+top-level `.claude/tests/<x>.test.sh`: stdout gains `shipped-docs` in sorted
+position; the header count rises by one; stderr gains exactly one reason line
+matched by `reason_lines shipped-docs <path> 'scans .claude/tests/*.sh'` -
+the existing reason-line format for an `add` row, with the row's pattern as
+its text. For the AC-2 paths stdout stays `all` and stderr stays
+byte-identical. C-1 gives the exact row. The tests do not constrain the row's
+position in `SCANS` or the evidence comment's wording (C-1 does: above the
+`map` row, so that DV-1 deletes it as one line), and they do not pin the
+over-selection of `.claude/tests/fixtures/**/*.sh`.
+
+#### Floors (C-5, for GREEN)
+
+The floor check counts **passed** assertions ("did N units of work"), so the
+RED runs show a floor FAIL wherever an assertion failed; that follows from
+the red and is not a separate defect. Executed counts measured on this host:
+`boundaries` 687, `selftest-needed` 621, `shipped-docs` 18 - as C-5 predicts.
+GREEN raises `boundaries` 686 -> 687 and `selftest-needed` 620 -> 621 in both
+`floors.conf` and `selftest.test.sh`'s `COUNTS`; `shipped-docs` stays 18.
+RED added exactly the two assertions the Contract names and dropped none.
+
+#### `--suites` for this diff (C-8)
+
+    selftest-needed: suites — 5 of 34 selected from 3 harness path(s) changed against origin/main (merge-base 2934b16)
+      boundaries       .claude/tests/boundaries.test.sh (itself)
+      grep-count       .claude/tests/boundaries.test.sh (scans *.sh)
+      selftest-needed  .claude/tests/selftest-needed.test.sh (itself)
+      shipped-docs     .claude/tests/shipped-docs.test.sh (itself)
+      sigpipe          .claude/tests/boundaries.test.sh (scans *.sh)
+
+Not `all`. `shipped-docs` is selected only as "itself": the changes to
+`boundaries.test.sh` and `selftest-needed.test.sh` do not select it yet,
+which is this story's bug seen on its own diff; after C-1 they should.
+`check-sigpipe.sh` (62 files, 0 findings) and `check-grep-count.sh` (62
+files, 0 findings) are clean.
+
+#### Negative controls and deferred verifications
+
+These suites do not fail at import: every assertion above executed, and the
+AC-2 controls and the real-tree assertion were observed passing. What RED
+cannot observe is the three Deferred verifications, which mutate the fixed
+tree. **I did not run DV-1, DV-2 or DV-3, and I decline all three as
+GATES-owned**, as the story assigns them: DV-1's row does not exist in RED,
+and DV-2 and DV-3 are to run once on the committed tree with the row in.
+What I did check, outside the framework, is that each expression still hits
+the files as built and that the pattern behaves as the story predicts:
+
+| DV | Expression and target | Lines changed (plain `sed` on a scratch copy) | Expected at GATES | Measured outside the framework (Git Bash awk, the suite's own awk program) |
+|---|---|---|---|---|
+| DV-1 | `/^shipped-docs add /d` on `scripts/selftest-needed.sh` | 0 in RED (the row is GREEN's); must be 1 after C-1 | `selftest-needed`: exactly **13 failed**, the 13 above; AC-2 cases pass | the unfixed tree is the RED run above: 13 failed, the same list |
+| DV-2 | `selftest-needed.test.sh` line 872 -> `CM="$(ls $REPO_ROOT/docs)"` | 1 (`872c872`) | `shipped-docs`: exactly **1 failed**, the real-tree assertion, actual `.claude/tests/selftest-needed.test.sh:872` | new `SDR_RE` over the mutated copy reports `:872`; the old pattern reports nothing |
+| DV-3 | `shipped-docs.test.sh` line 192, tail -> `.` | 1 (`192c192`) | `shipped-docs`: exactly **2 failed** - the fixture assertion (the 8 expected lines plus `a.test.sh:12`, `:13`, `:14`, `:15`) and the twin (those 4 lines) | loosened tail over the 15-line fixture: 3 4 5 8 9 10 11 12 13 14 15 (paused dispatch); over the real tree's 36 `.claude/tests/*.sh`: nothing (this dispatch) |
+
+These numbers are claims until GATES runs the three `mutate.sh` commands as
+written in `## Deferred verifications`. The expressions need no restatement
+against the files as built; only DV-2's prose line number is now 872, not 868.
+
+The twin (`shipped-docs.test.sh:397`) passed on arrival in both steps, as C-3
+says it must; DV-3 is what earns it, and DV-3 belongs to GATES.
+
+#### Timings
+
+All local, on this host; none from CI. boundaries step 1 took about
+2 h 45 min wall time (pid 95961, 14:52 to about 17:38 CST, ~30 other test
+runs on the host when it started); step 2 took 2271 s with no other run on
+the host. selftest-needed 376 s; shipped-docs 19-28 s. These suites carry no
+timeouts.
+
+#### For GREEN
+
+Nothing found changes the approach. C-1's row is the whole production
+change; C-5's floors are 687 / 621 / 18 as predicted.
 
 ## Regressions
 
