@@ -24,8 +24,9 @@
 # $HOME, not $TMPDIR: a temp directory can differ between two sessions of one
 # user, or be unset, and two runs that resolve different directories do not
 # queue at all. The directory is made with mkdir -p on first use. With neither
-# variable set, or a directory that cannot be created or written, the run
-# proceeds without the queue and says so in one line. HARNESS_RUN_QUEUE=off
+# variable set, a directory that cannot be created or written, or a lock path
+# that is there and is not a regular file, the run proceeds without the queue
+# and says so in one line. HARNESS_RUN_QUEUE=off
 # switches the queue off (any other value, and CI=true, leave it on); the
 # harness's own suites set it, in .claude/tests/_lib.sh.
 #
@@ -116,6 +117,10 @@ run_queue_link() {
   local n=0
   while [ "$n" -lt 2 ]; do
     n=$((n+1))
+    # A lock path that is there and is not a regular file - a directory, say -
+    # is unusable: GNU ln would link the record INTO a directory and report
+    # success. Refused before the record is written, so nothing is left in it.
+    if [ -e "$2" ] && [ ! -f "$2" ]; then return 2; fi
     RUN_QUEUE_TMP="$1"
     if ! printf 'pid\t%s\nstarted\t%s\ncommand\t%s\nroot\t%s\n' \
         "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$3" "$4" > "$1" 2>/dev/null; then
