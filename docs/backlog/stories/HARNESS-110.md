@@ -1,0 +1,497 @@
+---
+id: HARNESS-110
+title: The docs-read rule names the direct spellings it does not see
+slug: the-docs-read-rule-names-the-direct-spel
+epic: 
+type: fix
+status: todo
+phase: PLANNED
+branch: story/HARNESS-110-the-docs-read-rule-names-the-direct-spel
+depends_on: [HARNESS-109]      # story ids; phase.sh refuses to start this story until they are DONE
+touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
+required_gates: []  # every gate is unconfigured here; the artifact is judged by the shipped-docs suite under its selftest floor, which CI runs in full on the PR
+---
+
+## Context
+
+No epic, as HARNESS-106, HARNESS-107 and HARNESS-109, whose rule this story
+documents. Line numbers below are `origin/main` at `51239f3`; HARNESS-109
+moves them (see "Depends on HARNESS-109").
+
+**Where it comes from.** HARNESS-107's diff review, Nice-to-have finding 1
+(`bash scripts/story.sh section HARNESS-107 'Diff review'`), routed RED and
+not taken into that story.
+
+**The defect.** `.claude/tests/shipped-docs.test.sh` holds the rule
+`suite_docs_reads` (comment 156-191, pattern `SDR_RE` 192): no upstream suite
+line may read under the real checkout's `docs/`. The comment's "Written
+limit" paragraph (183-185) tells a reader what the rule cannot see, and names
+only data-flow cases: a path built in a variable first, a `cd` followed by a
+relative path, and `git -C ... show HEAD:docs/...`. A reader takes from that
+that every *direct* spelling, root and `docs` on one line, is caught. It is
+not. Measured at PLANNED (2026-11-14, Git Bash, the pattern of line 192 run
+by `awk` over lines of my own):
+
+| Line | `SDR_RE` at `51239f3` |
+|---|---|
+| `cat "$REPO_ROOT/docs/a"` | seen |
+| `rm -rf "${REPO_ROOT:?}/docs/x"` | not seen |
+| `cat "$REPO_ROOT/./docs/a"` | not seen |
+| `cat "$REPO_ROOT"/"docs"/a` | not seen |
+
+So the comment is wrong by omission, and nothing in the suite says what the
+rule does with these three lines: a later change to the pattern could start
+or stop seeing them with every assertion still green.
+
+**The fix, and the decision behind it (D-1 in the Contract).** The pattern is
+not widened. The "Written limit" paragraph names the three spellings, and one
+new assertion pins the limit as behaviour: over a fixture holding the three
+lines and one plain read, the rule reports the plain read and only it. The
+suite already asserts a written limit this way (its AC-5(d), "a path under a
+written directory is covered whatever its basename: the limit", comment at
+line 29).
+
+**The gate that would fail if this broke.** `bash scripts/gates.sh --list`
+shows every gate `<unconfigured>` in this repository (checked at PLANNED), so
+no gate, required or optional, exercises this and `required_gates` stays
+empty, as in HARNESS-106, HARNESS-107 and HARNESS-109. The artifact is judged
+by the `shipped-docs` self-test suite under its floor in
+`.claude/tests/floors.conf`, which `selftest.sh --changed` runs locally at
+GATES and CI runs in full on the PR, and by `check-boundaries.sh` (the
+`VERSION` bump, the deferred verification's pasted result).
+
+**Depends on HARNESS-109.** HARNESS-109 (phase RED on 2026-11-14, main
+checkout) writes the same four files. Its Contract C-2 adds a sentence to the
+same "Written limit" paragraph, narrows the sentence "no file is exempted by
+name" in the same comment, and its C-3 adds a `describe` block before
+`summary "shipped-docs"`, which is where this story's block goes too. This
+story builds on that text and on the count HARNESS-109 leaves (18 becomes
+21), so the order is real and `depends_on` carries it. HARNESS-109 does not
+edit `SDR_RE` or `suite_docs_reads`; its `suite_docs_files` leaves out only
+`project-*.test.sh`, which this story's fixture file is not.
+
+## Acceptance criteria
+
+- **AC-1** — Given a tree whose `.claude/tests/` holds one file, `b.test.sh`,
+  with these five lines in this order: `#!/usr/bin/env bash`,
+  `rm -rf "${REPO_ROOT:?}/docs/x"`, `cat "$REPO_ROOT/./docs/a"`,
+  `cat "$REPO_ROOT"/"docs"/a`, `cat "$REPO_ROOT/docs/a"`; when the
+  `shipped-docs` suite's rule `suite_docs_reads` runs over that tree, then it
+  prints exactly one line, `.claude/tests/b.test.sh:5`. The plain read is
+  reported, so the rule is live on that file; the three spellings of the
+  written limit are not.
+  *Control:* with `SDR_RE` changed so that a `:?` expansion of the root is
+  admitted, the same run must print `.claude/tests/b.test.sh:2` as well, and
+  the assertion must fail (DV-1). The criterion pins what the rule does
+  today; it is not a claim that missing these lines is desirable.
+- **AC-2** — Given this repository's own tree, when the `shipped-docs` suite
+  runs, then every assertion the suite holds before this story is unchanged
+  and still passes, the rule still reports nothing over the real tree, and
+  the suite's passed count is exactly one higher than before this story.
+
+## Contract
+
+RED may amend any block below, in place, with a reason; GREEN builds what the
+amended block says. The acceptance criteria are not amendable this way.
+
+**Writes:** `.claude/tests/shipped-docs.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, `.claude/harness/VERSION`
+
+**Everything below is pinned against `origin/main` at `51239f3`. RED re-reads
+lines 156-212 and the end of `.claude/tests/shipped-docs.test.sh` after
+HARNESS-109 has merged, before writing anything, and amends C-2 and C-3 in
+place where the text moved.** What is expected to have moved is listed in
+C-2 and C-3.
+
+**D-1. PO decision: name the limit and pin it; do not widen the pattern.**
+Returned to the orchestrator to report to the user before GREEN. The two
+options weighed:
+
+- *(b) Widen `SDR_RE`* to see some or all of the three, as HARNESS-107 did
+  for three earlier spellings. Measured at PLANNED: one candidate,
+  `(%/|:[?][^}]*)?[}"]*/+([.]/+)*["']?docs`, sees all three and adds no
+  false positive on ten lines of my own. Rejected, for three reasons. (1) No
+  line of the tree uses any of them: of 187 references to the two root names
+  in `.claude/tests/*.sh`, none has an expansion operator after the name,
+  none a `/./`, none a quote between the root's slash and `docs`. (2) The
+  family is open. The same measurement found five more direct spellings that
+  the *widened* pattern or the current one still misses or would need its
+  own arm: `"${REPO_ROOT:-/x}/docs/a"`, `"${REPO_ROOT%%/}/docs/a"`,
+  `"${REPO_ROOT/#x/y}/docs/a"`, `"$REPO_ROOT/"docs/a`, `$REPO_ROOT/'docs'/a`.
+  HARNESS-107 widened for three and its review found three more; a second
+  round buys a third. (3) Each arm owes a fixture line, negatives and a probe
+  against a real line of the tree (`rules.md`, the non-negotiable on rules
+  over the tree, and "Mutation work per story"), for a line nobody has
+  written. The rule is a text heuristic for the spellings people use; what
+  keeps it honest is a limit that is written and true.
+- *(a) Name them in the limit.* Chosen, with one addition to the review's
+  suggested fix: the limit is also asserted (C-3). A comment alone has no
+  behaviour, so nothing can fail when it goes stale, in either direction: the
+  pattern could later be widened and the comment left saying "not seen", or
+  loosened and nobody told. The assertion ties the pattern to the statement.
+  A later story that widens the pattern meets a red assertion, moves the line
+  from this fixture to the reads fixture and corrects the comment.
+
+*How the law applies to a comment.* "A test that has never been observed to
+fail is not a test" is about assertions; a comment asserts nothing and owes
+no failure. What it owes is being true, and that is what C-3's assertion
+checks. That assertion is written against code that already exists and
+passes on its first run, so it is the case `rules.md` names: it is earned by
+one mutation of the behaviour it pins (DV-1).
+
+*No assertion pins the comment's wording, and none is to be added.* Checked
+at PLANNED: no assertion in `.claude/tests/` reads the "Written limit"
+paragraph. An assertion on comment text would be a needle on wording, would
+pass over a comment that is present and false, and would have to spell the
+root names beside `/docs` in the one file that scans itself. The comment's
+content is checked once, by the diff review against C-2.
+
+**C-0. Who writes which.** All four paths classify as `harness`
+(`bash scripts/classify.sh <path>`, checked at PLANNED), so the phase lock
+divides nothing and this block does.
+
+- **RED (test-developer):** `.claude/tests/shipped-docs.test.sh` only: the
+  comment sentence (C-2) and the fixture and assertion (C-3). One step, not
+  two: there is no unfixed state in which the assertion fails, and RED says
+  so in the handoff instead of contriving one.
+- **GREEN (feature-developer):** the floor records in
+  `.claude/tests/floors.conf` and `.claude/tests/selftest.test.sh`, and
+  `.claude/harness/VERSION` (C-4). GREEN touches no line of
+  `shipped-docs.test.sh`.
+
+**C-1. `SDR_RE`, `suite_docs_reads` and `suite_docs_files` are not edited.**
+Not the pattern (192), not either function (193-212). A diff that changes
+any of them is outside this story.
+
+**C-2. The comment (the "Written limit" paragraph, 183-185).** At `51239f3`
+it reads:
+
+    # Written limit: the rule reads text, not data flow. A path built in a variable
+    # first (d="$REPO_ROOT", then "$d/docs/..."), a cd "$REPO_ROOT" followed by a
+    # relative docs/..., and git -C "$REPO_ROOT" show HEAD:docs/... are not seen.
+
+Nothing in it is removed or reworded. This is appended to the same
+paragraph, after its last sentence (after HARNESS-109's "the rule trusts the
+name" sentence if that is now the last):
+
+    # Nor is every direct spelling seen. Three are not: an expansion of the root
+    # other than `%/` ("${REPO_ROOT:?}/docs/x"), a `/./` between the root and
+    # docs ("$REPO_ROOT/./docs/a"), and a docs quoted on its own
+    # ("$REPO_ROOT"/"docs"/a). None occurs in the tree. The assertion headed
+    # HARNESS-110 below pins all three, so widening the pattern means moving its
+    # line and correcting this sentence.
+
+Wording may be adjusted by RED to fit what HARNESS-109 left, provided it
+still names the three spellings by example, says none occurs in the tree and
+points at the assertion. Every line of it is a whole-line comment, which the
+rule skips, and none of the three spellings matches `SDR_RE` in any case, so
+writing the root names in full here does not make this suite report itself;
+the real-tree assertion (354-355) is the check.
+
+The sentence "nothing else may follow the `%`" (172-173) stays as it is: it
+is true, and the new sentence is what says where that leaves `:?`.
+
+**C-3. The fixture and the one assertion (AC-1).** A new `describe` block,
+the last before `summary "shipped-docs"` (so after HARNESS-109's block
+`a project's own suites are not scanned (HARNESS-109)`), titled
+`the written limit: direct spellings the rule does not see (HARNESS-110)`.
+It reuses `$SDR_R` from the HARNESS-106 block (line 365), so the root name
+is spelled in pieces in this suite's own source.
+
+The fixture root is a new directory under `$WORK` (`$WORK/suite-limit`)
+holding `.claude/tests/b.test.sh`, exactly these five lines:
+
+| Line | Text as the fixture file holds it | Rule |
+|---|---|---|
+| 1 | `#!/usr/bin/env bash` | not a read |
+| 2 | `rm -rf "${REPO_ROOT:?}/docs/x"` | limit: not seen |
+| 3 | `cat "$REPO_ROOT/./docs/a"` | limit: not seen |
+| 4 | `cat "$REPO_ROOT"/"docs"/a` | limit: not seen |
+| 5 | `cat "$REPO_ROOT/docs/a"` | seen |
+
+Written as the block above writes its fixture, one `printf '%s\n'` per line,
+for example `printf '%s\n' "rm -rf \"\${$SDR_R:?}/docs/x\""`.
+
+One `assert_eq` on the whole output of `suite_docs_reads` over that root.
+Expected, exactly: `.claude/tests/b.test.sh:5`. Its name starts
+`HARNESS-110 AC-1:` and says in words that an expansion other than `%/`, a
+`/./` and a separately quoted docs are the written limit and are not
+reported, while the plain read beside them is.
+
+Line 5 is why this is one assertion and not an "expects nothing" one: an
+empty expectation is also what a rule that scanned nothing would give. With
+line 5 the same output shows the file was scanned and the rule fired.
+
+The file name is not `project-*.test.sh`, so HARNESS-109's exclusion does
+not apply to it.
+
+Measured at PLANNED (the pattern of line 192 run by `awk` over these five
+lines). **Settled: read it out.**
+
+| | Lines reported |
+|---|---|
+| `SDR_RE` at `51239f3` | 5 |
+| `SDR_RE` with `(%/)?` replaced by `(%/|:[?])?` (DV-1's mutation) | 2, 5 |
+
+*RED's run.* `bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs`.
+Expected: `shipped-docs: <N+1> passed, 0 failed`, where N is the count on
+`main` when RED starts (18 at `51239f3`; 21 once HARNESS-109 has merged, so
+22). The new assertion **passes on arrival**. The handoff says so in those
+words, names DV-1 as what earns it, and does not claim a watched failure.
+The suite stays above its recorded floor of N, so nothing is red at the end
+of RED.
+
+**C-4. Floors and the release (GREEN).**
+
+- `.claude/tests/floors.conf`: the line `floor | shipped-docs  | <N>`
+  (line 66 at `51239f3`, value 18) becomes `<N+1>`, the count GREEN measures
+  passing, and the dated history comment at the end of the file gains a
+  paragraph in the form of the HARNESS-107 one (1210-1217): story id, phase
+  and local calendar date, the measured line `shipped-docs: <N+1> passed,
+  0 failed`, and "+1 (the HARNESS-110 written-limit assertion)".
+- `.claude/tests/selftest.test.sh`: the `COUNTS` entry `shipped-docs <N>`
+  (line 558 at `51239f3`) becomes `shipped-docs <N+1>`.
+- `.claude/harness/VERSION`: the next release number after whatever `main`
+  holds when GREEN runs, with that day's local calendar date in brackets.
+  It is 126 at `51239f3`; HARNESS-108 and HARNESS-109 each take one before
+  this story, so the number is not pinned here. `check-boundaries.sh`
+  refuses a harness change without the bump.
+
+**Callers.** No export changes signature. `SDR_RE`, `suite_docs_files` and
+`suite_docs_reads` are defined and used only in
+`.claude/tests/shipped-docs.test.sh` (grep at PLANNED), and none is edited.
+
+**Oracle partition.** AC-1 is **settled**: the expected output is the
+measured table in C-3, read out, not derived. AC-2 is **mechanical**: the
+count is N+1 and no existing assertion's text changes.
+
+**Test-only dependencies.** None.
+
+## Deferred verifications
+
+The budget is `rules.md`, "Mutation work per story". One entry. It is both
+the mutation that earns the assertion written against existing code and the
+one for the story's central claim, which is that the suite now says what the
+rule does with these spellings.
+
+- **DV-1, the limit assertion can fail (AC-1).** With `SDR_RE`'s `(%/)?`
+  replaced by `(%/|:[?])?`, so that `${REPO_ROOT:?}` is admitted as the root,
+  `mutate.sh` must report 1 line changed, and `shipped-docs` **must** report
+  exactly 1 failed: the `HARNESS-110 AC-1` assertion, its actual value the
+  two lines `.claude/tests/b.test.sh:2` and `.claude/tests/b.test.sh:5`.
+  Every other assertion still passes: no line of the real tree and no other
+  fixture line has `:?` after a root name (measured at PLANNED: 0 of 187
+  references). The mutated file is the suite itself, which holds the rule;
+  `(%/)?` occurs on one line of it (192 at `51239f3`). RED cannot earn the
+  assertion by watching it fail, because it passes on its first run; RED
+  could run this mutation, but one run at GATES covers the story as
+  committed. **Owner: GATES.**
+
+      bash scripts/mutate.sh .claude/tests/shipped-docs.test.sh '/^SDR_RE=/s#(%/)?#(%/|:[?])?#' -- bash scripts/selftest.sh shipped-docs
+
+Not owed, and stated so that nobody adds one: a probe against a real line of
+the tree (the rule over the tree is not changed by this story; HARNESS-107's
+DV-2 and HARNESS-109's DV-2 hold that evidence for the pattern and the file
+list as they stand); a mutation per limit spelling (lines 3 and 4 are pinned
+by the same whole-output comparison, and earning each is `/audit-mutations`
+work); and anything for the comment, which has no behaviour.
+
+## Amendments
+
+<!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
+     out to be wrong or unsatisfiable, stop, put it to the product owner, and
+     record the change here: which AC, what it said, what it says now, who
+     approved it and why. check-boundaries.sh fails a PR whose criteria differ
+     from their last committed PLANNED state (else the base branch) without an
+     entry here. Omit the section if unused.
+     Head each entry AM-<n> (`- **AM-1 (AC-2).** ...`), and give it its
+     adjudication record, a line of its own in this section, outside any
+     comment or fence - check-boundaries.sh refuses a new entry without one:
+       - **Adjudicated AM-<n>:** `fable` (resolved <name>), <date>, <what it reproduced>
+     A claim that a criterion is wrong is also what an agent says when it
+     wants to stop failing, so it is judged by a fresh `fable` dispatch - a
+     `lead-po` on the ADJUDICATE row of models.conf, on different inputs, not
+     the claimant's code - and that dispatch writes the judgement and the
+     record line; the judgement is never the orchestrator's. An entry that
+     follows a diff-review or PR-feedback finding routed RED or AMEND was
+     judged by that review, so the orchestrator writes its record, naming the
+     round and finding (or the PR-feedback item) and the model the review was
+     planned on and resolved to:
+       - **Adjudicated AM-<n>:** `fable` (resolved <name>), <date>, diff review round <r>, finding <f>
+     Its being upheld does not replace the user's approval; both go in the
+     entry. A change
+     the user asked for unprompted is not a claim: `- **Adjudicated AM-<n>:**
+     requested by the user, <date>`. -->
+
+## Suppressions
+
+<!-- One line per suppression this story's GREEN or GATES deliberately added:
+     the path, the rule id in brackets, `approved by <who>`, and why that line
+     and not a fix. check-boundaries.sh refuses any lint, type, coverage or
+     mutation suppression a GREEN or GATES commit adds to source or config
+     unless one line here names it. Omit the section if unused. -->
+
+## Model guidance
+
+Planned by `bash scripts/plan.sh write HARNESS-110` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
+
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| DIFF-REVIEW | `lead-po` | `fable` | reading a whole diff for the defect no test was written for is judgement against the contract, and it is where a wrong call ships; a finding it labels goes back to GATES or RED, on opus |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
+| ADJUDICATE | `lead-po` | `fable` | a claim that an acceptance criterion, a threshold or a frozen test is wrong is judged against the contract by a fresh dispatch on different inputs, never by the orchestrator that wants the answer; needed in any phase, so it is last |
+
+**Resolved:**
+
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
+
+- PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
+## Out of scope
+
+<!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
+
+- Widening `SDR_RE` to see any of the three spellings, or any other direct
+  spelling (D-1 lists five more that were measured). If one ever appears in
+  a suite, that is the story that widens the pattern, with that real line as
+  its probe.
+- Any edit to `suite_docs_reads` or `suite_docs_files`.
+- Listing every direct spelling the rule misses. The comment names three by
+  example and says the rule reads text; it is not an inventory.
+- An assertion on the comment's wording (D-1).
+- A check that no suite uses a `:?` expansion, a `/./` or a split quote
+  after a root name. Measured once at PLANNED (none of 187); not enforced.
+- Data-flow reads (a variable, a `cd`, `git -C`): already the written limit,
+  unchanged.
+
+## Design notes
+
+<!-- Filled by the Lead Designer for user-facing stories: layout, states,
+     tokens, accessibility requirements. Omit for non-UI stories. -->
+
+## Test plan
+
+<!-- Filled by the Test Developer during RED: which tests, at which level,
+     and which AC each one covers. -->
+
+## Handoff: RED -> GREEN
+
+<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
+     to the Feature Developer, whose context is fresh. Must contain:
+       * the exact command that runs the new tests
+       * the failure output, and why it is the RIGHT failure
+       * every file touched, and which AC each test covers
+       * the EXPORT SHAPE the tests already pin: every module they import, the
+         exact exported names and signatures, and the types the assertions
+         destructure. Not a suggestion - a test already imports them, so a
+         wrong guess is a compile error. Say what the tests do NOT constrain
+         too, so it stays the implementer's choice.
+       * any test that passed on arrival, and the probe or negative control
+         that earns it
+       * the EXPECTED VALUE of every negative control, as a table: threshold,
+         candidate range, and the number the control measured. In RED the
+         suite fails at import, so no assertion in it has run - the controls
+         are claims until GREEN confirms them against the shipped module
+       * anything discovered that changes the approach -->
+
+## Regressions
+
+<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
+     otherwise. A test that is wrong is never edited into passing, and the
+     return is not a footnote - it is the story failing to be one clean cycle,
+     and the next person needs to know why. One block per return, headed
+     R-<n> (`### R-1 (the count test)`), and carrying its adjudication
+     record - a line of its own, outside any comment or fence, written by
+     the fresh `fable` dispatch (a `lead-po` on the ADJUDICATE row of
+     models.conf) that judged the claim the test is wrong; the judgement is
+     never the orchestrator's. check-boundaries.sh refuses a new entry
+     without one:
+       - **Adjudicated R-<n>:** `fable` (resolved <name>), <date>, <what it reproduced>
+     A return that follows a diff-review or PR-feedback finding routed RED
+     or AMEND was judged by that review, so the orchestrator writes the
+     record, naming the round and finding (or the PR-feedback item) and the
+     model the review was planned on and resolved to:
+       - **Adjudicated R-<n>:** `fable` (resolved <name>), <date>, diff review round <r>, finding <f>
+     Then:
+       * which test, what it asserted, and what was wrong with it
+       * how the defect was found
+       * what it asserts now
+       * what earns it, since "watched it fail" cannot apply once the
+         implementation exists - the corrected assertion passes on its first
+         run and every run after, whether or not it asserts anything: either a
+         PROBE (mutate the specific behaviour the test pins, paste the red,
+         confirm the revert) or, where the defect was cost rather than
+         correctness, a BEFORE/AFTER measurement taken under the gate command -
+         not the plain test command, which is the faster one.
+         PASTE THE OUTPUT. check-boundaries.sh refuses a PR whose Regressions
+         or Gate probes section describes a failure without showing one.
+         A result counts only as a block: a line beginning with three
+         backticks or three tildes (a fence), or a line indented by exactly
+         four spaces. Prose does not count, nor inline code in backticks, nor
+         a tab, nor anything inside an HTML comment
+       * whether GREEN was a no-op, and the command output proving the source
+         was untouched and still passes -->
+
+## Gate results
+
+<!-- Written by scripts/gates.sh itself on every full run, stamped with the
+     commit and a hash of the code it ran against. Do not paste or edit it:
+     check-boundaries.sh refuses a PR whose recorded run does not match the
+     code being merged. -->
+
+## Gate probes
+
+<!-- REQUIRED if this story adds or changes a gate, its command, or its
+     evidence line. Omit the section entirely otherwise.
+     A gate that has never been observed to fail is not a gate: break the thing
+     it guards, run the gate, paste the failure, revert. A result counts
+     only as a block: a line beginning with three backticks or three tildes
+     (a fence), or a line indented by exactly four spaces. Prose does not
+     count, nor inline code in backticks, nor a tab, nor anything inside an
+     HTML comment. One block per gate:
+       * what was broken, and where
+       * the gate output proving it failed
+       * confirmation the probe was reverted -->
+
+## Scaffold inventory
+
+<!-- REQUIRED for a bootstrap or chore story that writes production code under
+     SCAFFOLD, where nothing forces a test to exist first, and for a spike that
+     commits its throwaway code. Omit otherwise.
+     One line per production file written, and for anything with behaviour
+     rather than configuration, the test that covers it:
+       src/core/palette.ts        - src/core/palette.test.ts
+       vite.config.ts             - configuration, no behaviour
+     check-boundaries.sh refuses the PR if any changed source file is not
+     named here. -->
+
+## Notes
+
+- **PLANNED, 2026-11-14.** Planned by a `lead-po` dispatch on the PLANNED
+  row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override
+  was reported to it. D-1 (name and pin the limit, do not widen) is a PO
+  decision for the orchestrator to put to the user before GREEN.
+- **`depends_on: [HARNESS-109]` is ordering, not only collision.** Both
+  stories append to the same "Written limit" paragraph and add a `describe`
+  block at the same place, and this story's count is HARNESS-109's plus one.
+  The Contract is pinned against `51239f3`; RED re-reads the region after
+  HARNESS-109 merges and amends C-2 and C-3 in place.
+- **HARNESS-108** (worktree `laughing-shirley-5afc9b`, GATES on 2026-11-14)
+  also writes `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`
+  and `.claude/harness/VERSION`. That is a collision, not a dependency, so
+  it is not in `depends_on`: it touches other floor lines and takes its own
+  release number. If it has not merged when this story starts, the two must
+  not run side by side; whichever merges second merges `main` and re-runs.
+- **`bash scripts/plan.sh conflicts`, 2026-11-14, this worktree:**
+  `fewer than two startable stories; nothing to compare` (exit 0). It judged
+  no pair, so it is not evidence that any pair is clear. The overlaps above
+  were read by hand from the three stories' `touches:`.
