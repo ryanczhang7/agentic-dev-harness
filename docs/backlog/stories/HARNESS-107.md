@@ -5,7 +5,7 @@ slug: the-changed-suites-self-test-runs-the-sh
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-107-the-changed-suites-self-test-runs-the-sh
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -476,6 +476,51 @@ Not owed, and stated so that nobody adds one: a mutation for the `boundaries`
 trap assertion (it is red in C-4's step 1, the ordinary way); one per fixture
 line of C-3; one for the four AC-2 cases (unchanged tests); and a run of
 `boundaries` under any mutation.
+
+**Results, GATES (2026-11-13, orchestrator; one `mutate.sh` run each, no other self-test or gates run on the host).** All three as predicted; every file restored and verified by `mutate.sh`.
+
+DV-1 - 1 line changed; `selftest-needed` 13 failed, exactly the 13 named; the four AC-2 cases pass:
+
+```
+=== mutate: scripts/selftest-needed.sh (1 line(s) changed by /^shipped-docs add /d) ===
+    FAIL an edited .claude/tests/gamma.test.sh, mentioned by no suite, prints gamma (and the *.sh scanners, shipped-docs among them) [from root]: stdout is exactly the pinned list
+    FAIL ... [from root]: stdout has exactly 4 line(s)
+    FAIL ... [from root]: stderr's first line is exactly the pinned header
+    FAIL ... the same three [from subdir]
+    FAIL HARNESS-107 AC-1: stderr names shipped-docs' path and the pattern that matched: (scans .claude/tests/*.sh)
+    FAIL a NEW untracked .claude/tests/delta.test.sh prints delta and the *.sh scanners, shipped-docs among them, and the count of suites is the tree's (10) [from root]: stdout is exactly the pinned list
+    FAIL ... the same stdout, line count and header, from root and from subdir (6 in all)
+selftest-needed: 608 passed, 13 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/scripts_selftest-needed.sh.20261114T011448Z.77560.bak) ===
+  185: shipped-docs add .claude/tests/*.sh
+```
+
+DV-2 - 1 line changed (line 872); `shipped-docs` exactly 1 failed, the real-tree assertion naming that line:
+
+```
+    FAIL HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing: no suite line reads the project's own docs, which a consumer does not share
+         expected: 
+         actual:   .claude/tests/selftest-needed.test.sh:872
+shipped-docs: 17 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/.claude_tests_selftest-needed.test.sh.20261114T011406Z.76365.bak) ===
+  872: CM="$REPO_ROOT/CLAUDE.md"
+```
+
+DV-3 - 1 line changed (line 192); `shipped-docs` exactly 2 failed: the fixture gains `a.test.sh:12`-`:15`, and the twin reports its four docs-prefixed lines (numbered 5-8 in the twin's own, shorter fixture); the real-tree assertion passes:
+
+```
+    FAIL HARNESS-106 AC-3, HARNESS-107 AC-3: a fixture holding each spelling, ... none for the comment, the other roots, docs-shipped.conf or a docs-prefixed name
+         expected: .claude/tests/_lib.sh:1 .claude/tests/a.test.sh:3 :4 :5 :8 :9 :10 :11
+         actual:   .claude/tests/_lib.sh:1 .claude/tests/a.test.sh:3 :4 :5 :8 :9 :10 :11 :12 :13 :14 :15
+    FAIL HARNESS-106 AC-3, HARNESS-107 AC-3: twin: the same fixture with only the comment, the other roots, docs-shipped.conf and the docs-prefixed names left prints nothing
+         expected: 
+         actual:   .claude/tests/a.test.sh:5 .claude/tests/a.test.sh:6 .claude/tests/a.test.sh:7 .claude/tests/a.test.sh:8
+shipped-docs: 16 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .../.claude/state/mutations/.claude_tests_shipped-docs.test.sh.20261114T011424Z.76927.bak) ===
+  192: SDR_RE='(REPO''_ROOT|TESTS''_DIR/[.][.]/[.][.])(%/)?[}"]*/+docs([^A-Za-z0-9_.-]|$)'
+```
+
+(The multi-line `expected:`/`actual:` values are joined onto one line here; the full output is the run's own, abridged only where marked `...`.)
 
 ## Amendments
 
@@ -957,10 +1002,21 @@ files, 0 findings) clean.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-14T01:19:54Z
+    commit: 5de62a0
+    tree:   9a7504cfbfa9bad0e3b5103db43be3452e09f62c
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
