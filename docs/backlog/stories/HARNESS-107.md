@@ -4,8 +4,8 @@ title: The changed-suites self-test runs the shipped-docs rule over a changed su
 slug: the-changed-suites-self-test-runs-the-sh
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-107-the-changed-suites-self-test-runs-the-sh
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1161,3 +1161,5 @@ Verdict: Ship.
   awk on the CI runner (the pattern uses only `?`, `+` and a negated bracket
   expression, which POSIX ERE defines).
 
+
+- 2026-11-13 GATES -> REVIEW (orchestrator): `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` run by the orchestrator through `attest.sh`, alone on the host: exit 0, `14 harness suite(s) passed.`, all 14 floors met (3103 assertions executed, 3103 declared), 2928 s, tree a3031486. CI runs the full self-test on the PR. Follow-up offered, not taken: the diff review's finding 1 (three direct spellings `SDR_RE` misses, to be named in its written limit).
