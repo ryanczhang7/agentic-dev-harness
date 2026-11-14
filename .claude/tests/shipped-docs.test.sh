@@ -163,7 +163,11 @@ REFS
 #
 # suite_docs_files <root>   The scanned files, relative to <root>, in LC_ALL=C
 # name order: every <root>/.claude/tests/*.sh, top level only (the suites,
-# _lib.sh, _spawns.sh).
+# _lib.sh, _spawns.sh), except a file whose whole name is project-*.test.sh
+# (HARNESS-109). That is a consuming project's own suite: upstream does not
+# ship it, a refresh keeps it, and it may read its own project's docs/. A
+# project-*.sh that is not a .test.sh, and a suite merely containing the word
+# (my-project-x.test.sh), are still scanned.
 #
 # suite_docs_reads <root>   One line `<file>:<line number>` per line of a
 # scanned file that is not a whole-line comment (first non-blank character `#`)
@@ -183,17 +187,22 @@ REFS
 # Written limit: the rule reads text, not data flow. A path built in a variable
 # first (d="$REPO_ROOT", then "$d/docs/..."), a cd "$REPO_ROOT" followed by a
 # relative docs/..., and git -C "$REPO_ROOT" show HEAD:docs/... are not seen.
+# And it trusts the name: an upstream suite named project-*.test.sh would
+# escape it, and nothing checks that upstream ships none (HARNESS-109, C-1).
 #
 # This suite is one of the files it scans, and its fixtures below hold
 # offending lines as data. So the two root names are spelled in pieces
-# wherever /docs follows them, here and in the fixtures; no file is exempted
-# by name. The real-tree assertion is the check that this was done.
+# wherever /docs follows them, here and in the fixtures; no upstream file is
+# exempted by name, this suite included. The real-tree assertion is the check
+# that this was done.
 # [.] rather than \. because awk -v processes backslash escapes.
 SDR_RE='(REPO''_ROOT|TESTS''_DIR/[.][.]/[.][.])(%/)?[}"]*/+docs([^A-Za-z0-9_.-]|$)'
 suite_docs_files() {
   local root="$1" f
   for f in "$root"/.claude/tests/*.sh; do
-    [ -f "$f" ] && printf '%s\n' "${f#"$root"/}"
+    [ -f "$f" ] || continue
+    case "${f##*/}" in project-*.test.sh) continue ;; esac
+    printf '%s\n' "${f#"$root"/}"
   done | LC_ALL=C sort
 }
 suite_docs_reads() {

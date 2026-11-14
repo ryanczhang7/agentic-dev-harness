@@ -533,7 +533,61 @@ Verbatim failure, from that log:
 The right failure: each actual is exactly C-3's `51239f3` column (two lines;
 the six plus the two `project-x.test.sh` lines, eight; the four files). All 18
 pre-existing assertions pass, the real-tree pair included. None of the three
-passed on arrival.
+passed on arrival. Committed as `8f13aab`.
+
+**Step 2 (C-2): the fix.** One `case` line in `suite_docs_files`
+(`case "${f##*/}" in project-*.test.sh) continue ;; esac`, its own line, so
+DV-1's `/d` deletes exactly it; `[ -f ] &&` became `[ -f ] || continue` to make
+room for it), plus the three comment edits C-2 names: the `suite_docs_files`
+paragraph says what is left out and why, the "Written limit" paragraph says the
+rule trusts the name, and "no file is exempted by name" now reads "no upstream
+file is exempted by name, this suite included". `SDR_RE`, `suite_docs_reads`,
+and the lines `SDR_RE=` and `# --- a compliant fixture` are untouched. Local
+run, same command:
+
+    exit:     0
+    duration: 67s
+    last:     shipped-docs: 21 passed, 0 failed
+    log:      .claude/state/attest-logs/20261114T223628Z.522389.log
+
+Real tree, with the rule cut out by DV-3's own `sed` range and run over this
+checkout: no line reported, 36 files scanned (C-3 table: 36, none). Every
+count matched the Contract; no Contract block was amended.
+
+**Tests, one line each.**
+- AC-1 assertion: `suite_docs_reads` over a tree holding only
+  `project-x.test.sh` (with two reading lines) prints nothing.
+- AC-2 assertion: on the four-file tree it prints exactly lines 2 and 3 of
+  `my-project-x.test.sh`, `project-x.sh`, `x.test.sh`, in that order.
+- AC-1, AC-2 assertion: `suite_docs_files` on that tree is exactly those three
+  files.
+- AC-3: the existing HARNESS-106 AC-3 real-tree pair, unchanged, passes.
+
+**Files touched in RED:** `.claude/tests/shipped-docs.test.sh`, this story.
+
+**Shape pinned.** `suite_docs_files <root>` and `suite_docs_reads <root>` keep
+name, argument and output (`<rel path>` / `<rel path>:<line>`, `LC_ALL=C`
+order). Nothing else is constrained. GREEN writes no line of this suite.
+
+**For GREEN (C-4).** Measured executed count: 21 (3 added, none dropped).
+Raise `floor | shipped-docs | 18` in `.claude/tests/floors.conf` and
+`shipped-docs 18` in `.claude/tests/selftest.test.sh`'s `COUNTS` to 21, with
+the dated `floors.conf` comment, and bump `.claude/harness/VERSION` to 127
+(see `## Notes` on HARNESS-108 also taking 127). RED's own
+`selftest-needed.sh --suites` for this diff: `grep-count`, `shipped-docs`,
+`sigpipe`.
+
+**Controls, declined in RED.** I did not run DV-1, DV-2 or DV-3. All three are
+owned by GATES and have to run against the committed, fixed tree, which this
+phase only finishes producing. The values below are the story's expectations,
+not measurements of mine. The one thing I checked is that each target still
+exists in exactly one place (`grep`, not a mutation).
+
+| Control | Command target, as built | Expected | Measured in RED |
+|---|---|---|---|
+| DV-1, defect put back | `/project-\*\.test\.sh) continue ;;/d` on `shipped-docs.test.sh` (matches line 204 only) | 1 line changed; `shipped-docs: 18 passed, 3 failed`, the three HARNESS-109 assertions with the `51239f3` column as actuals | not run (declined); step 1 showed the same three red on the unfixed tree, which is not the same thing |
+| DV-2, real line | `CM="$REPO_ROOT/CLAUDE.md"` in `selftest-needed.test.sh` (line 872, the only occurrence) | 1 line changed; `shipped-docs: 20 passed, 1 failed`, the real-tree assertion, actual `.claude/tests/selftest-needed.test.sh:872` | not run (declined) |
+| DV-3, consumer tree, read-only | `D:/fantasy-world-builder` | no line reported, 36 files (41 and four lines at `51239f3`); first `grep` must still show its reading lines | not run (declined) |
 
 ## Regressions
 
