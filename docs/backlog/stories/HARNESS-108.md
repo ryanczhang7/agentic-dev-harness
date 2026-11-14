@@ -5,7 +5,7 @@ slug: harness-runs-queue-machine-wide-instead
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-108-harness-runs-queue-machine-wide-instead
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-lock.sh, .claude/tests/run-queue.test.sh, .claude/tests/_lib.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1180,6 +1180,37 @@ above are what GATES compares against.
   order of magnitude cheaper, so expect well under the 3-4 minute CI
   self-test, but GATES should read the CI log for the real figure.
 
+### Addendum 2026-11-14: return to RED after diff review round 1 (R-1, R-2)
+
+- **Command:** `bash scripts/selftest.sh run-queue`. On the shipped source
+  it is now `226 passed, 3 failed` of 229; the three red are the new AC-9
+  case below and nothing else (attest log
+  `.claude/state/attest-logs/20261114T232411Z.586222.log`).
+- **R-1 (test-only, GREEN no-op):** the AC-5 live and both AC-6 bypass
+  "byte-identical" assertions compare `qlock` (the lock file's bytes)
+  instead of `qsnap`. Nothing for GREEN to do.
+- **R-2 (GREEN must change `scripts/run-queue.sh`):** new case
+  `AC-9 gates.sh, the queue lock path is a directory`. With
+  `$Q/run-queue.lock` a directory, a full run must print exactly one
+  `run-queue: cannot use <dir>; scripts/gates.sh runs without the
+  machine-wide queue.` line (`<dir>` = `$HARNESS_RUN_QUEUE_DIR` verbatim), no
+  other `run-queue:` line, run its work with its own exit status, and leave
+  nothing inside that directory. Today GNU `ln` links the temp record INTO
+  the directory and the run takes the "queue" silently.
+  **Fix:** in `run_queue_link`, before writing the temp record, refuse a lock
+  path that exists and is not a regular file (`[ -d "$2" ]`, or
+  `[ -e "$2" ] && [ ! -f "$2" ]`) and return 2, which `run_queue_acquire`
+  already turns into C-3's `cannot use` line. Checking before the `printf`
+  means no temp record is written either. Do NOT use `ln -T`: BSD `ln` lacks
+  it. Not constrained: which of the two tests, and whether the pass-through
+  check at the top of `run_queue_acquire` also tests type (it already
+  requires `-f`).
+- **Floor:** run-queue 225 -> 229 in `.claude/tests/floors.conf` (dated
+  comment at the end) and in `.claude/tests/selftest.test.sh`'s table. Until
+  GREEN lands, a run-queue run sits below its floor (226 passes).
+- **Still untested on this host:** `scripts/run-queue.sh:217-222` (the "lock
+  cannot be removed" exit). A directory does not reach it here; see R-2.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -1218,13 +1249,254 @@ above are what GATES compares against.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+### R-1 (three byte-identical assertions race the waiter's temporary record)
+
+- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2), 2026-11-14, diff review round 1, finding 1
+- **Which test, what was wrong:** `.claude/tests/run-queue.test.sh:492` (AC-5
+  live) and `:544` via `bypass_case` (AC-6 wrong-pid, wrong-path, called at
+  `:549`/`:550`) compare `qsnap`, every file in the queue directory, before
+  and during a wait. A live waiter writes `run-queue.lock.<pid>` on every
+  poll and removes it after `ln` fails, so `qsnap` sees it about 4% of the
+  time (4,133 of 100,554 samples on this host). The assertion flakes with
+  nothing wrong; it is DV-3's unexplained 36th failure.
+- **How found:** diff review round 1.
+- **What it asserts now:** those three assertions, and only those, compare
+  `qlock` - a new helper beside `qsnap` printing the lock file's own exact
+  bytes plus an `|eof` sentinel (so a trailing newline survives `$(...)`),
+  or `<no lock>` when `$Q/run-queue.lock` is not a regular file - before the
+  waiter starts and while it waits. Same assertion names, same expected
+  value source. Every other `qsnap` comparison is unchanged: in each of them
+  no waiter is alive at the moment of comparison (`beside_case` runs are
+  non-full and never write in the queue dir; `term_waiter` compares after
+  `wait_bounded` has reaped the waiter; the rest compare against `""` after
+  every run has ended). The executed count is unchanged (225).
+- **What earns it:** DV-1's mutation, run once against the corrected suite.
+  All three corrected assertions go red, each because the lock was
+  reclaimed (`actual: <no lock>`): `AC-5 live: and the lock is
+  byte-identical`, `ac6-wrong-pid: the holder's lock is byte-identical`,
+  `ac6-wrong-path: the holder's lock is byte-identical`. 52 failed of 225,
+  restored and verified by `cmp`. (The bypass pair goes red under DV-1
+  because a waiter that reads every holder as gone reclaims LIVE1's lock;
+  it does not distinguish the bypass from the reclaim - DV-1 is not a
+  bypass mutation, and none was asked for.)
+
+  ```
+  === mutate: scripts/run-queue.sh (1 line(s) changed by s|^run_queue_alive() { kill -0 "\$1" 2>/dev/null; }$|run_queue_alive() { false; }|) ===
+    87 - run_queue_alive() { kill -0 "$1" 2>/dev/null; }
+    87 + run_queue_alive() { false; }
+
+  === mutate: running bash scripts/selftest.sh run-queue ===
+  ...
+      FAIL AC-5 live: and the lock is byte-identical: a live pid is never reclaimed
+           expected: pid	569203
+           started	2026-01-02T03:04:05Z
+           command	scripts/selftest.sh ghost
+           root	/ghost/tree
+           |eof
+           actual:   <no lock>
+  ...
+      FAIL ac6-wrong-pid: the holder's lock is byte-identical
+           expected: pid	564457
+           started	2026-01-02T03:04:05Z
+           command	scripts/gates.sh
+           root	/tmp/tmp.6MR3orrtZh
+           |eof
+           actual:   <no lock>
+  ...
+      FAIL ac6-wrong-path: the holder's lock is byte-identical
+           expected: pid	564457
+           started	2026-01-02T03:04:05Z
+           command	scripts/gates.sh
+           root	/tmp/tmp.6MR3orrtZh
+           |eof
+           actual:   <no lock>
+  ...
+  run-queue: 173 passed, 52 failed
+  FAIL run-queue  did 173 units of work, below the floor of 225 in .claude/tests/floors.conf
+
+  assertion floors: 0 of 1 suite(s) met their declared floor.
+  1 of 1 harness suite(s) FAILED.
+
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/laughing-shirley-5afc9b/.claude/state/mutations/scripts_run-queue.sh.20261114T230521Z.564161.bak) ===
+  ```
+
+- **GREEN:** expected to be a no-op for R-1; the change is test-only.
+
+### R-2 (no test reaches the "lock cannot be removed" exit)
+
+- **Adjudicated R-2:** `fable` (resolved claude-fable-5-2), 2026-11-14, diff review round 1, finding 2
+- **Which test, what was missing:** nothing reaches `scripts/run-queue.sh:217-222`.
+  With `$Q/run-queue.lock` a directory, deleting those lines makes the run
+  print the `reclaimed an unreadable queue lock` line for ever and never
+  start, breaking AC-9, and the suite stays green.
+- **How found:** diff review round 1.
+- **Premise corrected by RED (2026-11-14).** The finding's input does not
+  reach lines 217-222. With `$Q/run-queue.lock` a directory, `ln <tmp>
+  <lock>` in `run_queue_link` (`scripts/run-queue.sh:125`) does not fail:
+  GNU `ln` with an existing directory as its last operand links the file
+  INTO it. So the run "takes" the queue silently (return 0,
+  `RUN_QUEUE_HELD=1`, no `run-queue:` line at all) and leaves
+  `run-queue.lock/run-queue.lock.<pid>` behind, because release reads no pid
+  from a directory and removes nothing. Every later full run on the machine
+  does the same, so none of them ever queues. Measured with the shipped
+  module, called directly (Git Bash, GNU coreutils 8.32):
+
+  ```
+  $ mkdir -p dq/run-queue.lock
+  $ HARNESS_RUN_QUEUE_DIR="$PWD/dq" timeout 20 bash -c '. scripts/run-queue.sh; run_queue_acquire /t scripts/gates.sh; echo "rc=$? held=$RUN_QUEUE_HELD"; run_queue_release'
+  rc=0 held=1
+  $ find dq
+  dq
+  dq/run-queue.lock
+  dq/run-queue.lock/run-queue.lock.561659
+  ```
+
+  `chmod 555` on that directory does not stop the link on this host either
+  (`ln` exit 0 into it), so lines 217-222 are not reachable by a directory
+  on this host at all; on Linux a mode-555 directory probably would reach
+  them (inferred, not measured). For that reason the line-218 mutation was
+  NOT run: the expression matches exactly one line (`grep -cxF '    if [ -e
+  "$lock" ] && [ "$(run_queue_pid "$lock")" = "$pid" ]; then'
+  scripts/run-queue.sh` prints 1), but with this input the branch is never
+  reached, so no test could observe it. Lines 217-222 remain without a test
+  on this host.
+- **Decision (orchestrator, 2026-11-14):** a directory at the lock path is
+  AC-9's "queue directory that cannot be used": C-3's `cannot use <dir>`
+  line, and the run proceeds unqueued with its own status. Today's silent
+  take is a defect. No acceptance criterion changes.
+- **What it asserts now:** a new AC-9 case in `.claude/tests/run-queue.test.sh`
+  (after the "tree without run-queue.sh" case): `new_case; mkdir "$QL"`, then
+  `noq_case "AC-9 gates.sh, the queue lock path is a directory"`, a full
+  `scripts/gates.sh` in tree B, bounded by `wait_bounded` at 60 s, asserting
+  (1) exactly one `cannot_line "$Q" scripts/gates.sh` line, whole-line, (2) no
+  other `run-queue:` line, (3) the work ran and the exit status is
+  `$SOLO_GATES`; plus (4) `ls -A "$QL"` is empty: nothing was left inside
+  the directory. Four new assertions; the executed count goes 225 -> 229.
+- **What earns it:** an ordinary failing test. It was watched to fail on the
+  shipped code for the right reasons - no line at all, and a stray
+  `run-queue.lock.<pid>` inside the directory - with every other assertion
+  in the suite green (`bash scripts/attest.sh -- bash scripts/selftest.sh
+  run-queue`, exit 1, 483 s, log
+  `.claude/state/attest-logs/20261114T232411Z.586222.log`). The run itself
+  passed (assertion 3 green): the defect is silence and litter, not a
+  refusal to run.
+
+  ```
+    AC-9  a queue it cannot use: one line, and the run runs as it would have
+      FAIL AC-9 gates.sh, the queue lock path is a directory: prints the one line for its case
+           expected: 1
+           actual:   0
+      FAIL AC-9 gates.sh, the queue lock path is a directory: and no other run-queue: line
+           expected: 1
+           actual:   0
+      FAIL AC-9 gates.sh, the queue lock path is a directory: nothing is left inside that directory
+           expected: 
+           actual:   run-queue.lock.592957
+
+    C-4, C-6  the shipped pieces the mutations and the messages depend on
+
+  run-queue: 226 passed, 3 failed
+  FAIL run-queue  did 226 units of work, below the floor of 229 in .claude/tests/floors.conf
+
+  assertion floors: 0 of 1 suite(s) met their declared floor.
+  1 of 1 harness suite(s) FAILED.
+  ```
+
+- **GREEN is NOT a no-op for R-2.** `run_queue_link` must refuse a lock path
+  that exists and is not a regular file, portably - a `[ -d "$2" ]` or
+  `[ -e "$2" ] && [ ! -f "$2" ]` check before the `ln`, returning 2 so
+  `run_queue_acquire` prints C-3's `cannot use <dir>` line. Not `ln -T`,
+  which BSD `ln` lacks. See the dated addendum in `## Handoff: RED -> GREEN`.
+
+## Diff review
+
+### Round 1 (2026-11-14) — `lead-po`, planned `fable`, resolved claude-fable-5-2
+
+What this change does: a full `gates.sh` or a no-argument `selftest.sh` now
+takes a per-user, machine-wide lock file after taking its tree's run lock,
+and waits (polling) while another live full run holds it. The join and leave
+are wired inside `run_lock_acquire` / `run_lock_release`, so neither caller
+was edited. Non-full runs, `HARNESS_RUN_QUEUE=off` and the harness's own
+suites never touch the queue. Load assumed: one user, a handful of
+concurrent sessions and worktrees on one Windows Git Bash host, runs of
+minutes to hours, plus single-job Linux CI runners.
+
+**Must fix**
+
+1. Three "byte-identical" assertions race the waiter's own temporary record
+   (`.claude/tests/run-queue.test.sh:492`, `:544` via `bypass_case`, called at
+   `:549` and `:550`). They compare `qsnap` (every file in the queue dir)
+   before and during the wait; a waiter writes `run-queue.lock.<pid>` on every
+   poll and removes it after `ln` fails (`scripts/run-queue.sh:120-126`).
+   Measured with the shipped `run_queue_acquire` behind a live planted
+   holder: the temp record visible in 4,133 of 100,554 samples (~4%); three
+   assertions, so about one suite run in eight fails with nothing wrong. This
+   is DV-3's 36th failure (`ac6-wrong-pid` runs a plain `scripts/gates.sh`,
+   which the `run_lock_full` mutation does not change). Fix: compare only the
+   lock's bytes in those three assertions; keep `qsnap` where no waiter is
+   alive. The corrected `:492` must still go red under DV-1. If skipped: the
+   self-test fails at random and teaches people to re-run a red suite.
+   **Route: RED**
+
+**Should fix**
+
+2. The "lock cannot be removed" exit has no test (`scripts/run-queue.sh:217-222`).
+   Concrete input: `$Q/run-queue.lock` is a directory; the temp record writes,
+   `ln` fails, no pid is read, `rm -f` fails. With lines 218-222 deleted the
+   run prints the `reclaimed an unreadable queue lock` line for ever and never
+   starts (breaks AC-9); the suite stays green. Fix: one case, `mkdir
+   "$Q/run-queue.lock"`, start a full run, assert one `cannot use` line, the
+   work ran, own exit status; earn it by mutating line 218 to false.
+   **Route: RED**
+
+**Nice to have**
+
+3. `gates.sh --gate` with no id runs every gate (`ONLY` empty, stamp
+   `FULL=yes`) but the recorded string `scripts/gates.sh --gate` reads not
+   full, so it runs beside another full run. Fix in `scripts/gates.sh`
+   (refuse an empty `--gate`, as for `--skip`), outside this story's Writes:
+   a follow-up. **Route: GATES**
+4. The stranded-mutation check (`scripts/gates.sh:267-274`) now runs before a
+   wait of possibly hours; a mutation made in the same tree during the wait
+   would be judged and recorded. Fix: move the check after
+   `run_lock_acquire`; a follow-up (sigpipe.test.sh pins a gates.sh line).
+   **Route: GATES**
+5. A TERM landing during the winning `ln` (`scripts/run-queue.sh:125`, before
+   `RUN_QUEUE_HELD` is set at `:178`) leaves a lock recording a dead pid; the
+   next full run reclaims it with one line. Nothing waits or overlaps.
+   `run-lock.sh` has the same window today. **Route: GATES**
+
+**Answers to the orchestrator's questions (summary).** `run_lock_full` sees
+a fixed literal prefix from both callers; every flag `gates.sh` accepts is in
+the case list or is `--story`; the one misreading is finding 3.
+`selftest.sh --changed` does not queue by contract (Out of scope); after
+HARNESS-107 it is the documented pre-PR run, so that follow-up is now
+unblocked. Nesting: no deadlock; a non-full outer run whose gate command runs
+a full `selftest.sh` in the same tree never queues (follows "only full
+runs"; the Contract's "covered by its holder" overstates it). Release order
+is sound; the only left-behind path is finding 5. The stale-reclaim race
+matches the recorded limit. DV-3's 36th failure is finding 1, not the
+shipped code. Git Bash: `kill -0`, `ln` refusal and `$SECONDS` behaved; bash
+3.2 has no `BASHPID`, as in `run-lock.sh`. Not checked: the suite, gates or
+self-test were not run; Linux timing for finding 1 inferred.
+
+Verdict: fix 1 first.
+
+Orchestrator's routing: every path the fixes name classifies `harness`
+(`bash scripts/classify.sh` on `.claude/tests/run-queue.test.sh`,
+`scripts/run-queue.sh`, `scripts/gates.sh`), which the lock permits in both
+phases, so the labels decide. Findings 1 and 2 → RED (R-1, R-2). Findings 3
+and 4 name `scripts/gates.sh`, outside this story's Writes → follow-ups.
+Finding 5 → not taken in this story (nice to have; same window as
+`run-lock.sh`), recorded as a follow-up.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-14T22:49:40Z
-    commit: 02a2221
-    tree:   ed2cf18d335b3e5e9ba6c237dda754c439945012
+    run:    2026-11-14T22:56:37Z
+    commit: 56748b6
+    tree:   f38793f1f25d6dee8c16697febd945903855bbb4
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format

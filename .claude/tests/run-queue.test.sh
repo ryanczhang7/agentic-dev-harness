@@ -201,6 +201,14 @@ qsnap() {
   return 0
 }
 
+# qlock   The queue lock's own exact bytes, or <no lock>. For comparing the
+# lock while a waiter is alive: a waiter writes and removes its temporary
+# record run-queue.lock.<pid> on every poll, so qsnap - the whole directory -
+# would race it (R-1). Where no waiter is alive, qsnap is the stronger check.
+qlock() {
+  if [ -f "$QL" ]; then cat "$QL"; printf '|eof'; else printf '<no lock>'; fi
+}
+
 # qplant <pid-or-empty> <started> <command> <root> [dir]   A queue lock
 # written by hand. An empty pid writes no pid line.
 qplant() {
@@ -481,7 +489,7 @@ new_case
 sleep 600 & SP=$!; BG="$BG $SP"
 assert_eq "AC-5 live: precondition: the plain sleep holding the pid is running" alive "$(is_alive "$SP")"
 qplant "$SP" "$PLANT_STARTED" "scripts/selftest.sh ghost" "/ghost/tree"
-before="$(qsnap)"
+before="$(qlock)"
 rq_run p "$B" ac5-live scripts/gates.sh
 wait_until 60 started_or_queued "$B" "$W/ac5-live.err"
 sleep 2.5
@@ -489,7 +497,7 @@ assert_eq "AC-5 live: the run has not started its work, over two poll intervals 
 assert_eq "AC-5 live: it names the live pid as what it waits behind" 1 \
   "$(count_line "$(q2 "$SP" "$PLANT_STARTED" /ghost/tree "scripts/selftest.sh ghost")" "$W/ac5-live.err")"
 assert_eq "AC-5 live: it prints no reclaim line while the pid lives" 0 "$(count_re '^run-queue: reclaimed' "$W/ac5-live.err")"
-assert_eq "AC-5 live: and the lock is byte-identical: a live pid is never reclaimed" "$before" "$(qsnap)"
+assert_eq "AC-5 live: and the lock is byte-identical: a live pid is never reclaimed" "$before" "$(qlock)"
 kill "$SP" 2>/dev/null; wait "$SP" 2>/dev/null
 wait_bounded "$p" 60
 assert_eq "AC-5 live: once the pid has gone, the run reclaims, runs and exits 0" "0 present" "$WRC $(present "$B/m/k/finished")"
@@ -534,14 +542,14 @@ bypass_case() {
   local lbl="$1" p before
   new_case
   qplant "$LIVE1" "$PLANT_STARTED" "scripts/gates.sh" "$A"
-  before="$(qsnap)"
+  before="$(qlock)"
   RQ_XLOCK="$2"; RQ_XPID="$3"
   rq_run p "$B" "$lbl" scripts/gates.sh
   wait_until 60 started_or_queued "$B" "$W/$lbl.err"
   sleep 2.5
   assert_eq "$lbl: B queues behind the live holder" 1 "$(count_line "$(q1 scripts/gates.sh)" "$W/$lbl.err")"
   assert_eq "$lbl: B has not started its work, over two poll intervals after it queued" absent "$(present "$B/m/k/started")"
-  assert_eq "$lbl: the holder's lock is byte-identical" "$before" "$(qsnap)"
+  assert_eq "$lbl: the holder's lock is byte-identical" "$before" "$(qlock)"
   kill -TERM "$p" 2>/dev/null; wait_bounded "$p" 15
 }
 mkdir -p "$W/q-other"
@@ -747,6 +755,18 @@ noq_case "AC-9 gates.sh, a tree without run-queue.sh" "$C" gates.sh \
   "$(missing_line scripts/gates.sh)" "$SOLO_GATES"
 assert_eq "AC-9: a tree with no scripts/run-queue.sh writes nothing in the queue directory" "" "$(qsnap)"
 mv "$W/run-queue.sh.kept" "$C/scripts/run-queue.sh" 2>/dev/null
+
+# A directory at the lock path (R-2). GNU ln links a file INTO an existing
+# directory, so without a type check the run would "take" the queue
+# silently, leave its record inside the directory, and no full run on the
+# machine would ever queue again. It is a queue it cannot use: C-3's line.
+new_case
+mkdir "$QL"
+noq_case "AC-9 gates.sh, the queue lock path is a directory" "$B" gates.sh \
+  "$(cannot_line "$Q" scripts/gates.sh)" "$SOLO_GATES"
+assert_eq "AC-9 gates.sh, the queue lock path is a directory: nothing is left inside that directory" "" \
+  "$(ls -A "$QL" 2>/dev/null)"
+rm -rf "$QL"
 
 # ---------------------------------------------------------------------------
 describe "C-4, C-6  the shipped pieces the mutations and the messages depend on"
