@@ -554,6 +554,16 @@ Real tree, with the rule cut out by DV-3's own `sed` range and run over this
 checkout: no line reported, 36 files scanned (C-3 table: 36, none). Every
 count matched the Contract; no Contract block was amended.
 
+`bash scripts/check-sigpipe.sh && bash scripts/check-grep-count.sh`: 62 files,
+0 findings each. `bash scripts/attest.sh -- bash scripts/gates.sh --fast`:
+
+    exit:     0
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261114T224428Z.538140.log
+
+This repository configures no gates, so `--fast` judges nothing here; the
+suite is judged by the self-test.
+
 **Tests, one line each.**
 - AC-1 assertion: `suite_docs_reads` over a tree holding only
   `project-x.test.sh` (with two reading lines) prints nothing.
