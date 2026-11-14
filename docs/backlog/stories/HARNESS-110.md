@@ -106,6 +106,8 @@ C-2 and C-3.
 Returned to the orchestrator to report to the user before GREEN. The two
 options weighed:
 
+**Approved by the user, 2026-11-14:** "Yes, name them" - D-1 as written (name the three spellings in the limit and pin them with one assertion; the pattern is not widened, not even for `${REPO_ROOT:?}` alone).
+
 - *(b) Widen `SDR_RE`* to see some or all of the three, as HARNESS-107 did
   for three earlier spellings. Measured at PLANNED: one candidate,
   `(%/|:[?][^}]*)?[}"]*/+([.]/+)*["']?docs`, sees all three and adds no
