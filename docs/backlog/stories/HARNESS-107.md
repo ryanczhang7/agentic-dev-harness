@@ -5,7 +5,7 @@ slug: the-changed-suites-self-test-runs-the-sh
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-107-the-changed-suites-self-test-runs-the-sh
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -539,6 +539,7 @@ name, below the table.
 
 - PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
 - RED, `test-developer` (two dispatches: the first paused at the user's request while other hosts' self-tests ran, the second resumed from its recorded place), declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
+- GREEN, `feature-developer`, declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override. The orchestrator then set VERSION's date to 2026-11-13, the local calendar date of the release (GREEN had used UTC).
 ## Out of scope
 
 - **Data-flow reads in the rule.** A path built in a variable first, a `cd`
@@ -863,6 +864,58 @@ timeouts.
 
 Nothing found changes the approach. C-1's row is the whole production
 change; C-5's floors are 687 / 621 / 18 as predicted.
+
+### GREEN complete (2026-11-14 UTC, feature-developer, model `opus` as declared; no override)
+
+#### Files changed (uncommitted)
+
+- `scripts/selftest-needed.sh` - C-1: `shipped-docs add .claude/tests/*.sh`
+  inserted directly above the `shipped-docs map` row (column 0, single
+  spaces, as C-1 pins); the `shipped-docs` evidence entry in the comment
+  above `SCANS` gains the `add` row: `suite_docs_reads` scans every
+  top-level `.claude/tests/*.sh` (HARNESS-106, HARNESS-107), and the pattern
+  also matching a subdirectory `.sh` is harmless because an `add` row never
+  maps a path. Header (34-70) untouched.
+- `.claude/tests/floors.conf` - `boundaries 686 -> 687` (line 40),
+  `selftest-needed 620 -> 621` (line 64), `shipped-docs` unchanged at 18;
+  dated HARNESS-107 entry appended at the end in the HARNESS-106 form.
+- `.claude/tests/selftest.test.sh` - `COUNTS` only: `boundaries 687` (531),
+  `selftest-needed 621` (556). Classifies `harness`, writable in GREEN; no
+  assertion touched.
+- `.claude/harness/VERSION` - line 34 `125 (2026-11-13)` -> `126 (2026-11-14)`.
+  The date is the UTC date, as the dispatch specified; the host's local
+  (CST) calendar date at the time was still 2026-11-13. Correct it at GATES
+  if the house convention is local time.
+
+#### Runs, one at a time, each `status: ok` on tree `6bfba7c9`
+
+| Command | exit | duration | `last:` | log |
+|---|---|---|---|---|
+| `bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed` | 0 | 249 s | `1 harness suite(s) passed.` | `.claude/state/attest-logs/20261114T003241Z.214.log` |
+| `bash scripts/attest.sh -- bash scripts/selftest.sh selftest` | 0 | 176 s | `1 harness suite(s) passed.` | `.claude/state/attest-logs/20261114T003804Z.12751.log` |
+| `bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs` | 0 | 14 s | `1 harness suite(s) passed.` | `.claude/state/attest-logs/20261114T004109Z.18119.log` |
+| `bash scripts/attest.sh -- bash scripts/gates.sh --fast` | 0 | 1 s | `All required gates passed (0 ran, 5 unconfigured, 0 known).` | `.claude/state/attest-logs/20261114T004129Z.18762.log` |
+| `bash scripts/attest.sh -- bash scripts/selftest.sh boundaries` | 0 | 1878 s | `1 harness suite(s) passed.` | `.claude/state/attest-logs/20261114T004136Z.18915.log` |
+
+Measured: `selftest-needed: 621 passed, 0 failed` (floor 621 met),
+`shipped-docs: 18 passed, 0 failed` (18), `boundaries: 687 passed, 0 failed`
+(687). The three suites ran as separate commands, not C-8's combined one.
+`check-sigpipe.sh` (62 files, 0 findings) and `check-grep-count.sh` (62
+files, 0 findings) clean.
+
+`bash scripts/selftest-needed.sh --suites` on this diff now selects
+`shipped-docs` by the new row - `shipped-docs .claude/tests/boundaries.test.sh
+(scans .claude/tests/*.sh)` - where at RED it was selected only as "itself";
+14 of 34 suites, not `all`.
+
+#### Negative controls (DVs not run; GATES owns them)
+
+- DV-1: `sed '/^shipped-docs add /d'` over a copy of the shipped script
+  changes exactly one line (`185d184`), and the result differs from
+  `HEAD`'s script only in the 7 comment lines, so the table is the RED
+  table and RED's measured 13 failures remain the expected value.
+- DV-2 and DV-3 target test files GREEN did not touch; line 872 and line
+  192 stand as RED recorded.
 
 ## Regressions
 
