@@ -5,7 +5,7 @@ slug: harness-runs-queue-machine-wide-instead
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-108-harness-runs-queue-machine-wide-instead
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-lock.sh, .claude/tests/run-queue.test.sh, .claude/tests/_lib.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -622,6 +622,87 @@ all trees the suite built for itself.
 
       bash scripts/mutate.sh scripts/run-lock.sh '<expression from the handoff>' -- bash scripts/selftest.sh run-queue
 
+### Results (GATES, 2026-11-14, run by the orchestrator before gates.sh)
+
+**DV-1 — ran; the suite failed as required; restored.** Prediction 52
+failed / 173 passed; measured the same. AC-1's "has not started" assertion
+went red in all three pairings (ac1-gg, ac1-gs, ac1-sg), and AC-5's live-pid
+case with it. `mutate.sh --check` afterwards: no stranded mutation.
+
+```
+=== mutate: scripts/run-queue.sh (1 line(s) changed by s|^run_queue_alive() { kill -0 "\$1" 2>/dev/null; }$|run_queue_alive() { false; }|) ===
+=== mutate: running bash scripts/selftest.sh run-queue ===
+    FAIL ac1-gg: B's full gates.sh has not started its work while A holds the queue, over two poll intervals after it queued
+    FAIL ac1-gs: B's full selftest.sh has not started its work while A holds the queue, over two poll intervals after it queued
+    FAIL ac1-sg: B's full gates.sh has not started its work while A holds the queue, over two poll intervals after it queued
+    FAIL AC-5 live: the run has not started its work, over two poll intervals after it queued
+run-queue: 173 passed, 52 failed
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/laughing-shirley-5afc9b/.claude/state/mutations/scripts_run-queue.sh.20261114T223236Z.513992.bak) ===
+```
+
+**DV-3 — ran; the suite failed as required; restored.** Expression from the
+handoff: `s/^run_lock_full() {$/run_lock_full() { return 0/`. Prediction 35
+failed; measured **36** failed / 189 passed. Every AC-10 "starts at once",
+"exits 0" and "prints no run-queue: line" assertion went red, with the
+non-full `run_lock_full` table rows. The one failure outside the
+prediction is `ac6-wrong-pid: the holder's lock is byte-identical`; why it
+goes red under this mutation was not investigated (it is green on the
+shipped tree). The floor line (189 < 225) is the floors audit, not an
+assertion.
+
+```
+=== mutate: scripts/run-lock.sh (1 line(s) changed by s/^run_lock_full() {$/run_lock_full() { return 0/) ===
+=== mutate: running bash scripts/selftest.sh run-queue ===
+    FAIL ac6-wrong-pid: the holder's lock is byte-identical
+    FAIL AC-10 gates.sh --fast: starts its work at once, while A holds
+    FAIL AC-10 gates.sh --gate unit: starts its work at once, while A holds
+    FAIL AC-10 gates.sh --skip lint: starts its work at once, while A holds
+    FAIL AC-10 gates.sh --required: starts its work at once, while A holds
+    FAIL AC-10 selftest.sh work: starts its work at once, while A holds
+    FAIL AC-10: B's non-full run has written nothing in the queue directory
+run-queue: 189 passed, 36 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/laughing-shirley-5afc9b/.claude/state/mutations/scripts_run-lock.sh.20261114T224050Z.531468.bak) ===
+```
+
+**DV-2 — ran against this tree's real scripts; every condition held.** Temp
+queue dir under the session scratchpad, `HARNESS_RUN_QUEUE_POLL=1`, holder a
+live `sleep 600` (pid 542434). Full runs were TERM'd 8 s after start, while
+queued; non-full statuses were measured with `HARNESS_RUN_QUEUE=off` first.
+
+```
+=== full: bash scripts/selftest.sh (queued, then TERM) ===
+exit: 143
+run-queue: queued: scripts/selftest.sh waits for another harness run on this machine to finish.
+run-queue:   behind pid 542434, started 2026-11-14T00:00:00Z, in /dv2/holder: dv2-holder
+run-queue: this is waiting, not hanging: it starts by itself when that run ends. If pid 542434 is not that run, delete .../dv2q/run-queue.lock and it starts.
+--- stdout lines: 0
+run.lock: gone
+temp lock: unchanged
+=== full: bash scripts/gates.sh (queued, then TERM) ===
+exit: 143
+run-queue: queued: scripts/gates.sh waits for another harness run on this machine to finish.
+run-queue:   behind pid 542434, started 2026-11-14T00:00:00Z, in /dv2/holder: dv2-holder
+run-queue: this is waiting, not hanging: it starts by itself when that run ends. If pid 542434 is not that run, delete .../dv2q/run-queue.lock and it starts.
+--- stdout lines: 0
+run.lock: gone
+temp lock: unchanged
+last-gate-run: untouched
+Gate results: untouched
+=== non-full: bash scripts/selftest.sh policy, queue off first ===
+queue-off exit: 0
+queue-held exit: 0 after 17s
+run-queue: lines: 0
+temp lock: unchanged
+=== non-full: bash scripts/gates.sh --fast, queue off first ===
+queue-off exit: 0
+queue-held exit: 0 after 1s
+run-queue: lines: 0
+temp lock: unchanged
+holder: killed
+temp dir: removed
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -684,6 +765,9 @@ name, below the table.
 
 - PLANNED (2026-11-13, `/plan-story`): `lead-po`, planned `fable`, resolved **claude-fable-5-2** (Fable 5.2). Dispatched as a subagent by the orchestrating session; no override was reported to it, and the agent declares `model: fable`.
 - PLANNED, the scope change (2026-11-13, same dispatch continued): `lead-po`, resolved **claude-fable-5-2**. Rewrote the criteria and C-5 for the user's "Only full runs".
+- RED (2026-11-14): `test-developer`, planned `opus`, resolved **claude-opus-5-5**.
+- GREEN (2026-11-14): `feature-developer`, planned `opus`, resolved **claude-opus-5-5**.
+- GATES (2026-11-14): `feature-developer`, planned `opus`, resolved **claude-opus-5-5**. Ran `bash scripts/gates.sh` once through `attest.sh`; `check` answered `fresh`, `exit: 0`, `All required gates passed (0 ran, 7 unconfigured, 0 known).` — every gate is unconfigured in this repository, so the gate run judges nothing here; the self-test at GATES → REVIEW is the real check. DV-1..DV-3 were run by the orchestrator (results under `## Deferred verifications`).
 - No departure from the plan. All ten criteria are mechanical, with the defaults and the span format settled (Contract, C-9).
 
 ## Out of scope
@@ -1136,10 +1220,21 @@ above are what GATES compares against.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-14T22:49:40Z
+    commit: 02a2221
+    tree:   ed2cf18d335b3e5e9ba6c237dda754c439945012
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
