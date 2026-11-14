@@ -5,7 +5,7 @@ slug: harness-runs-queue-machine-wide-instead
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-108-harness-runs-queue-machine-wide-instead
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-lock.sh, .claude/tests/run-queue.test.sh, .claude/tests/_lib.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1199,3 +1199,16 @@ above are what GATES compares against.
 - **The id.** HARNESS-108 was free on 2026-11-13: no branch, local or
   remote, and no story file carried it.
 
+- **GREEN verified by the orchestrator (2026-11-14).** Go-ahead for GREEN
+  came from the user through the parent session ("You can give it the go
+  ahead"). `attest.sh check -- bash scripts/selftest.sh run-queue` answered
+  `fresh` on tree `06663581`: `exit: 0`, `last: 1 harness suite(s) passed.`
+  (225/0, 792 s beside another session's full self-test); not re-run. The
+  feature-developer (resolved `claude-opus-5-5`) also reported `run-lock`
+  141/0, `lib` 324/0 and `gates.sh --fast` exit 0 on the same tree. It
+  reported one unexplained scratch smoke test in which a live `sleep`
+  holder was reclaimed at once; the orchestrator re-ran that shape as one
+  shell line against a temp queue dir and it queued correctly (three
+  queued lines, still waiting at the 4 s timeout, lock intact), so the
+  anomaly is not reproduced. DV-1 at GATES remains the check that liveness
+  is observed.
