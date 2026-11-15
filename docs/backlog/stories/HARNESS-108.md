@@ -4,8 +4,8 @@ title: Harness runs queue machine-wide instead of running side by side
 slug: harness-runs-queue-machine-wide-instead
 epic: 
 type: feature
-status: in-progress
-phase: GREEN
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-108-harness-runs-queue-machine-wide-instead
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-lock.sh, .claude/tests/run-queue.test.sh, .claude/tests/_lib.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1490,13 +1490,58 @@ and 4 name `scripts/gates.sh`, outside this story's Writes → follow-ups.
 Finding 5 → not taken in this story (nice to have; same window as
 `run-lock.sh`), recorded as a follow-up.
 
+### Round 2 (2026-11-14) — `lead-po`, planned `fable`, resolved claude-fable-5-2 (no override)
+
+What this change does: the round-1 fix. Three test assertions that
+compared the whole queue directory while a waiter was alive now compare only
+the lock file's bytes (`qlock`). `run_queue_link` now refuses a lock path
+that exists and is not a regular file, so `run_queue_acquire` prints the
+`cannot use <dir>` line and the run proceeds unqueued; before, GNU `ln`
+linked the record into a directory at the lock path and the run silently
+"took" a queue nobody else could see.
+
+**Round-1 findings.** Finding 1: resolved — a waiter only ever writes
+`run-queue.lock.<pid>`, never the lock itself, so `qlock` cannot race it;
+the three assertions still go red under DV-1 (R-1); every remaining `qsnap`
+comparison runs with no waiter alive. Finding 2: the real defect is fixed;
+the branch it named is still untested (below).
+
+**Should fix**
+
+1. The "lock cannot be removed" exit (`scripts/run-queue.sh:223-227`) still
+   has no test. It is reachable on this host: with an `rm` earlier on `PATH`
+   that refuses `*/run-queue.lock` and a lock containing `junk`, the shipped
+   module prints the reclaim line, then `cannot use <Q>`, and returns with
+   `held=0`; with lines 223-227 deleted the same input prints the reclaim
+   line for ever (breaks AC-9) and the suite stays green. Fix: one case with
+   an `rm` shim on `PATH`, bounded; earn it by mutating line 223 to false;
+   raise the floor. If skipped: a later edit can drop the exit unnoticed;
+   the real trigger is narrow (a lock another user owns in a sticky
+   directory, or a file the OS will not delete). **Route: RED**
+
+**Checked, no finding:** directory, FIFO and pid-less regular file at the
+lock path (measured); pass-through with `HARNESS_RUN_QUEUE_LOCK` at a
+directory; release after a refusal removes nothing; the check-then-`ln` gap
+has no concrete trigger in the harness; a lock that becomes a directory
+mid-wait terminates; a dangling symlink terminates (read, not measured: the
+host refused to create one); the new AC-9 test is whole-line and was watched
+to fail; nothing else regressed (`git diff 56748b6 HEAD`); `attest.sh check`
+on the run-queue suite is `fresh`, exit 0. Round-1 findings 3-5 stay as
+follow-ups.
+
+Verdict: Ship.
+
+Orchestrator: round 2's Should-fix 1 is not taken in this story — the
+verdict is Ship, the trigger is narrow, and another return to RED costs a
+full cycle. It is recorded as a follow-up with round-1 findings 3-5.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-14T22:56:37Z
-    commit: 56748b6
-    tree:   f38793f1f25d6dee8c16697febd945903855bbb4
+    run:    2026-11-14T23:51:35Z
+    commit: 4713c98
+    tree:   66364aeb0ffd9932c0f8eb1415b125d685202469
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1579,3 +1624,18 @@ Finding 5 → not taken in this story (nice to have; same window as
   queued lines, still waiting at the 4 s timeout, lock intact), so the
   anomaly is not reproduced. DV-1 at GATES remains the check that liveness
   is observed.
+
+- **Local self-test before REVIEW (2026-11-14).** Dispatched to a
+  feature-developer (resolved `claude-opus-5-5`), one command, detached.
+  `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+  answers `fresh` on tree `d0eab1be`:
+
+      selftest: --changed — every suite: .claude/tests/_lib.sh is read by every suite
+      exit:     0
+      duration: 9657s
+      last:     35 harness suite(s) passed.
+
+  `_lib.sh` changed, so `--changed` ran every suite. All 35 met their floor
+  (6484 assertions executed, 6480 declared). The run took 2 h 41 min on a
+  host shared with other sessions; the earlier 10-suite run on `34c59aa`
+  took 3034 s.
