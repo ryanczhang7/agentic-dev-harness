@@ -704,6 +704,63 @@ exists in exactly one place (`grep`, not a mutation).
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Round 1 (2026-11-15, fresh lead-po, DIFF-REVIEW row: planned fable, resolved Fable 5.2 `claude-fable-5-2`)
+
+What this change does: one `case` line makes `suite_docs_files` skip a
+top-level `project-*.test.sh`, so a consumer whose own suites read its own
+`docs/` no longer fails its self-test. Three new assertions pin it; the
+`shipped-docs` floor goes 18 to 21 in `floors.conf` and the `selftest.test.sh`
+mirror; VERSION goes to 127.
+
+Checked: the whole diff and the rule as built; callers of `suite_docs_files`
+and `suite_docs_reads` (only inside `shipped-docs.test.sh`, no signature
+changed); `selftest.sh`, `selftest-needed.sh`, `refresh-harness.sh` and
+`doctor.sh` for `project-*` treatment; `bash scripts/selftest.sh shipped-docs`
+run by the reviewer on this tree: 21 passed, 0 failed (the attested record was
+`stale`, so not relied on); the three assertions against DV-1's output; `case`
+edge cases (a directory of that name is skipped by `-f`; `project-x.sh` and
+`my-project-x.test.sh` still scanned; nested files never scanned).
+
+**Must fix:**
+
+1. **The release number 127 is already taken on `main`**
+   (`.claude/harness/VERSION`, `.claude/tests/floors.conf` end of file).
+   HARNESS-108 merged to `origin/main` as #198 (`99c5ca9`) after this branch
+   was cut from `51239f3`; `main` reads `127 (2026-11-13)`. A trial
+   `git merge-tree --write-tree HEAD origin/main` reports content conflicts in
+   VERSION and floors.conf; `selftest.test.sh` merges cleanly.
+   **Fix:** merge the updated `main` into this branch (a merge, not a
+   rebase), set VERSION to `128` with the real date, put this story's dated
+   comment below HARNESS-108's at the end of floors.conf keeping
+   `floor | shipped-docs | 21`, confirm `shipped-docs 21` is in `COUNTS`
+   beside HARNESS-108's line, then re-run the gates on the merged tree.
+   **If skipped:** the PR cannot merge, the gate record is for a tree `main`
+   will never have, and two different trees would both be release 127.
+   **Route:** GATES
+
+No Should-fix and no Nice-to-have findings.
+
+Looked at and not raised: `selftest-needed.sh` 168-173 still describe and
+select `shipped-docs` for a changed `project-*.test.sh` (Out of scope, C-6;
+one extra small suite run); the rule trusts the name and nothing checks
+upstream ships no `project-*.test.sh` (in the comment and Out of scope;
+confirmed none on this branch or `origin/main`); a consumer suite under
+another name, or a `project-*.sh` helper, is still reported (Out of scope,
+asserted by AC-2); the rule's pattern over `origin/main`'s new or changed
+test files (`run-queue.test.sh`, `_lib.sh`, `selftest.test.sh`) matches no
+line, a prediction only the re-run confirms.
+
+Not checked: gates and self-test on the merged tree; FWB beyond DV-3.
+
+Verdict: fix 1 first.
+
+Route check (orchestrator): `classify.sh` on the fix's paths:
+`harness .claude/harness/VERSION`, `harness .claude/tests/floors.conf`,
+`harness .claude/tests/selftest.test.sh`. Harness is writable in GATES, so the
+GATES label can be followed.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
