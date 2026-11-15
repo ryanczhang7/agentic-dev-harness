@@ -4,8 +4,8 @@ title: The shipped-docs rule leaves a project's own suites alone
 slug: the-shipped-docs-rule-leaves-a-project-s
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-109-the-shipped-docs-rule-leaves-a-project-s
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -867,3 +867,16 @@ Verdict: Ship.
   baseline. The DV-2 baseline was a real `mutate.sh` run on the main
   checkout; `mutate.sh` reported the restore verified byte-for-byte and
   `git status --short` was empty afterwards.
+- **Self-test at GATES → REVIEW (2026-11-15):** `SELFTEST_JOBS=4 bash
+  scripts/selftest.sh --changed` on the merged tree f6db3f3 (11 of 35 suites
+  selected), run by the orchestrator through `attest.sh`, with no other
+  self-test or gates run on the machine: `11 harness suite(s) passed`, all
+  11 met their floor (2002 assertions executed, 2002 declared); log
+  `.claude/state/attest-logs/20261115T030722Z.849161.log`. CI runs all 35.
+- **Release 128, not 127.** HARNESS-108 merged first as #198 and took 127;
+  this branch merged `main` (2c8b888) and took 128, as the note above
+  prescribes. The 127s left in this story's planning prose are the plan as
+  written then.
+- **Models resolved:** GATES full gates and the merge fix, feature-developer
+  on Opus 5.5 (`claude-opus-5-5`); DIFF-REVIEW rounds 1 and 2, lead-po on
+  Fable 5.2 (`claude-fable-5-2`).
