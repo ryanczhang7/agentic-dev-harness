@@ -4,8 +4,8 @@ title: The shipped-docs rule leaves a project's own suites alone
 slug: the-shipped-docs-rule-leaves-a-project-s
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-109-the-shipped-docs-rule-leaves-a-project-s
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
