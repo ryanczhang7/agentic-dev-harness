@@ -4,8 +4,8 @@ title: A --changed self-test joins the machine-wide run queue
 slug: a-changed-self-test-joins-the-machine-wi
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-111-a-changed-self-test-joins-the-machine-wi
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-lock.sh, scripts/run-queue.sh, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -519,6 +519,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 
 - PLANNED (2026-11-14, `/plan-story`): `lead-po`, planned `fable`, resolved **claude-fable-5-2** (Fable 5.2). Dispatched as a subagent by the orchestrating session; no override was reported to it, and the agent declares `model: fable`.
+- RED (2026-11-15, `/advance-story`): `test-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5), no override reported. The orchestrator checked both attest records `fresh` on tree `2dd2fd39` (not re-run): `selftest.sh run-queue` exit 1, 288 passed / 49 failed, every failure in the new cases and none in HARNESS-108's 229; `gates.sh --fast` exit 0 (all gates unconfigured).
 - No departure from the plan. All five criteria are mechanical, with the messages and defaults settled by HARNESS-108 (Contract, C-8).
 
 ## Out of scope
@@ -572,6 +573,63 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One suite, `.claude/tests/run-queue.test.sh`, extended in place (C-5: no new
+suite). Every new case is an integration case through the real
+`scripts/selftest.sh` and `scripts/gates.sh` of a fixture tree, except AC-5's
+table and the two source pins, which call `scripts/run-lock.sh` directly.
+
+**Fixtures (C-5).** Three new trees beside A, B and C, built by
+`changed_setup`: each is `fixture_setup` (the same `m/work.sh` instruments)
+plus a second suite `other`, a `work` suite whose source mentions
+`.claude/harness/m.conf`, a gate `unit` that is `m/gate.sh` (which is
+`m/work.sh` unless `m/k/nest` exists, then `m/nest.sh`), `m/k/` and
+`.claude/state/` ignored, everything committed on `main`, then a story
+branch with one committed change:
+
+| Tree | Change | Selection | Header asserted first |
+|---|---|---|---|
+| X | `.claude/harness/x.conf` | every suite (`other`, `work`) | `selftest: --changed — every suite: .claude/harness/x.conf is mapped by no rule; defaulting to every suite` |
+| Y | `.claude/harness/m.conf` | `work` only (1 of 2) | `selftest: --changed — 1 of 2 suite(s) selected: work` |
+| Z | `src/app.ts` | no suite | `selftest: --changed selected no suite — selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base <main>); CI runs the self-test on the PR` |
+
+The work tree is clean after setup (confirmed by a prototype run: `git
+status --short` empty in all three after a `--changed` run and a `gates.sh`
+run), so the selection does not drift while the cases run. A, B, C and every
+existing case are byte for byte as they were; the only edits to existing
+code are the tree loops of `release_all`, `cleanup` and `new_case`, which now
+include X, Y and Z, and prose (header comment, two `describe` lines).
+
+| Case | Level | AC | What it asserts |
+|---|---|---|---|
+| `solo-cx`, `solo-cy` | integration | AC-1..3 | the status each `--changed` run has alone, queue off (measured, not assumed); `solo-cx.err` is AC-2's byte-for-byte reference |
+| `changed_pair "AC-1 every suite"` (X) and `"AC-1 subset"` (Y) | integration | AC-1 | A's full `gates.sh` holds; the `--changed` run's header line is present; over 3.5 s after it queued its work has not started and no `=== ` line is printed; the three queued lines whole, naming `scripts/selftest.sh --changed` and A's pid, `started`, root and command from A's record; after A's release it gets through within the bound, its work finishes, its status is the solo one, its work records `done-before` = `A` and saw nobody, one `starting` line, the `=== work ===` block once and `=== other ===` 1 (X) or 0 (Y) times; queue dir empty |
+| AC-2 uncontended (X) | integration | AC-2 | header; the lock existed during the suite and recorded the run's pid, `scripts/selftest.sh --changed` and root X; no `run-queue:` line on either stream; stderr `cmp`-identical to `solo-cx.err`; status = solo; queue dir empty afterwards |
+| AC-2 reverse (holder X `--changed`, waiter A `gates.sh`) | integration | AC-2 | header; A's work has not started over 3.5 s after it queued; A's queued lines 1 and 2 name A's own command and X's pid, `started`, root and `scripts/selftest.sh --changed`; after X's release A gets through, finishes with `SOLO_GATES`, its work records `done-before` = `X` and saw nobody; queue dir empty |
+| AC-3 nested (`gates.sh` in X, gate command `m/nest.sh`: `--changed` in X, then in Y) | integration | AC-3 | both inner headers; the arrangement completes within 120 s; outer exits 0; inner X status = `SOLO_CX`; inner Y status = `SOLO_CY` and Y's work finished; no `run-queue:` line in any inner stream; the queue lock records the outer pid after each inner run; queue dir empty at the end |
+| AC-4 (A holds, Z `--changed`) | integration | AC-4 | within 60 s and while A holds, exit 1; stdout is exactly the selected-no-suite line; no `run-queue:` line; `qsnap` byte-identical before and after; no `run.lock` left in Z; Z's work never started; A still alive |
+| AC-1 control (A held, X `--changed` with `HARNESS_RUN_QUEUE=off`) | integration | AC-1 | header; X's work starts while A holds and its `overlap-start` is `A`; status = solo |
+| `run_lock_queues` table, 22 rows | unit | AC-5 | every row of C-2's table, the empty string included; one `_ok`/`_bad` per row whether or not the function exists |
+| two source pins | unit | C-2, C-3 | `run_lock_queues() {` alone on its line once; `  run_lock_queues "$2" || return 0` once (DV-1's target) |
+| HARNESS-108's existing `beside_case` rows and `run_lock_full` table | integration / unit | AC-5 | unchanged: `gates.sh --fast`, `--gate unit`, `--skip lint`, `--required`, `selftest.sh work` start at once beside a held queue; `run_lock_full`'s 19 rows, `--changed` not full |
+
+**C-2's claim confirmed by grep** (2026-11-14, `3665c3e`): the only
+`--changed` in the suite before this story was two rows of the
+`run_lock_full` table (`git show HEAD:.claude/tests/run-queue.test.sh | grep
+-n -- '--changed'` gives lines 636 and 637, both `1|...`), and they are kept.
+No existing assertion changed its expected value, so no `## Regressions`
+entry is owed. **The `scripts/gates.sh --changed` row** checked against
+`run_lock_full` as it is: it answers 0, as the table says, so the row stands
+unamended.
+
+    0 scripts/gates.sh --changed
+    1 scripts/selftest.sh --changedx
+    1 scripts/selftest.sh run-queue --changed
+    1 scripts/attest.sh -- bash scripts/selftest.sh --changed
+
+**C-4 confirmed by grep**: `grep -n HARNESS_RUN_QUEUE .claude/tests/*.sh`
+outside `run-queue.test.sh` finds only `_lib.sh:33: export
+HARNESS_RUN_QUEUE=off`; no other suite turns the queue on.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -591,6 +649,204 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**RED, 2026-11-15, `test-developer`.** Dispatched as a subagent; the
+session reports its model as **claude-opus-5-5** (Opus 5.5), and no
+override was reported to it.
+
+**Command.**
+
+    bash scripts/selftest.sh run-queue
+    bash scripts/attest.sh -- bash scripts/selftest.sh run-queue
+
+**Result, in RED.** 337 assertions executed, 288 passed, 49 failed. This was
+measured on the tree before the floor, the three `describe` rewordings and
+this text were written; the final attested record is pasted at the end of
+this section. Expected failure shape (log
+`.claude/state/attest-logs/20261115T043543Z.978332.log`, run 2861 s on a host
+also running another session's full self-test):
+
+    exit:     1
+    last:     1 of 1 harness suite(s) FAILED.
+    run-queue: 288 passed, 49 failed
+
+The 49, verbatim names:
+
+    FAIL AC-1 every suite: X's --changed run has not started its work while A holds the queue, over two poll intervals after it queued
+    FAIL AC-1 every suite: nor printed a suite block: no === <suite> === line yet
+    FAIL AC-1 every suite: queued line 1 names the waiting run as scripts/selftest.sh --changed, exactly once, on stderr
+    FAIL AC-1 every suite: queued line 2 names A's pid, start, tree root and command from A's record, exactly once
+    FAIL AC-1 every suite: queued line 3 says it is waiting and names the lock to delete, exactly once
+    FAIL AC-1 every suite: X's work records, as it starts, that A's had finished
+    FAIL AC-1 every suite: X's work saw no other run in progress as it started
+    FAIL AC-1 every suite: one starting line naming scripts/selftest.sh --changed, with the total wait
+    FAIL AC-1 subset: (the same eight, for Y)
+    FAIL AC-2 --changed: while its suite ran, the queue lock existed
+    FAIL AC-2 --changed: the lock records the run's pid
+    FAIL AC-2 --changed: the lock records the run's command, scripts/selftest.sh --changed
+    FAIL AC-2 --changed: the lock records the run's tree root, absolute
+    FAIL AC-2 reverse: A's full gates.sh has not started its gate command while X's --changed run holds, over two poll intervals after it queued
+    FAIL AC-2 reverse: A's queued line 1 names A's own command, exactly once
+    FAIL AC-2 reverse: A's queued line 2 names X's pid, start, tree root and scripts/selftest.sh --changed, exactly once
+    FAIL AC-2 reverse: A's work records, as it starts, that X's had finished
+    FAIL AC-2 reverse: A's work saw no other run in progress as it started
+    FAIL run_lock_queues '<cmd>' queues / does not queue   (all 22 rows: "scripts/run-lock.sh defines no run_lock_queues")
+    FAIL scripts/run-lock.sh opens run_lock_queues alone on its line
+    FAIL run_lock_join asks run_lock_queues, on exactly the one line DV-1 mutates
+
+16 + 4 + 5 + 22 + 2 = 49. **Why each is the right failure.** The 25 case
+failures are the story's absence observed by the runs themselves: in both
+selections the `--changed` run's work started beside A's held work (its
+`overlap-start` was `A`, its `done-before` empty) and printed no queued or
+`starting` line; the uncontended run's work found no queue lock to copy; and
+in the reverse pair A's work started beside X's, because X never took the
+queue. In every case the header precondition (the selection is the one the
+case names) and the "A still running" precondition **passed**, so none of
+these is a fixture whose selection drifted or whose holder died. The 24
+direct failures are the missing function and the missing wiring line. **No
+HARNESS-108 assertion failed**: all 229 pass, so no existing expected value
+changed (C-2's claim, also confirmed by grep; see `## Test plan`).
+
+**Passed on arrival, by design, and who earns them.**
+
+- **AC-3** (10 assertions): nothing queues a `--changed` run today, so a
+  nested one cannot wait. **Earned by DV-3 at GATES. I decline that mutation
+  here**: it cannot show anything until a `--changed` run queues, which is
+  GREEN's change.
+- **AC-4** (8 assertions, including "A then finishes"): a no-suite run exits
+  at `selftest.sh` line 329 today. **Earned by DV-4 at GATES. I decline that
+  mutation here**, for the same reason.
+- **AC-1's queue-off control** (5 assertions): passes now and must keep
+  passing. It is the negative control that proves the arrangement can see two
+  runs at once; it measured `overlap-start` = `A` in this run.
+- The non-queue halves of AC-1/AC-2 (`A finishes 0`, `gets through within the
+  bound`, `work runs to its end`, the solo statuses, `A's work saw no other run
+  as it ended`, the `=== work ===` / `=== other ===` block counts, `qsnap`
+  empty, no `run-queue:` line, stderr byte-identical to queue-off): these hold
+  in RED because nothing queues, and they are what GREEN must not break. DV-1
+  earns the AC-1/AC-2 queue halves; the byte-identical and silent halves are
+  the same mechanism HARNESS-108 earned for full runs.
+- **AC-5's unchanged rows**: HARNESS-108's five `beside_case` rows and its
+  19-row `run_lock_full` table, untouched, all green.
+
+**Negative controls and measured values** (this RED run, Windows host, local):
+
+| Control | Expected | Measured in RED |
+|---|---|---|
+| AC-1 control, X `--changed` with `HARNESS_RUN_QUEUE=off` beside held A: X's `overlap-start` | `A` | `A` (pass) |
+| `SOLO_CX`, X `--changed` alone, queue off | 0 | 0 |
+| `SOLO_CY`, Y `--changed` alone, queue off | 0 | 0 |
+| X header (every suite) | the `HDR_X` line, once | once (pass) |
+| Y header (subset) | `selftest: --changed — 1 of 2 suite(s) selected: work`, once | once (pass) |
+| Z stdout (no suite) | exactly `HDR_Z` | exact (pass) |
+| Y runs `=== other ===` | 0 times | 0 (pass); X: 1 (pass) |
+
+These ran in RED. Unlike HARNESS-108's RED, the suite did not fail at
+import. GREEN re-measures them against the shipped `run_lock_queues`.
+
+**Predictions for the mutations GATES owns.**
+
+- **DV-1** (`run_lock_join` asks `run_lock_full` again): **26 failures**,
+  namely the 25 case failures above, unchanged (16 AC-1, 4 AC-2 uncontended,
+  5 AC-2 reverse), plus `run_lock_join asks run_lock_queues, on exactly the
+  one line DV-1 mutates`, because the mutation removes that pinned line. The
+  22 table rows and the `run_lock_queues() {` pin stay green. AC-1's
+  `has not started` assertion must be among them for both selections.
+- **DV-3** (nested check never matches): the inner run in the holder's own
+  tree is unaffected, because the run lock's same-tree pass-through returns
+  before `run_lock_join`. The inner run in the OTHER tree waits behind its
+  ancestor until the 120 s bound. These are certain to fail, in both
+  HARNESS-108's AC-6 and this story's AC-3: `the whole arrangement completes
+  within the bound`, `the outer full gates.sh finishes with its own status`,
+  the inner-in-B/Y status-and-finished assertion, `neither inner run prints a
+  run-queue: line`, and `after the inner run in B/Y has ended, the queue lock
+  still records the outer run's pid`. That is 5 + 5 = 10. The trailing
+  `queue directory is empty` assertion of each may also fail, depending on
+  whether the KILLed outer run left its lock behind, so the count is
+  **10 to 12**. The inner-run-in-own-tree status, its qlock pin and AC-3's
+  two header preconditions stay green. The cost is about 2 x 120 s of
+  bound.
+- **DV-4** (the no-suite `exit 1` removed): Z falls through to the run lock as
+  `scripts/selftest.sh --changed` and queues behind A. These are certain:
+  `AC-4: Z's --changed run that selects no suite exits 1 at once, within the
+  bound, while A holds` (it times out at 60 s), and `AC-4: it prints no
+  run-queue: line`. These are likely: `its stdout is exactly the
+  selected-no-suite line` (the TERMed run adds its own exit output);
+  `AC-4: precondition: A is still running then`, because `wait_bounded`'s
+  timeout path runs `release_all`, which releases A; and then both of the AC-1
+  control's `A`-dependent assertions (`overlap-start` = `A`, `A is still
+  running then`) and possibly `A then finishes, exit 0`. Predicted
+  **2 certain, up to 7**.
+
+**Export shape the tests pin.** In `scripts/run-lock.sh`, sourced:
+
+- `run_lock_queues <command>`, returning 0 or 1, defined with the opening
+  line exactly `run_lock_queues() {` alone on its line. It is called in a
+  subshell after `set -f`, with one argument, for the 22 rows of C-2's table.
+- In `run_lock_join`, the line exactly `  run_lock_queues "$2" || return 0`,
+  appearing once.
+- `run_lock_full` and its `run_lock_full() {` line, unchanged (HARNESS-108's
+  pins).
+
+**Not constrained:** the body of `run_lock_queues` (whether it calls
+`run_lock_full` or repeats the cases), the comment wording in `run-lock.sh`,
+`run-queue.sh` and `.claude/state/README.md`, and `VERSION`.
+
+**Files touched in RED.**
+
+- `.claude/tests/run-queue.test.sh`: new trees X, Y, Z, plus `changed_setup`
+  and `cgit`, X's `m/nest.sh`, the HARNESS-111 block (108 assertions), the tree
+  loops of `release_all`, `cleanup` and `new_case`, the header comment, and
+  two reworded `describe` lines (`every run that does not queue starts at
+  once`, `a run in progress that does not queue is not waited for`).
+- `.claude/tests/floors.conf`: `run-queue` 229 -> 337, with a dated note.
+- `.claude/tests/selftest.test.sh` line 554: `run-queue 337`.
+- This story: `## Test plan` and this handoff.
+
+**For GREEN.**
+
+- The executed count is 337 in RED and must be 337 in GREEN. Selftest's floor
+  check counts passes, so a RED run sits below 337; GREEN at 337 passed, 0
+  failed meets it. If GREEN measures another executed count, report it rather
+  than moving the floor (C-7).
+- Runtime: about 47 minutes for this suite here, beside another session's
+  full self-test. The new block adds two solo runs and six held arrangements,
+  each costing a 3.5 s sleep plus harness runs. Every wait is bounded (60, 90
+  or 120 s). Nothing in the new cases is a framework timeout, so there is no
+  hook budget to size.
+- Setup of X, Y and Z was prototyped before the run: `git status --short`
+  stays empty in all three after a `--changed` run and a `gates.sh` run, so
+  the selection cannot drift. If a header precondition ever fails, look at
+  the fixture first (an untracked file in X, Y or Z), not at the queue.
+- Nothing found contradicts the Contract. No amendment was made.
+
+**Final attested records** (on the finished RED tree, floor at 337). These
+have the same 49 failures as the first run, name for name. The floor line is
+now red as well, as expected:
+
+    run:      2026-11-15T05:26:16Z
+    command:  bash scripts/selftest.sh run-queue
+    tree:     2dd2fd3921433387ee510b363921ecd41c9a232c
+    status:   ok
+    exit:     1
+    duration: 1284s
+    last:     1 of 1 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261115T052616Z.1030596.log
+
+    run-queue: 288 passed, 49 failed
+    FAIL run-queue  did 288 units of work, below the floor of 337 in .claude/tests/floors.conf
+
+    run:      2026-11-15T05:48:38Z
+    command:  bash scripts/gates.sh --fast
+    tree:     2dd2fd3921433387ee510b363921ecd41c9a232c
+    status:   ok
+    exit:     0
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261115T054838Z.1075427.log
+
+`gates.sh --fast` is green because every gate is unconfigured in this
+repository (Context, "The required gate"). The suite is the judge here, and
+it is red for the reasons above.
 
 ## Regressions
 
