@@ -765,9 +765,9 @@ GATES label can be followed.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-15T02:55:39Z
-    commit: 414da23
-    tree:   e4159e24786f3a90cb402a3ff9ea163b951d66de
+    run:    2026-11-15T03:05:10Z
+    commit: 2c8b888
+    tree:   8807c3d335b48a7b8d760eb2e08ef38b7168b625
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
