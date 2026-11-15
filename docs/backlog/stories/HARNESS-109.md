@@ -761,6 +761,33 @@ Route check (orchestrator): `classify.sh` on the fix's paths:
 `harness .claude/tests/selftest.test.sh`. Harness is writable in GATES, so the
 GATES label can be followed.
 
+### Round 2 (2026-11-15 UTC, fresh lead-po, DIFF-REVIEW row: planned fable, resolved Fable 5.2 `claude-fable-5-2`)
+
+Finding 1 of round 1 is resolved by merge 2c8b888 (origin/main 99c5ca9 into
+the branch) and VERSION `128 (2026-11-15)`. No new findings.
+
+Checked: `origin/main` reads `127 (2026-11-13)`, the branch `128
+(2026-11-15)`; `git diff --stat origin/main HEAD` lists exactly VERSION,
+`floors.conf`, `selftest.test.sh`, `shipped-docs.test.sh` and this story, every
+HARNESS-108 path byte-identical to main; `shipped-docs.test.sh` unchanged
+between 91fa6b1 and HEAD, `selftest.test.sh` differing from 91fa6b1 only by
+main's `run-queue 229`; floors.conf keeps both HARNESS-108 blocks, then this
+story's comment, with `run-queue 229` and `shipped-docs 21`, mirrored in
+`COUNTS`; `bash scripts/selftest.sh shipped-docs` run by the reviewer: 21
+passed, 0 failed, floor met, which settles round 1's open prediction for
+main's new test files; `attest.sh check` on the `shipped-docs selftest` run
+`fresh`, exit 0, tree f6db3f3; still no upstream `project-*.test.sh`.
+
+Looked at and not raised: VERSION's date is the UTC date (the gate record's),
+where earlier releases used the local date; nothing parses it. The floors.conf
+comment's 2026-11-14 is when GREEN ran. `0 ran, 7 unconfigured` is this
+repository's normal gate state.
+
+Not checked: the full self-test on the merged tree; `check-boundaries.sh` on
+the final commit.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
