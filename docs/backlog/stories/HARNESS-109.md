@@ -5,7 +5,7 @@ slug: the-shipped-docs-rule-leaves-a-project-s
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-109-the-shipped-docs-rule-leaves-a-project-s
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -343,6 +343,73 @@ built. Line numbers in results are pasted, not predicted.
       grep -n 'REPO_ROOT/docs' /d/fantasy-world-builder/.claude/tests/project-*.test.sh
       sed -n '/^SDR_RE=/,/^# --- a compliant fixture/p' .claude/tests/shipped-docs.test.sh > <scratch>/sdr.sh
       bash -c '. "$1"; suite_docs_reads "$2"; suite_docs_files "$2" | awk "END { print NR }"' _ <scratch>/sdr.sh /d/fantasy-world-builder
+
+### Results (GATES, 2026-11-15, on 30451be, orchestrator's runs)
+
+**DV-1: as predicted.** 1 line changed (line 204, the `case` exclusion);
+the three HARNESS-109 assertions went red with C-3's values, and the
+real-tree assertion stayed green; restored byte-for-byte.
+
+```
+=== mutate: .claude/tests/shipped-docs.test.sh (1 line(s) changed by /project-\*\.test\.sh) continue ;;/d) ===
+    FAIL HARNESS-109 AC-1: a consumer's own project-x.test.sh reading its project's docs/ is not reported
+         expected: 
+         actual:   .claude/tests/project-x.test.sh:2
+         .claude/tests/project-x.test.sh:3
+    FAIL HARNESS-109 AC-2: the same lines in an upstream-named suite, a project- helper without .test.sh and a suite with project- not at the start are each still reported, and project-x.test.sh still is not
+         expected: .claude/tests/my-project-x.test.sh:2
+         .claude/tests/my-project-x.test.sh:3
+         .claude/tests/project-x.sh:2
+         .claude/tests/project-x.sh:3
+         .claude/tests/x.test.sh:2
+         .claude/tests/x.test.sh:3
+         actual:   .claude/tests/my-project-x.test.sh:2
+         .claude/tests/my-project-x.test.sh:3
+         .claude/tests/project-x.sh:2
+         .claude/tests/project-x.sh:3
+         .claude/tests/project-x.test.sh:2
+         .claude/tests/project-x.test.sh:3
+         .claude/tests/x.test.sh:2
+         .claude/tests/x.test.sh:3
+    FAIL HARNESS-109 AC-1, AC-2: suite_docs_files lists the three neighbours and leaves out only the top-level project-x.test.sh
+         expected: .claude/tests/my-project-x.test.sh
+         .claude/tests/project-x.sh
+         .claude/tests/x.test.sh
+         actual:   .claude/tests/my-project-x.test.sh
+         .claude/tests/project-x.sh
+         .claude/tests/project-x.test.sh
+         .claude/tests/x.test.sh
+shipped-docs: 18 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_shipped-docs.test.sh.20261115T025310Z.834101.bak) ===
+  204:     case "${f##*/}" in project-*.test.sh) continue ;; esac
+```
+
+**DV-2: as predicted.** 1 line changed; the real-tree assertion went red
+naming the same file and line as the PLANNED baseline; restored.
+
+```
+=== mutate: .claude/tests/selftest-needed.test.sh (1 line(s) changed by s|^CM="\$REPO_ROOT/CLAUDE\.md"$|CM="$REPO_ROOT/docs/wiki/x.md"|) ===
+    FAIL HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing: no suite line reads the project's own docs, which a consumer does not share
+         expected: 
+         actual:   .claude/tests/selftest-needed.test.sh:872
+shipped-docs: 20 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_selftest-needed.test.sh.20261115T025405Z.835454.bak) ===
+  872: CM="$REPO_ROOT/CLAUDE.md"
+```
+
+**DV-3: as predicted.** The guard still finds the consumer's four reading
+lines; the rule as built reports none of them and counts 36 files (41 at
+`51239f3`). Nothing written to the consumer: its staged refresh is the
+same 28 paths before and after.
+
+```
+/d/fantasy-world-builder/.claude/tests/project-handoff.test.sh:37:DOC="$REPO_ROOT/docs/wiki/harness-feedback-world-080.md"
+/d/fantasy-world-builder/.claude/tests/project-handoff.test.sh:38:HANDOFF="$REPO_ROOT/docs/wiki/handoff"
+/d/fantasy-world-builder/.claude/tests/project-sections.test.sh:69:DOC="$REPO_ROOT/docs/wiki/harness-feedback-world-084.md"
+/d/fantasy-world-builder/.claude/tests/project-sections.test.sh:70:HANDOFF_DIR="$REPO_ROOT/docs/wiki/handoff"
+---
+36
+```
 
 ## Amendments
 
