@@ -5,7 +5,7 @@ slug: the-docs-read-rule-names-the-direct-spel
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-110-the-docs-read-rule-names-the-direct-spel
 depends_on: [HARNESS-109]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -323,6 +323,28 @@ rule does with these spellings.
 
       bash scripts/mutate.sh .claude/tests/shipped-docs.test.sh '/^SDR_RE=/s#(%/)?#(%/|:[?])?#' -- bash scripts/selftest.sh shipped-docs
 
+  **Result, GATES, 2026-11-16 (orchestrator, this worktree, at b1218a3):**
+  as predicted. One line changed, exactly the AC-1 assertion went red with
+  the two predicted lines, every other assertion passed, and the file was
+  restored byte-for-byte. The floor line is the expected consequence of one
+  failed assertion against a floor of 22, not a second defect.
+  `mutate.sh --check` afterwards: clean.
+
+  ```
+  === mutate: .claude/tests/shipped-docs.test.sh (1 line(s) changed by /^SDR_RE=/s#(%/)?#(%/|:[?])?#) ===
+    205 - SDR_RE='(REPO''_ROOT|TESTS''_DIR/[.][.]/[.][.])(%/)?[}"]*/+docs([^A-Za-z0-9_.-]|$)'
+    205 + SDR_RE='(REPO''_ROOT|TESTS''_DIR/[.][.]/[.][.])(%/|:[?])?[}"]*/+docs([^A-Za-z0-9_.-]|$)'
+  === mutate: running bash scripts/selftest.sh shipped-docs ===
+      FAIL HARNESS-110 AC-1: the written limit: an expansion of the root other than %/, a /./ before docs and a separately quoted docs are not reported, while the plain read beside them in the same file is
+           expected: .claude/tests/b.test.sh:5
+           actual:   .claude/tests/b.test.sh:2
+           .claude/tests/b.test.sh:5
+  shipped-docs: 21 passed, 1 failed
+  FAIL shipped-docs  did 21 units of work, below the floor of 22 in .claude/tests/floors.conf
+  1 of 1 harness suite(s) FAILED.
+  === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/loving-elbakyan-3fe420/.claude/state/mutations/.claude_tests_shipped-docs.test.sh.20261116T175548Z.1388233.bak) ===
+  ```
+
 Not owed, and stated so that nobody adds one: a probe against a real line of
 the tree (the rule over the tree is not changed by this story; HARNESS-107's
 DV-2 and HARNESS-109's DV-2 hold that evidence for the pattern and the file
@@ -393,6 +415,7 @@ name, below the table.
 - PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
 - RED, `test-developer`, declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 - GREEN, `feature-developer`, declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override. Orchestrator's `attest.sh check` on both records (selftest shipped-docs selftest; gates --fast): `fresh`, exit 0, not re-run.
+- GATES, `feature-developer`, declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override. Ran `bash scripts/gates.sh` once; orchestrator's `attest.sh check`: `fresh`, exit 0, verdict `All required gates passed (0 ran, 7 unconfigured, 0 known).` DV-1 was run by the orchestrator before it.
 
 ## Out of scope
 
@@ -752,10 +775,21 @@ a gates run.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-16T17:57:34Z
+    commit: b1218a3
+    tree:   9ea65a54f9a5b5563ce92a95bc687b3212e34d42
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
