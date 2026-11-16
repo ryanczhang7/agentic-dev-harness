@@ -569,6 +569,7 @@ name, below the table.
 - PLANNED (2026-11-14, `/plan-story`): `lead-po`, planned `fable`, resolved **claude-fable-5-2** (Fable 5.2). Dispatched as a subagent by the orchestrating session; no override was reported to it, and the agent declares `model: fable`.
 - RED (2026-11-15, `/advance-story`): `test-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5), no override reported. The orchestrator checked both attest records `fresh` on tree `2dd2fd39` (not re-run): `selftest.sh run-queue` exit 1, 288 passed / 49 failed, every failure in the new cases and none in HARNESS-108's 229; `gates.sh --fast` exit 0 (all gates unconfigured).
 - GREEN (2026-11-16, `/advance-story`): `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5), no override reported. The orchestrator checked the attest records `fresh` on tree `37aa8a0b` (not re-run): `selftest.sh run-queue` exit 0, 337 passed / 0 failed, floor met; `selftest.sh run-lock` exit 0 (141/0); `gates.sh --fast` exit 0. Every control value in the handoff measured as RED recorded it. VERSION is 129 because main had reached 128.
+- GATES (2026-11-16, `/advance-story`): `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5), no override reported. `attest.sh check -- bash scripts/gates.sh` answered `fresh`: exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` DV-1..DV-4 were run by the orchestrator before it.
 - No departure from the plan. All five criteria are mechanical, with the messages and defaults settled by HARNESS-108 (Contract, C-8).
 
 ## Out of scope
@@ -937,10 +938,21 @@ it is red for the reasons above.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-16T17:03:08Z
+    commit: 225113f
+    tree:   b0b475b1cf1f836463a9f2b0297e985b8c1489ee
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
