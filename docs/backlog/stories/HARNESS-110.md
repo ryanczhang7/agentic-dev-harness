@@ -775,7 +775,7 @@ a gates run.
 
 ### R-1 (the written limit reads as a complete list)
 
-- **Adjudicated R-1:** `fable` (resolved Fable 5.2, `claude-fable-5-2`), 2026-11-16, diff review round 1, finding 1
+- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2), 2026-11-16, diff review round 1, finding 1
 - **Which test, and what was wrong:** no assertion. The "Written limit"
   comment in `.claude/tests/shipped-docs.test.sh` (lines 192-197) said "Three
   are not:" and "pins all three". That reads as a complete list of the direct
