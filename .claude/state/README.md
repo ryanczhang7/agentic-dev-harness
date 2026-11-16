@@ -151,12 +151,15 @@ machine, outside every repository: `$HARNESS_RUN_QUEUE_DIR/run-queue.lock`, or
 `$HOME/.cache/agentic-harness/run-queue.lock` when that variable is unset
 (`scripts/run-queue.sh`, HARNESS-108). A full run - `gates.sh` with none of
 `--fast`, `--gate`, `--skip`, `--required`, or `selftest.sh` with no argument -
-takes it after taking `run.lock`, and releases it last. It records the holder's
-pid, when it started, its command and its tree root, four TAB-separated lines.
-A second full run anywhere on the machine waits rather than running beside it,
-and prints `run-queue: queued:` with what it waits behind; it starts by itself
-when the holder ends. One left behind by a run killed outright is reclaimed by
-pid, with one line saying so, by the next full run. If the recorded pid has
+and every `selftest.sh --changed [base-ref]` that selects at least one suite
+(HARNESS-111) takes it after taking `run.lock`, and releases it last. A
+named-suite `selftest.sh` run and `gates.sh --fast` do not. It records the
+holder's pid, when it started, its command and its tree root, four
+TAB-separated lines. A second such run anywhere on the machine waits rather
+than running beside it, and prints `run-queue: queued:` with what it waits
+behind; it starts by itself when the holder ends. One left behind by a run
+killed outright is reclaimed by pid, with one line saying so, by the next run
+that queues. If the recorded pid has
 since been reused by a live process, the waiting run waits behind it: deleting
 the file by hand is the remedy, and the queued message names it.
 `HARNESS_RUN_QUEUE=off` switches the queue off; the harness's own suites set it.

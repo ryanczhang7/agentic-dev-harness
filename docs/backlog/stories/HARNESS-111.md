@@ -5,7 +5,7 @@ slug: a-changed-self-test-joins-the-machine-wi
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-111-a-changed-self-test-joins-the-machine-wi
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-lock.sh, scripts/run-queue.sh, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -520,6 +520,7 @@ name, below the table.
 
 - PLANNED (2026-11-14, `/plan-story`): `lead-po`, planned `fable`, resolved **claude-fable-5-2** (Fable 5.2). Dispatched as a subagent by the orchestrating session; no override was reported to it, and the agent declares `model: fable`.
 - RED (2026-11-15, `/advance-story`): `test-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5), no override reported. The orchestrator checked both attest records `fresh` on tree `2dd2fd39` (not re-run): `selftest.sh run-queue` exit 1, 288 passed / 49 failed, every failure in the new cases and none in HARNESS-108's 229; `gates.sh --fast` exit 0 (all gates unconfigured).
+- GREEN (2026-11-16, `/advance-story`): `feature-developer`, planned `opus`, resolved **claude-opus-5-5** (Opus 5.5), no override reported. The orchestrator checked the attest records `fresh` on tree `37aa8a0b` (not re-run): `selftest.sh run-queue` exit 0, 337 passed / 0 failed, floor met; `selftest.sh run-lock` exit 0 (141/0); `gates.sh --fast` exit 0. Every control value in the handoff measured as RED recorded it. VERSION is 129 because main had reached 128.
 - No departure from the plan. All five criteria are mechanical, with the messages and defaults settled by HARNESS-108 (Contract, C-8).
 
 ## Out of scope
