@@ -4,8 +4,8 @@ title: A --changed self-test joins the machine-wide run queue
 slug: a-changed-self-test-joins-the-machine-wi
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-111-a-changed-self-test-joins-the-machine-wi
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-lock.sh, scripts/run-queue.sh, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1055,3 +1055,12 @@ Verdict: Ship.
   this story starts beside them or after them.
 
 - **Merged main and re-ran gates (2026-11-16).** HARNESS-109 merged to main as #199 while this story was at GATES, so `origin/main` was merged in (`71454c1`) before the diff review. `.claude/harness/VERSION` and `.claude/tests/floors.conf` conflicted, both `harness`: VERSION keeps 129 (main had 128), and floors.conf keeps both stories' notes (`run-queue 337`, `shipped-docs 21`). Full gates were then re-run on the merged tree by the orchestrator directly (a 4 s run with every gate unconfigured, nothing to fix): `attest.sh -- bash scripts/gates.sh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, tree `5f5ff948`.
+
+- **Local self-test before REVIEW (2026-11-16).** Dispatched to a `feature-developer` on the GATES row (resolved `claude-opus-5-5`), one command, detached. `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` answers `fresh` on tree `5f5ff948`:
+
+      selftest: --changed — 15 of 35 suite(s) selected: attest boundaries doctor grep-count host-load lib mutate refresh run-lock run-queue selftest settings shipped-docs sigpipe worktree
+      exit:     0
+      duration: 7196s
+      last:     15 harness suite(s) passed.
+
+  Every selected suite met its floor (3012 assertions executed, 3011 declared). The run printed no `run-queue: queued` line, so it did not wait behind another run.
