@@ -840,6 +840,26 @@ Not checked: the `selftest` suite (which holds the COUNTS table) was not run; I 
 
 Verdict: fix 1 first.
 
+Round 2, 2026-11-16. Reviewer: fresh `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. No file changed.
+
+What this change does: It adds six comment lines to the "Written limit" paragraph in `.claude/tests/shipped-docs.test.sh`, naming three example ways of writing a read under the real checkout's `docs/` that the suite's text rule (`SDR_RE`, a pattern matched line by line) does not notice. It adds one assertion pinning that behaviour over a five-line fixture, raises the suite's declared count 21 -> 22 in `floors.conf` and `selftest.test.sh`, and takes release 130. The R-1 fix rewords that comment so the three spellings read as examples, not a full list.
+
+What I checked:
+- **The R-1 fix** (`git diff 0041deb..HEAD -- .claude/tests/shipped-docs.test.sh`): only comment lines 192-196 change. "Three are not:" is now "Among those that are not:" and "pins all three" is now "pins these three". No assertion, fixture or pattern line changes, and `SDR_RE` and both functions are byte-for-byte as before. The sentence no longer claims a count, which is what round 1's finding 1 asked for and what D-1's reason 2 says (the family is open).
+- **The reworded paragraph against the Contract (C-2):** it still names the three spellings by example, says none occurs in the tree, and points at the HARNESS-110 assertion. The comment above the new fixture ("The three direct spellings the 'Written limit' paragraph ... names") is still accurate, because the paragraph names exactly three.
+- **The whole `git diff origin/main...HEAD`:** five files, all on the Contract's `**Writes:**` line plus the story file. Both floor records say 22, and `VERSION` goes 129 -> 130.
+- **The suite, run by me** (no other self-test or gates run was going on the machine): `bash scripts/selftest.sh shipped-docs` gave `shipped-docs: 22 passed, 0 failed`, floor of 22 met.
+- **The suite against its own pattern:** `SDR_RE` run by `awk` over every line of `.claude/tests/shipped-docs.test.sh`, comments included, matched nothing, so the reworded comment does not make the suite report itself.
+- **The `## Regressions` R-1 entry:** it carries its adjudication record and pasted output, and its description matches the diff.
+
+No findings.
+
+Still open from round 1, not a finding against this diff, for the orchestrator to put to the user as a possible follow-up story: the header at lines 176-177 says "the braced and the quoted-root spellings count", which holds for `REPO_ROOT` but not for the second root name (`"${TESTS_DIR}/../../docs/a"` and `"$TESTS_DIR"/../../docs/a` are missed). It predates this story, no line of the tree uses either, and D-1 forbids widening here.
+
+Not checked: the `selftest` suite (which holds the COUNTS table) was not run; I read that its `shipped-docs 22` line agrees with `floors.conf`. The full self-test and `gates.sh` were not run, as instructed, and I did not check whether the recorded gate stamp matches the current tree.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
