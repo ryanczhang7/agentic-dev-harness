@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Tests for the machine-wide run queue (HARNESS-108): a FULL scripts/gates.sh
-# or scripts/selftest.sh run waits for another full run anywhere on the machine
-# - another tree, another session - instead of running beside it, and says that
-# it is queued and behind what. One lock file per user per machine,
+# Tests for the machine-wide run queue (HARNESS-108, HARNESS-111): a run that
+# queues - a FULL scripts/gates.sh or scripts/selftest.sh run, or any
+# scripts/selftest.sh --changed run that gets as far as the run lock - waits
+# for any other such run anywhere on the machine - another tree, another
+# session - instead of running beside it, and says that it is queued and
+# behind what. One lock file per user per machine,
 # ${HARNESS_RUN_QUEUE_DIR:-$HOME/.cache/agentic-harness}/run-queue.lock, joined
-# inside scripts/run-lock.sh (Contract C-1..C-7).
+# inside scripts/run-lock.sh (HARNESS-108 Contract C-1..C-7). Which commands
+# queue is run_lock_queues (HARNESS-111 C-2); run_lock_full still says which
+# are full, and a --changed run is not one.
 #
 # The measurement behind it: two refresh self-tests beside another session's
 # runs took over three hours; the same self-test takes three to four minutes
@@ -43,6 +47,17 @@
 # gates.sh and selftest.sh fail for the right reason on their own: nothing
 # queues, so B runs beside A. AC-10's "starts at once" assertions and AC-7's
 # queue-off control pass on arrival in RED; DV-3 earns the first at GATES.
+#
+# HARNESS-111 (--changed). Three more trees, X, Y and Z, each a git checkout
+# with a `main` and a story branch, so that `selftest.sh --changed` selects
+# what the case says: X every suite (an unmapped x.conf), Y a proper subset
+# (m.conf, mentioned by `work` only), Z no suite (a source-only commit). Every
+# --changed case asserts its header line first, so a fixture whose selection
+# drifted fails as that, not as a queue defect. In RED run_lock_queues does
+# not exist and --changed never queues: its table rows fail one assertion
+# each in the if and the else alike, and the cases through selftest.sh fail
+# on their own - B runs beside A. AC-3 (nested --changed) and AC-4 (no suite)
+# pass on arrival; DV-3 and DV-4 earn them at GATES.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
@@ -54,24 +69,25 @@ QL="$Q/run-queue.lock"     # its lock
 BG=""                      # every background pid this suite starts; reaped on EXIT
 POLL=1                     # HARNESS_RUN_QUEUE_POLL for every queue-on run
 A=""; B=""; C=""           # the three trees, set below
+X=""; Y=""; Z=""           # the three --changed trees (HARNESS-111), set below
 
 # release_all   Lets every held work.sh in every tree finish.
 release_all() {
   local t
-  for t in "$A" "$B" "$C"; do [ -n "$t" ] && [ -d "$t/m/k" ] && touch "$t/m/k/release"; done
+  for t in "$A" "$B" "$C" "$X" "$Y" "$Z"; do [ -n "$t" ] && [ -d "$t/m/k" ] && touch "$t/m/k/release"; done
   return 0
 }
 
 cleanup() {
   local p t f
   release_all
-  for t in "$A" "$B" "$C"; do
+  for t in "$A" "$B" "$C" "$X" "$Y" "$Z"; do
     [ -n "$t" ] || continue
     for f in "$t"/m/k/n*.pid; do [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null; done
   done
   for p in $BG; do kill "$p" 2>/dev/null; done
   for p in $BG; do wait "$p" 2>/dev/null; done
-  rm -rf "$A" "$B" "$C" "$W"
+  rm -rf "$A" "$B" "$C" "$X" "$Y" "$Z" "$W"
 }
 trap cleanup EXIT
 
@@ -163,6 +179,91 @@ cp "$HARNESS_RUN_QUEUE_DIR/run-queue.lock" "$K/n2.qlock" 2>/dev/null
 printf 'Tests  1 passed (1)\n'
 NEST
 } > "$A/m/nest.sh"
+
+# --- the --changed trees (HARNESS-111, C-5) ----------------------------------
+# changed_setup <tree> <name> <change>   fixture_setup, plus what --changed
+# needs: two suites, `work` (m/work.sh, and its source mentions
+# .claude/harness/m.conf) and `other` (mentions nothing); one gate, unit, that
+# is m/work.sh unless m/k/nest exists, then m/nest.sh; m/k/ and .claude/state/
+# ignored; all of it committed on `main`; then a story branch carrying one
+# committed change:
+#   every   .claude/harness/x.conf, mapped by no rule  -> every suite
+#   subset  .claude/harness/m.conf, mentioned by work  -> work only
+#   none    src/app.ts, a source path                  -> no suite
+# The work tree is clean afterwards, so the selection cannot drift as runs
+# write their markers and their state.
+cgit() { git -C "$1" -c user.email=t@t -c user.name=t "${@:2}"; }
+changed_setup() {
+  local t="$1" n="$2"
+  fixture_setup "$t" "$n"
+  cat > "$t/.claude/tests/work.test.sh" <<'SUITE'
+#!/usr/bin/env bash
+# reads .claude/harness/m.conf
+. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+bash "$REPO_ROOT/m/work.sh" > /dev/null
+assert_eq "work" x x
+summary "work"
+SUITE
+  cat > "$t/.claude/tests/other.test.sh" <<'SUITE'
+#!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+assert_eq "other" x x
+summary "other"
+SUITE
+  printf 'floor | other | 1\nfloor | work  | 1\n' > "$t/.claude/tests/floors.conf"
+  printf '#!/usr/bin/env bash\nif [ -f m/k/nest ]; then exec bash m/nest.sh; fi\nexec bash m/work.sh\n' > "$t/m/gate.sh"
+  write_conf "$t" <<'EOF'
+gate     | unit | required | . | bash m/gate.sh
+evidence | unit | Tests +[1-9][0-9]* passed
+gate     | lint | required | . | bash m/lint.sh
+evidence | lint | Tests +[1-9][0-9]* passed
+EOF
+  printf '.claude/state/\nm/k/\n' >> "$t/.gitignore"
+  cgit "$t" branch -M main >/dev/null 2>&1
+  cgit "$t" add -A >/dev/null 2>&1
+  cgit "$t" commit -qm "two suites" >/dev/null 2>&1
+  cgit "$t" checkout -q -b story/T-1-fixture >/dev/null 2>&1
+  case "$3" in
+    every)  printf 'x\n' > "$t/.claude/harness/x.conf" ;;
+    subset) printf 'm\n' > "$t/.claude/harness/m.conf" ;;
+    none)   mkdir -p "$t/src"; printf 'export const a = 1\n' > "$t/src/app.ts" ;;
+  esac
+  cgit "$t" add -A >/dev/null 2>&1
+  cgit "$t" commit -qm "the change" >/dev/null 2>&1
+}
+X="$(make_project_fixture)"; X="$(cd "$X" && pwd)"
+Y="$(make_project_fixture)"; Y="$(cd "$Y" && pwd)"
+Z="$(make_project_fixture)"; Z="$(cd "$Z" && pwd)"
+
+# X's m/nest.sh, X's gate command for HARNESS-111 AC-3 once m/k/nest exists:
+# selftest.sh --changed in X (the holder's own tree), then in Y, each in the
+# background with its pid recorded, each run's status and the queue lock as it
+# stands after each run recorded - the shape of A's nest.sh above. Written
+# before changed_setup, so that it is committed on main with the rest.
+mkdir -p "$X/m"
+{ printf '#!/usr/bin/env bash\n'
+  printf "K='%s'\nTB='%s'\n" "$X/m/k" "$Y"
+  cat <<'NEST'
+bash scripts/selftest.sh --changed > "$K/n1.out" 2> "$K/n1.err" < /dev/null &
+echo "$!" > "$K/n1.pid"; wait "$!"; echo "$?" > "$K/n1.rc"
+cp "$HARNESS_RUN_QUEUE_DIR/run-queue.lock" "$K/n1.qlock" 2>/dev/null
+( cd "$TB" && exec bash scripts/selftest.sh --changed ) > "$K/n2.out" 2> "$K/n2.err" < /dev/null &
+echo "$!" > "$K/n2.pid"; wait "$!"; echo "$?" > "$K/n2.rc"
+cp "$HARNESS_RUN_QUEUE_DIR/run-queue.lock" "$K/n2.qlock" 2>/dev/null
+printf 'Tests  1 passed (1)\n'
+NEST
+} > "$X/m/nest.sh"
+
+changed_setup "$X" X every
+changed_setup "$Y" Y subset
+changed_setup "$Z" Z none
+
+# The header line each selection prints on stdout before the run lock: the
+# precondition every --changed case asserts first.
+HDR_X="selftest: --changed — every suite: .claude/harness/x.conf is mapped by no rule; defaulting to every suite"
+HDR_Y="selftest: --changed — 1 of 2 suite(s) selected: work"
+HDR_Z="selftest: --changed selected no suite — selftest-needed: skip — no harness path among 1 changed path(s) against main (merge-base $(git -C "$Z" rev-parse --short main 2>/dev/null)); CI runs the self-test on the PR"
+CHG="scripts/selftest.sh --changed"
 
 # --- instruments -------------------------------------------------------------
 
@@ -304,7 +405,8 @@ hold_run() {
 new_case() {
   local t
   rm -rf "$Q" "$SH"; mkdir -p "$Q" "$SH"
-  for t in "$A" "$B" "$C"; do
+  for t in "$A" "$B" "$C" "$X" "$Y" "$Z"; do
+    [ -n "$t" ] || continue
     rm -rf "$t/m/k"; mkdir -p "$t/m/k"
     rm -f "$t"/.claude/state/run.lock*
   done
@@ -558,7 +660,7 @@ bypass_case ac6-wrong-pid "$QL" "$LIVE2"
 bypass_case ac6-wrong-path "$W/q-other/run-queue.lock" "$LIVE1"
 
 # ---------------------------------------------------------------------------
-describe "AC-7 / AC-10  beside a held queue: HARNESS_RUN_QUEUE=off and every non-full run start at once"
+describe "AC-7 / AC-10  beside a held queue: HARNESS_RUN_QUEUE=off and every run that does not queue starts at once"
 
 new_case
 hold_run hp "$A" ac10-A scripts/gates.sh
@@ -601,7 +703,7 @@ assert_eq "AC-10: by the run lock, as today" 1 \
 touch "$A/m/k/release"; wait_bounded "$hp" 60
 assert_eq "AC-10: A then finishes, exit 0" 0 "$WRC"
 
-describe "AC-10  a non-full run in progress is not waited for: a full run takes the queue at once"
+describe "AC-10  a run in progress that does not queue is not waited for: a full run takes the queue at once"
 
 new_case
 hold_run bp "$B" ac10-B scripts/gates.sh --gate unit
@@ -767,6 +869,229 @@ noq_case "AC-9 gates.sh, the queue lock path is a directory" "$B" gates.sh \
 assert_eq "AC-9 gates.sh, the queue lock path is a directory: nothing is left inside that directory" "" \
   "$(ls -A "$QL" 2>/dev/null)"
 rm -rf "$QL"
+
+# ===========================================================================
+# HARNESS-111  a --changed run queues: every one that reaches the run lock
+# (Contract C-1..C-5). Trees X (every suite), Y (a proper subset) and Z (no
+# suite) are described where they are built. The holder, where there is one,
+# is a full gates.sh in A, except in AC-2's reverse pair, where it is X's
+# --changed run. Every case asserts its header line before the queue.
+# ===========================================================================
+
+# The status each --changed run has alone, with the queue off: what a queued
+# or nested one is compared with. Measured, not assumed. solo-cx's stderr is
+# also AC-2's byte-for-byte reference.
+new_case; RQ_MODE=off
+rq_run p "$X" solo-cx scripts/selftest.sh --changed; wait_bounded "$p" 120; SOLO_CX=$WRC
+new_case; RQ_MODE=off
+rq_run p "$Y" solo-cy scripts/selftest.sh --changed; wait_bounded "$p" 120; SOLO_CY=$WRC
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-111 AC-1  a --changed run in another tree waits for the full run that holds the queue, then runs"
+
+# changed_pair <label> <tree> <name> <header> <solo status> <other blocks>
+# A's full gates.sh holds; <tree>'s --changed run is started; it must not
+# start a suite while A holds, must say so naming A, and must run its own
+# selection once A ends. <other blocks> is how many `=== other ===` blocks its
+# stdout carries: 1 for every suite, 0 for the subset, which selects work only.
+changed_pair() {
+  local lbl="$1" t="$2" n="$3" hdr="$4" solo="$5" nother="$6" hp wp arc brc bto
+  new_case
+  hold_run hp "$A" "$lbl-A" scripts/gates.sh
+  assert_eq "$lbl: precondition: A's full gates.sh is in progress, held on its release file" yes "$HOLDING"
+  cp "$QL" "$W/$lbl-A.rec" 2>/dev/null || : > "$W/$lbl-A.rec"
+  rq_run wp "$t" "$lbl-B" scripts/selftest.sh --changed
+  wait_until 60 started_or_queued "$t" "$W/$lbl-B.err"
+  sleep 3.5   # at least two poll intervals after it queued
+  assert_eq "$lbl: precondition: $n's stdout carries the --changed header line for its selection" 1 \
+    "$(count_line "$hdr" "$W/$lbl-B.out")"
+  assert_eq "$lbl: $n's --changed run has not started its work while A holds the queue, over two poll intervals after it queued" \
+    absent "$(present "$t/m/k/started")"
+  assert_eq "$lbl: nor printed a suite block: no === <suite> === line yet" 0 "$(count_re '^=== ' "$W/$lbl-B.out")"
+  assert_eq "$lbl: precondition: A is still running at that moment" alive "$(is_alive "$hp")"
+  assert_eq "$lbl: queued line 1 names the waiting run as $CHG, exactly once, on stderr" 1 \
+    "$(count_line "$(q1 "$CHG")" "$W/$lbl-B.err")"
+  assert_eq "$lbl: queued line 2 names A's pid, start, tree root and command from A's record, exactly once" 1 \
+    "$(count_line "$(q2 "$hp" "$(rec_field "$W/$lbl-A.rec" started)" "$A" scripts/gates.sh)" "$W/$lbl-B.err")"
+  assert_eq "$lbl: queued line 3 says it is waiting and names the lock to delete, exactly once" 1 \
+    "$(count_line "$(q3 "$hp" "$QL")" "$W/$lbl-B.err")"
+  touch "$A/m/k/release"
+  wait_bounded "$hp" 60; arc=$WRC
+  wait_bounded "$wp" 90; brc=$WRC; bto=$WTO
+  assert_eq "$lbl: A finishes with its own status" 0 "$arc"
+  assert_eq "$lbl: once A ends, $n's run gets through by itself, within the bound" no "$bto"
+  assert_eq "$lbl: $n's work runs to its end" present "$(present "$t/m/k/finished")"
+  assert_eq "$lbl: $n's run exits with the status the same run has alone, queue off ($solo)" "$solo" "$brc"
+  assert_eq "$lbl: $n's work records, as it starts, that A's had finished" "A" "$(readf "$t/m/k/done-before")"
+  assert_eq "$lbl: $n's work saw no other run in progress as it started" "" "$(readf "$t/m/k/overlap-start")"
+  assert_eq "$lbl: A's work saw no other run in progress as it ended" "" "$(readf "$A/m/k/overlap-end")"
+  assert_eq "$lbl: one starting line naming $CHG, with the total wait" 1 \
+    "$(count_span "$(start_prefix "$CHG")" "$START_RE" "$W/$lbl-B.err")"
+  assert_eq "$lbl: it runs the suite its selection holds: one === work === block" 1 \
+    "$(count_line '=== work ===' "$W/$lbl-B.out")"
+  assert_eq "$lbl: and $nother === other === block(s), as its selection says" "$nother" \
+    "$(count_line '=== other ===' "$W/$lbl-B.out")"
+  assert_eq "$lbl: the queue directory holds nothing once both have ended" "" "$(qsnap)"
+}
+changed_pair "AC-1 every suite" "$X" X "$HDR_X" "$SOLO_CX" 1
+changed_pair "AC-1 subset"      "$Y" Y "$HDR_Y" "$SOLO_CY" 0
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-111 AC-2  an uncontended --changed run takes the queue silently, records itself, and leaves nothing"
+
+new_case
+rq_run p "$X" ac2c-on scripts/selftest.sh --changed; wait_bounded "$p" 120; onrc=$WRC
+R="$X/m/k/qlock"
+assert_eq "AC-2 --changed: precondition: its stdout carries the every-suite header line" 1 \
+  "$(count_line "$HDR_X" "$W/ac2c-on.out")"
+assert_eq "AC-2 --changed: while its suite ran, the queue lock existed" present "$(present "$R")"
+assert_eq "AC-2 --changed: the lock records the run's pid" "$p" "$(rec_field "$R" pid)"
+assert_eq "AC-2 --changed: the lock records the run's command, $CHG" "$CHG" "$(rec_field "$R" command)"
+assert_eq "AC-2 --changed: the lock records the run's tree root, absolute" "$X" "$(rec_field "$R" root)"
+assert_eq "AC-2 --changed: it prints no run-queue: line on stdout or stderr" 0 \
+  "$(cat "$W/ac2c-on.out" "$W/ac2c-on.err" | awk 'index($0, "run-queue:") == 1 { n++ } END { print n + 0 }')"
+if cmp -s "$W/solo-cx.err" "$W/ac2c-on.err"; then
+  _ok "AC-2 --changed: its stderr is byte-for-byte the same run's with HARNESS_RUN_QUEUE=off"
+else
+  _bad "AC-2 --changed: its stderr is byte-for-byte the same run's with HARNESS_RUN_QUEUE=off" \
+    "$(diff "$W/solo-cx.err" "$W/ac2c-on.err" 2>&1 | awk 'NR <= 10')"
+fi
+assert_eq "AC-2 --changed: it exits as the same run does with the queue off ($SOLO_CX)" "$SOLO_CX" "$onrc"
+assert_eq "AC-2 --changed: afterwards the queue directory holds neither the lock nor a temporary record" "" "$(qsnap)"
+
+describe "HARNESS-111 AC-2  a --changed run that holds the queue is waited for: a full gates.sh queues behind it"
+
+new_case
+hold_run hp "$X" ac2r-X scripts/selftest.sh --changed
+assert_eq "AC-2 reverse: precondition: X's --changed run is in progress, held on its release file" yes "$HOLDING"
+assert_eq "AC-2 reverse: precondition: X's stdout carries the every-suite header line" 1 \
+  "$(count_line "$HDR_X" "$W/ac2r-X.out")"
+cp "$QL" "$W/ac2r-X.rec" 2>/dev/null || : > "$W/ac2r-X.rec"
+rq_run ap "$A" ac2r-A scripts/gates.sh
+wait_until 60 started_or_queued "$A" "$W/ac2r-A.err"
+sleep 3.5   # at least two poll intervals after it queued
+assert_eq "AC-2 reverse: A's full gates.sh has not started its gate command while X's --changed run holds, over two poll intervals after it queued" \
+  absent "$(present "$A/m/k/started")"
+assert_eq "AC-2 reverse: precondition: X's run is still running at that moment" alive "$(is_alive "$hp")"
+assert_eq "AC-2 reverse: A's queued line 1 names A's own command, exactly once" 1 \
+  "$(count_line "$(q1 scripts/gates.sh)" "$W/ac2r-A.err")"
+assert_eq "AC-2 reverse: A's queued line 2 names X's pid, start, tree root and $CHG, exactly once" 1 \
+  "$(count_line "$(q2 "$hp" "$(rec_field "$W/ac2r-X.rec" started)" "$X" "$CHG")" "$W/ac2r-A.err")"
+touch "$X/m/k/release"
+wait_bounded "$hp" 60; xrc=$WRC
+wait_bounded "$ap" 90; arc=$WRC; ato=$WTO
+assert_eq "AC-2 reverse: X's --changed run finishes with its own status ($SOLO_CX)" "$SOLO_CX" "$xrc"
+assert_eq "AC-2 reverse: once X ends, A gets through by itself, within the bound" no "$ato"
+assert_eq "AC-2 reverse: A's work runs to its end" present "$(present "$A/m/k/finished")"
+assert_eq "AC-2 reverse: A exits with the status it has alone ($SOLO_GATES)" "$SOLO_GATES" "$arc"
+assert_eq "AC-2 reverse: A's work records, as it starts, that X's had finished" "X" "$(readf "$A/m/k/done-before")"
+assert_eq "AC-2 reverse: A's work saw no other run in progress as it started" "" "$(readf "$A/m/k/overlap-start")"
+assert_eq "AC-2 reverse: the queue directory holds nothing once both have ended" "" "$(qsnap)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-111 AC-3  --changed runs nested under the holder, in its own tree and another, pass through"
+
+new_case
+touch "$X/m/k/nest"
+rq_run op "$X" ac3c-outer scripts/gates.sh; wait_bounded "$op" 120
+orc=$WRC; oto=$WTO
+for f in "$X"/m/k/n*.pid; do [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null; done
+assert_eq "AC-3: precondition: the inner run in X (the holder's tree) carries the every-suite header line" 1 \
+  "$(count_line "$HDR_X" "$X/m/k/n1.out")"
+assert_eq "AC-3: precondition: the inner run in Y (another tree) carries the subset header line" 1 \
+  "$(count_line "$HDR_Y" "$X/m/k/n2.out")"
+assert_eq "AC-3: the whole arrangement completes within the bound: a nested --changed run does not wait on its ancestor" no "$oto"
+assert_eq "AC-3: the outer full gates.sh finishes with its own status" 0 "$orc"
+assert_eq "AC-3: the inner --changed run in X exits as it does alone ($SOLO_CX)" "$SOLO_CX" "$(readf "$X/m/k/n1.rc")"
+assert_eq "AC-3: the inner --changed run in Y exits as it does alone ($SOLO_CY), its suite run" "$SOLO_CY present" \
+  "$(readf "$X/m/k/n2.rc") $(present "$Y/m/k/finished")"
+assert_eq "AC-3: neither inner run prints a run-queue: line" 0 \
+  "$(cat "$X/m/k/n1.out" "$X/m/k/n1.err" "$X/m/k/n2.out" "$X/m/k/n2.err" 2>/dev/null | awk 'index($0, "run-queue:") == 1 { n++ } END { print n + 0 }')"
+assert_eq "AC-3: after the inner run in X has ended, the queue lock still records the outer run's pid" "$op" \
+  "$(rec_field "$X/m/k/n1.qlock" pid)"
+assert_eq "AC-3: after the inner run in Y has ended, the queue lock still records the outer run's pid" "$op" \
+  "$(rec_field "$X/m/k/n2.qlock" pid)"
+assert_eq "AC-3: and once the outer run has ended the queue directory is empty" "" "$(qsnap)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-111 AC-4, AC-1 control  beside a held queue: a --changed run that selects no suite, and one with the queue off"
+
+new_case
+hold_run hp "$A" ac4c-A scripts/gates.sh
+assert_eq "AC-4: precondition: A's full gates.sh holds the queue, its work in progress" yes "$HOLDING"
+before="$(qsnap)"
+rq_run p "$Z" ac4c-Z scripts/selftest.sh --changed; wait_bounded "$p" 60
+assert_eq "AC-4: Z's --changed run that selects no suite exits 1 at once, within the bound, while A holds" "no 1" "$WTO $WRC"
+assert_eq "AC-4: its stdout is exactly the selected-no-suite line" "$HDR_Z" "$(tr -d '\r' < "$W/ac4c-Z.out")"
+assert_eq "AC-4: it prints no run-queue: line on stdout or stderr" 0 \
+  "$(cat "$W/ac4c-Z.out" "$W/ac4c-Z.err" | awk 'index($0, "run-queue:") == 1 { n++ } END { print n + 0 }')"
+assert_eq "AC-4: it creates, changes and removes nothing in the queue directory" "$before" "$(qsnap)"
+assert_eq "AC-4: and leaves no run.lock in Z" 0 "$(leftovers "$Z")"
+assert_eq "AC-4: nothing ran: Z's work never started" absent "$(present "$Z/m/k/started")"
+assert_eq "AC-4: precondition: A is still running then" alive "$(is_alive "$hp")"
+
+RQ_MODE=off
+rq_run p "$X" ac1c-off scripts/selftest.sh --changed
+wait_until 60 started_or_queued "$X" "$W/ac1c-off.err"
+assert_eq "AC-1 control: precondition: X's stdout carries the every-suite header line" 1 \
+  "$(count_line "$HDR_X" "$W/ac1c-off.out")"
+assert_eq "AC-1 control: with HARNESS_RUN_QUEUE=off, X's --changed run starts its work while A holds" present \
+  "$(present "$X/m/k/started")"
+assert_eq "AC-1 control: and its work saw A's in progress - the arrangement can see two runs at once" "A" \
+  "$(readf "$X/m/k/overlap-start")"
+assert_eq "AC-1 control: precondition: A is still running then" alive "$(is_alive "$hp")"
+wait_bounded "$p" 60
+assert_eq "AC-1 control: X's run exits as it does alone ($SOLO_CX)" "$SOLO_CX" "$WRC"
+RQ_MODE=""
+touch "$A/m/k/release"; wait_bounded "$hp" 60
+assert_eq "AC-4: A then finishes, exit 0" 0 "$WRC"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-111 AC-5  run_lock_queues answers as C-2's table says"
+
+# rows: <0 queues | 1 does not>|<command string>
+QUEUE_ROWS='0|scripts/gates.sh
+0|scripts/gates.sh --story T-1
+0|scripts/selftest.sh
+0|scripts/selftest.sh --changed
+0|scripts/selftest.sh --changed origin/main
+1|scripts/selftest.sh --changedx
+1|scripts/selftest.sh run-queue --changed
+1|scripts/selftest.sh run-queue
+1|scripts/selftest.sh run-queue run-lock
+1|scripts/gates.sh --fast
+1|scripts/gates.sh --gate unit
+1|scripts/gates.sh --skip unit
+1|scripts/gates.sh --required
+1|scripts/gates.sh --story T-1 --fast
+1|scripts/gates.sh --list
+1|scripts/gates.sh --audit
+0|scripts/gates.sh --changed
+1|scripts/selftest-needed.sh --suites
+1|scripts/check-boundaries.sh
+1|scripts/ci-local.sh
+1|scripts/attest.sh -- bash scripts/selftest.sh --changed
+1|'
+HAVE_QUEUES="$( ( . "$REPO_ROOT/scripts/run-lock.sh" && type run_lock_queues >/dev/null 2>&1 ) && printf yes || printf no)"
+while IFS='|' read -r want cmd; do
+  [ -n "$want" ] || continue
+  if [ "$want" = 0 ]; then word=queues; else word="does not queue"; fi
+  if [ "$HAVE_QUEUES" = yes ]; then
+    got="$( . "$REPO_ROOT/scripts/run-lock.sh"; set -f; run_lock_queues "$cmd"; printf '%s' "$?")"
+    assert_eq "run_lock_queues '$cmd' $word" "$want" "$got"
+  else
+    _bad "run_lock_queues '$cmd' $word" "scripts/run-lock.sh defines no run_lock_queues"
+  fi
+done <<EOF
+$QUEUE_ROWS
+EOF
+
+describe "HARNESS-111 C-2, C-3  the two lines of scripts/run-lock.sh the suite and DV-1 depend on"
+
+assert_eq "scripts/run-lock.sh opens run_lock_queues alone on its line" 1 \
+  "$(grep -cxF 'run_lock_queues() {' "$REPO_ROOT/scripts/run-lock.sh" 2>/dev/null || :)"
+assert_eq "run_lock_join asks run_lock_queues, on exactly the one line DV-1 mutates" 1 \
+  "$(grep -cxF '  run_lock_queues "$2" || return 0' "$REPO_ROOT/scripts/run-lock.sh" 2>/dev/null || :)"
 
 # ---------------------------------------------------------------------------
 describe "C-4, C-6  the shipped pieces the mutations and the messages depend on"

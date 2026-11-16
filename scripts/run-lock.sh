@@ -38,9 +38,10 @@
 # a bypass.
 #
 # THE MACHINE-WIDE QUEUE (HARNESS-108) is joined here, not by the callers: on
-# every path that has just TAKEN the run lock, a full run (run_lock_full) with
+# every path that has just TAKEN the run lock, a run that queues
+# (run_lock_queues: a full run, or selftest.sh --changed, HARNESS-111) with
 # HARNESS_RUN_QUEUE not `off` sources scripts/run-queue.sh beside this file and
-# waits there for any other full run on the machine. run_lock_release leaves
+# waits there for any other such run on the machine. run_lock_release leaves
 # it last. The run lock is still never waited on: lock order is run lock, then
 # queue, and the queue is the only thing that waits. scripts/run-queue.sh's
 # header has the rest.
@@ -91,7 +92,8 @@ run_lock_taken() {
 # (HARNESS-108, C-5): scripts/gates.sh with none of --fast, --gate, --skip,
 # --required, --list, --audit among its words (a --story value cannot be one:
 # valid_story_id wants a letter or digit first), or exactly
-# scripts/selftest.sh. Only a full run joins the machine-wide queue. Words are
+# scripts/selftest.sh. Every full run joins the machine-wide queue, and so does
+# selftest.sh --changed, which is not full (run_lock_queues). Words are
 # matched in a case over the space-padded string, so no globbing happens. The
 # opening line stays alone on its line: DV-3's sed expression targets it.
 run_lock_full() {
@@ -106,15 +108,31 @@ run_lock_full() {
   return 1
 }
 
+# run_lock_queues <command>   0 if <command> joins the machine-wide queue, 1
+# otherwise (HARNESS-111, C-2): every full run (run_lock_full), and every
+# scripts/selftest.sh --changed, with or without a base ref, whatever it
+# resolved to. The size of a --changed run is not known here and is not the
+# count of its suites, so it queues as a whole. A --changed that is not the
+# first argument, a named-suite run and every other non-full run do not. The
+# opening line stays alone on its line: the suite pins it.
+run_lock_queues() {
+  run_lock_full "$1" && return 0
+  case "$1" in
+    "scripts/selftest.sh --changed"|"scripts/selftest.sh --changed "*) return 0 ;;
+  esac
+  return 1
+}
+
 # run_lock_join <root> <command>   Joins the machine-wide queue
-# (scripts/run-queue.sh) once the run lock is taken, and only for a full run.
-# Off and non-full are decided before the file is looked for, so neither
+# (scripts/run-queue.sh) once the run lock is taken, and only for a run that
+# queues (run_lock_queues: a full run, or selftest.sh --changed). Off and a
+# run that does not queue are decided before the file is looked for, so neither
 # reads nor writes anything outside the tree. run-queue.sh is this file's
 # sibling, not the caller's $PWD's nor <root>'s. Never refuses: 0 always.
 run_lock_join() {
   local q
   [ "${HARNESS_RUN_QUEUE:-}" = off ] && return 0
-  run_lock_full "$2" || return 0
+  run_lock_queues "$2" || return 0
   case "${BASH_SOURCE[0]}" in */*) q="${BASH_SOURCE[0]%/*}/run-queue.sh" ;; *) q="run-queue.sh" ;; esac
   if [ ! -f "$q" ] || ! . "$q"; then
     printf 'run-queue: scripts/run-queue.sh is missing; %s runs without the machine-wide queue.\n' "$2" >&2
