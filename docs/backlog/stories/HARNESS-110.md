@@ -777,9 +777,9 @@ a gates run.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-16T17:57:34Z
-    commit: b1218a3
-    tree:   9ea65a54f9a5b5563ce92a95bc687b3212e34d42
+    run:    2026-11-16T20:17:30Z
+    commit: f1fbb66
+    tree:   02e9afb5560b0807cca65c45198fbe648a9117c3
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
