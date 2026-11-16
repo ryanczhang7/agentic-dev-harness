@@ -936,13 +936,36 @@ it is red for the reasons above.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Round 1 (2026-11-16)
+
+Dispatched as a fresh `lead-po` on the DIFF-REVIEW row: planned `fable`, resolved **claude-fable-5-2** (Fable 5.2), no override reported. Reviewed `git diff origin/main...HEAD` after main (HARNESS-109) was merged in as `71454c1`. No file changed. The report, as returned:
+
+**What this change does.** A `selftest.sh --changed` run now joins the machine-wide run queue, so it waits behind another session's full run (and is waited for) instead of running beside it. The rule is a new predicate, `run_lock_queues`, in `scripts/run-lock.sh`; `run_lock_join` asks it instead of `run_lock_full`, which is unchanged. The rest is comments, the state README, the release number, and 108 new assertions in the `run-queue` suite with its floor raised to 337.
+
+**Checked, and nothing to fix:**
+
+- **The predicate, on inputs of the reviewer's own.** Sourced `scripts/run-lock.sh` and called `run_lock_queues` directly. 0 for `scripts/selftest.sh --changed`, with a trailing space, and with a base ref after one or two spaces. 1 for a doubled space before `--changed`, `--changed*` (no globbing), `--Changed`, a tab instead of a space, a `bash ` prefix, `scripts/selftest.sh ` alone, and the empty string. Matches C-2.
+- **The command string `run_lock_join` really sees.** `scripts/selftest.sh:515` passes `scripts/selftest.sh${*:+ $*}`, and `--changed` is only honoured as `$1` (line 307), so every `--changed` run that reaches the lock has a string the predicate matches; `SELFTEST_JOBS=4` is environment, not an argument.
+- **Runs that must not queue.** The no-suite, cannot-select and unknown-name exits (lines 329, 332, 370) all happen before the lock is sourced.
+- **Callers.** `run_lock_full` is named only in `run-lock.sh` and the suite. `scripts/attest.sh` and `scripts/ci-local.sh` take no run lock and name neither predicate; a `--changed` run `attest.sh` starts queues by itself, and `attest.sh` has no timeout a wait could trip.
+- **Nesting and the harness's own suites.** `.claude/tests/_lib.sh:33` exports `HARNESS_RUN_QUEUE=off` and no suite but `run-queue` turns it on, so the `--changed` fixture runs in `selftest.test.sh` cannot join the host queue; a holder's children pass through on the exported lock path and pid as before.
+- **Stale prose.** No shipped script, command, skill or agent file still says "only a full run queues" or "`--changed` never queues". The README paragraph and both script headers agree with the code.
+- **The tests.** Each `--changed` case asserts its header line before any queue assertion; the "has not started" checks have a queue-off control; the 22-row table and both `grep -cxF` pins are anchored; the floor arithmetic (229 + 108 = 337) matches. No assertion found that cannot fail.
+- **Load assumed.** A handful of concurrent sessions for one user on one machine, as `run-queue.sh`'s header states.
+
+**Not checked:** the `run-queue` suite and the gates were not re-run. The last full gate run (`bed44dc`) predates the merge of `origin/main`, so the gate stamp needs a fresh run against the merged tree before the PR.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-16T17:03:08Z
-    commit: 225113f
-    tree:   b0b475b1cf1f836463a9f2b0297e985b8c1489ee
+    run:    2026-11-16T17:58:30Z
+    commit: 71454c1
+    tree:   be09122c01b82f3b8c1a47618d3c5639dc5a0b9d
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -1030,3 +1053,5 @@ it is red for the reasons above.
   merges `main` first, keeps both floor lines and takes the next release
   number (C-7). The pair is not `clear`, so it is the user's call whether
   this story starts beside them or after them.
+
+- **Merged main and re-ran gates (2026-11-16).** HARNESS-109 merged to main as #199 while this story was at GATES, so `origin/main` was merged in (`71454c1`) before the diff review. `.claude/harness/VERSION` and `.claude/tests/floors.conf` conflicted, both `harness`: VERSION keeps 129 (main had 128), and floors.conf keeps both stories' notes (`run-queue 337`, `shipped-docs 21`). Full gates were then re-run on the merged tree by the orchestrator directly (a 4 s run with every gate unconfigured, nothing to fix): `attest.sh -- bash scripts/gates.sh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, tree `5f5ff948`.
