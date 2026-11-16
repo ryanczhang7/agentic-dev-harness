@@ -5,7 +5,7 @@ slug: the-docs-read-rule-names-the-direct-spel
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-110-the-docs-read-rule-names-the-direct-spel
 depends_on: [HARNESS-109]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -392,6 +392,8 @@ name, below the table.
 
 - PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
 - RED, `test-developer`, declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
+- GREEN, `feature-developer`, declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override. Orchestrator's `attest.sh check` on both records (selftest shipped-docs selftest; gates --fast): `fresh`, exit 0, not re-run.
+
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -631,6 +633,84 @@ rule: a `ps -ef | grep -E 'selftest\.sh|gates\.sh'` check can match another
 session's command line that merely *mentions* `attest.sh check -- bash
 scripts/gates.sh` (a check, not a run); I excluded `attest.sh check` lines
 when waiting.
+
+### GREEN complete
+
+**GREEN, 2026-11-16, feature-developer dispatch.** Declared `model: opus` in
+`.claude/agents/feature-developer.md`; no override reported to me; ran as
+Opus 5.5 (`claude-opus-5-5`). The orchestrator records the resolved model.
+
+**Edits (C-4 exactly), nothing in any test file's assertions:**
+
+- `.claude/tests/floors.conf`: line 67 `floor | shipped-docs  | 21` -> `22`,
+  and a dated HARNESS-110 history paragraph after the HARNESS-109 one at the
+  end of the file.
+- `.claude/tests/selftest.test.sh`: COUNTS line 559 `shipped-docs 21` ->
+  `shipped-docs 22` (the lock allowed it: `harness`).
+- `.claude/harness/VERSION`: `128 (2026-11-15)` -> `129 (2026-11-16)`.
+
+**Runs (attested, one at a time with respect to every other self-test or gates
+run on the machine).**
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs selftest
+
+```
+run:      2026-11-16T17:01:55Z
+tree:     5113ac8f5718f2360b31654da214fa354ee68395
+status:   ok
+exit:     0
+duration: 320s
+last:     2 harness suite(s) passed.
+log:      .claude/state/attest-logs/20261116T170155Z.1371319.log
+
+shipped-docs: 22 passed, 0 failed
+
+assertion floors: all 2 suite(s) met their declared floor (388 assertions executed, 388 declared).
+2 harness suite(s) passed.
+```
+
+388 = shipped-docs 22 + selftest 366, both at their floors.
+
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+
+```
+run:      2026-11-16T17:37:30Z
+tree:     5113ac8f5718f2360b31654da214fa354ee68395
+status:   ok
+exit:     0
+duration: 1s
+last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+log:      .claude/state/attest-logs/20261116T173730Z.1384811.log
+```
+
+(It was run a second time, back to back, by a batching slip of mine, with the
+same result: `.claude/state/attest-logs/20261116T173743Z.1384992.log`.) The tree
+hash above is from before this subsection was written; it changes only this
+story file.
+
+**Negative controls.** The story records none to confirm beyond DV-1. The new
+assertion is a pass-on-arrival test and measured green as RED recorded.
+
+**DV-1, not run (GATES-owned), still consistent with the tree as built.**
+`shipped-docs.test.sh` is untouched since the RED commit (`git diff HEAD` on
+it is empty), and line 205 is still the only `^SDR_RE=` line, still
+containing `(%/)?`. So the sed expression still changes exactly one line, and
+the expected `21 passed, 1 failed` with actual `.claude/tests/b.test.sh:2` and
+`.claude/tests/b.test.sh:5` holds. One consequence of GREEN: the floor is now
+22, so under the mutant `selftest.sh` will ALSO report shipped-docs below its
+floor (21 < 22). That is expected and is not a second defect.
+
+**Unexpected.** One process slip of mine, recorded here. My first attested
+suite run started while other sessions' runs were active: I had chained the
+busy check and the run without gating on the check. I killed it before it
+finished, and it left no attest record and no mutation (`mutate.sh --check`
+was clean). Background-task completion notices then arrived before the jobs
+had ended, so I misread several wait-then-run jobs as dead. I killed two that
+were still alive. A third, which I did not kill, waited correctly and started
+the suite run above at 11:01:54, once nothing else was running. The `--fast`
+run was gated on a foreground idle check. Waiting for the machine took about
+an hour, because other sessions ran run-queue mutations and another repo ran
+a gates run.
 
 ## Regressions
 
