@@ -5,7 +5,7 @@ slug: a-changed-self-test-joins-the-machine-wi
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-111-a-changed-self-test-joins-the-machine-wi
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-lock.sh, scripts/run-queue.sh, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/state/README.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -457,6 +457,54 @@ run that queues before breaking nesting or the early exit can show anything.
   **Owner: GATES.**
 
       bash scripts/mutate.sh scripts/selftest.sh '/--changed selected no suite/{n;s/^    exit 1$/    :/;}' -- bash scripts/selftest.sh run-queue
+
+**Results at GATES (2026-11-16, run by the orchestrator, one at a time, each against `bash scripts/selftest.sh run-queue` alone).** `mutate.sh` restored and verified every file; `mutate.sh --check` was clean afterwards.
+
+- **DV-1 result: as predicted.** 1 line changed; the suite went 311 passed / 26 failed (handoff predicted exactly 26): all 16 AC-1 assertions across both selections, including "has not started ... while A holds", the 4 AC-2 lock-record and 5 AC-2 reverse-pair assertions, and the wiring pin. The `run_lock_queues` table rows stayed green.
+
+    === mutate: scripts/run-lock.sh (1 line(s) changed by s/^  run_lock_queues "\$2" || return 0$/  run_lock_full "$2" || return 0/) ===
+        FAIL AC-1 every suite: X's --changed run has not started its work while A holds the queue, over two poll intervals after it queued
+        FAIL AC-1 subset: Y's --changed run has not started its work while A holds the queue, over two poll intervals after it queued
+        FAIL AC-2 --changed: while its suite ran, the queue lock existed
+        FAIL AC-2 reverse: A's full gates.sh has not started its gate command while X's --changed run holds, over two poll intervals after it queued
+        FAIL run_lock_join asks run_lock_queues, on exactly the one line DV-1 mutates
+    run-queue: 311 passed, 26 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/laughing-shirley-5afc9b/.claude/state/mutations/scripts_run-lock.sh.20261116T160030Z.1315059.bak) ===
+
+- **DV-2 result: queues.** The first attempt sent `TERM` at a fixed 10 s, before this tree's `--changed` had finished selecting: stdout and stderr were empty, exit 143, nothing ran. That attempt showed nothing either way, so the probe was re-run waiting (bounded at 900 s) for the queued line instead. The re-run output, with the per-suite listing cut:
+
+    ##### DV-2 (re-run) 2026-11-16T17:01:57Z
+    holder pid 1371425
+    queued line seen after 7s
+    exit: 143
+    --- stdout:
+    selftest: --changed — 15 of 35 suite(s) selected: attest boundaries doctor grep-count host-load lib mutate refresh run-lock run-queue selftest settings shipped-docs sigpipe worktree
+    --- stderr:
+    selftest-needed: suites — 15 of 35 selected from 7 harness path(s) changed against origin/main (merge-base 99c5ca9)
+    run-queue: queued: scripts/selftest.sh --changed waits for another harness run on this machine to finish.
+    run-queue:   behind pid 1371425, started 2026-11-16T00:00:00Z, in /dv2/holder: dv2-holder
+    run-queue: this is waiting, not hanging: it starts by itself when that run ends. If pid 1371425 is not that run, delete C:/Users/ryanc/AppData/Local/Temp/claude/260c78d56515c372/1be6b863-0a72-4201-95ae-56cb1c81a9e2/scratchpad/dv111q/run-queue.lock and it starts.
+    suite blocks on stdout: 0
+    run.lock: gone
+    temp lock: unchanged
+    holder: killed
+    temp dir: removed
+
+- **DV-3 result: as predicted.** 1 line changed (line 167); the suite went 327 passed / 10 failed (handoff predicted 10-12): five AC-3 and five HARNESS-108 AC-6 assertions, all about the inner run in the other tree, "completes within the bound" first among them.
+
+    === mutate: scripts/run-queue.sh (1 line(s) changed by s/\[ "\$pid" = "\${HARNESS_RUN_QUEUE_PID:-}" \]/false/) ===
+        FAIL AC-6: the whole arrangement completes within the bound: it does not wait on itself
+        FAIL AC-3: the whole arrangement completes within the bound: a nested --changed run does not wait on its ancestor
+    run-queue: 327 passed, 10 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/laughing-shirley-5afc9b/.claude/state/mutations/scripts_run-queue.sh.20261116T163107Z.1337936.bak) ===
+
+- **DV-4 result: as predicted.** 1 line changed; the suite went 333 passed / 4 failed (handoff predicted 2 certain, up to 7): the two certain AC-4 assertions, plus two AC-1 control assertions reddened by `release_all` after the AC-4 bound, as the handoff warned.
+
+    === mutate: scripts/selftest.sh (1 line(s) changed by /--changed selected no suite/{n;s/^    exit 1$/    :/;}) ===
+        FAIL AC-4: Z's --changed run that selects no suite exits 1 at once, within the bound, while A holds
+        FAIL AC-4: it prints no run-queue: line on stdout or stderr
+    run-queue: 333 passed, 4 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/worktrees/laughing-shirley-5afc9b/.claude/state/mutations/scripts_selftest.sh.20261116T165029Z.1358043.bak) ===
 
 ## Amendments
 
