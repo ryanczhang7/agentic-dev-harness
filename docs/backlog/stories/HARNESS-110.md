@@ -4,8 +4,8 @@ title: The docs-read rule names the direct spellings it does not see
 slug: the-docs-read-rule-names-the-direct-spel
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-110-the-docs-read-rule-names-the-direct-spel
 depends_on: [HARNESS-109]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -936,3 +936,15 @@ Verdict: Ship.
   other run on the machine: `All required gates passed (0 ran, 5 unconfigured,
   0 known).` The story then moved back to GATES, the full gates ran again, and
   diff review round 2 reviewed the fix.
+- **Self-test at GATES → REVIEW, 2026-11-16.** `selftest-needed: run`.
+  Dispatched to a `feature-developer` (declared `opus`, resolved Opus 5.5,
+  `claude-opus-5-5`), started once the machine-wide check was empty.
+  Orchestrator's `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`: `fresh`.
+  - header: `selftest: --changed — 11 of 35 suite(s) selected: boundaries doctor grep-count host-load refresh run-lock run-queue selftest shipped-docs sigpipe worktree`
+  - exit: `0`; last: `11 harness suite(s) passed.`; duration: `5456s`
+  - `assertion floors: all 11 suite(s) met their declared floor (2111 assertions executed, 2111 declared).`
+- **Possible follow-up (from both diff reviews, not this story's scope):** the
+  shipped-docs header at lines 176-177 says the braced and quoted-root
+  spellings count. That is true for `REPO_ROOT` but not for `TESTS_DIR`:
+  `"${TESTS_DIR}/../../docs/a"` and `"$TESTS_DIR"/../../docs/a` are missed.
+  It predates this story, and no line of the tree uses either spelling.
