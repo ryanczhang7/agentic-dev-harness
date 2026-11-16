@@ -189,11 +189,11 @@ REFS
 # relative docs/..., and git -C "$REPO_ROOT" show HEAD:docs/... are not seen.
 # And it trusts the name: an upstream suite named project-*.test.sh would
 # escape it, and nothing checks that upstream ships none (HARNESS-109, C-1).
-# Nor is every direct spelling seen. Three are not: an expansion of the root
-# other than `%/` ("${REPO_ROOT:?}/docs/x"), a `/./` between the root and
-# docs ("$REPO_ROOT/./docs/a"), and a docs quoted on its own
+# Nor is every direct spelling seen. Among those that are not: an expansion of
+# the root other than `%/` ("${REPO_ROOT:?}/docs/x"), a `/./` between the root
+# and docs ("$REPO_ROOT/./docs/a"), and a docs quoted on its own
 # ("$REPO_ROOT"/"docs"/a). None occurs in the tree. The assertion headed
-# HARNESS-110 below pins all three, so widening the pattern means moving its
+# HARNESS-110 below pins these three, so widening the pattern means moving its
 # line and correcting this sentence (HARNESS-110, D-1).
 #
 # This suite is one of the files it scans, and its fixtures below hold

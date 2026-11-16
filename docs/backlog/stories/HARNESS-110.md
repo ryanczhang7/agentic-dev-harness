@@ -5,7 +5,7 @@ slug: the-docs-read-rule-names-the-direct-spel
 epic: 
 type: fix
 status: in-progress
-phase: GATES
+phase: GREEN
 branch: story/HARNESS-110-the-docs-read-rule-names-the-direct-spel
 depends_on: [HARNESS-109]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -772,6 +772,73 @@ a gates run.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### R-1 (the written limit reads as a complete list)
+
+- **Adjudicated R-1:** `fable` (resolved Fable 5.2, `claude-fable-5-2`), 2026-11-16, diff review round 1, finding 1
+- **Which test, and what was wrong:** no assertion. The "Written limit"
+  comment in `.claude/tests/shipped-docs.test.sh` (lines 192-197) said "Three
+  are not:" and "pins all three". That reads as a complete list of the direct
+  spellings the rule misses. It is not one: the reviewer measured six more
+  that the shipped `SDR_RE` also misses, and D-1's reason 2 already said the
+  family is open.
+- **How it was found:** diff review round 1, finding 1, routed RED. The path
+  classifies `harness`, so the label decides.
+- **What it says now:** the same three spellings are introduced as examples
+  ("Among those that are not:"), and the assertion "pins these three". No
+  assertion, fixture or pattern changes.
+- **What earns it:** a comment has no behaviour, so there is nothing to
+  mutate (DV-1 already earns the assertion, and it is unchanged). The evidence
+  is that the diff touches comment lines only and the suite's count and
+  verdict are unchanged. Both are pasted below by the orchestrator.
+  RED was done by a `test-developer` dispatch, declared `opus`, which resolved
+  to Opus 5.5 (`claude-opus-5-5`).
+
+  ```
+  $ git diff -U0 -- .claude/tests/shipped-docs.test.sh | grep -E '^[+-][^+-]' | grep -vE '^[+-]#'; echo "noncomment-rc=$?"
+  noncomment-rc=1
+  -# Nor is every direct spelling seen. Three are not: an expansion of the root
+  -# other than `%/` ("${REPO_ROOT:?}/docs/x"), a `/./` between the root and
+  -# docs ("$REPO_ROOT/./docs/a"), and a docs quoted on its own
+  +# Nor is every direct spelling seen. Among those that are not: an expansion of
+  +# the root other than `%/` ("${REPO_ROOT:?}/docs/x"), a `/./` between the root
+  +# and docs ("$REPO_ROOT/./docs/a"), and a docs quoted on its own
+  -# HARNESS-110 below pins all three, so widening the pattern means moving its
+  +# HARNESS-110 below pins these three, so widening the pattern means moving its
+  $ bash scripts/attest.sh check -- bash scripts/selftest.sh shipped-docs
+  exit:     0
+  last:     1 harness suite(s) passed.
+  fresh
+  (log .claude/state/attest-logs/20261116T202201Z.1522421.log)
+  shipped-docs: 22 passed, 0 failed
+  ```
+
+- **GREEN:** a no-op. No source changed, and the suite above passes on the
+  corrected tree. The fast gates were run by the orchestrator at GREEN and
+  are recorded under `## Notes`.
+
+## Diff review
+
+Round 1, 2026-11-16. Reviewer: fresh `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. No file changed.
+
+What this change does: It adds six comment lines to the "Written limit" paragraph in `.claude/tests/shipped-docs.test.sh`, naming three ways of writing a read under the real checkout's `docs/` that the suite's text rule (`SDR_RE`, a pattern matched line by line) does not notice. It adds one assertion that pins that behaviour over a five-line fixture, raises the suite's declared assertion count 21 -> 22 in `floors.conf` and `selftest.test.sh`, and takes release 130. The pattern and the two functions are untouched.
+
+What I checked: the whole `git diff origin/main...HEAD`; the rule (lines 156-227) read against the new comment; the pattern run by `awk` on 16 lines of my own; the real `.claude/tests/*.sh` searched for any non-comment line holding a root name and a `docs` path component in a non-plain spelling (none outside this suite); `bash scripts/selftest.sh shipped-docs` (no other self-test or gates run was going): `shipped-docs: 22 passed, 0 failed`, floor 22 met. Both floor records agree at 22. DV-1's pasted result matches its prediction (1 line changed, only the AC-1 assertion red, actual `:2` and `:5`). "None occurs in the tree" is true. The diff only adds lines to the suite, so AC-2 holds.
+
+**Should fix:**
+
+1. **The new sentence reads as a full list, and it is not one** (`.claude/tests/shipped-docs.test.sh:192-193`)
+   - **What this is:** The sentence the story exists to add: the written statement of which direct spellings the rule misses.
+   - **Problem:** "Nor is every direct spelling seen. Three are not:" says exactly three are unseen. Measured with the shipped pattern, these are also missed and fit none of the three descriptions: `cat "$REPO_ROOT/"docs/a` (the quote closes after the slash), `cat $REPO_ROOT/\docs/a`, `cat "$REPO_ROOT"/d"ocs"/a`, and for the second root name `cat "${TESTS_DIR}/../../docs/a"`, `cat "$TESTS_DIR"/../../docs/a`, `cat "$TESTS_DIR/../.././docs/a"`. The story's own D-1 (reason 2) says the family is open; the comment says the opposite.
+   - **Fix:** In `.claude/tests/shipped-docs.test.sh`, comment only: replace "Three are not:" with wording that does not count, for example "Among those that are not:", and "pins all three" with "pins these three". No assertion, fixture or pattern changes; a comment owes no mutation.
+   - **If we skip it:** Someone writes `"${TESTS_DIR}/../../docs/x"` in a suite, reads the limit, sees it is not one of the three, and trusts a rule that stays silent. The story's stated purpose is "a limit that is written and true", and this review is the only check the Contract gives the comment.
+   - **Route:** RED
+
+Not a finding against this diff, for the orchestrator to put to the user as a possible follow-up story: the braced and quoted spellings of the second root name (`"${TESTS_DIR}/../../docs/a"`, `"$TESTS_DIR"/../../docs/a`) are missed, while the header at lines 176-177 says "the braced and the quoted-root spellings count". That is true only for `REPO_ROOT`. It predates this story (HARNESS-106/107), no line of the tree uses either today, and D-1 forbids widening here.
+
+Not checked: the `selftest` suite (which holds the COUNTS table) was not run; I read that its `shipped-docs 22` line agrees with `floors.conf` line 67. The full self-test and `gates.sh` were not run, as instructed.
+
+Verdict: fix 1 first.
 
 ## Gate results
 
