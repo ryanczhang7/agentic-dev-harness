@@ -189,6 +189,12 @@ REFS
 # relative docs/..., and git -C "$REPO_ROOT" show HEAD:docs/... are not seen.
 # And it trusts the name: an upstream suite named project-*.test.sh would
 # escape it, and nothing checks that upstream ships none (HARNESS-109, C-1).
+# Nor is every direct spelling seen. Three are not: an expansion of the root
+# other than `%/` ("${REPO_ROOT:?}/docs/x"), a `/./` between the root and
+# docs ("$REPO_ROOT/./docs/a"), and a docs quoted on its own
+# ("$REPO_ROOT"/"docs"/a). None occurs in the tree. The assertion headed
+# HARNESS-110 below pins all three, so widening the pattern means moving its
+# line and correcting this sentence (HARNESS-110, D-1).
 #
 # This suite is one of the files it scans, and its fixtures below hold
 # offending lines as data. So the two root names are spelled in pieces
@@ -434,5 +440,25 @@ assert_eq "HARNESS-109 AC-1, AC-2: suite_docs_files lists the three neighbours a
   ".claude/tests/my-project-x.test.sh
 .claude/tests/project-x.sh
 .claude/tests/x.test.sh" "$(suite_docs_files "$p")"
+
+# ---------------------------------------------------------------------------
+describe "the written limit: direct spellings the rule does not see (HARNESS-110)"
+
+# The three direct spellings the "Written limit" paragraph above SDR_RE names,
+# as lines 2-4, and one plain read as line 5, so the same output shows the file
+# was scanned and the rule fired. The root name is spelled in pieces with $SDR_R
+# from the HARNESS-106 block, so no line of this suite is an offending line. A
+# story that widens SDR_RE to see one of lines 2-4 turns this red: move that
+# line to the reads fixture above and correct the paragraph.
+q="$WORK/suite-limit"; mkdir -p "$q/.claude/tests"
+{
+  printf '%s\n' '#!/usr/bin/env bash'
+  printf '%s\n' "rm -rf \"\${$SDR_R:?}/docs/x\""
+  printf '%s\n' "cat \"\$$SDR_R/./docs/a\""
+  printf '%s\n' "cat \"\$$SDR_R\"/\"docs\"/a"
+  printf '%s\n' "cat \"\$$SDR_R/docs/a\""
+} > "$q/.claude/tests/b.test.sh"
+assert_eq "HARNESS-110 AC-1: the written limit: an expansion of the root other than %/, a /./ before docs and a separately quoted docs are not reported, while the plain read beside them in the same file is" \
+  ".claude/tests/b.test.sh:5" "$(suite_docs_reads "$q")"
 
 summary "shipped-docs"

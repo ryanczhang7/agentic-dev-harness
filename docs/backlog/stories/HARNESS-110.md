@@ -4,8 +4,8 @@ title: The docs-read rule names the direct spellings it does not see
 slug: the-docs-read-rule-names-the-direct-spel
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-110-the-docs-read-rule-names-the-direct-spel
 depends_on: [HARNESS-109]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -164,6 +164,27 @@ divides nothing and this block does.
 Not the pattern (192), not either function (193-212). A diff that changes
 any of them is outside this story.
 
+*RED amendment, 2026-11-16 (line numbers only).* After HARNESS-109 merged
+the pattern is line 199 and the functions 200-221; after this story's comment
+lines they are 205 and 206-227. Unchanged, byte for byte.
+
+*RED amendment to C-2, 2026-11-16, re-read on the merged tree (`082e171`).*
+Reason: HARNESS-109 moved the paragraph and added to it, as the block below
+foresaw. On the merged tree the "Written limit" paragraph is lines 187-191:
+the three data-flow lines quoted below (187-189), then HARNESS-109's two
+lines "And it trusts the name: an upstream suite named project-*.test.sh
+would escape it, and nothing checks that upstream ships none (HARNESS-109,
+C-1)." (190-191), which is now the paragraph's last sentence. The new
+sentence goes after it, as lines 192-197, inside the same paragraph (no
+blank comment line between). One wording change, within the latitude below:
+the last line ends "(HARNESS-110, D-1)." to match the story-id citation
+HARNESS-109's sentence ends with. Everything else is the text below, verbatim.
+The "no file is exempted by name" paragraph HARNESS-109 narrowed is now
+lines 199-203 ("no upstream file is exempted by name, this suite included")
+and is not touched. Measured: none of the 464 lines of the edited suite,
+comments included, matches `SDR_RE` (the pattern of line 205 run by `awk`
+over the whole file printed nothing).
+
 **C-2. The comment (the "Written limit" paragraph, 183-185).** At `51239f3`
 it reads:
 
@@ -191,6 +212,18 @@ the real-tree assertion (354-355) is the check.
 
 The sentence "nothing else may follow the `%`" (172-173) stays as it is: it
 is true, and the new sentence is what says where that leaves `:?`.
+
+*RED amendment to C-3, 2026-11-16, re-read on the merged tree (`082e171`).*
+Reason: line numbers moved, nothing else. HARNESS-109's block `a project's
+own suites are not scanned (HARNESS-109)` is the last before `summary` (416-
+436 after this story's comment lines), so the new block follows it as
+444-462, with `summary "shipped-docs"` at 464. `$SDR_R` is defined at line
+380 (374 before the comment lines; 365 at `51239f3`). The real-tree assertion
+cited in C-2 is 369-370 (363-364 before; 354-355 at `51239f3`). The fixture
+root is `$WORK/suite-limit` in variable `q` (`g` and `p` are taken by the
+two blocks above it). The count N on the merged tree, measured before any
+edit: `shipped-docs: 21 passed, 0 failed`, so N+1 = 22; the floor in
+`floors.conf` line 67 (66 at `51239f3`) is 21.
 
 **C-3. The fixture and the one assertion (AC-1).** A new `describe` block,
 the last before `summary "shipped-docs"` (so after HARNESS-109's block
@@ -358,6 +391,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 
 - PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
+- RED, `test-developer`, declared `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -385,6 +419,23 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One suite, `.claude/tests/shipped-docs.test.sh`, at the level the rule lives:
+the rule is a shell function in that suite, so it is called directly over a
+fixture tree under `$WORK`. One new assertion; no other line of the suite's
+code changes.
+
+| AC | Test | Where |
+|---|---|---|
+| AC-1 (settled) | `HARNESS-110 AC-1: the written limit: an expansion of the root other than %/, a /./ before docs and a separately quoted docs are not reported, while the plain read beside them in the same file is` - one `assert_eq` of the whole output of `suite_docs_reads "$WORK/suite-limit"` against exactly `.claude/tests/b.test.sh:5`, over the five-line fixture of the AC | `.claude/tests/shipped-docs.test.sh:444-462` (fixture 453-460, assertion 461-462) |
+| AC-1, the written statement | the "Written limit" paragraph names the three spellings (no assertion, by D-1; checked by diff review against C-2) | `.claude/tests/shipped-docs.test.sh:192-197` |
+| AC-2 (mechanical) | every prior assertion untouched (the diff adds lines only: 6 comment lines, one block); the real-tree assertion `HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing` still passes with the new comment and fixture code in the scanned file; count 21 -> 22 | `.claude/tests/shipped-docs.test.sh:369-370`; the run below |
+
+Level choice: unit over the rule's function is the cheapest level that can
+falsify AC-1, and the whole-output comparison (not "expects nothing") is what
+makes it falsifiable: line 5 shows the file was scanned and the rule fired,
+so a rule that scanned nothing fails it too. AC-1's control is DV-1, owned by
+GATES.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -404,6 +455,182 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**RED, 2026-11-16, test-developer dispatch.** Declared `model: opus` in
+`.claude/agents/test-developer.md`; dispatched with no override reported to
+me; ran as Opus 5.5 (`claude-opus-5-5`). The orchestrator records the
+resolved model.
+
+**What changed.** `.claude/tests/shipped-docs.test.sh` only, lines added,
+none removed or edited (`git diff --stat`: 26 insertions, 0 deletions):
+
+- lines 192-197: six whole-line comment lines appended to the "Written limit"
+  paragraph, after HARNESS-109's "And it trusts the name" sentence (C-2 as
+  amended above);
+- lines 444-462: the new last `describe` block, `the written limit: direct
+  spellings the rule does not see (HARNESS-110)`, a fixture
+  `$WORK/suite-limit/.claude/tests/b.test.sh` of exactly the AC's five lines,
+  written one `printf '%s\n'` per line with the root spelled as `$SDR_R`, and
+  one `assert_eq` (C-3 as amended above).
+
+`SDR_RE` (205), `suite_docs_files` (206-213) and `suite_docs_reads` (214-227)
+are byte-identical to the merged tree (C-1). The story file: this section,
+`## Test plan`, and the dated RED amendments to C-1 (line numbers), C-2 and
+C-3 in `## Contract`.
+
+**The test, one line.** `HARNESS-110 AC-1: the written limit: an expansion of
+the root other than %/, a /./ before docs and a separately quoted docs are not
+reported, while the plain read beside them in the same file is` - asserts the
+whole output of `suite_docs_reads` over the five-line fixture equals exactly
+`.claude/tests/b.test.sh:5`. Covers AC-1; its presence and the untouched
+rest of the suite cover AC-2.
+
+**It passes on arrival.** It is written against code that already exists, so
+there is no unfixed state in which it fails, and none was contrived (C-0). No
+watched failure is claimed. What earns it is DV-1, owned by GATES.
+
+**The command and the run (attested, after the edit).**
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs
+
+```
+run:      2026-11-16T15:27:56Z
+command:  bash scripts/selftest.sh shipped-docs
+tree:     f8deecc71b0c5908619e5e6852014fa56e8adbdc
+after:    f8deecc71b0c5908619e5e6852014fa56e8adbdc
+status:   ok
+exit:     0
+duration: 61s
+last:     1 harness suite(s) passed.
+log:      .claude/state/attest-logs/20261116T152756Z.1292470.log
+
+  a project's own suites are not scanned (HARNESS-109)
+
+  the written limit: direct spellings the rule does not see (HARNESS-110)
+
+shipped-docs: 22 passed, 0 failed
+
+assertion floors: all 1 suite(s) met their declared floor (22 assertions executed, 21 declared).
+1 harness suite(s) passed.
+```
+
+Count before the edit, on the merged tree (`082e171` plus the orchestrator's
+uncommitted phase change to this story file only), unattested:
+
+```
+shipped-docs: 21 passed, 0 failed
+
+assertion floors: all 1 suite(s) met their declared floor (21 assertions executed, 21 declared).
+1 harness suite(s) passed.
+```
+
+So 21 -> 22, exactly one higher (AC-2). The real-tree assertion (369-370)
+is among the 22 passing: the new comment lines and fixture code, in a file
+the rule scans, report nothing. At the end of RED the suite executes 22
+against a declared floor of 21; that is expected, GREEN raises the floor.
+
+**Fast gates (attested).**
+
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+
+```
+run:      2026-11-16T15:30:56Z
+command:  bash scripts/gates.sh --fast
+tree:     f8deecc71b0c5908619e5e6852014fa56e8adbdc
+after:    f8deecc71b0c5908619e5e6852014fa56e8adbdc
+status:   ok
+exit:     0
+duration: 4s
+last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+log:      .claude/state/attest-logs/20261116T153056Z.1296281.log
+```
+
+Every gate is `UNCONFIGURED` in this repository (BOOTSTRAPPED=no), as the
+Context says, so the shape check has nothing to judge; the suite above is
+the artifact's judge. `bash scripts/check-sigpipe.sh`: `scanned 64 shell
+file(s), 58 with pipefail, 0 finding(s)`, exit 0. `bash
+scripts/check-grep-count.sh`: `scanned 64 shell file(s), 0 finding(s)`, exit
+0. `bash -n` on the suite: exit 0.
+
+**Measured outside the framework (Git Bash, `awk` with the pattern of line
+205 with `''` removed, over the fixture as the new code writes it).** The
+fixture bytes, via `cat -A`, are exactly the AC's five lines:
+
+```
+#!/usr/bin/env bash$
+rm -rf "${REPO_ROOT:?}/docs/x"$
+cat "$REPO_ROOT/./docs/a"$
+cat "$REPO_ROOT"/"docs"/a$
+cat "$REPO_ROOT/docs/a"$
+```
+
+| Pattern | Lines of `b.test.sh` reported |
+|---|---|
+| `SDR_RE` as shipped (line 205) | 5 |
+| DV-1's mutant, `(%/)?` -> `(%/|:[?])?` | 2, 5 |
+
+Also measured: the shipped pattern over every line of the edited suite,
+comments included, matches nothing; DV-1's mutant pattern over every
+non-comment line of the real `.claude/tests/*.sh` matches nothing, so under
+the mutation no other assertion should move.
+
+**DV-1: expected value, declined in RED as GATES-owned.** I did not run DV-1.
+It is owned by GATES and runs against the story as committed. Expected:
+
+| | Expected |
+|---|---|
+| `mutate.sh` lines changed | 1 (line 205, `SDR_RE=`) |
+| `shipped-docs` | 21 passed, 1 failed |
+| the failing assertion | `HARNESS-110 AC-1: ...` |
+| its actual value | `.claude/tests/b.test.sh:2` and `.claude/tests/b.test.sh:5` |
+
+The sed expression was checked on a scratch copy of the merged and edited
+suite, without `mutate.sh`: `sed '/^SDR_RE=/s#(%/)?#(%/|:[?])?#'` changes
+exactly one line, 205, to
+`SDR_RE='(REPO''_ROOT|TESTS''_DIR/[.][.]/[.][.])(%/|:[?])?[}"]*/+docs([^A-Za-z0-9_.-]|$)'`.
+DV-1's command needs no amendment:
+
+    bash scripts/mutate.sh .claude/tests/shipped-docs.test.sh '/^SDR_RE=/s#(%/)?#(%/|:[?])?#' -- bash scripts/selftest.sh shipped-docs
+
+The 21/1 and the actual value are claims until GATES measures them.
+
+**Export shape.** Not applicable as modules: the test calls
+`suite_docs_reads <root>` defined in the same file, which prints one
+`<file relative to root>:<line>` per reported line, in `suite_docs_files`
+order. It also uses `$SDR_R` (line 380) and `$WORK`. GREEN changes none of
+these.
+
+**GREEN's exact edits (C-4), and nothing in `shipped-docs.test.sh`.**
+
+1. `.claude/tests/floors.conf` line 67: `floor | shipped-docs  | 21` ->
+   `floor | shipped-docs  | 22`, and a dated history paragraph after the
+   HARNESS-109 one at the end of the file (1239-...), in its form: story id,
+   GREEN, the local date, `shipped-docs: 22 passed, 0 failed`, and "+1 (the
+   HARNESS-110 written-limit assertion)".
+2. `.claude/tests/selftest.test.sh` line 559: `shipped-docs 21` ->
+   `shipped-docs 22`.
+3. `.claude/harness/VERSION`: the release after the one `main` holds when
+   GREEN runs (`128 (2026-11-15)` here now; HARNESS-108 may take 129 first),
+   with GREEN's local date.
+
+Then run, one at a time, checking no other self-test or gates run is going:
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs selftest
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+
+Expected: `shipped-docs: 22 passed, 0 failed` meeting a floor of 22, and
+`selftest` green with its COUNTS entry at 22.
+
+**Timings.** The 61 s `shipped-docs` run is a local Windows run on a host with
+other sessions' self-tests running alongside or just before; no timeout was
+added or changed, and the new block adds one `suite_docs_reads` call over one
+five-line file.
+
+**Discovered.** Nothing that changes the approach. One note on the machine
+rule: a `ps -ef | grep -E 'selftest\.sh|gates\.sh'` check can match another
+session's command line that merely *mentions* `attest.sh check -- bash
+scripts/gates.sh` (a check, not a run); I excluded `attest.sh check` lines
+when waiting.
 
 ## Regressions
 
