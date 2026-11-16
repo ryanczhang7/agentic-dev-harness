@@ -4,8 +4,8 @@ title: The docs-read rule names the direct spellings it does not see
 slug: the-docs-read-rule-names-the-direct-spel
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-110-the-docs-read-rule-names-the-direct-spel
 depends_on: [HARNESS-109]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -948,3 +948,5 @@ Verdict: Ship.
   spellings count. That is true for `REPO_ROOT` but not for `TESTS_DIR`:
   `"${TESTS_DIR}/../../docs/a"` and `"$TESTS_DIR"/../../docs/a` are missed.
   It predates this story, and no line of the tree uses either spelling.
+- **DONE, 2026-11-16.** Merged as #201 (`1bd880d`). CI on the PR: `boundaries`
+  pass in 6s, and `gates` pass in 5m18s, with no `timeout-minutes` limit near it.
