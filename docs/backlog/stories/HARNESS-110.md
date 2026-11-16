@@ -838,3 +838,9 @@ a gates run.
   `fewer than two startable stories; nothing to compare` (exit 0). It judged
   no pair, so it is not evidence that any pair is clear. The overlaps above
   were read by hand from the three stories' `touches:`.
+- **GATES, 2026-11-16: merged `main` (HARNESS-111, #200) before the diff
+  review.** It merged without conflict, but `main` had already taken release
+  `129 (2026-11-16)` on the same line, so this story's VERSION is now
+  `130 (2026-11-16)`. floors.conf and COUNTS kept their shipped-docs 22, and
+  HARNESS-111's run-queue line is 337 in both. The full gates were run again
+  on the merged tree.
