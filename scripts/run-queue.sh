@@ -10,12 +10,18 @@
 # The run lock (run-lock.sh) stops two runs in ONE tree; this stops two FULL
 # runs anywhere on the machine, by making the second wait.
 #
-# WHICH RUNS. Only a full run: gates.sh with none of --fast, --gate, --skip,
-# --required, --list, --audit, and selftest.sh with no argument at all.
-# run_lock_full, in run-lock.sh, decides it from the command string before
-# this file is even looked for, so a non-full run neither reads nor writes the
-# queue. selftest.sh --changed never queues, even when it resolves to every
-# suite: a known gap, left for a follow-up story.
+# WHICH RUNS. A full run - gates.sh with none of --fast, --gate, --skip,
+# --required, --list, --audit, and selftest.sh with no argument at all - and
+# every selftest.sh --changed [base-ref] that gets as far as the run lock,
+# whatever it resolved to (HARNESS-111). run_lock_queues, in run-lock.sh,
+# decides it from the command string before this file is even looked for, so
+# a run that does not queue neither reads nor writes the queue. A --changed
+# run that selects no suite exits before the run lock and never waits.
+# A queued --changed run runs the selection it computed when it was started,
+# not when it gets through: one that waits an hour runs the suites its diff
+# selected an hour ago, against the tree as it is when it starts. It holds
+# that tree's run.lock while it waits, so no other harness run starts there;
+# editing the tree meanwhile is not detected.
 #
 # WHERE. One lock per user per machine, outside every repository:
 #
