@@ -5,7 +5,7 @@ slug: the-docs-read-rule-names-the-direct-spel
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-110-the-docs-read-rule-names-the-direct-spel
 depends_on: [HARNESS-109]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -844,9 +844,9 @@ Verdict: fix 1 first.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-16T20:17:30Z
-    commit: f1fbb66
-    tree:   02e9afb5560b0807cca65c45198fbe648a9117c3
+    run:    2026-11-16T20:24:16Z
+    commit: acc2e0a
+    tree:   df3f203f0032a1c5018805a3907f4abf568cc884
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -911,3 +911,8 @@ Verdict: fix 1 first.
   `130 (2026-11-16)`. floors.conf and COUNTS kept their shipped-docs 22, and
   HARNESS-111's run-queue line is 337 in both. The full gates were run again
   on the merged tree.
+- **R-1 GREEN, 2026-11-16 (a no-op).** The orchestrator ran
+  `bash scripts/gates.sh --fast` directly on the corrected tree, with no
+  other run on the machine: `All required gates passed (0 ran, 5 unconfigured,
+  0 known).` The story then moved back to GATES, the full gates ran again, and
+  diff review round 2 reviewed the fix.
