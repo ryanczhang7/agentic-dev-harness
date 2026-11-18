@@ -675,6 +675,27 @@ origin/main...HEAD -- scripts/` is empty, bump `.claude/harness/VERSION`
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Round 1, 2026-11-18: a fresh `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved claude-fable-5-2; no override. Report as returned:
+
+**What this change does.** Two cases in `.claude/tests/run-queue.test.sh` put an `rm` shim on the run's `PATH` that refuses to delete the queue lock, so `run_queue_acquire` in `scripts/run-queue.sh` reaches its could-not-remove exit (lines 229-233). One source pin for the line DV-1 mutates. The run-queue floor goes 337 -> 361 in `floors.conf` and its copy in `selftest.test.sh`. `VERSION` goes 130 -> 131. No production script changes.
+
+**Checked, nothing to fix.**
+- **The shim.** The unquoted heredoc expands only `$W` and `$REAL_RM`, and `\$@`, `\$a` and `\n` survive as written. The shim refuses only arguments ending `/run-queue.lock`, so `run-queue.lock.<pid>`, `run.lock*` and everything else pass through to the real `rm`.
+- **The shim stays inside the run.** `RQ_PATH` applies only inside `rq_run`'s subshell. It is reset after the run and again by `rq_defaults`. `new_case` and `cleanup` use the real `rm`, so the planted lock does not leak into a later case or outlive the temp directory.
+- **The precondition can fail.** If the shim is not picked up, there is no `refused` record, `count_line` prints nothing, and `at_least` answers `no ()`.
+- **The module path.** For AC-1 the pid is empty and for AC-2 it is dead; either way `run_queue_link` returns 1 and prints one reclaim line, and `rm -f` is refused. Line 229 then holds, and `run_queue_without` prints the cannot-use line with `$dir` as `HARNESS_RUN_QUEUE_DIR` gives it. `RUN_QUEUE_HELD` stays 0, so `run_queue_release` leaves the planted lock alone, which matches the unchanged-directory assertion.
+- **The assertions.** Each case has 11 unconditional assertions. 2 x 11, plus the dead-pid precondition and the source pin, makes 24 = 361 - 337. The pin's whole-line match is unique, because line 222 has no `if`.
+- **DV-1.** The pasted result shows 7 failures per case plus the pin, 15 in all, including the three the story calls certain. The restore was verified.
+- **Helpers.** `qplant`, `qsnap`, `leftovers`, `count_line`, `first_rq`/`last_rq` and `wait_bounded` are used as in AC-5's `reclaim_case`, with the same 60 s bound.
+
+**Load assumed:** one developer machine running several harness sessions, plus CI. Nothing in the change depends on load beyond the 60 s bound.
+
+**Not checked:** the reviewer did not re-run the run-queue suite itself; it relied on the DV-1 paste and the recorded gate run. `check-sigpipe.sh` passed. `check-grep-count.sh` had not finished when it reported.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
