@@ -5,7 +5,7 @@ slug: the-run-queue-suite-reaches-the-exit-for
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-112-the-run-queue-suite-reaches-the-exit-for
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -363,6 +363,8 @@ name, below the table.
 **Resolved:**
 
 - PLANNED: `lead-po`, planned `fable`, resolved claude-fable-5-2 (2026-11-16); no override.
+- RED: `test-developer`, planned `opus`, resolved claude-opus-5-5 (2026-11-18); no override.
+- GREEN: done inline by the orchestrator (`lead-po` session, claude-opus-5-5), not dispatched: C-6 makes it a verified no-op plus the one-line VERSION bump; no test or script was written.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
