@@ -4,8 +4,8 @@ title: The run-queue suite reaches the exit for a queue lock that cannot be remo
 slug: the-run-queue-suite-reaches-the-exit-for
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-112-the-run-queue-suite-reaches-the-exit-for
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -397,8 +397,53 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+Level: integration, through fixture tree B's real `scripts/gates.sh` (queue
+on, `HARNESS_RUN_QUEUE_DIR=$Q`), which is where the contract lives: the exit
+is only observable as "a full run that meets a lock it cannot remove still
+runs". One helper, `unremovable_case <label> <pid-or-empty> <expected reclaim
+line>`, in a new describe `HARNESS-112 AC-1, AC-2 ...` placed after
+HARNESS-111's pins and before the closing "shipped pieces" describe (C-3).
+
+The arrangement (C-2): an `rm` shim at `$W/shim/rm`, written once by the
+suite with the real `rm` (`command -v rm` in the suite's shell, `/usr/bin/rm`
+here) as an absolute path; it refuses any argument ending `/run-queue.lock`
+(exit 1, removes nothing, appends the path to `$W/shim/refused`) and execs the
+real rm otherwise. It is on PATH only inside `rq_run`'s subshell, through a
+new knob `RQ_PATH` (empty by default, reset by `rq_defaults`, set and cleared
+around the one `rq_run` in the helper). No other case sets it.
+
+| Case | Planted lock | Expected first line | AC |
+|---|---|---|---|
+| `HARNESS-112 AC-1 no pid` | `qplant ""` - a record with started/command/root and no pid line | `unread_line "$QL"` | AC-1 |
+| `HARNESS-112 AC-2 stale pid` | `qplant "$DEAD" ... "scripts/selftest.sh ghost" /ghost/tree` | `stale_line "$DEAD" "scripts/selftest.sh ghost" /ghost/tree` | AC-2 |
+
+Each case asserts, in this order (11 each), bound 60 s (`wait_bounded "$p" 60`):
+
+1. precondition: `$W/shim/refused` holds at least one line equal to `$QL`
+   (`at_least 1`, not exactly 1 - the precondition is "the shim was picked
+   up and refused", kept separate from the behaviour assertions);
+2. `WTO` is `no` - the run ended within the bound;
+3. the reclaim line, whole, count 1;
+4. `cannot_line "$Q" scripts/gates.sh`, whole, count 1 (`<dir>` is `$Q`);
+5. exactly 2 lines matching `^run-queue:`;
+6. the first `run-queue:` line is the reclaim line;
+7. the last `run-queue:` line is the cannot-use line;
+8. `"$WRC $(present m/k/finished)"` is `"$SOLO_GATES present"`;
+9. `m/k/qlock` (the work's copy of the queue lock) is byte-identical
+   (`cmp -s`) to the copy taken right after planting;
+10. `qsnap` after equals `qsnap` before (the lock not removed, not
+    rewritten, no `run-queue.lock.<pid>` left beside it);
+11. `leftovers "$B"` is `0` (the helper prints a count; C-3's "empty" read
+    as 0).
+
+Plus one unconditional `HARNESS-112 AC-2: precondition: the dead pid is not
+running`, and in the closing describe the C-5 source pin: `grep -cxF` of
+`    if [ -e "$lock" ] && [ "$(run_queue_pid "$lock")" = "$pid" ]; then` in
+`scripts/run-queue.sh` is 1. Total new: 24. run-queue floor 337 -> 361.
+
+Message texts are read from the suite's existing `unread_line`,
+`stale_line`, `cannot_line` (settled by HARNESS-108); none is restated. No
+assertion claims a duration or a loop count.
 
 ## Handoff: RED -> GREEN
 
@@ -419,6 +464,147 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by test-developer, resolved model **Opus 5.5** (`claude-opus-5-5`),
+as `.claude/agents/test-developer.md` declares (`opus`); no override.
+
+**Command.**
+
+    bash scripts/selftest.sh run-queue
+    bash scripts/attest.sh check -- bash scripts/selftest.sh run-queue   # the recorded run, instead of a re-run
+
+**The run (C-4: every new assertion passes on arrival - the correct RED for
+a test-only chore written against existing code).** Recorded by attest on
+the final tree, floors raised:
+
+    run:      2026-11-18T21:20:05Z
+    command:  bash scripts/selftest.sh run-queue
+    tree:     1e60e85ae339823e7361cceb78818af8852f8f84
+    status:   ok
+    exit:     0
+    duration: 487s
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261118T212005Z.19940.log
+
+    run-queue: 361 passed, 0 failed
+    assertion floors: all 1 suite(s) met their declared floor (361 assertions executed, 361 declared).
+    1 harness suite(s) passed.
+
+An earlier run on the same test file before the floor edit (tree
+`84cf04b3...`, log `.claude/state/attest-logs/20261118T211008Z.9921.log`,
+548 s) gave `run-queue: 361 passed, 0 failed` against the old floor of 337:
+the 24 new assertions are 361 - 337. Both runs local, Windows host, loaded
+(another session's full `gates.sh` was running beside the first).
+
+`bash scripts/check-sigpipe.sh` -> `0 finding(s)`, rc 0;
+`bash scripts/check-grep-count.sh` -> `0 finding(s)`, rc 0.
+
+    run:      2026-11-18T21:28:21Z
+    command:  bash scripts/gates.sh --fast
+    tree:     1e60e85ae339823e7361cceb78818af8852f8f84
+    status:   ok
+    exit:     0
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261118T212821Z.28647.log
+
+Every gate is UNCONFIGURED (format, lint, typecheck, unit, coverage;
+mutation on request), as Context says; `--fast` judges nothing here. The
+artifact is judged by the `run-queue` suite under its floor.
+
+**Tests, one line each** (labels as they appear; every one in the
+`HARNESS-112 AC-1, AC-2` describe except the pin):
+
+- `HARNESS-112 AC-2: precondition: the dead pid is not running` - `$DEAD` is gone (AC-2 setup).
+- `<case>: precondition: the run tried to remove the queue lock and the rm shim refused it` - refusal record has >= 1 line `$QL` (AC-1, AC-2; the AC's control clause).
+- `<case>: exits within the bound: it does not go round the reclaim loop` - `WTO=no` at 60 s (AC-1, AC-2 "within the bound").
+- `<case>: prints the reclaim line, exactly once` - whole-line count 1 (AC-1 unread / AC-2 stale).
+- `<case>: then gives up on the queue: the cannot-use line naming the queue directory, exactly once` - `cannot_line "$Q" scripts/gates.sh` count 1.
+- `<case>: and prints no other run-queue: line` - `^run-queue:` count 2 ("exactly two lines").
+- `<case>: the first run-queue: line is the reclaim line` - order.
+- `<case>: the last run-queue: line is the cannot-use line` - order.
+- `<case>: runs its work, with the status it has alone (<SOLO_GATES>)` - `$WRC` + `m/k/finished` ("does its work and exits with the status the same run has alone").
+- `<case>: its work saw the lock as planted, not a record of its own` - `cmp -s` planted copy vs `m/k/qlock`.
+- `<case>: the queue directory afterwards holds the planted lock, byte for byte, and nothing else` - `qsnap` before == after.
+- `<case>: and the tree holds no run lock` - `leftovers "$B"` is 0.
+- `scripts/run-queue.sh tests for a lock it could not remove on exactly the one line HARNESS-112 DV-1 mutates` - C-5 pin, count 1.
+
+`<case>` is `HARNESS-112 AC-1 no pid` and `HARNESS-112 AC-2 stale pid`.
+
+**Files touched.**
+
+- `.claude/tests/run-queue.test.sh` - `RQ_PATH` knob (declaration,
+  `rq_defaults`, one line in `rq_run`'s subshell), the shim, the helper,
+  two cases, the dead-pid precondition, the source pin.
+- `.claude/tests/floors.conf` - `run-queue` 337 -> 361 (line 63) and a dated
+  HARNESS-112 entry at the end.
+- `.claude/tests/selftest.test.sh` - the hand copy, `run-queue 361` (line 554).
+- `docs/backlog/stories/HARNESS-112.md` - `## Test plan`, this section.
+
+Not touched: `scripts/*`, `.claude/tests/_lib.sh`, `.claude/harness/VERSION`
+(GREEN's, C-6), HARNESS-108's story. `selftest` floor stays 366.
+
+**Export shape / callers (C-8).** N/A: no signature changes and no exports.
+The only shape change is suite-local: `rq_run` and `rq_defaults` gain the
+`RQ_PATH` knob; no existing case sets it, so no existing case changes.
+GREEN constrains nothing in the module - it writes only `VERSION`.
+
+**Passed on arrival - every one of the 24.** They are earned by DV-1 at
+GATES (RED cannot: the exit exists and source is frozen). The refusal-record
+precondition is what stops the cases passing for a wrong reason in RED: it
+passed in both cases, so the shim was on the run's PATH and did refuse the
+lock - a run where `rm` simply succeeded would have failed it and also the
+`qsnap` and `qlock` assertions (an ordinary reclaim takes the queue and
+leaves a record of its own pid).
+
+**DV-1 prediction** (`bash scripts/mutate.sh scripts/run-queue.sh 's/^    if
+\[ -e "\$lock" \] && ...; then$/    if false; then/' -- bash scripts/selftest.sh
+run-queue`): the run goes round the reclaim loop until `wait_bounded` sends
+TERM at 60 s (gates.sh traps TERM -> exit 143; KILL 10 s later if needed).
+Per case:
+
+| Assertion | Under DV-1 | Why |
+|---|---|---|
+| refusal record >= 1 | green | the shim refuses every pass |
+| within the bound (`WTO`) | **certain red** | nothing ends the loop |
+| reclaim line exactly once | likely red | one pass ~10 s here under load (Context), so several in 60 s; green only if a host did one pass in 60 s |
+| cannot-use line once | **certain red** | count 0 |
+| exactly 2 `run-queue:` lines | likely red | equals 2 only if exactly two reclaim lines were printed |
+| first line is the reclaim line | green | it is printed first either way |
+| last line is the cannot-use line | **certain red** | the last is a reclaim line |
+| status and finished | **certain red** | killed (143 or 137), work never ran, `finished` absent |
+| work's copy of the lock is the planted one | **certain red** | work never ran, `m/k/qlock` absent |
+| `qsnap` unchanged | probably green | refused lock unchanged; each pass removes its `run-queue.lock.<pid>` through the real rm, and the TERM -> EXIT trap releases a tmp left mid-pass; red only if KILL lands mid-pass |
+| no run lock left | probably green | gates.sh's EXIT trap releases the run lock on TERM |
+
+Plus the C-5 source pin: **certain red** (count 0 on the mutated line); the
+dead-pid precondition and every assertion outside the two cases: green.
+
+Predicted failure count: **certain 11** (5 per case + the pin), **expected
+15** (with the two "likely" per case), **range 11-19**. This sharpens C-4's
+list: besides the three it names (cannot-use count, `WTO`,
+status-and-finished), "last line is the cannot-use line" and "the work's
+copy of the lock" are certain too. The mutated run costs about two extra
+60-70 s bounds. If either case shows 0 of its certain five red, that case
+does not reach the exit.
+
+**Negative controls.** None of the threshold kind; the AC's control is DV-1
+above (GATES-owned). Not run in RED: it requires mutating
+`scripts/run-queue.sh`, which is DV-1's owner's job at GATES; RED declines
+it in writing here.
+
+**Choices within the Contract (no amendment made).**
+
+- AC-1 plants `qplant ""` (a record with no pid line), not a `junk` file -
+  both reach the exit (Context); this matches `reclaim_case ac5-nopid`.
+- The refusal record is at `$W/shim/refused`, as C-2's snippet writes it;
+  the shim directory holds no other executable.
+- Refusal count pinned at `>= 1`, not exactly 1 (C-2 leaves it to RED).
+- Bound kept at C-3's 60 s; no measurement suggested raising it (both runs
+  of the suite finished green at 487 s and 548 s total on a loaded host).
+
+**For GREEN.** Nothing changes the approach: verify `git diff --stat
+origin/main...HEAD -- scripts/` is empty, bump `.claude/harness/VERSION`
+(C-6), and re-run `bash scripts/selftest.sh run-queue` at the new floor.
 
 ## Regressions
 
