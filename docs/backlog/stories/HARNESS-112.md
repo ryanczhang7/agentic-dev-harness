@@ -5,7 +5,7 @@ slug: the-run-queue-suite-reaches-the-exit-for
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-112-the-run-queue-suite-reaches-the-exit-for
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -306,6 +306,34 @@ mutation is itself made on the real line.
 
       bash scripts/mutate.sh scripts/run-queue.sh 's/^    if \[ -e "\$lock" \] && \[ "\$(run_queue_pid "\$lock")" = "\$pid" \]; then$/    if false; then/' -- bash scripts/selftest.sh run-queue
 
+  **Result (GATES, 2026-11-18, run by the orchestrator, Windows host under load):** both cases go red, as required. `mutate.sh` changed exactly line 229, the run-queue suite failed 15 assertions (7 per case plus the source pin, matching RED's "15 expected"; the certain ones - cannot-use count, within the bound, status-and-finished - red in both cases), and the file was restored and verified byte for byte. Every other assertion stayed green. Output, trimmed to the mutate frame and the failures:
+
+```
+=== mutate: scripts/run-queue.sh (1 line(s) changed by s/^    if \[ -e "\$lock" \] \&\& \[ "\$(run_queue_pid "\$lock")" = "\$pid" \]; then$/    if false; then/) ===
+  229 -     if [ -e "$lock" ] && [ "$(run_queue_pid "$lock")" = "$pid" ]; then
+  229 +     if false; then
+    FAIL HARNESS-112 AC-1 no pid: exits within the bound: it does not go round the reclaim loop
+    FAIL HARNESS-112 AC-1 no pid: prints the reclaim line, exactly once
+    FAIL HARNESS-112 AC-1 no pid: then gives up on the queue: the cannot-use line naming the queue directory, exactly once
+    FAIL HARNESS-112 AC-1 no pid: and prints no other run-queue: line
+    FAIL HARNESS-112 AC-1 no pid: the last run-queue: line is the cannot-use line
+    FAIL HARNESS-112 AC-1 no pid: runs its work, with the status it has alone (0)
+    FAIL HARNESS-112 AC-1 no pid: its work saw the lock as planted, not a record of its own
+    FAIL HARNESS-112 AC-2 stale pid: exits within the bound: it does not go round the reclaim loop
+    FAIL HARNESS-112 AC-2 stale pid: prints the reclaim line, exactly once
+    FAIL HARNESS-112 AC-2 stale pid: then gives up on the queue: the cannot-use line naming the queue directory, exactly once
+    FAIL HARNESS-112 AC-2 stale pid: and prints no other run-queue: line
+    FAIL HARNESS-112 AC-2 stale pid: the last run-queue: line is the cannot-use line
+    FAIL HARNESS-112 AC-2 stale pid: runs its work, with the status it has alone (0)
+    FAIL HARNESS-112 AC-2 stale pid: its work saw the lock as planted, not a record of its own
+    FAIL scripts/run-queue.sh tests for a lock it could not remove on exactly the one line HARNESS-112 DV-1 mutates
+run-queue: 346 passed, 15 failed
+FAIL run-queue  did 346 units of work, below the floor of 361 in .claude/tests/floors.conf
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/scripts_run-queue.sh.20261118T213909Z.38410.bak) ===
+  229:     if [ -e "$lock" ] && [ "$(run_queue_pid "$lock")" = "$pid" ]; then
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -365,6 +393,7 @@ name, below the table.
 - PLANNED: `lead-po`, planned `fable`, resolved claude-fable-5-2 (2026-11-16); no override.
 - RED: `test-developer`, planned `opus`, resolved claude-opus-5-5 (2026-11-18); no override.
 - GREEN: done inline by the orchestrator (`lead-po` session, claude-opus-5-5), not dispatched: C-6 makes it a verified no-op plus the one-line VERSION bump; no test or script was written.
+- GATES: `feature-developer`, planned `opus`, resolved claude-opus-5-5 (2026-11-18); no override. DV-1 run by the orchestrator through mutate.sh.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -648,10 +677,21 @@ origin/main...HEAD -- scripts/` is empty, bump `.claude/harness/VERSION`
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-18T21:49:41Z
+    commit: 6e85024
+    tree:   f0f0163bc30500d55d3b64cf68dd7a4ca8912cbf
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
