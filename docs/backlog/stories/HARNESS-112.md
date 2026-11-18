@@ -4,8 +4,8 @@ title: The run-queue suite reaches the exit for a queue lock that cannot be remo
 slug: the-run-queue-suite-reaches-the-exit-for
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-112-the-run-queue-suite-reaches-the-exit-for
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -394,6 +394,8 @@ name, below the table.
 - RED: `test-developer`, planned `opus`, resolved claude-opus-5-5 (2026-11-18); no override.
 - GREEN: done inline by the orchestrator (`lead-po` session, claude-opus-5-5), not dispatched: C-6 makes it a verified no-op plus the one-line VERSION bump; no test or script was written.
 - GATES: `feature-developer`, planned `opus`, resolved claude-opus-5-5 (2026-11-18); no override. DV-1 run by the orchestrator through mutate.sh.
+- DIFF-REVIEW: `lead-po`, planned `fable`, resolved claude-fable-5-2 (2026-11-18); no override. Verdict: Ship.
+- GATES (self-test): `feature-developer`, planned `opus`, resolved claude-opus-5-5 (2026-11-18); no override.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -750,3 +752,4 @@ Verdict: Ship.
   condition false neither returns. `mutate.sh` dry-run of DV-1's expression
   with `-- true`: line 229 only, restored and verified. The request named
   `VERSION` as 129; `main` holds `130 (2026-11-16)`, and C-6 says so.
+- **GATES → REVIEW, 2026-11-18.** `selftest-needed.sh`: run, 11 of 35 suites selected. `SELFTEST_JOBS=4 bash scripts/attest.sh -- bash scripts/selftest.sh --changed` on tree 38dac5f: exit 0, `11 harness suite(s) passed.`, `assertion floors: all 11 suite(s) met their declared floor (2135 assertions executed, 2135 declared).`, 6867 s on this loaded host. It was checked with `attest.sh check -- bash scripts/selftest.sh --changed`, because attest records the command without the `SELFTEST_JOBS=4` environment prefix. GREEN was done inline: C-6 makes it a no-op plus the `VERSION` bump, verified by an empty `scripts/` diff and `run-queue: 361 passed, 0 failed`. CI runs the full self-test on the PR.
