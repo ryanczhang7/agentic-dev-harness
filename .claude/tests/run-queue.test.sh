@@ -58,6 +58,9 @@
 # each in the if and the else alike, and the cases through selftest.sh fail
 # on their own - B runs beside A. AC-3 (nested --changed) and AC-4 (no suite)
 # pass on arrival; DV-3 and DV-4 earn them at GATES.
+#
+# fixture-only: .claude/tests/floors.conf
+#   writes its fixtures' own floors files; never reads the real one.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

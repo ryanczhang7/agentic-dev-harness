@@ -1050,13 +1050,22 @@ assert_eq "no line of CLAUDE.md still claims a test-data mention does not reach 
 $CM_TEXT
 CM_CLAIM
 )"
+# HARNESS-115 C-6 / C-8 supersedes this paragraph's shape: three lines become
+# six, the last three stating the `# fixture-only:` declaration. CM_P4-CM_P6
+# are its new lines; the HARNESS-115 AC-8 block below counts each.
+CM_P4='A suite'"'"'s `# fixture-only: <path>` line says it only writes its own copy of'
+CM_P5='that path: the suite is then not selected for it, unless its source also'
+CM_P6='names the path under `$REPO_ROOT/`.'
 assert_eq "the declaration is its own paragraph directly before the one beginning \`gates.sh\` judges the **code**" "[]
 [$CM_P1]
 [$CM_P2]
 [$CM_P3]
+[$CM_P4]
+[$CM_P5]
+[$CM_P6]
 []" "$(awk -v g="$CM_GATES_HEAD" '
     { b[NR] = $0 }
-    substr($0, 1, length(g)) == g { for (i = NR - 5; i < NR; i++) print "[" b[i] "]"; exit }' <<CM_BEFORE
+    substr($0, 1, length(g)) == g { for (i = NR - 8; i < NR; i++) print "[" b[i] "]"; exit }' <<CM_BEFORE
 $CM_TEXT
 CM_BEFORE
 )"
@@ -1080,5 +1089,380 @@ $CM_L2" "$(awk 'NR >= 160 && NR <= 162' <<CM_LINENO
 $CM_TEXT
 CM_LINENO
 )"
+
+# ===========================================================================
+# HARNESS-115. A suite that names a path only to write its own fixture copy
+# says so on a line of its own, `# fixture-only: <path> [<path> ...]` at
+# column 0 (Contract C-1), and R3 then does not select it for that path
+# (C-2 case 3). The declaration is ignored when the suite's own source holds
+# the path directly after the REPO_ROOT variable and a slash (C-2 case 2). A
+# path that only declaring suites name answers `all` (C-2, D-2), and a list
+# answer says on its last stderr line which suites a declaration left out
+# (C-3).
+#
+# THE ORACLES (C-7). AC-1 and AC-2 are SETTLED: the lists are the story's,
+# measured at PLANNED, read out here and never derived from the script; `m`
+# is counted from the real directory. AC-3..AC-7 are mechanical: stdout is
+# compared whole, the C-3 stderr lines byte for byte, from the root and from
+# src/. AC-8 counts whole lines with ==.
+#
+# THIS SUITE DECLARES NOTHING (Contract C-4, amended in RED). It never spells
+# any of AC-1's four paths whole: each is built from two halves, as
+# HARNESS-096 AC-3 does, so its copy in the real-tree fixtures is not a
+# mention and the AC-1 list (which does not hold selftest-needed) and the
+# AC-7 name list (which does not either) are both reachable.
+#
+# THE RED SHAPE. scripts/selftest-needed.sh reads no declaration yet, so a
+# declaring suite is selected `(mentioned)`, no path answers the new `all`,
+# and no `not selected` line is printed. Every case runs and every assertion
+# is unconditional, so the executed count is the same in RED and GREEN. The
+# controls (AC-3's removed line, AC-4) pass on arrival; the handoff says what
+# earns each.
+
+H115_V=".claude/harness/""VERSION"
+H115_F=".claude/tests/""floors.conf"
+H115_ST=".claude/tests/""selftest.test.sh"
+H115_SD=".claude/tests/""shipped-docs.test.sh"
+H115_P1='.claude/harness/h115-one.conf'
+H115_P2='.claude/harness/h115-two.conf'
+H115_P3='.claude/harness/h115-three.conf'
+H115_DESPITE='mentioned under $REPO_ROOT, despite fixture-only'
+H115_NS='  not selected (fixture-only): '
+H115_M=0
+for f in "$REPO_ROOT"/.claude/tests/*.test.sh; do [ -e "$f" ] && H115_M=$((H115_M+1)); done
+
+# h115_ns_count   How many lines of the last run's stderr begin with the
+# not-selected prefix.
+h115_ns_count() {
+  awk -v p="$H115_NS" 'substr($0, 1, length(p)) == p { c++ } END { print c + 0 }' <<H115_ERR
+$ERR
+H115_ERR
+}
+
+# h115_expect <label> <stdout> <errmode> <err> <ns> [name|path|rule ...]
+# From the root and from src/, `--suites`: exit 0; stdout WHOLE and its line
+# count; stderr - <errmode> `whole`: exactly <err>, `first`: its first line
+# exactly <err>; <ns> non-empty: stderr's LAST line is exactly <ns>, and it is
+# the one not-selected line; <ns> empty: no not-selected line at all; and
+# each `name|path|rule` is a reason line, exactly once.
+h115_expect() {
+  local label="$1" want="$2" mode="$3" werr="$4" ns="$5" where cwd spec rn rp nwant
+  shift 5
+  nwant=0; [ -n "$ns" ] && nwant=1
+  for where in root subdir; do
+    cwd="$d"; [ "$where" = subdir ] && cwd="$d/$SUBDIR"
+    es_run "$cwd" --suites
+    assert_eq "$label [from $where]: exits 0" 0 "$RC"
+    assert_eq "$label [from $where]: stdout is exactly the pinned list" "$want" "$OUTS"
+    assert_eq "$label [from $where]: stdout has exactly $(nlines "$want") line(s)" "$(nlines "$want")" "$NOUT"
+    if [ "$mode" = whole ]; then
+      assert_eq "$label [from $where]: stderr is exactly the pinned text" "$werr" "$ERR"
+    else
+      assert_eq "$label [from $where]: stderr's first line is exactly the pinned header" "$werr" "$ERR1"
+    fi
+    if [ -n "$ns" ]; then
+      assert_eq "$label [from $where]: stderr's last line is exactly the not-selected line" "$ns" "${ERR##*$'\n'}"
+    fi
+    assert_eq "$label [from $where]: stderr holds $nwant not-selected line(s)" "$nwant" "$(h115_ns_count)"
+    for spec in "$@"; do
+      rn="${spec%%|*}"; rp="${spec#*|}"
+      assert_eq "$label [from $where]: stderr's reason line for $rn is exactly \`${rp%%|*} (${rp#*|})\`, once" 1 \
+        "$(reason_lines "$rn" "${rp%%|*}" "${rp#*|}")"
+    done
+  done
+  return 0
+}
+
+# h115_real [fn]   d := a fixture whose `main` holds a copy of every real
+# suite and its own floors file (C-5), on a story branch with no change yet.
+# <fn>, when given, runs before the commit on main - so an edit it makes to
+# a copied suite is in the base, not a changed path.
+h115_real() {
+  new_fixture; SN="$d/scripts/selftest-needed.sh"
+  mkdir -p "$d/.claude/tests"
+  cp "$REPO_ROOT"/.claude/tests/*.test.sh "$d/.claude/tests/"
+  printf 'floor | h115 | 1\n' > "$d/$H115_F"
+  [ -z "${1-}" ] || "$1"
+  commit_all "the real suites"
+  story_branch
+}
+
+# h115_edit <rel>...   Append a line to each path on the story branch.
+h115_edit() { local r; for r in "$@"; do printf '# edited on the story branch\n' >> "$d/$r"; done; }
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-115: this suite names none of AC-1's four paths whole, so it needs no declaration"
+
+assert_eq "this suite's source holds the whole VERSION path on no line" 0 "$(h096_lines_holding "$H115_V")"
+assert_eq "this suite's source holds the whole floors.conf path on no line" 0 "$(h096_lines_holding "$H115_F")"
+assert_eq "this suite's source holds the whole selftest.test.sh path on no line" 0 "$(h096_lines_holding "$H115_ST")"
+assert_eq "this suite's source holds the whole shipped-docs.test.sh path on no line" 0 "$(h096_lines_holding "$H115_SD")"
+assert_eq "precondition: the real tree holds the suites AC-1 counts (m > 0)" yes "$([ "$H115_M" -gt 0 ] && printf yes || printf no)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-115 AC-1: HARNESS-114's four paths select 6 real suites, not 11"
+
+h115_real
+h115_edit "$H115_V" "$H115_F" "$H115_ST" "$H115_SD"
+h115_expect "AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the six suites that read or scan them" \
+  "doctor
+grep-count
+selftest
+shipped-docs
+sigpipe
+worktree" first "$(hdr 6 "$H115_M" 4)" \
+  "${H115_NS}boundaries host-load refresh run-lock run-queue" \
+  "doctor|$H115_V|mentioned" \
+  "grep-count|$H115_ST|scans *.sh" \
+  "selftest|$H115_F|mentioned" \
+  "shipped-docs|$H115_ST|scans .claude/tests/*.sh" \
+  "sigpipe|$H115_ST|scans *.sh" \
+  "worktree|$H115_V|mentioned"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-115 AC-2 (control): the suites that read the real VERSION and floors.conf stay selected"
+
+h115_real
+h115_edit "$H115_V" "$H115_F"
+h115_expect "AC-2: VERSION and floors.conf changed over the real suites print doctor, selftest and worktree" \
+  "doctor
+selftest
+worktree" first "$(hdr 3 "$H115_M" 2)" \
+  "${H115_NS}boundaries host-load refresh run-lock run-queue" \
+  "doctor|$H115_V|mentioned" \
+  "worktree|$H115_V|mentioned" \
+  "selftest|$H115_F|mentioned"
+
+# ---------------------------------------------------------------------------
+# The synthetic cases. Two stub suites in a fixture of their own (C-5), so
+# the `9` of the HARNESS-094/096 pins does not move: `reader` names P1 and
+# declares nothing; `writer` names P1 and P2 after `$FIX/`, plus whatever
+# lines a case appends; H115_STUBS_EXTRA names more stub suites, committed
+# beside them. The stubs are read, never run. Every changed path but one is a
+# .conf under .claude/harness, which no scanner row matches.
+h115_fixture() {   # [line ...]   each appended to writer; d := the fixture, on its branch
+  local l
+  new_fixture; SN="$d/scripts/selftest-needed.sh"
+  put .claude/tests/reader.test.sh "# fixture suite reader: reads $H115_P1"
+  put .claude/tests/writer.test.sh "# fixture suite writer: writes \$FIX/$H115_P1 and \$FIX/$H115_P2"
+  for l in "$@"; do printf '%s\n' "$l" >> "$d/.claude/tests/writer.test.sh"; done
+  for l in ${H115_STUBS_EXTRA-}; do put ".claude/tests/$l.test.sh" "# fixture suite $l"; done
+  commit_all "h115 stubs"
+  story_branch
+}
+
+describe "HARNESS-115 AC-3: a suite that declares a changed path fixture-only is not selected for it"
+
+h115_fixture "# fixture-only: $H115_P1"
+put "$H115_P1" 'one'
+h115_expect "AC-3: writer declares P1, reader does not; P1 changed prints reader alone" \
+  "reader" first "$(hdr 1 2 1)" "${H115_NS}writer" \
+  "reader|$H115_P1|mentioned"
+
+h115_fixture
+put "$H115_P1" 'one'
+h115_expect "AC-3 control: the same fixture with writer's declaration line removed prints both" \
+  "reader
+writer" first "$(hdr 2 2 1)" "" \
+  "reader|$H115_P1|mentioned" "writer|$H115_P1|mentioned"
+
+h115_fixture "# fixture-only: $H115_P1"$'\r'
+put "$H115_P1" 'one'
+h115_expect "C-1: a declaration line ending in a carriage return still declares (CRLF checkouts)" \
+  "reader" first "$(hdr 1 2 1)" "${H115_NS}writer" \
+  "reader|$H115_P1|mentioned"
+
+h115_fixture "# fixture-only: $H115_P2 $H115_P1"
+put "$H115_P1" 'one'
+h115_expect "C-1: a declaration naming two paths declares the second one too" \
+  "reader" first "$(hdr 1 2 1)" "${H115_NS}writer" \
+  "reader|$H115_P1|mentioned"
+
+h115_fixture "# fixture-only: $H115_P2" "# fixture-only: $H115_P1"
+put "$H115_P1" 'one'
+h115_expect "C-1: a suite's declared set is every path on every declaration line" \
+  "reader" first "$(hdr 1 2 1)" "${H115_NS}writer" \
+  "reader|$H115_P1|mentioned"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-115 AC-4: a declaration covers only its suite and the paths it names; mention stays the default"
+
+h115_fixture "# fixture-only: $H115_P1"
+put "$H115_P2" 'two'
+h115_expect "AC-4(a): writer declares P1 only; P2, which it also names, changed prints writer (mentioned)" \
+  "writer" first "$(hdr 1 2 1)" "" \
+  "writer|$H115_P2|mentioned"
+
+h115_fixture "# fixture-only: $H115_P1"
+put "$H115_P1" 'one'
+printf '# edited on the story branch\n' >> "$d/.claude/tests/writer.test.sh"
+h115_expect "AC-4(b): writer declares P1 and its own .test.sh changed beside P1: writer is printed (itself)" \
+  "reader
+writer" first "$(hdr 2 2 2)" "" \
+  "reader|$H115_P1|mentioned" "writer|.claude/tests/writer.test.sh|itself"
+
+H115_BAD=("  # fixture-only: $H115_P1" "#fixture-only: $H115_P1" "# fixture-only $H115_P1" "# fixture-only: ${H115_P1%.conf}")
+H115_BAD_NAMES=("an indented line" "\`#fixture-only:\` with no space" "\`# fixture-only\` with no colon" "a line naming only a prefix of the path")
+for i in "${!H115_BAD[@]}"; do
+  h115_fixture "${H115_BAD[$i]}"
+  put "$H115_P1" 'one'
+  h115_expect "AC-4(c): ${H115_BAD_NAMES[$i]} declares nothing, so writer is still printed (mentioned)" \
+    "reader
+writer" first "$(hdr 2 2 1)" "" \
+    "reader|$H115_P1|mentioned" "writer|$H115_P1|mentioned"
+done
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-115 AC-5 (control): a declaration the suite's own source contradicts is ignored"
+
+h115_fixture "# fixture-only: $H115_P1" "cat \"\$REPO_ROOT/$H115_P1\""
+put "$H115_P1" 'one'
+h115_expect "AC-5: writer declares P1 but reads \"\$REPO_ROOT/P1\": writer is printed, saying why" \
+  "reader
+writer" first "$(hdr 2 2 1)" "" \
+  "reader|$H115_P1|mentioned" "writer|$H115_P1|$H115_DESPITE"
+
+h115_fixture "# fixture-only: $H115_P1" "cat \"\${REPO_ROOT}/$H115_P1\""
+put "$H115_P1" 'one'
+h115_expect "AC-5: writer declares P1 but reads \"\${REPO_ROOT}/P1\": writer is printed, saying why" \
+  "reader
+writer" first "$(hdr 2 2 1)" "" \
+  "reader|$H115_P1|mentioned" "writer|$H115_P1|$H115_DESPITE"
+
+h115_fixture "# fixture-only: $H115_P1" "cat \"\$REPO_ROOT/$H115_P1.bak\""
+put "$H115_P1" 'one'
+h115_expect "C-2 (2): \"\$REPO_ROOT/P1.bak\" is a longer path, not P1, so it does not contradict the declaration" \
+  "reader" first "$(hdr 1 2 1)" "${H115_NS}writer" \
+  "reader|$H115_P1|mentioned"
+
+# The real spellings: the copies in the fixture, never the real files, get
+# the line, on main, so the copy is not itself a changed path.
+h115_decl_doctor() { printf '# fixture-only: %s\n' "$H115_V" >> "$d/.claude/tests/doctor.test.sh"; }
+h115_decl_selftest() { printf '# fixture-only: %s\n' "$H115_F" >> "$d/$H115_ST"; }
+
+h115_real h115_decl_doctor
+h115_edit "$H115_V"
+h115_expect "AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes" \
+  "doctor
+worktree" first "$(hdr 2 "$H115_M" 1)" "${H115_NS}boundaries refresh" \
+  "doctor|$H115_V|$H115_DESPITE" "worktree|$H115_V|mentioned"
+
+h115_real h115_decl_selftest
+h115_edit "$H115_F"
+h115_expect "AC-5: a copy of the real selftest.test.sh declaring floors.conf is still printed when floors.conf changes" \
+  "selftest" first "$(hdr 1 "$H115_M" 1)" "${H115_NS}host-load refresh run-lock run-queue" \
+  "selftest|$H115_F|$H115_DESPITE"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-115 AC-6: a path that only declaring suites name answers all"
+
+H115_ALL3="${SUITES_ALL}$H115_P3 is named only as fixture data by the suites that mention it; defaulting to every suite"
+
+h115_fixture "# writes \$FIX/$H115_P3" "# fixture-only: $H115_P3"
+put "$H115_P3" 'three'
+h115_expect "AC-6: P3, named only by writer, which declares it, prints all and says why" \
+  "all" whole "$H115_ALL3" ""
+
+h115_fixture "# writes \$FIX/$H115_P3" "# fixture-only: $H115_P3"
+put "$H115_P3" 'three'; put "$H115_P1" 'one'
+h115_expect "AC-6: P3 beside a P1 that reader maps still prints all, naming P3" \
+  "all" whole "$H115_ALL3" ""
+
+h115_fixture "# writes \$FIX/$H115_P3" "# fixture-only: $H115_P3"
+put "$H115_P3" 'three'; put .claude/harness/h115-zz.conf 'zz'
+h115_expect "C-2: P3 and an unmapped h115-zz.conf after it in sort order: the reason is P3's" \
+  "all" whole "$H115_ALL3" ""
+
+h115_fixture "# writes \$FIX/$H115_P3" "# fixture-only: $H115_P3"
+put "$H115_P3" 'three'; put .claude/harness/h115-aa.conf 'aa'
+h115_expect "C-2: an unmapped h115-aa.conf before P3 in sort order gives the reason, as today" \
+  "all" whole "${SUITES_ALL}.claude/harness/h115-aa.conf is mapped by no rule; defaulting to every suite" ""
+
+# C-2: R4 does not read declarations; a `map` row still places the path. The
+# shipped-docs stub is committed on main beside the other two, so it is not
+# itself a changed path.
+H115_STUBS_EXTRA=shipped-docs
+h115_fixture "# writes \$FIX/.claude/commands/h115.md" "# fixture-only: .claude/commands/h115.md"
+H115_STUBS_EXTRA=""
+put .claude/commands/h115.md '# x'
+h115_expect "C-2: a path writer declares and a shipped-docs map row matches prints shipped-docs, not all" \
+  "shipped-docs" first "$(hdr 1 3 1)" "${H115_NS}writer" \
+  "shipped-docs|.claude/commands/h115.md|scans .claude/commands/*.md"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-115 AC-7: the not-selected line names only suites absent from stdout"
+
+h115_fixture "# fixture-only: $H115_P1"
+put "$H115_P1" 'one'; put "$H115_P2" 'two'
+h115_expect "AC-7: writer declares P1 but is selected by P2: no not-selected line, and its reason is P2's" \
+  "reader
+writer" first "$(hdr 2 2 2)" "" \
+  "reader|$H115_P1|mentioned" "writer|$H115_P2|mentioned"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-115 AC-8: the header, CLAUDE.md and advance-story.md state the declaration"
+
+SNH_ABSENT="# absent, contributes nothing - and a path left with no existing suite is R5's."
+SNH_KNOWN='# Known limit: a suite that exercises a changed script only through another'
+SNH_D1='# R3, narrowed by declaration (HARNESS-115). A suite that names a path only'
+SNH_D2='# to write its own fixture copy says so on a line of its own, at column 0:'
+SNH_D3='#   # fixture-only: <path> [<path> ...]'
+SNH_D4='# R3 then does not select that suite for that path, and that mention does'
+SNH_D5='# not map it: a path named only by declaring suites is R5'"'"'s. A declaration'
+SNH_D6='# is ignored, and the suite selected, when the suite'"'"'s source also holds the'
+SNH_D7='# path directly after `$REPO_ROOT/` or `${REPO_ROOT}/`. Nothing else checks'
+SNH_D8='# that a declaration is true: a read through a helper or by a composed path'
+SNH_D9='# is the declaring suite'"'"'s to know.'
+assert_eq "precondition: the header's A-1 sentence ends on its one \`R5's.\` line" 1 "$(snh_count "$SNH_ABSENT")"
+assert_eq "the header's declaration block opens exactly once" 1 "$(snh_count "$SNH_D1")"
+assert_eq "the header's declaration block sits directly after the A-1 sentence, then \`#\` and the transitive Known limit" "#
+$SNH_D1
+$SNH_D2
+$SNH_D3
+$SNH_D4
+$SNH_D5
+$SNH_D6
+$SNH_D7
+$SNH_D8
+$SNH_D9
+#
+$SNH_KNOWN" "$(awk -v a="$SNH_ABSENT" 'f && n < 12 { print; n++ } $0 == a { f = 1 }' <<SNH_DECL
+$SNH_TEXT
+SNH_DECL
+)"
+
+assert_eq "CLAUDE.md's declaration line 4 (the fixture-only rule) appears exactly once" 1 "$(cm_count "$CM_P4")"
+assert_eq "CLAUDE.md's declaration line 5 appears exactly once" 1 "$(cm_count "$CM_P5")"
+assert_eq "CLAUDE.md's declaration line 6 appears exactly once" 1 "$(cm_count "$CM_P6")"
+
+# advance-story.md's step 2 of GATES -> REVIEW is a reflowed paragraph, so
+# its clause is matched in the step's text with its lines joined by single
+# spaces; the step runs from `2. \`bash scripts/selftest-needed.sh\`` to the
+# next `3. `.
+AS_TEXT="$(tr -d '\r' < "$REPO_ROOT/.claude/commands/advance-story.md")"
+AS_STEP2_HEAD='2. `bash scripts/selftest-needed.sh` — it answers `run` (exit 0) when the'
+AS_STEP2="$(awk -v h="$AS_STEP2_HEAD" '
+    f && /^3\. / { exit }
+    $0 == h { f = 1 }
+    f { sub(/^[ \t]+/, ""); sub(/[ \t]+$/, ""); out = (out == "" ? $0 : out " " $0) }
+    END { print out }' <<AS_LINES
+$AS_TEXT
+AS_LINES
+)"
+h115_occ() {   # <needle>   occurrences of <needle> in AS_STEP2
+  awk -v n="$1" '{ s = $0; c = 0; while ((k = index(s, n)) > 0) { c++; s = substr(s, k + length(n)) } print c }' <<H115_STEP
+$AS_STEP2
+H115_STEP
+}
+assert_eq "precondition: advance-story.md holds step 2's first line exactly once" 1 \
+  "$(awk -v l="$AS_STEP2_HEAD" '$0 == l { c++ } END { print c + 0 }' <<AS_COUNT
+$AS_TEXT
+AS_COUNT
+)"
+assert_eq "step 2 says a suite is chosen when it mentions a changed path and does not declare it \`fixture-only\`, once" 1 \
+  "$(h115_occ 'a suite that mentions a changed path and does not declare it `fixture-only`,')"
+assert_eq "step 2 no longer says only \`a suite that mentions a changed path,\`" 0 \
+  "$(h115_occ 'a suite that mentions a changed path,')"
+assert_eq "the backticked word \`fixture-only\` appears in step 2 exactly once" 1 "$(h115_occ '`fixture-only`')"
 
 summary "selftest-needed"

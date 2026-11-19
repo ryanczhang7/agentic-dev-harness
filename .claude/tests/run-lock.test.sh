@@ -26,6 +26,9 @@
 # `run-lock: reclaimed ...` and `run-lock: refusing ...` share a prefix and a
 # floating `run-lock:` would be satisfied by the wrong one. Exit statuses are
 # compared exactly: 2, not "non-zero" - a crash is non-zero too.
+#
+# fixture-only: .claude/tests/floors.conf
+#   writes its fixture's own floors file; never reads the real one.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

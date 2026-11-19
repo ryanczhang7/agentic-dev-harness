@@ -190,6 +190,9 @@ Anything else, `sed -i` included, is working around the lock (law 5).
 `--suites` maps a changed path to every suite whose source names it, ending
 where the path ends, comments and test data included. A path a suite names
 only as test data counts as mentioned, never as unmapped (which gives `all`).
+A suite's `# fixture-only: <path>` line says it only writes its own copy of
+that path: the suite is then not selected for it, unless its source also
+names the path under `$REPO_ROOT/`.
 
 `gates.sh` judges the **code**; `check-boundaries.sh` judges the **commit** —
 the phase in the committed frontmatter, the acceptance criteria against the base

@@ -305,10 +305,11 @@ Then, **in this order**:
    `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` — the suites this
    story's diff can break, once, while the story is still at GATES.
    `selftest-needed.sh --suites` chooses them: a suite that mentions a
-   changed path, a changed suite itself, the five tree-scanning suites for
-   the paths they scan, and every suite when a path cannot be placed or the
-   library changed; the full run's floors audit runs first. CI runs every
-   suite, and one the story never touched can still fail on its change: a
+   changed path and does not declare it `fixture-only`, a changed suite
+   itself, the five tree-scanning suites for the paths they scan, and every
+   suite when a path cannot be placed or the library changed; the full run's
+   floors audit runs first. CI runs every suite, and one the story never
+   touched can still fail on its change: a
    line number another suite pins, a floor, a value an upstream suite
    asserts. Dispatch it to a `feature-developer` on the GATES row, with the
    GREEN → GATES brief: it runs

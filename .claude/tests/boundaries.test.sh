@@ -5,6 +5,9 @@
 # It reads a story file as it was committed and as it stands on the base
 # branch, so every case here is a real two-branch repository: a base commit, a
 # story branch, and a diff between them.
+#
+# fixture-only: .claude/harness/VERSION
+#   writes its fixture's own copy, base and branch; never reads the real one.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

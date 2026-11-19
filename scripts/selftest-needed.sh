@@ -63,6 +63,16 @@
 # this tree (amendment A-1), so a deleted suite, or a row whose suite is
 # absent, contributes nothing - and a path left with no existing suite is R5's.
 #
+# R3, narrowed by declaration (HARNESS-115). A suite that names a path only
+# to write its own fixture copy says so on a line of its own, at column 0:
+#   # fixture-only: <path> [<path> ...]
+# R3 then does not select that suite for that path, and that mention does
+# not map it: a path named only by declaring suites is R5's. A declaration
+# is ignored, and the suite selected, when the suite's source also holds the
+# path directly after `$REPO_ROOT/` or `${REPO_ROOT}/`. Nothing else checks
+# that a declaration is true: a read through a helper or by a composed path
+# is the declaring suite's to know.
+#
 # Known limit: a suite that exercises a changed script only through another
 # script, and never names it, is not selected. Transitive selection was
 # measured and rejected (one level from gates.sh selects nearly every suite);
@@ -202,6 +212,11 @@ shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
   # source holds as a fixed substring (`index`, never a regex) that ends
   # where the path ends: clean_hit refuses an occurrence continued by a
   # path character, or by a `.` and an alphanumeric (`x.sh.bak`, `new-story`).
+  # Between them a kind (HARNESS-115): `m` an undeclared mention, `d` a
+  # declared path the suite also holds after `$REPO_ROOT/` or `${REPO_ROOT}/`
+  # (a clean hit, so `$REPO_ROOT/P.bak` is no read of P), `f` a declared path
+  # with no such read. A declaration may sit on any line, so a suite's
+  # records are printed once the whole file has been read.
   mentions=""
   if [ "$m" -gt 0 ]; then
     mentions="$(printf '%s\n' "$harness" | awk '
@@ -218,15 +233,30 @@ shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
         }
         return 0
       }
+      function flush(   j) {
+        for (j = 1; j <= np; j++)
+          if (j in hit)
+            print j "\t" (!(p[j] in decl) ? "m" : (j in rr) ? "d" : "f") "\t" s
+      }
       FNR == NR { if (length($0)) { np++; p[np] = $0 }; next }
       FILENAME != cur {
-        cur = FILENAME; split("", hit)
+        if (cur != "") flush()
+        cur = FILENAME; split("", hit); split("", rr); split("", decl)
         s = FILENAME; sub(/.*\//, "", s); sub(/\.test\.sh$/, "", s)
       }
       {
-        for (j = 1; j <= np; j++)
-          if (!(j in hit) && clean_hit($0, p[j])) { hit[j] = 1; print j "\t" s }
-      }' - .claude/tests/*.test.sh)"
+        line = $0; sub(/\r$/, "", line)
+        if (line ~ /^# fixture-only:( +[^ ]+)+$/) {
+          nd = split(substr(line, 16), dp, / +/)
+          for (d = 1; d <= nd; d++) if (length(dp[d])) decl[dp[d]] = 1
+        }
+        for (j = 1; j <= np; j++) {
+          if (!(j in hit) && clean_hit($0, p[j])) hit[j] = 1
+          if (!(j in rr) && (clean_hit($0, "$REPO_ROOT/" p[j]) || clean_hit($0, "${REPO_ROOT}/" p[j])))
+            rr[j] = 1
+        }
+      }
+      END { if (cur != "") flush() }' - .claude/tests/*.test.sh)"
   fi
 
   # Every path, in sort order; every rule, in order. A record is
@@ -234,10 +264,10 @@ shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
   TAB=$(printf '\t')
   NL='
 '
-  recs=""; why_all=""; i=0; np=0
+  recs=""; why_all=""; i=0; np=0; fo_names=""
   while IFS= read -r p; do
     [ -n "$p" ] || continue
-    i=$((i+1)); np=$i; hit=0
+    i=$((i+1)); np=$i; hit=0; fo=0
     case "$p" in
       .claude/tests/_lib.sh|.claude/tests/_spawns.sh|scripts/selftest.sh|.claude/hooks/lib.sh)
         [ -n "$why_all" ] || why_all="$p is read by every suite"
@@ -249,9 +279,13 @@ shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
         s="${p#.claude/tests/}"; s="${s%.test.sh}"
         if [ -f "$p" ]; then recs="$recs$s$TAB$p (itself)$NL"; hit=1; fi ;;
     esac
-    while IFS="$TAB" read -r mi ms; do
+    while IFS="$TAB" read -r mi mk ms; do
       [ "$mi" = "$i" ] || continue
-      recs="$recs$ms$TAB$p (mentioned)$NL"; hit=1
+      case "$mk" in
+        m) recs="$recs$ms$TAB$p (mentioned)$NL"; hit=1 ;;
+        d) recs="$recs$ms$TAB$p (mentioned under \$REPO_ROOT, despite fixture-only)$NL"; hit=1 ;;
+        f) fo_names="$fo_names$ms$NL"; fo=1 ;;   # C-2 (3): no record, no map
+      esac
     done <<<"$mentions"
     k=0
     while [ "$k" -lt "${#SC_PAT[@]}" ]; do
@@ -263,7 +297,13 @@ shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
       esac
       k=$((k+1))
     done
-    [ "$hit" = 1 ] || [ -n "$why_all" ] || why_all="$p is mapped by no rule; defaulting to every suite"
+    if [ "$hit" != 1 ] && [ -z "$why_all" ]; then
+      if [ "$fo" = 1 ]; then
+        why_all="$p is named only as fixture data by the suites that mention it; defaulting to every suite"
+      else
+        why_all="$p is mapped by no rule; defaulting to every suite"
+      fi
+    fi
   done <<<"$harness"
 
   if [ -n "$why_all" ]; then
@@ -282,6 +322,12 @@ shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
   printf '%s\n' "$sel" | awk -F'\t' '
     length($1) { c++; n[c] = $1; r[c] = $2; if (length($1) > w) w = length($1) }
     END { for (i = 1; i <= c; i++) printf "  %-" w "s  %s\n", n[i], r[i] }' >&2
+  # C-3: the suites a declaration left out, not counted in `k of m`.
+  unsel="$(printf '%s' "$fo_names" | sort -u | SEL="$sel" awk '
+    BEGIN { n = split(ENVIRON["SEL"], l, "\n"); for (i = 1; i <= n; i++) { split(l[i], f, "\t"); in_sel[f[1]] = 1 } }
+    length && !($0 in in_sel) { out = out (out == "" ? "" : " ") $0 }
+    END { print out }')"
+  [ -z "$unsel" ] || printf '  not selected (fixture-only): %s\n' "$unsel" >&2
   printf '%s\n' "$sel" | awk -F'\t' 'length($1) { print $1 }'
   exit 0
 fi
