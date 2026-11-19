@@ -4,8 +4,8 @@ title: The docs-read rule and its header agree on the second root name
 slug: the-docs-read-rule-and-its-header-agree
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-113-the-docs-read-rule-and-its-header-agree
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -928,3 +928,4 @@ Verdict: Ship.
   already put in the written limit, for either name. Under both options it
   stays unseen and is pinned as such.
 - GATES → REVIEW, 2026-11-18: diff review round 1 ships. Its one Should fix (no fixture line holds both a brace and a closing quote, so narrowing `[}"]*` to `[}"]?` stays green) is routed RED but needs AC-1 and AC-2 changed, which the reviewer itself places in a follow-up story; it is not taken in this story and is offered to the user as one. DIFF-REVIEW, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`).
+- GATES → REVIEW, 2026-11-19: `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`, run by a `feature-developer` on the GATES row (resolved Opus 5.5, `claude-opus-5-5`) after waiting for four other gates runs on the machine to finish: 11 suites passed, `assertion floors: all 11 suite(s) met their declared floor (2136 assertions executed, 2136 declared)`, exit 0, 10837 s, tree 5127644; `attest.sh check` fresh.
