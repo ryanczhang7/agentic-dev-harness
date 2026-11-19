@@ -4,8 +4,8 @@ title: The run-queue suite reaches the exit for a queue lock that cannot be remo
 slug: the-run-queue-suite-reaches-the-exit-for
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-112-the-run-queue-suite-reaches-the-exit-for
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
