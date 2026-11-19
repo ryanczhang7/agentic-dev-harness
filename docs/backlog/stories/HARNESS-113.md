@@ -4,8 +4,8 @@ title: The docs-read rule and its header agree on the second root name
 slug: the-docs-read-rule-and-its-header-agree
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-113-the-docs-read-rule-and-its-header-agree
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -559,6 +559,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 
 - PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
+- RED, `test-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
 
 ## Out of scope
 
@@ -593,7 +594,157 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Level: suite-internal unit, the cheapest level that can falsify the rule.
+`suite_docs_reads` is a function of `.claude/tests/shipped-docs.test.sh`, and
+the assertion calls it directly over a fixture tree under `$WORK`.
+
+| Test (in `.claude/tests/shipped-docs.test.sh`) | Asserts | AC |
+|---|---|---|
+| new block `the second root name, braced and quoted (HARNESS-113)`, one `assert_eq` named `HARNESS-113 AC-1: the braced and the quoted-root spellings of the second root name are reported, ...` | the whole output of `suite_docs_reads "$t"` over `$WORK/suite-second-root/.claude/tests/c.test.sh` (the AC's ten lines, verbatim) is exactly the four lines `.claude/tests/c.test.sh:2`, `:3`, `:4`, `:5`, in that order. Anchored: a full-string compare, not a substring | AC-1 |
+| the 22 existing assertions, not edited (no existing fixture or assertion touched) | unchanged and passing; among them `HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing`, which now runs the widened pattern over the real tree | AC-2 |
+| the suite's count | `shipped-docs: 23 passed, 0 failed` (22 before) | AC-2 |
+
+The fixture is written with `$SDR_T` (HARNESS-106 block), so this suite's
+source never holds the name next to `/../../docs`. Its bytes were checked
+outside the framework against the AC's ten lines before the first run
+(identical).
+
 ## Handoff: RED -> GREEN
+
+**Command.** `bash scripts/selftest.sh shipped-docs` (C-4). GREEN's own runs
+are C-4's: `bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs selftest`
+and `bash scripts/attest.sh -- bash scripts/gates.sh --fast`, one at a time,
+after the machine-wide `ps` check.
+
+**Step 1, the fixture and assertion against the unfixed `SDR_RE`** (the
+pattern of `a349761`, unchanged at HEAD `77d1355`). Attested:
+`exit: 1`, `last: 1 of 1 harness suite(s) FAILED.`,
+log `.claude/state/attest-logs/20261119T035625Z.5259.log`
+(tree `bf191d9367818f7dc86e6edf74c2c4e153a34319`). Verbatim from the log:
+
+```
+  the second root name, braced and quoted (HARNESS-113)
+    FAIL HARNESS-113 AC-1: the braced and the quoted-root spellings of the second root name are reported, as the plain one is, while a path one level up, one under the suites' fixtures, a docs-prefixed name, a /./ before docs and a %/ on the name are not
+         expected: .claude/tests/c.test.sh:2
+         .claude/tests/c.test.sh:3
+         .claude/tests/c.test.sh:4
+         .claude/tests/c.test.sh:5
+         actual:   .claude/tests/c.test.sh:5
+
+shipped-docs: 22 passed, 1 failed
+
+assertion floors: all 1 suite(s) met their declared floor (22 assertions executed, 22 declared).
+1 of 1 harness suite(s) FAILED.
+```
+
+Why it is the right failure: the rule ran over the file (the plain read on
+line 5 was reported, so the fixture was scanned and the pattern fired) and
+missed exactly the three spellings the header promises (2, 3, 4). It is the
+defect as AC-1 states it ("before the fix the same run prints only
+`.claude/tests/c.test.sh:5`"), not a load or fixture error; the other 22
+assertions passed.
+
+**Step 2, C-1's `SDR_RE` and C-2's comment applied.** `SDR_RE=` (now line
+210) gained `[}"]*` between `_DIR` and `/[.][.]/[.][.]`, nothing else; the
+header gained the three lines C-2 gives; the limit paragraph gained C-2's
+three-line sentence after "(HARNESS-110, D-1).". Attested:
+`exit: 0`, `last: 1 harness suite(s) passed.`,
+log `.claude/state/attest-logs/20261119T035835Z.2226.log`
+(tree `f61ecbb5fb14302e3d86ffe299a210842d8bb5c3`):
+
+```
+  the second root name, braced and quoted (HARNESS-113)
+
+shipped-docs: 23 passed, 0 failed
+
+assertion floors: all 1 suite(s) met their declared floor (23 assertions executed, 22 declared).
+1 harness suite(s) passed.
+```
+
+Final attested runs, on the tree handed over (tree `f61ecbb5fb14302e3d86ffe299a210842d8bb5c3`;
+the work-tree hash does not cover this story file, and it was the same
+before and after this handoff was written):
+
+- `bash scripts/selftest.sh shipped-docs`: `exit: 0`,
+  `last: 1 harness suite(s) passed.`, log
+  `.claude/state/attest-logs/20261119T040052Z.3041.log` (23 passed, 0 failed).
+- `bash scripts/gates.sh --fast`: `exit: 0`,
+  `last: All required gates passed (0 ran, 5 unconfigured, 0 known).`, log
+  `.claude/state/attest-logs/20261119T040211Z.3800.log`. Shape: this
+  repository's `project.conf` is not bootstrapped, so format, lint,
+  typecheck, unit and coverage are UNCONFIGURED (warnings), mutation is on
+  request, integration and build skipped by `--fast`. No gate ran the suite,
+  so `--fast` says nothing about it here; the harness's own gate for this
+  story is the self-test (C-4).
+
+**Files touched.** `.claude/tests/shipped-docs.test.sh` (pattern, header,
+limit sentence, new block before `summary "shipped-docs"`) and this story's
+`## Test plan` and `## Handoff`. Nothing else.
+
+**What GREEN writes (C-4), and only that.** `floors.conf` `floor | shipped-docs | 22`
+-> `23` plus the dated history paragraph; `selftest.test.sh` `COUNTS`
+`shipped-docs 22` -> `23`; `VERSION` bump to the next release after
+`main` (main is now at 131, HARNESS-112's, so 132 unless something else lands).
+The runner currently prints `23 assertions executed, 22 declared`: that is the
+floor GREEN raises, not a failure. GREEN touches no line of
+`shipped-docs.test.sh`.
+
+**Export shape pinned.** No module, no export. The test calls
+`suite_docs_reads <root>` (defined in the same suite) and compares its stdout
+as a string. Not constrained: nothing for GREEN; the floor-history wording is
+GREEN's.
+
+**Passed on arrival.** None new. AC-2's 22 existing assertions are unchanged
+and were already green; the one that judges the widened pattern over the real
+tree (`HARNESS-106 AC-3 ... prints nothing`) is earned for the new pattern by
+DV-2 at GATES.
+
+**Contract line numbers.** C-1..C-3 cite the file as it was at `a349761`,
+identical at HEAD before RED (`git diff a349761 HEAD -- .claude/tests/shipped-docs.test.sh`
+empty), so no amendment. After RED: `SDR_RE=` is line 210 (was 205),
+`summary "shipped-docs"` line 498, the HARNESS-113 assertion line 492.
+
+**Negative controls, expected values.** Measured outside the framework:
+the fixture regenerated from the suite's own `printf` lines, and each pattern
+run by `awk` with the rule's comment skip, as `suite_docs_reads` runs it.
+Unlike an import-failure RED, the AC-1 assertion itself *did* execute in both
+steps, so control (i) is an observed result, not only a claim.
+
+| Control | Pattern | Expected lines of `c.test.sh` | Measured (RED, outside the framework) | Observed in the suite |
+|---|---|---|---|---|
+| (i) fix reverted (DV-1) | `SDR_RE` of `a349761` | 5 | 5 | step 1: actual `.claude/tests/c.test.sh:5`, 22 passed 1 failed |
+| the fix | C-1's pattern | 2, 3, 4, 5 | 2, 3, 4, 5 | step 2: 23 passed |
+| (ii) loosened, `TESTS_DIR.*` in place of the second name's arm | not run in the suite (C-3, "Not owed") | 2, 3, 4, 5, 6, 7, 9, 10 | 2, 3, 4, 5, 6, 7, 9, 10 | - (would fail AC-1 by adding 6, 7, 9, 10) |
+| real tree, C-1's pattern | 37 files of `.claude/tests/*.sh` | nothing | nothing | `HARNESS-106 AC-3 ... prints nothing` passes |
+| DV-2 mutation, on a copy of `spawns.test.sh` | `SDR_RE` of `a349761` / C-1's | nothing / 29 | nothing / 29 | not run (GATES) |
+
+**DV-1 declined by RED, owner GATES.** It mutates the fixed file, and the
+committed tree is the one to judge; RED's step 1 is the observation of the
+unfixed tree, not this mutation. Restated against the file as built (the
+expression is unchanged; checked on a copy: exactly one line changes, line
+210, and the result is byte-identical to the `SDR_RE=` line of HEAD):
+
+    bash scripts/mutate.sh .claude/tests/shipped-docs.test.sh '/^SDR_RE=/s#_DIR\[}"\]\*/#_DIR/#' -- bash scripts/selftest.sh shipped-docs
+
+Predicted: 1 line changed; `shipped-docs: 22 passed, 1 failed`, the
+`HARNESS-113 AC-1` assertion with actual `.claude/tests/c.test.sh:5`; after
+GREEN raises the floor, also the floor line, 22 against 23 (the same failure
+counted).
+
+**DV-2 declined by RED, owner GATES.** It needs the widened pattern on the
+committed tree. `CLASSIFY_FIXTURES="$TESTS_DIR/fixtures/classify"` is still
+line 29 of `.claude/tests/spawns.test.sh` and occurs once in
+`.claude/tests/*.sh` (grep after step 2). Expression unchanged (checked on a
+copy: exactly line 29 changes, to `CLASSIFY_FIXTURES="${TESTS_DIR}/../../docs/a"`):
+
+    bash scripts/mutate.sh .claude/tests/spawns.test.sh 's|^CLASSIFY_FIXTURES="\$TESTS_DIR/fixtures/classify"$|CLASSIFY_FIXTURES="${TESTS_DIR}/../../docs/a"|' -- bash scripts/selftest.sh shipped-docs
+
+Predicted: 1 line changed; `shipped-docs: 22 passed, 1 failed`, the
+`HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing`
+assertion with actual `.claude/tests/spawns.test.sh:29`; under the old
+pattern the same mutated line is not reported (measured on the copy).
+
+**Approach changes.** None.
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
      to the Feature Developer, whose context is fresh. Must contain:
