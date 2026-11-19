@@ -628,8 +628,8 @@ name, below the table.
   over-selection on HARNESS-114's path set and pins the list, as a `fix`
   would.
 - **D-1, the mechanism. A PO decision for the user before the story leaves
-  **Approved by the user, 2026-11-19: option 1, the declaration line in the suite.**
   PLANNED; the story is written for option 1.**
+  **Approved by the user, 2026-11-19: option 1, the declaration line in the suite.**
   1. *A per-suite declaration in the suite itself, `# fixture-only:
      <path>`, honoured by R3 (recommended).* The exemption is per suite and
      per path, so a new suite, or a new path, is selected by mention until
@@ -665,8 +665,8 @@ name, below the table.
   for that suite, was not written up as an option: it makes every suite's
   selection depend on a list nothing checks, for the sake of two paths.
 - **D-2, a path only declaring suites name answers `all` (C-2 case 3). A
-  **Approved by the user, 2026-11-19: answer `all`.**
   smaller PO decision, written as recommended.** The alternative is that a
+  **Approved by the user, 2026-11-19: answer `all`.**
   declared mention still maps the path, as an undeclared test-data mention
   does since HARNESS-096, and the run selects nothing for it. Neither real
   path is affected (each keeps a real reader), so this only decides what
