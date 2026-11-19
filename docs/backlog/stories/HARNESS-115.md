@@ -4,8 +4,8 @@ title: A fixture-only mention selects no suite
 slug: a-fixture-only-mention-selects-no-suite
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-115-a-fixture-only-mention-selects-no-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/host-load.test.sh, .claude/tests/refresh.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, CLAUDE.md, .claude/commands/advance-story.md]  # files this story expects to write; `plan.sh conflicts` reads it
