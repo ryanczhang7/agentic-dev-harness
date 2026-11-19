@@ -496,6 +496,11 @@ name, below the table.
   such a diff. Those files change rarely and CI runs everything. Should
   it get a story of its own, probably option 2's shape for those three
   paths?
+- **User answers, 2026-11-19 (asked by the orchestrator before RED).**
+  D-1: "Fix the helper (Recommended)", option 1, the story as written.
+  Q-1: "No, leave it"; `worktree` stays selected by `VERSION`, no
+  follow-up. Q-2: "Yes, later story (Recommended)"; the conf copies get a
+  story of their own after this one. Type stays `fix`.
 - **HARNESS-115's note about `story` is corrected in the Context:** it
   does not run `doctor.sh`.
 - **Not already delivered.** Reproduced at PLANNED on `0e52de3`: `_lib.sh`
