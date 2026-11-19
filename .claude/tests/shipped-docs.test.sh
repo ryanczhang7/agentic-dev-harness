@@ -495,4 +495,29 @@ assert_eq "HARNESS-113 AC-1: the braced and the quoted-root spellings of the sec
 .claude/tests/c.test.sh:4
 .claude/tests/c.test.sh:5" "$(suite_docs_reads "$t")"
 
+# ---------------------------------------------------------------------------
+describe "a run of brace and quote after a root name (HARNESS-114)"
+
+# The header above SDR_RE promises any run of } and " at both places the
+# class stands: after the second root name, before /../.., and before /docs.
+# Lines 2 and 3 put a closing brace then a closing quote there, lines 4 and 5
+# a closing quote then a closing brace (a quoted root as the default of
+# another expansion); lines 2 and 4 at the first place, 3 and 5 at the second.
+# Narrowing either class to at most one character loses one pair, and turns
+# this assertion red. The names are spelled with $SDR_R and $SDR_T from the
+# HARNESS-106 block, so no line of this suite is an offending line.
+u="$WORK/suite-run"; mkdir -p "$u/.claude/tests"
+{
+  printf '%s\n' '#!/usr/bin/env bash'
+  printf '%s\n' "cat \"\${$SDR_T}\"/../../docs/a"
+  printf '%s\n' "cat \"\${$SDR_R}\"/docs/a"
+  printf '%s\n' "cat \"\${D:-\"\$$SDR_T\"}/../../docs/a\""
+  printf '%s\n' "cat \"\${D:-\"\$$SDR_R\"}/docs/a\""
+} > "$u/.claude/tests/d.test.sh"
+assert_eq "HARNESS-114 AC-1: a root name followed by both a closing brace and a closing quote, in either order, is reported at both positions, after the second root name and before docs" \
+  ".claude/tests/d.test.sh:2
+.claude/tests/d.test.sh:3
+.claude/tests/d.test.sh:4
+.claude/tests/d.test.sh:5" "$(suite_docs_reads "$u")"
+
 summary "shipped-docs"

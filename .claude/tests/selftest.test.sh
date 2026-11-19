@@ -556,7 +556,7 @@ security-audit 52
 selftest 366
 selftest-needed 621
 settings 70
-shipped-docs 23
+shipped-docs 24
 sigpipe 91
 spawns 69
 story 97
