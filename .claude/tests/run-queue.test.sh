@@ -362,9 +362,11 @@ wait_bounded() {
 }
 
 # The queue environment of the next rq_run. rq_defaults: queue on (empty
-# HARNESS_RUN_QUEUE), this suite's $Q, nothing else set.
-RQ_MODE=""; RQ_DIR=""; RQ_XLOCK=""; RQ_XPID=""; RQ_NOHOME=""; RQ_CI=""
-rq_defaults() { RQ_MODE=""; RQ_DIR="$Q"; RQ_XLOCK=""; RQ_XPID=""; RQ_NOHOME=""; RQ_CI=""; }
+# HARNESS_RUN_QUEUE), this suite's $Q, nothing else set. RQ_PATH (HARNESS-112
+# C-2), when set, is prepended to PATH in the run's subshell only - never in
+# this suite's own shell, so every other removal here uses the real rm.
+RQ_MODE=""; RQ_DIR=""; RQ_XLOCK=""; RQ_XPID=""; RQ_NOHOME=""; RQ_CI=""; RQ_PATH=""
+rq_defaults() { RQ_MODE=""; RQ_DIR="$Q"; RQ_XLOCK=""; RQ_XPID=""; RQ_NOHOME=""; RQ_CI=""; RQ_PATH=""; }
 
 # rq_run <var> <tree> <name> <script> [args...]   Starts `bash <script>` in the
 # tree, in the background, with the queue environment above; stdout and stderr
@@ -384,6 +386,7 @@ rq_run() {
     if [ -n "$RQ_XPID" ]; then HARNESS_RUN_QUEUE_PID="$RQ_XPID"; export HARNESS_RUN_QUEUE_PID; fi
     if [ -n "$RQ_NOHOME" ]; then unset HOME; fi
     if [ -n "$RQ_CI" ]; then CI="$RQ_CI"; export CI; fi
+    if [ -n "$RQ_PATH" ]; then PATH="$RQ_PATH:$PATH"; export PATH; fi
     exec bash "$@" ) > "$__ro.out" 2> "$__ro.err" < /dev/null &
   printf -v "$__rv" '%s' "$!"
   BG="$BG $!"
@@ -1093,6 +1096,68 @@ assert_eq "scripts/run-lock.sh opens run_lock_queues alone on its line" 1 \
 assert_eq "run_lock_join asks run_lock_queues, on exactly the one line DV-1 mutates" 1 \
   "$(grep -cxF '  run_lock_queues "$2" || return 0' "$REPO_ROOT/scripts/run-lock.sh" 2>/dev/null || :)"
 
+# ===========================================================================
+# HARNESS-112  a queue lock that cannot be removed (Contract C-2, C-3). The
+# reclaim code in run_queue_acquire removes a stale or unreadable lock and
+# tries again; if the lock is still there, unchanged, it gives up on the queue
+# with C-3's `cannot use` line instead of going round for ever. The input that
+# reaches that exit is a regular lock file `rm` cannot delete, made by an rm
+# shim on the run's PATH (RQ_PATH) that refuses only a path ending
+# /run-queue.lock and records each refusal: the record is each case's
+# precondition, so a host where the shim was not picked up fails as that.
+# These tests are written against the shipped module and pass on arrival;
+# DV-1 earns them at GATES by making the exit's condition false.
+# ===========================================================================
+describe "HARNESS-112 AC-1, AC-2  a queue lock that cannot be removed: the reclaim line once, then one line, and the run runs"
+
+REAL_RM="$(command -v rm)"
+mkdir -p "$W/shim"
+cat > "$W/shim/rm" <<SHIM
+#!/usr/bin/env bash
+for a in "\$@"; do
+  case "\$a" in */run-queue.lock) printf '%s\n' "\$a" >> '$W/shim/refused'; exit 1 ;; esac
+done
+exec '$REAL_RM' "\$@"
+SHIM
+chmod +x "$W/shim/rm"
+
+assert_eq "HARNESS-112 AC-2: precondition: the dead pid is not running" gone "$(is_alive "$DEAD")"
+
+# unremovable_case <label> <pid-or-empty> <expected reclaim line>   A planted
+# lock (no pid line when <pid> is empty), the rm shim on the run's PATH, a
+# full gates.sh in B with the queue on.
+unremovable_case() {
+  local lbl="$1" p before
+  new_case
+  qplant "$2" "$PLANT_STARTED" "scripts/selftest.sh ghost" "/ghost/tree"
+  cp "$QL" "$W/$lbl.planted"
+  before="$(qsnap)"
+  rm -f "$W/shim/refused"
+  RQ_PATH="$W/shim"
+  rq_run p "$B" "$lbl" scripts/gates.sh; wait_bounded "$p" 60
+  RQ_PATH=""
+  assert_eq "$lbl: precondition: the run tried to remove the queue lock and the rm shim refused it" yes \
+    "$(at_least 1 "$(count_line "$QL" "$W/shim/refused")")"
+  assert_eq "$lbl: exits within the bound: it does not go round the reclaim loop" no "$WTO"
+  assert_eq "$lbl: prints the reclaim line, exactly once" 1 "$(count_line "$3" "$W/$lbl.err")"
+  assert_eq "$lbl: then gives up on the queue: the cannot-use line naming the queue directory, exactly once" 1 \
+    "$(count_line "$(cannot_line "$Q" scripts/gates.sh)" "$W/$lbl.err")"
+  assert_eq "$lbl: and prints no other run-queue: line" 2 "$(count_re '^run-queue:' "$W/$lbl.err")"
+  assert_eq "$lbl: the first run-queue: line is the reclaim line" "$3" "$(first_rq "$W/$lbl.err")"
+  assert_eq "$lbl: the last run-queue: line is the cannot-use line" \
+    "$(cannot_line "$Q" scripts/gates.sh)" "$(last_rq "$W/$lbl.err")"
+  assert_eq "$lbl: runs its work, with the status it has alone ($SOLO_GATES)" "$SOLO_GATES present" \
+    "$WRC $(present "$B/m/k/finished")"
+  assert_eq "$lbl: its work saw the lock as planted, not a record of its own" same \
+    "$(if cmp -s "$W/$lbl.planted" "$B/m/k/qlock"; then printf same; else printf differs; fi)"
+  assert_eq "$lbl: the queue directory afterwards holds the planted lock, byte for byte, and nothing else" \
+    "$before" "$(qsnap)"
+  assert_eq "$lbl: and the tree holds no run lock" 0 "$(leftovers "$B")"
+}
+unremovable_case "HARNESS-112 AC-1 no pid" "" "$(unread_line "$QL")"
+unremovable_case "HARNESS-112 AC-2 stale pid" "$DEAD" \
+  "$(stale_line "$DEAD" "scripts/selftest.sh ghost" /ghost/tree)"
+
 # ---------------------------------------------------------------------------
 describe "C-4, C-6  the shipped pieces the mutations and the messages depend on"
 
@@ -1101,6 +1166,8 @@ assert_eq "scripts/run-queue.sh defines run_queue_alive on exactly the one line 
   "$(grep -cxF 'run_queue_alive() { kill -0 "$1" 2>/dev/null; }' "$RQS" 2>/dev/null || :)"
 assert_eq "scripts/run-lock.sh opens run_lock_full on exactly the one line DV-3 mutates" 1 \
   "$(grep -cxF 'run_lock_full() {' "$REPO_ROOT/scripts/run-lock.sh" 2>/dev/null || :)"
+assert_eq "scripts/run-queue.sh tests for a lock it could not remove on exactly the one line HARNESS-112 DV-1 mutates" 1 \
+  "$(grep -cxF '    if [ -e "$lock" ] && [ "$(run_queue_pid "$lock")" = "$pid" ]; then' "$RQS" 2>/dev/null || :)"
 for row in '0 0m00s' '59 0m59s' '60 1m00s' '65 1m05s' '10800 180m00s'; do
   n="${row% *}"; want="${row#* }"
   if [ -f "$RQS" ]; then
