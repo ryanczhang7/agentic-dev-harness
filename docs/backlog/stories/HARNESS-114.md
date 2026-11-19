@@ -5,7 +5,7 @@ slug: docs-read-rule-pins-brace-with-quote
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-114-docs-read-rule-pins-brace-with-quote
 depends_on: [HARNESS-113]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -388,6 +388,40 @@ handoff against the file as built.
 (Both expressions were run at PLANNED on `2cc293e`: each changes exactly the
 `SDR_RE=` line, at its own position only, and `mutate.sh` restored and
 verified the file both times.)
+
+**Results, GATES, 2026-11-19, on the GREEN commit; both as predicted.**
+
+DV-1: 1 line changed, exactly 1 failed, the HARNESS-114 AC-1 assertion with actual `:3` and `:5`; file restored and verified.
+
+    === mutate: .claude/tests/shipped-docs.test.sh (1 line(s) changed by /^SDR_RE=/s#_DIR\[}"\]\*#_DIR[}"]?#) ===
+    === mutate: running bash scripts/selftest.sh shipped-docs ===
+        FAIL HARNESS-114 AC-1: a root name followed by both a closing brace and a closing quote, in either order, is reported at both positions, after the second root name and before docs
+             expected: .claude/tests/d.test.sh:2
+             .claude/tests/d.test.sh:3
+             .claude/tests/d.test.sh:4
+             .claude/tests/d.test.sh:5
+             actual:   .claude/tests/d.test.sh:3
+             .claude/tests/d.test.sh:5
+    shipped-docs: 23 passed, 1 failed
+    FAIL shipped-docs  did 23 units of work, below the floor of 24 in .claude/tests/floors.conf
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-114/.claude/state/mutations/.claude_tests_shipped-docs.test.sh.20261119T155718Z.1776.bak) ===
+
+DV-2: 1 line changed, exactly 1 failed, the same assertion with actual `:2` and `:4`; file restored and verified.
+
+    === mutate: .claude/tests/shipped-docs.test.sh (1 line(s) changed by /^SDR_RE=/s#(%/)?\[}"\]\*#(%/)?[}"]?#) ===
+    === mutate: running bash scripts/selftest.sh shipped-docs ===
+        FAIL HARNESS-114 AC-1: a root name followed by both a closing brace and a closing quote, in either order, is reported at both positions, after the second root name and before docs
+             expected: .claude/tests/d.test.sh:2
+             .claude/tests/d.test.sh:3
+             .claude/tests/d.test.sh:4
+             .claude/tests/d.test.sh:5
+             actual:   .claude/tests/d.test.sh:2
+             .claude/tests/d.test.sh:4
+    shipped-docs: 23 passed, 1 failed
+    FAIL shipped-docs  did 23 units of work, below the floor of 24 in .claude/tests/floors.conf
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-114/.claude/state/mutations/.claude_tests_shipped-docs.test.sh.20261119T160012Z.3400.bak) ===
 
 Not owed, and stated so that nobody adds one: a mutation for the order half
 (lines 4 and 5 are pinned by the same whole-output comparison and measured
