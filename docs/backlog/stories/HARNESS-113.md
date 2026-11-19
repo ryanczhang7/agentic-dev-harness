@@ -833,6 +833,22 @@ pattern the same mutated line is not reported (measured on the copy).
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Round 1, 2026-11-18
+
+Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. Changed no file.
+
+Checked: the committed `SDR_RE` over 16 lines of the reviewer's own (seen: braced, quote-closed, both together, unquoted, a doubled slash before `docs`, a bare `.../docs` at end of line; not seen: `docs-shipped.conf`, three levels up, `${TESTS_DIR:?}`, `TESTS_DIRS`, a path built in a variable, a whole-line comment; `$MY_TESTS_DIR` is seen, the missing left anchor Out of scope names); the real tree (no match, comments included; the 13 `TESTS_DIR` references as C-5 lists them); the fixture's ten `printf` lines against AC-1's ten lines; the header and limit comment against C-2; callers (`SDR_RE` and both functions are used only in this suite; no older fixture holds a braced or quote-closed `TESTS_DIR` line); floors and release (23 in both records, VERSION 132 over main's 131); per-commit write sets; AC text unchanged since the PLANNED commit; DV-1 and DV-2 pasted with verified restores.
+
+**Should fix:**
+
+1. **The "any number, any order" half of the widening has no test** (`.claude/tests/shipped-docs.test.sh:210`, fixture 480-491). `[}"]*` lets any run of `}` and `"` stand between the name and `/../..`, which C-1 says is so that `"${TESTS_DIR}"/../../docs/a` counts. No fixture line holds both. Measured: with `[}"]?` in place of `[}"]*` all 23 assertions stay green and that combined line is no longer reported. Fix: one fixture line `cat "${TESTS_DIR}"/../../docs/a` expected reported; this cannot be done inside the frozen criteria (an eleventh line changes AC-1, a separate assertion makes the count 24 where AC-2 says 23), so a follow-up story is the cheaper home. If skipped: a later narrowing to one character goes unnoticed; the same gap exists for `REPO_ROOT` (HARNESS-106's fixture never holds both), and no line of the tree uses the combined spelling. Does not block. **Route:** RED
+
+Not checked: the reviewer ran no suite (two `gates.sh` runs were live on the machine); the orchestrator checks the gate record.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -911,3 +927,4 @@ pattern the same mutated line is not reported (measured on the copy).
   not a broken promise of the header: it is the `/./` case HARNESS-110
   already put in the written limit, for either name. Under both options it
   stays unseen and is pinned as such.
+- GATES → REVIEW, 2026-11-18: diff review round 1 ships. Its one Should fix (no fixture line holds both a brace and a closing quote, so narrowing `[}"]*` to `[}"]?` stays green) is routed RED but needs AC-1 and AC-2 changed, which the reviewer itself places in a follow-up story; it is not taken in this story and is offered to the user as one. DIFF-REVIEW, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`).
