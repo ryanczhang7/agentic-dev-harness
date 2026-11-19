@@ -4,8 +4,8 @@ title: Docs-read rule pins brace with quote
 slug: docs-read-rule-pins-brace-with-quote
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-114-docs-read-rule-pins-brace-with-quote
 depends_on: [HARNESS-113]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -806,3 +806,4 @@ Verdict: Ship.
   story that moves a floor, the `COUNTS` mirror or `VERSION` collides on
   those three files and takes the next release number when it merges second.
 - GATES → REVIEW, 2026-11-19: diff review round 1 ships, no findings. DIFF-REVIEW, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`).
+- GATES → REVIEW, 2026-11-19: `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`, run by a `feature-developer` on the GATES row (resolved Opus 5.5, `claude-opus-5-5`): 11 suites passed, `assertion floors: all 11 suite(s) met their declared floor (2137 assertions executed, 2137 declared)`, exit 0, 964 s, tree e634e3c; `attest.sh check` fresh. A first attempt (16:14Z) died at start with an MSYS `get_proc_lock` error and left a stale run lock, which the second run reclaimed itself.
