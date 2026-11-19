@@ -665,7 +665,6 @@ name, below the table.
   for that suite, was not written up as an option: it makes every suite's
   selection depend on a list nothing checks, for the sake of two paths.
 - **D-2, a path only declaring suites name answers `all` (C-2 case 3). A
-  smaller PO decision, written as recommended.** The alternative is that a
   **Approved by the user, 2026-11-19: answer `all`.**
   declared mention still maps the path, as an undeclared test-data mention
   does since HARNESS-096, and the run selects nothing for it. Neither real
@@ -673,6 +672,7 @@ name, below the table.
   happens to a future path, and `all` is the answer that cannot select too
   few. If the user prefers the other, AC-6 and C-2 (3) change and nothing
   else does.
+  smaller PO decision, written as recommended.** The alternative is that a
 - **What this buys, measured.** HARNESS-114's path set: 11 suites become 6.
   The five that drop are `boundaries` (687 assertions, the largest floor in
   the file), `refresh`, `run-queue`, `run-lock` and `host-load`. A story
