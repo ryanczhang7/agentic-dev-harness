@@ -303,8 +303,9 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
-## Out of scope
 - PLANNED: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported.
+
+## Out of scope
 
 - **`scripts/selftest-needed.sh` and its rules.** No rule changes; the
   story removes a read instead of teaching the selection to see it.
