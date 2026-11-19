@@ -172,7 +172,9 @@ REFS
 # suite_docs_reads <root>   One line `<file>:<line number>` per line of a
 # scanned file that is not a whole-line comment (first non-blank character `#`)
 # and matches SDR_RE: one of the two names _lib.sh gives the real checkout,
-# REPO_ROOT or TESTS_DIR/../.., then optionally `%/` (the root with one
+# REPO_ROOT or TESTS_DIR/../.. (any of `}` and `"` may stand between
+# TESTS_DIR and its /../.., so the braced and the quoted spellings of that
+# name count: HARNESS-113), then optionally `%/` (the root with one
 # trailing slash stripped, still the root; nothing else may follow the `%`),
 # then any of `}` and `"` (so the braced and the quoted-root spellings count),
 # then one or more `/` (the shell collapses a doubled slash), then docs as a
@@ -195,6 +197,9 @@ REFS
 # ("$REPO_ROOT"/"docs"/a). None occurs in the tree. The assertion headed
 # HARNESS-110 below pins these three, so widening the pattern means moving its
 # line and correcting this sentence (HARNESS-110, D-1).
+# For the second root name the same `/./` ("$TESTS_DIR/../.././docs/a") is
+# not seen, nor a `%/` on the name itself ("${TESTS_DIR%/}/../../docs/a");
+# the assertion headed HARNESS-113 below pins both (HARNESS-113, D-1).
 #
 # This suite is one of the files it scans, and its fixtures below hold
 # offending lines as data. So the two root names are spelled in pieces
@@ -202,7 +207,7 @@ REFS
 # exempted by name, this suite included. The real-tree assertion is the check
 # that this was done.
 # [.] rather than \. because awk -v processes backslash escapes.
-SDR_RE='(REPO''_ROOT|TESTS''_DIR/[.][.]/[.][.])(%/)?[}"]*/+docs([^A-Za-z0-9_.-]|$)'
+SDR_RE='(REPO''_ROOT|TESTS''_DIR[}"]*/[.][.]/[.][.])(%/)?[}"]*/+docs([^A-Za-z0-9_.-]|$)'
 suite_docs_files() {
   local root="$1" f
   for f in "$root"/.claude/tests/*.sh; do
@@ -460,5 +465,34 @@ q="$WORK/suite-limit"; mkdir -p "$q/.claude/tests"
 } > "$q/.claude/tests/b.test.sh"
 assert_eq "HARNESS-110 AC-1: the written limit: an expansion of the root other than %/, a /./ before docs and a separately quoted docs are not reported, while the plain read beside them in the same file is" \
   ".claude/tests/b.test.sh:5" "$(suite_docs_reads "$q")"
+
+# ---------------------------------------------------------------------------
+describe "the second root name, braced and quoted (HARNESS-113)"
+
+# The header above SDR_RE promises the braced and the quoted spellings of the
+# second root name too. Lines 2-4 are those spellings, line 5 the plain one;
+# lines 6-8 are near misses (one level up, the suites' own fixtures, a
+# docs-prefixed name) and lines 9-10 the written limit for this name (a /./
+# before docs, a %/ on the name itself). The name is spelled in pieces with
+# $SDR_T from the HARNESS-106 block, so no line of this suite is an offending
+# line. One whole-output comparison carries both directions.
+t="$WORK/suite-second-root"; mkdir -p "$t/.claude/tests"
+{
+  printf '%s\n' '#!/usr/bin/env bash'
+  printf '%s\n' "cat \"\${$SDR_T}/../../docs/a\""
+  printf '%s\n' "cat \"\$$SDR_T\"/../../docs/a"
+  printf '%s\n' "n=\$(ls \${$SDR_T}/../../docs)"
+  printf '%s\n' "cat \"\$$SDR_T/../../docs/a\""
+  printf '%s\n' "cat \"\${$SDR_T}/../docs/a\""
+  printf '%s\n' "cat \"\${$SDR_T}/fixtures/docs/a\""
+  printf '%s\n' "cat \"\$$SDR_T\"/../../docsy/a"
+  printf '%s\n' "cat \"\$$SDR_T/../.././docs/a\""
+  printf '%s\n' "cat \"\${$SDR_T%/}/../../docs/a\""
+} > "$t/.claude/tests/c.test.sh"
+assert_eq "HARNESS-113 AC-1: the braced and the quoted-root spellings of the second root name are reported, as the plain one is, while a path one level up, one under the suites' fixtures, a docs-prefixed name, a /./ before docs and a %/ on the name are not" \
+  ".claude/tests/c.test.sh:2
+.claude/tests/c.test.sh:3
+.claude/tests/c.test.sh:4
+.claude/tests/c.test.sh:5" "$(suite_docs_reads "$t")"
 
 summary "shipped-docs"
