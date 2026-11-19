@@ -4,8 +4,8 @@ title: A fixture-only mention selects no suite
 slug: a-fixture-only-mention-selects-no-suite
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-115-a-fixture-only-mention-selects-no-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/host-load.test.sh, .claude/tests/refresh.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, CLAUDE.md, .claude/commands/advance-story.md]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1159,3 +1159,4 @@ Verdict: Ship.
   for every transitive read.
 
 - GATES → REVIEW, 2026-11-19: diff review round 1 ships, no findings. DIFF-REVIEW, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`).
+- GATES → REVIEW, 2026-11-19: `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`, run by a `feature-developer` on the GATES row (resolved Opus 5.5, `claude-opus-5-5`): 26 of 35 suites selected and passed, `assertion floors: all 26 suite(s) met their declared floor (5349 assertions executed, 5349 declared)`, exit 0, 1194 s, tree cb306cf; `attest.sh check` fresh.
