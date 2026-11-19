@@ -5,7 +5,7 @@ slug: docs-read-rule-pins-brace-with-quote
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-114-docs-read-rule-pins-brace-with-quote
 depends_on: [HARNESS-113]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -455,6 +455,7 @@ name, below the table.
 
 - PLANNED, `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-19; no override reported.
 - RED, `test-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
+- GREEN, `feature-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
