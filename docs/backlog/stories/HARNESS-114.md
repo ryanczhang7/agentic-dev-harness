@@ -4,8 +4,8 @@ title: Docs-read rule pins brace with quote
 slug: docs-read-rule-pins-brace-with-quote
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-114-docs-read-rule-pins-brace-with-quote
 depends_on: [HARNESS-113]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
