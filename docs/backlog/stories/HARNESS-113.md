@@ -4,8 +4,8 @@ title: The docs-read rule and its header agree on the second root name
 slug: the-docs-read-rule-and-its-header-agree
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-113-the-docs-read-rule-and-its-header-agree
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
