@@ -5,7 +5,7 @@ slug: a-fixture-only-mention-selects-no-suite
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-115-a-fixture-only-mention-selects-no-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/boundaries.test.sh, .claude/tests/host-load.test.sh, .claude/tests/refresh.test.sh, .claude/tests/run-lock.test.sh, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION, CLAUDE.md, .claude/commands/advance-story.md]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -434,6 +434,51 @@ read declarations until GREEN.
   (Checked at PLANNED with `sed -n ...p`: the expression rewrites exactly
   those two lines of the suite at `9fa2dfb`.)
 
+
+**Results, GATES, 2026-11-19, on the GREEN commit; both as predicted.**
+
+DV-1, expression written at GATES against the script as built (the recogniser in the R3 awk pass, code not the header):
+
+    bash scripts/mutate.sh scripts/selftest-needed.sh 's|line ~ /^# fixture-only:|line ~ /^#NEVER fixture-only:|' -- bash scripts/selftest.sh selftest-needed
+
+1 line changed; `selftest-needed: 846 passed, 124 failed`; AC-1's list assertion shows the eleven Context names as its actual; red: AC-1 (10), AC-2 (10), AC-3 (10), AC-4(b) (2), AC-5 (28), AC-6 (10), AC-7 (2), C-1 (30), C-2 (12), C-2 (2) (10); no HARNESS-094 or HARNESS-096 assertion failed; file restored and verified.
+
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by s|line ~ /^# fixture-only:|line ~ /^#NEVER fixture-only:|) ===
+    === mutate: running bash scripts/selftest.sh selftest-needed ===
+    selftest-needed: 846 passed, 124 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-115/.claude/state/mutations/scripts_selftest-needed.sh.20261119T185524Z.640.bak) ===
+        FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the six suites that read or scan them [from root]: stdout is exactly the pinned list
+             expected: doctor
+             grep-count
+             selftest
+             shipped-docs
+             sigpipe
+             worktree
+             actual:   boundaries
+             doctor
+             grep-count
+             host-load
+             refresh
+             run-lock
+             run-queue
+             selftest
+
+DV-2: 2 lines changed (`doctor.test.sh`, the two `$REPO_ROOT` reads); `selftest-needed: 960 passed, 10 failed`, all ten in AC-5's real-doctor case (5 from root, 5 from subdir), nowhere else; file restored and verified.
+
+    === mutate: .claude/tests/doctor.test.sh (2 line(s) changed by s#"\$REPO_ROOT/\.claude/harness/VERSION"#"$FIX/.claude/harness/VERSION"#) ===
+    === mutate: running bash scripts/selftest.sh selftest-needed ===
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from root]: stdout is exactly the pinned list
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from root]: stdout has exactly 2 line(s)
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from root]: stderr's first line is exactly the pinned header
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from root]: stderr's last line is exactly the not-selected line
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from root]: stderr's reason line for doctor is exactly `.claude/harness/VERSION (mentioned under $REPO_ROOT, despite fixture-only)`, once
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from subdir]: stdout is exactly the pinned list
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from subdir]: stdout has exactly 2 line(s)
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from subdir]: stderr's first line is exactly the pinned header
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from subdir]: stderr's last line is exactly the not-selected line
+        FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from subdir]: stderr's reason line for doctor is exactly `.claude/harness/VERSION (mentioned under $REPO_ROOT, despite fixture-only)`, once
+    selftest-needed: 960 passed, 10 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-115/.claude/state/mutations/.claude_tests_doctor.test.sh.20261119T185845Z.815.bak) ===
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
