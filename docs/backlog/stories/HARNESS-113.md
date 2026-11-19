@@ -5,7 +5,7 @@ slug: the-docs-read-rule-and-its-header-agree
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-113-the-docs-read-rule-and-its-header-agree
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -492,6 +492,35 @@ this section is one entry; D-1 gives it.)
   (`CLASSIFY_FIXTURES="$TESTS_DIR/fixtures/classify"` is line 29 at
   `a349761` and occurs once in `.claude/tests/*.sh`.)
 
+**Results, GATES, 2026-11-18, on the GREEN commit; both as predicted.**
+
+DV-1: 1 line changed (the SDR_RE= line), exactly 1 failed, the HARNESS-113 AC-1 assertion with actual `.claude/tests/c.test.sh:5`; floor line 22 against 23 is the same failure counted; file restored and verified.
+
+    === mutate: .claude/tests/shipped-docs.test.sh (1 line(s) changed by /^SDR_RE=/s#_DIR\[}"\]\*/#_DIR/#) ===
+    === mutate: running bash scripts/selftest.sh shipped-docs ===
+        FAIL HARNESS-113 AC-1: the braced and the quoted-root spellings of the second root name are reported, as the plain one is, while a path one level up, one under the suites' fixtures, a docs-prefixed name, a /./ before docs and a %/ on the name are not
+             expected: .claude/tests/c.test.sh:2
+             .claude/tests/c.test.sh:3
+             .claude/tests/c.test.sh:4
+             .claude/tests/c.test.sh:5
+             actual:   .claude/tests/c.test.sh:5
+    shipped-docs: 22 passed, 1 failed
+    FAIL shipped-docs  did 22 units of work, below the floor of 23 in .claude/tests/floors.conf
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_shipped-docs.test.sh.20261119T042557Z.14742.bak) ===
+
+DV-2: 1 line changed (spawns.test.sh:29), exactly 1 failed, the HARNESS-106 AC-3 real-tree assertion with actual `.claude/tests/spawns.test.sh:29`; file restored and verified.
+
+    === mutate: .claude/tests/spawns.test.sh (1 line(s) changed by s|^CLASSIFY_FIXTURES="\$TESTS_DIR/fixtures/classify"$|CLASSIFY_FIXTURES="${TESTS_DIR}/../../docs/a"|) ===
+    === mutate: running bash scripts/selftest.sh shipped-docs ===
+        FAIL HARNESS-106 AC-3: suite_docs_reads over the real tree prints nothing: no suite line reads the project's own docs, which a consumer does not share
+             expected: 
+             actual:   .claude/tests/spawns.test.sh:29
+    shipped-docs: 22 passed, 1 failed
+    FAIL shipped-docs  did 22 units of work, below the floor of 23 in .claude/tests/floors.conf
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/agentic-dev-harness/.claude/state/mutations/.claude_tests_spawns.test.sh.20261119T042955Z.16390.bak) ===
+
 Not owed, and stated so that nobody adds one: a mutation per fixture line
 (lines 3, 4 and 6-10 are pinned by the same whole-output comparison, and
 earning each is `/audit-mutations` work); the loosened-pattern control of
@@ -561,6 +590,7 @@ name, below the table.
 - PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
 - RED, `test-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
 - GREEN, `feature-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override. It replaced VERSION's line 131 with 132 rather than appending, as C-4 and the file header say; the orchestrator's brief had said append, wrongly.
+- GATES, `feature-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
 
 ## Out of scope
 
@@ -805,10 +835,21 @@ pattern the same mutated line is not reported (measured on the copy).
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-19T04:43:22Z
+    commit: 708a897
+    tree:   e678bc1a48bdb09be909b846208d5bce32c11867
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
