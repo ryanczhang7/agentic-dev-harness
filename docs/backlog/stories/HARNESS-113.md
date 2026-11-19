@@ -5,7 +5,7 @@ slug: the-docs-read-rule-and-its-header-agree
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-113-the-docs-read-rule-and-its-header-agree
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -560,6 +560,7 @@ name, below the table.
 
 - PLANNED, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`), as planned; no override.
 - RED, `test-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
+- GREEN, `feature-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override. It replaced VERSION's line 131 with 132 rather than appending, as C-4 and the file header say; the orchestrator's brief had said append, wrongly.
 
 ## Out of scope
 
