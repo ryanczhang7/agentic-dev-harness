@@ -721,6 +721,18 @@ empty before each run). No timeout is involved in this suite.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Round 1, 2026-11-19
+
+Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. Changed no file.
+
+Checked, nothing to fix: the diff is the four contracted files plus the story, the suite change a pure 25-line insertion before `summary` with `SDR_RE`, its header and every earlier block unchanged; the committed `printf` lines give AC-1's five lines exactly; the reviewer rebuilt the fixture and ran its own narrowings through `awk` (committed: 2 3 4 5; position 1 `[}"]?`: 3 5; position 2 `[}"]?`: 2 4; position 1 order fixed `}?"?` / `"?}?`: 2 3 5 / 3 4 5; position 2 `}?"?` / `"?}?`: 2 3 4 / 2 4 5; position 1 `[}]*"?`: 2 3 5), matching C-2 and the pasted DV-1 and DV-2; the suite's new lines are not offending lines; one run `shipped-docs: 24 passed, 0 failed`, floors 24 executed, 24 declared; `check-sigpipe.sh` and `check-grep-count.sh` exit 0, `bash -n` clean; floors 24 in both records, `origin/main` at 132 so 133 is next; `SDR_RE` and both functions used only in this suite, none edited.
+
+Not checked: full self-test, full gates, `check-boundaries.sh` (as briefed); DV-1 and DV-2 read from the pasted output and matched against the reviewer's own reproduction, not re-run.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -793,3 +805,4 @@ empty before each run). No timeout is involved in this suite.
   the same four files; that pair is ordered by `depends_on`. Any other open
   story that moves a floor, the `COUNTS` mirror or `VERSION` collides on
   those three files and takes the next release number when it merges second.
+- GATES → REVIEW, 2026-11-19: diff review round 1 ships, no findings. DIFF-REVIEW, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`).
