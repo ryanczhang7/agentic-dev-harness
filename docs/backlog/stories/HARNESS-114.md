@@ -490,6 +490,7 @@ name, below the table.
 - PLANNED, `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-19; no override reported.
 - RED, `test-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
 - GREEN, `feature-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
+- GATES, `feature-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -722,10 +723,21 @@ empty before each run). No timeout is involved in this suite.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-19T16:04:10Z
+    commit: 286f05d
+    tree:   81ac06d8ecdd8ed2be2019f513e7aa4311996abf
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
