@@ -4,8 +4,8 @@ title: Docs-read rule pins brace with quote
 slug: docs-read-rule-pins-brace-with-quote
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-114-docs-read-rule-pins-brace-with-quote
 depends_on: [HARNESS-113]      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/shipped-docs.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -454,6 +454,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-19; no override reported.
+- RED, `test-developer`, resolved Opus 5.5 (`claude-opus-5-5`), as planned; no override.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -489,6 +490,21 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One shell-level test, in the suite that owns the rule
+(`.claude/tests/shipped-docs.test.sh`, run by `bash scripts/selftest.sh
+shipped-docs`). The rule is a function of that suite, so the suite is both
+the cheapest and the only level that can falsify it.
+
+- **AC-1 (settled, read out from C-2):** one fixture file, `d.test.sh`, five
+  lines (C-1), and one anchored whole-output `assert_eq` on
+  `suite_docs_reads`: exactly `:2`, `:3`, `:4`, `:5`. Passes on arrival by
+  design (the pattern is not changed); earned at GATES by DV-1 (position 1
+  narrowed, expected actual `:3`, `:5`) and DV-2 (position 2 narrowed,
+  expected actual `:2`, `:4`).
+- **AC-2 (mechanical):** the pre-existing assertions stay byte for byte
+  (pure insertion), the real-tree assertion keeps passing over the suite's
+  own new lines, and the count goes 23 -> 24. Floors are GREEN's (C-3).
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -508,6 +524,128 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the test-developer, RED, 2026-11-19. Resolved model: Opus 5.5
+(`claude-opus-5-5`), as `test-developer.md` declares (`opus`); no override
+was given in the dispatch.
+
+**The new assertion PASSES ON ARRIVAL, and that is expected. No watched
+failure is claimed.** This story pins an existing pattern; it changes no line
+of `SDR_RE`. The fixture's four reads are all matched by the pattern as it
+stands (C-2, first row), so the assertion is green on its first execution.
+It is earned at GATES by DV-1 and DV-2, which RED declines: in RED they
+would mutate the committed rule before the floors and the release that make
+the story's tree exist, and the story's Deferred verifications assign both
+to GATES. RED did not run them under `mutate.sh`.
+
+**Starting tree.** `git diff 2cc293e HEAD -- .claude/tests/shipped-docs.test.sh`
+is empty, so the contract's line numbers held: `SDR_RE=` at 210, `SDR_R`/`SDR_T`
+at 385, the HARNESS-113 block 469-496, `summary "shipped-docs"` at 498 before
+this change. No Contract block was amended.
+
+**Command.**
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh shipped-docs
+
+Attested, on the tree handed over: `exit: 0`,
+`last: 1 harness suite(s) passed.`, log
+`.claude/state/attest-logs/20261119T153938Z.414.log`, tree
+`7cff05a710e45160bcb7ccb664cc88af8a3579a4`, duration 78 s (local). Verbatim
+tail from the log:
+
+```
+  the second root name, braced and quoted (HARNESS-113)
+
+  a run of brace and quote after a root name (HARNESS-114)
+
+shipped-docs: 24 passed, 0 failed
+
+assertion floors: all 1 suite(s) met their declared floor (24 assertions executed, 23 declared).
+1 harness suite(s) passed.
+```
+
+"24 executed, 23 declared" is AC-2's +1 against the floor GREEN has not yet
+raised (C-3): `floors.conf` line 67 and the `COUNTS` entry in
+`selftest.test.sh` still say 23. That is GREEN's edit, not a defect.
+
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+
+Attested, same tree: `exit: 0`,
+`last: All required gates passed (0 ran, 5 unconfigured, 0 known).`, log
+`.claude/state/attest-logs/20261119T154137Z.2066.log`. Shape: every required
+gate is UNCONFIGURED on this harness repository (`BOOTSTRAPPED=no`), mutation
+ON REQUEST, integration build skipped by `--fast`. Nothing is red, and nothing
+here is meant to be: the suite judging this story is the self-test above.
+
+**Files touched.**
+
+- `.claude/tests/shipped-docs.test.sh`: one new `describe` block,
+  `a run of brace and quote after a root name (HARNESS-114)`, inserted
+  directly before `summary "shipped-docs"`, after the HARNESS-113 block. No
+  other line of the file changed (`git diff` shows a pure insertion).
+- this story file: `## Test plan` and this section.
+
+**Tests, one line each.**
+
+- `HARNESS-114 AC-1: a root name followed by both a closing brace and a closing quote, in either order, is reported at both positions, after the second root name and before docs`
+  — `assert_eq` on the whole output of `suite_docs_reads "$u"` over
+  `$WORK/suite-run/.claude/tests/d.test.sh`; expected exactly
+  `.claude/tests/d.test.sh:2` .. `:5`, four lines, in order. Covers AC-1.
+- AC-2 is covered by the suite as a whole: every pre-existing assertion
+  unchanged and passing (the diff is a pure insertion; 24 passed, 0 failed),
+  the real-tree assertion (`HARNESS-106 AC-3`) still passing with the new
+  block's lines in the scanned file, and the count 23 -> 24.
+
+**The fixture, as written.** The five `printf '%s\n'` lines are C-1's,
+character for character. Their output was checked on a scratch file against
+AC-1's five lines and is identical:
+
+```
+#!/usr/bin/env bash
+cat "${TESTS_DIR}"/../../docs/a
+cat "${REPO_ROOT}"/docs/a
+cat "${D:-"$TESTS_DIR"}/../../docs/a"
+cat "${D:-"$REPO_ROOT"}/docs/a"
+```
+
+The block's comment is whole-line and names neither root whole; the new
+source lines spell them only through `$SDR_R`/`$SDR_T`, and the real-tree
+assertion still passing is the check that no line of the suite became an
+offending one.
+
+**Export shape pinned.** None new. The block uses the suite's existing
+`suite_docs_reads <root>` (prints `<relative path>:<line>` per reported line),
+`assert_eq <name> <expected> <actual>`, `describe`, `$WORK`, `$SDR_R`,
+`$SDR_T`. It defines one new variable, `u`. GREEN edits none of it (C-0).
+
+**Not constrained:** nothing about the floors' history paragraph wording or
+the release number beyond C-3.
+
+**Deferred controls, declined by RED in writing, expected values.** Both
+expressions restated against the file as built: `SDR_RE=` is still line 210
+and its text is unchanged, so the expressions are the Deferred verifications'
+own, unmodified. On a scratch copy (never the real file) each changes exactly
+line 210, at its own position only, and the pattern it leaves, run by plain
+`awk '$0 ~ re'` over the fixture file above, reports the lines below. These
+are measured outside the suite; the suite-level outcome (`23 passed, 1
+failed`, the failing assertion being HARNESS-114 AC-1) is a claim until
+GATES runs `mutate.sh`.
+
+| Control | Expression (`mutate.sh` on `.claude/tests/shipped-docs.test.sh`) | Lines changed | Fixture lines reported (scratch, awk) | Expected suite result | Owner |
+|---|---|---|---|---|---|
+| unmutated | none | 0 | 2, 3, 4, 5 (the suite run above) | `24 passed, 0 failed` (observed) | RED, done |
+| DV-1, position 1 `[}"]*` -> `[}"]?` | `'/^SDR_RE=/s#_DIR\[}"\]\*#_DIR[}"]?#'` | 1 (line 210) | 3, 5 | `23 passed, 1 failed`; HARNESS-114 AC-1 actual `.claude/tests/d.test.sh:3` and `:5` | GATES |
+| DV-2, position 2 `[}"]*` -> `[}"]?` | `'/^SDR_RE=/s#(%/)?\[}"\]\*#(%/)?[}"]?#'` | 1 (line 210) | 2, 4 | `23 passed, 1 failed`; HARNESS-114 AC-1 actual `.claude/tests/d.test.sh:2` and `:4` | GATES |
+
+Each run is `bash scripts/mutate.sh .claude/tests/shipped-docs.test.sh '<expr>' -- bash scripts/selftest.sh shipped-docs`.
+After GREEN raises the floor to 24 the runner will also print a floor line
+(23 against 24) under each; that is the same failure counted again.
+
+**Timings.** The one duration above (78 s for the suite) is from a local run
+on this machine, with no other self-test or gates run going (`ps` check
+empty before each run). No timeout is involved in this suite.
+
+**Approach.** Nothing discovered changes it. GREEN does C-3 only.
 
 ## Regressions
 
