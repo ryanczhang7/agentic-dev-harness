@@ -990,6 +990,26 @@ declaration. Both are GATES', as the story says.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Round 1, 2026-11-19
+
+Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. Head `aa1a281`; changed no file.
+
+Checked, nothing to fix:
+
+- **No declaration is false.** `boundaries` (VERSION): its fixture comes from `make_project_fixture`, which copies the real `VERSION` (`_lib.sh:124`), but `check-boundaries.sh:270-271` only compares base bytes with tree bytes, the suite overwrites the copy itself (`:1129`, `:1136`), and it runs neither `doctor.sh` nor `refresh-harness.sh`. `refresh` (VERSION, floors.conf): builds its own `$UP` and `$PROJ`, never calls `make_fixture`; its only `$REPO_ROOT` reads are of `scripts/refresh-harness.sh`. `host-load`, `run-lock`, `run-queue` (floors.conf): each writes its fixture's own floors file (`:268`, `:111`, `:148`/`:216`); the fixture's `selftest.sh` reads floors relative to its own root (`selftest.sh:116,137`), and `make_project_fixture` does not copy `.claude/tests`.
+- **No under-selection for a commonly changed path.** `doctor`, `worktree`, `selftest` carry no declaration and stay selected. On the real tree at this head the script prints 26 of 35 for this story's own 12 paths.
+- **Caller unaffected.** `selftest.sh:312-327` reprints stderr and takes the text after `all: ` on the first line; the new `all` reason has that shape; the not-selected line is the last line of a list answer and only reprinted. Stdout format and exit statuses unchanged.
+- **Own inputs, scratch repository, six stub suites:** several spaces declare; a trailing space does not (suite falls back to selected); a path with `+` matches as a fixed string; `${REPO_ROOT}/P` in a comment overrides, with the pinned reason; a declaring suite selected by another path is left off the not-selected line. `"$REPO_ROOT"/P` (quote before the slash) is not seen as a contradiction: the stated limit; in the real suites it appears only with globs, which the mention rule cannot see anyway.
+- **Tests.** `selftest-needed: 970 passed, 0 failed`, floor 970 met in both records. AC-1's real-tree case pins the per-suite reset of declaration state. DV-1 and DV-2 match their predictions.
+- **Portability and guards.** bash and awk only; `bash -n`, `check-sigpipe.sh`, `check-grep-count.sh` exit 0; about 1.1 s on the real tree.
+- **Line-number pins.** Only `dispatch.test.sh:410`, naming `advance-story.md:159`, above the edit.
+
+Not checked: full self-test, `--changed`, full gates (as briefed); awk implementations other than this host's gawk.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -1138,3 +1158,4 @@ declaration. Both are GATES', as the story says.
   self-test under a mutated `VERSION`). CI's full run is the backstop, as
   for every transitive read.
 
+- GATES → REVIEW, 2026-11-19: diff review round 1 ships, no findings. DIFF-REVIEW, `lead-po`, resolved Fable 5.2 (`claude-fable-5-2`).
