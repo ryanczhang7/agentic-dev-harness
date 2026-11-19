@@ -179,6 +179,7 @@ What one assertion gives up: with both classes narrowed at once it fails
 once, not twice. Nothing counts failures per position, so nothing is lost.
 
 **D-2. The order half is in the fixture too (lines 4 and 5).** The finding
+**Approved by the user, 2026-11-19: keep lines 4 and 5.**
 is headed "any number, any order". Lines 2 and 3 are brace-then-quote, the
 spelling C-1 of HARNESS-113 names. Lines 4 and 5 are quote-then-brace, which
 real bash produces when a quoted root is the default of another expansion
