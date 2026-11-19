@@ -24,6 +24,9 @@
 # direct call fail as `command not found` (rc 127, empty output). Every case
 # runs whether or not the file exists, so the executed count is the same in
 # RED and GREEN.
+#
+# fixture-only: .claude/tests/floors.conf
+#   writes its fixture's own floors file; never reads the real one.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
