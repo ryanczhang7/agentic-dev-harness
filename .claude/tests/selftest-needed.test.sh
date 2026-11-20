@@ -1200,20 +1200,22 @@ assert_eq "this suite's source holds the whole shipped-docs.test.sh path on no l
 assert_eq "precondition: the real tree holds the suites AC-1 counts (m > 0)" yes "$([ "$H115_M" -gt 0 ] && printf yes || printf no)"
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-115 AC-1: HARNESS-114's four paths select 6 real suites, not 11"
+describe "HARNESS-115 AC-1: HARNESS-114's four paths select 7 real suites, not 11"
 
 h115_real
 h115_edit "$H115_V" "$H115_F" "$H115_ST" "$H115_SD"
-h115_expect "AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the six suites that read or scan them" \
+h115_expect "AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them" \
   "doctor
 grep-count
+lib
 selftest
 shipped-docs
 sigpipe
-worktree" first "$(hdr 6 "$H115_M" 4)" \
+worktree" first "$(hdr 7 "$H115_M" 4)" \
   "${H115_NS}boundaries host-load refresh run-lock run-queue" \
   "doctor|$H115_V|mentioned" \
   "grep-count|$H115_ST|scans *.sh" \
+  "lib|$H115_V|mentioned" \
   "selftest|$H115_F|mentioned" \
   "shipped-docs|$H115_ST|scans .claude/tests/*.sh" \
   "sigpipe|$H115_ST|scans *.sh" \
@@ -1224,12 +1226,14 @@ describe "HARNESS-115 AC-2 (control): the suites that read the real VERSION and 
 
 h115_real
 h115_edit "$H115_V" "$H115_F"
-h115_expect "AC-2: VERSION and floors.conf changed over the real suites print doctor, selftest and worktree" \
+h115_expect "AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree" \
   "doctor
+lib
 selftest
-worktree" first "$(hdr 3 "$H115_M" 2)" \
+worktree" first "$(hdr 4 "$H115_M" 2)" \
   "${H115_NS}boundaries host-load refresh run-lock run-queue" \
   "doctor|$H115_V|mentioned" \
+  "lib|$H115_V|mentioned" \
   "worktree|$H115_V|mentioned" \
   "selftest|$H115_F|mentioned"
 
@@ -1344,8 +1348,9 @@ h115_real h115_decl_doctor
 h115_edit "$H115_V"
 h115_expect "AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes" \
   "doctor
-worktree" first "$(hdr 2 "$H115_M" 1)" "${H115_NS}boundaries refresh" \
-  "doctor|$H115_V|$H115_DESPITE" "worktree|$H115_V|mentioned"
+lib
+worktree" first "$(hdr 3 "$H115_M" 1)" "${H115_NS}boundaries refresh" \
+  "doctor|$H115_V|$H115_DESPITE" "lib|$H115_V|mentioned" "worktree|$H115_V|mentioned"
 
 h115_real h115_decl_selftest
 h115_edit "$H115_F"

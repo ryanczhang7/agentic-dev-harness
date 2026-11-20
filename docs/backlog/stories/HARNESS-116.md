@@ -433,6 +433,14 @@ remove `$FIX`, `$h116_work` (and the stand-in in it), `$h116_fix`,
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
 
+**R-1 return (2026-11-20): GREEN on re-entry is a no-op.** The return
+corrected three HARNESS-115 pins in `.claude/tests/selftest-needed.test.sh`
+(`lib` now selected for a VERSION change, because `lib.test.sh:1176` reads
+the real stamp) and raised the selftest-needed floor 970 -> 976 in
+`.claude/tests/floors.conf` and `selftest.test.sh`. No source file changed
+and none needs to: `bash scripts/selftest.sh selftest-needed selftest lib`
+is green as handed over. See `## Regressions`, R-1.
+
 Written by the Test Developer, dispatched on `opus`; resolved model
 `claude-opus-5-5` (Opus 5.5), no override.
 
@@ -675,6 +683,125 @@ red on the three whole-file assertions (not run; prediction).
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+- **R-1 (selftest-needed pins, HARNESS-115 AC-1/AC-2/AC-5).**
+
+**Adjudicated R-1:** `fable` (resolved Fable 5.2, claude-fable-5-2), 2026-11-19, upheld: in a scratch clone of ed6a1b2, a VERSION-only change prints `doctor lib worktree` with `lib .claude/harness/VERSION (mentioned)`, and with origin/main's lib.test.sh in the base prints `doctor worktree`; a floors.conf-only change prints `selftest` either way; a `# fixture-only:` declaration added to lib is overridden (`mentioned under $REPO_ROOT, despite fixture-only`) because line 1176 reads the real stamp. lib's selection is this story's own real read and a correct R3 mention; the three HARNESS-115 pins (AC-1, AC-2, AC-5 doctor copy) lack `lib` and are wrong; the floors.conf-only pin is unaffected.
+
+  * **Which tests, and what was wrong.** Three `h115_expect` blocks in
+    `.claude/tests/selftest-needed.test.sh` pin the exact `--suites` output
+    over a copy of the real `.claude/tests/*.test.sh`: AC-1 (four paths
+    changed: "six suites", header `6 of 35`), AC-2 (VERSION and floors.conf:
+    `doctor selftest worktree`, `3 of 35`) and AC-5's doctor copy (VERSION
+    only: `doctor worktree`, `2 of 35`). This story's `lib.test.sh:1176` reads
+    `"$REPO_ROOT/.claude/harness/VERSION"`, so `lib` now mentions VERSION and
+    is correctly selected for it. The pins predate that read.
+  * **How it was found.** The changed-suite self-test before REVIEW
+    (`.claude/state/attest-logs/20261120T002159Z.492541.log`):
+    `selftest-needed: 952 passed, 18 failed`.
+  * **What they assert now.** `lib` in each stdout list in sorted position,
+    headers `7 of 35`, `4 of 35`, `3 of 35`, and a `lib|$H115_V|mentioned`
+    reason spec in each block. Wording corrected: AC-1's describe ("select 7
+    real suites") and label ("the seven suites"), AC-2's label ("doctor, lib,
+    selftest and worktree"). The floors.conf-only pin (AC-5, selftest copy) is
+    unchanged. Executed count 970 -> 976 (one new reason assertion per block,
+    from root and from src/); `floors.conf` and `selftest.test.sh`'s COUNTS
+    set to 976.
+  * **What earns it: a probe.** Every `harness/VERSION` mention in
+    `lib.test.sh` spelled away (line 1176 alone is not enough: the fixture-path
+    mentions also match R3). Exactly the 24 corrected assertions go red, 8 per
+    block, and nothing else in the suite does; the restore is verified:
+
+```
+=== mutate: .claude/tests/lib.test.sh (8 line(s) changed by s#harness/VERSION#harness/VERSIOX#g) ===
+  1170 - x" "$(h116_file "$h116_fix/.claude/harness/VERSION")"
+  1170 + x" "$(h116_file "$h116_fix/.claude/harness/VERSIOX")"
+  1176 - h116_real="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$REPO_ROOT/.claude/harness/VERSION" | head -1)"
+  1176 + h116_real="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$REPO_ROOT/.claude/harness/VERSIOX" | head -1)"
+  1187 - x" "$(h116_file "$h116_pfix/.claude/harness/VERSION")"
+  1188 - assert_eq "HARNESS-116 AC-2: git show HEAD:.claude/harness/VERSION prints the fixture stamp" \
+  1187 + x" "$(h116_file "$h116_pfix/.claude/harness/VERSIOX")"
+  1188 + assert_eq "HARNESS-116 AC-2: git show HEAD:.claude/harness/VERSIOX prints the fixture stamp" \
+  1190 - x" "$(git -C "$h116_pfix" show HEAD:.claude/harness/VERSION 2>&1; printf x)"
+  1190 + x" "$(git -C "$h116_pfix" show HEAD:.claude/harness/VERSIOX 2>&1; printf x)"
+  1208 - printf '999 (2099-12-31)\n' > "$h116_stand/.claude/harness/VERSION"
+  1208 + printf '999 (2099-12-31)\n' > "$h116_stand/.claude/harness/VERSIOX"
+  1215 - x" "$(h116_file "$h116_sfix/.claude/harness/VERSION")"
+  1215 + x" "$(h116_file "$h116_sfix/.claude/harness/VERSIOX")"
+  1217 -   "999" "$(h116_file "$h116_sfix/.claude/harness/VERSION")"
+  1217 +   "999" "$(h116_file "$h116_sfix/.claude/harness/VERSIOX")"
+
+=== mutate: running bash scripts/selftest.sh selftest-needed ===
+    FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them [from root]: stdout is exactly the pinned list
+         expected: doctor
+         grep-count
+         lib
+         selftest
+         shipped-docs
+         sigpipe
+         worktree
+         actual:   doctor
+         grep-count
+         selftest
+         shipped-docs
+         sigpipe
+         worktree
+    FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them [from root]: stdout has exactly 7 line(s)
+         expected: 7
+         actual:   6
+    FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them [from root]: stderr's first line is exactly the pinned header
+         expected: selftest-needed: suites — 7 of 35 selected from 4 harness path(s) changed against main (merge-base f711f2c)
+         actual:   selftest-needed: suites — 6 of 35 selected from 4 harness path(s) changed against main (merge-base f711f2c)
+    FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them [from root]: stderr's reason line for lib is exactly `.claude/harness/VERSION (mentioned)`, once
+         expected: 1
+         actual:   0
+    [the remaining 20 FAIL lines of the run follow; their expected/actual detail is elided here]
+    FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them [from subdir]: stdout is exactly the pinned list
+    FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them [from subdir]: stdout has exactly 7 line(s)
+    FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them [from subdir]: stderr's first line is exactly the pinned header
+    FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them [from subdir]: stderr's reason line for lib is exactly `.claude/harness/VERSION (mentioned)`, once
+    FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree [from root]: stdout is exactly the pinned list
+    FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree [from root]: stdout has exactly 4 line(s)
+    FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree [from root]: stderr's first line is exactly the pinned header
+    FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree [from root]: stderr's reason line for lib is exactly `.claude/harness/VERSION (mentioned)`, once
+    FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree [from subdir]: stdout is exactly the pinned list
+    FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree [from subdir]: stdout has exactly 4 line(s)
+    FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree [from subdir]: stderr's first line is exactly the pinned header
+    FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree [from subdir]: stderr's reason line for lib is exactly `.claude/harness/VERSION (mentioned)`, once
+    FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from root]: stdout is exactly the pinned list
+    FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from root]: stdout has exactly 3 line(s)
+    FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from root]: stderr's first line is exactly the pinned header
+    FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from root]: stderr's reason line for lib is exactly `.claude/harness/VERSION (mentioned)`, once
+    FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from subdir]: stdout is exactly the pinned list
+    FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from subdir]: stdout has exactly 3 line(s)
+    FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from subdir]: stderr's first line is exactly the pinned header
+    FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes [from subdir]: stderr's reason line for lib is exactly `.claude/harness/VERSION (mentioned)`, once
+selftest-needed: 952 passed, 24 failed
+FAIL selftest-needed  did 952 units of work, below the floor of 976 in .claude/tests/floors.conf
+
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-116/.claude/state/mutations/.claude_tests_lib.test.sh.20261120T011319Z.726971.bak) ===
+```
+
+    (The block lists every FAIL line of the run; expected/actual detail is
+    shown for the first four, from the run's log.)
+  * **GREEN is a no-op.** No source changes; the R-1 diff is three test-path
+    files (`selftest-needed.test.sh`, `floors.conf`, `selftest.test.sh`) and
+    this story file. The post-correction run, below, is all green.
+
+    $ bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed selftest lib
+    lib: 332 passed, 0 failed
+    selftest-needed: 976 passed, 0 failed
+    selftest: 366 passed, 0 failed
+    assertion floors: all 3 suite(s) met their declared floor (1674 assertions executed, 1674 declared).
+    last:     3 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261120T011831Z.738862.log
+
+    $ bash scripts/attest.sh -- bash scripts/gates.sh --fast
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261120T012538Z.758540.log
 
 ## Diff review
 
