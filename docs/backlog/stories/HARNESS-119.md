@@ -5,7 +5,7 @@ slug: consumer-suites-stay-out-of-pinned-lists
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-119-consumer-suites-stay-out-of-pinned-lists
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/selftest-needed.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
