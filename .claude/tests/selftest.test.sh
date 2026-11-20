@@ -554,7 +554,7 @@ run-lock 141
 run-queue 361
 security-audit 52
 selftest 366
-selftest-needed 1091
+selftest-needed 1099
 settings 70
 shipped-docs 24
 sigpipe 91

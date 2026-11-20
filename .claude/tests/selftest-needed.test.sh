@@ -1542,6 +1542,16 @@ h117_fixture "quiet|reads nothing"
 h115_edit "$H117_PHASES" .claude/tests/_lib.sh
 h117_conf "C-1: phases.conf changed beside .claude/tests/_lib.sh answers all with phases.conf's reason, the first in sort order" "$H117_PHASES"
 
+# C-1, the other order (R-1, diff review round 1 finding 1): a path no rule
+# maps sorts BEFORE `.claude/harness/` and answers `all` through R5 first, so
+# its reason stands. Pins the conf arm's `[ -n "$why_all" ] ||` guard: without
+# it the conf, read second, overwrites the earlier reason.
+h117_fixture "quiet|reads nothing"
+h115_edit "$H117_PHASES"
+put .claude/aaa-h117-unmapped.txt 'unmapped'
+expect_suites "C-1: an unmapped .claude/aaa-h117-unmapped.txt, first in sort order, keeps its reason when phases.conf changes beside it" 0 \
+  "all" whole "${SUITES_ALL}.claude/aaa-h117-unmapped.txt is mapped by no rule; defaulting to every suite" --suites
+
 # ---------------------------------------------------------------------------
 describe "HARNESS-117 AC-2: no mention and no fixture-only declaration narrows a conf"
 

@@ -5,7 +5,7 @@ slug: conf-change-selects-every-suite
 epic: 
 type: fix
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-117-conf-change-selects-every-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -482,6 +482,7 @@ name, below the table.
 - GREEN: `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 - GATES (full gates): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 - DIFF-REVIEW round 1: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported. Verdict: Ship.
+- RED (R-1): `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 
 ## Out of scope
 
@@ -521,7 +522,9 @@ contract is the script's stdout, stderr and exit status), plus whole-line
 text pins over the real `_lib.sh`, `selftest-needed.sh` header and
 `advance-story.md`. All new cases are one block at the end of
 `.claude/tests/selftest-needed.test.sh`, under `describe` lines starting
-`HARNESS-117`. 115 assertions, all unconditional.
+`HARNESS-117`. 115 assertions, all unconditional; 123 after R-1 (one C-1
+case, +8, written against the shipped script and earned by a mutation in
+`## Regressions`).
 
 Helpers. `h117_conf <label> <path>` is `expect_suites <label> 0 "all"
 whole "selftest-needed: suites — all: <path> is copied into every fixture
@@ -538,6 +541,7 @@ holds 0 not-selected line(s)", per directory).
 |---|---|---|---|
 | paths.conf, phases.conf, models.conf each changed over the real suites -> conf answer | settled | 3 x 8 | AC-1 |
 | phases.conf changed beside `.claude/tests/_lib.sh` -> conf answer with phases.conf's reason (first in sort order) | mechanical | 8 | C-1 |
+| R-1: unmapped `.claude/aaa-h117-unmapped.txt` (sorts first) beside phases.conf -> `all` with the unmapped path's R5 reason, the conf's guard kept | mechanical | 8 | C-1 |
 | stub `named` names phases.conf; phases.conf alone -> conf answer | mechanical | 8 | AC-2 (a) |
 | control: `.claude/harness/h117-other.conf` alone -> exactly `other`, `hdr 1 2 1`, reason `(mentioned)` | mechanical | 9 | AC-2 (a) |
 | phases.conf beside h117-other.conf -> conf answer, not both stubs | mechanical | 8 | AC-2 (a) |
@@ -730,6 +734,16 @@ until GREEN. Declined in RED, left to their owner, GATES.
   the file; run them.
 - Expected after GREEN: `selftest-needed: 1091 passed, 0 failed`.
 
+**R-1 return (2026-11-20, Test Developer, `test-developer` declared `opus`,
+resolved Opus 5.5 `claude-opus-5-5`, no override).** One case added after
+the C-1 case: unmapped `.claude/aaa-h117-unmapped.txt` (sorts first)
+beside phases.conf answers `all` with the unmapped path's R5 reason - pins
+the conf arm's `[ -n "$why_all" ] ||` guard (C-1). +8 assertions; floor
+1091 -> 1099 (`floors.conf`, `selftest.test.sh` COUNTS). Same command;
+expected now `selftest-needed: 1099 passed, 0 failed`, measured so on the
+shipped script. Passed on arrival; earned by the mutation in
+`## Regressions` R-1. GREEN has nothing to build: no source change.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -767,6 +781,76 @@ until GREEN. Declined in RED, left to their owner, GATES.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+### R-1 (the conf arm's first-reason guard)
+
+- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2), diff-review round 1 dispatch on the DIFF-REVIEW row: finding 1 routed RED, the guard on `scripts/selftest-needed.sh:284` unpinned; upheld by that dispatch, no separate ADJUDICATE needed.
+
+**Why.** Diff review round 1, finding 1 (Nice to have, routed RED). The
+orchestrator first left it; the user asked for it on 2026-11-20, so the
+story returned from GATES to RED for this one test. No existing test was
+wrong: the defect is a missing one. The conf arm
+(`scripts/selftest-needed.sh:283-285`) sets its reason only when `why_all`
+is still empty (`[ -n "$why_all" ] ||`), and the only HARNESS-117
+sort-order case (C-1, phases.conf beside `.claude/tests/_lib.sh`) puts the
+conf FIRST, so deleting the guard changed nothing any test saw.
+
+**What was added.** One case in `.claude/tests/selftest-needed.test.sh`,
+directly after the C-1 case (inside the `HARNESS-117 AC-1` describe
+block): a stub fixture (`h117_fixture "quiet|reads nothing"`), phases.conf
+edited (`h115_edit`), and an unmapped `.claude/aaa-h117-unmapped.txt`
+written beside it, which sorts before `.claude/harness/`. Asserted with
+`expect_suites ... 0 "all" whole "${SUITES_ALL}.claude/aaa-h117-unmapped.txt
+is mapped by no rule; defaulting to every suite" --suites`, from the root
+and from the subdirectory: +8 assertions. Floor `selftest-needed` 1091 ->
+1099 in `.claude/tests/floors.conf` (with a log paragraph) and in
+`.claude/tests/selftest.test.sh`'s COUNTS row. No production file edited.
+
+**What earns it.** It passed on arrival against the shipped script, so one
+mutation dropping the guard on the conf arm only (line 284, and nothing
+else), through `scripts/mutate.sh`. Exactly the new case's two stderr
+assertions went red; everything else stayed green; the restore was
+verified byte for byte. Local, Windows host:
+
+    $ bash scripts/mutate.sh scripts/selftest-needed.sh 's#\[ -n "\$why_all" \] || why_all="\$p is copied#why_all="$p is copied#' -- bash scripts/selftest.sh selftest-needed
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by s#\[ -n "\$why_all" \] || why_all="\$p is copied#why_all="$p is copied#) ===
+      284 -         [ -n "$why_all" ] || why_all="$p is copied into every fixture make_fixture builds"
+      284 +         why_all="$p is copied into every fixture make_fixture builds"
+
+    === mutate: running bash scripts/selftest.sh selftest-needed ===
+    ...
+      HARNESS-117 AC-1: one conf changed over the real suites answers all, with the conf's reason
+        FAIL C-1: an unmapped .claude/aaa-h117-unmapped.txt, first in sort order, keeps its reason when phases.conf changes beside it [from root]: stderr is exactly the pinned text
+             expected: selftest-needed: suites — all: .claude/aaa-h117-unmapped.txt is mapped by no rule; defaulting to every suite
+             actual:   selftest-needed: suites — all: .claude/harness/phases.conf is copied into every fixture make_fixture builds
+        FAIL C-1: an unmapped .claude/aaa-h117-unmapped.txt, first in sort order, keeps its reason when phases.conf changes beside it [from subdir]: stderr is exactly the pinned text
+             expected: selftest-needed: suites — all: .claude/aaa-h117-unmapped.txt is mapped by no rule; defaulting to every suite
+             actual:   selftest-needed: suites — all: .claude/harness/phases.conf is copied into every fixture make_fixture builds
+    ...
+    selftest-needed: 1097 passed, 2 failed
+    FAIL selftest-needed  did 1097 units of work, below the floor of 1099 in .claude/tests/floors.conf
+
+    assertion floors: 0 of 1 suite(s) met their declared floor.
+    1 of 1 harness suite(s) FAILED.
+
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-117/.claude/state/mutations/scripts_selftest-needed.sh.20261120T152402Z.2064788.bak) ===
+      284:         [ -n "$why_all" ] || why_all="$p is copied into every fixture make_fixture builds"
+
+Those were the only two FAIL lines in the run. 1097 + 2 = 1099 executed,
+which is the new floor. The case's stdout and exit assertions pass under the
+mutant too: stdout is `all` either way, as the finding said.
+
+**Unmutated, the same tree (attest).** 768 s and 436 s (local,
+Windows host, under load from other sessions):
+
+    selftest-needed: 1099 passed, 0 failed  (floor 1099 met)
+      exit: 0  last: 1 harness suite(s) passed.  log: .claude/state/attest-logs/20261120T164016Z.2145225.log
+    selftest: 366 passed, 0 failed  (floor 366 met)
+      exit: 0  last: 1 harness suite(s) passed.  log: .claude/state/attest-logs/20261120T165327Z.2181347.log
+
+Both on tree `86a94a8c4fcf6386dac2e07d5e267b40c20d6255`, recorded before this
+entry was written. **GREEN is a no-op**: `scripts/selftest-needed.sh` is
+unchanged (`git status --short scripts/` empty after the restore).
 
 ## Diff review
 
