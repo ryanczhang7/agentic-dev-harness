@@ -485,6 +485,7 @@ name, below the table.
 - RED (R-1): `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 - DIFF-REVIEW round 2: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported. Verdict: fix 1 first (GATES).
 - GATES (round 2 fix 1, VERSION 138, gates): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
+- DIFF-REVIEW round 3: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported. Verdict: Ship.
 
 ## Out of scope
 
@@ -937,6 +938,30 @@ Verdict: fix 1 first.
 `harness`; a GATES label on a harness path is followable. Taken in GATES:
 `origin/main` merged by the orchestrator, `VERSION` set by a
 feature-developer dispatch.
+
+### Round 3 (2026-11-20) — `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`)
+
+Reviewed only the fix for round 2's finding 1: `origin/main` merged (44702dd)
+and `VERSION` moved 137 → 138. No file changed; no `selftest.sh` run.
+
+What I checked:
+- `git diff 44702dd HEAD -- .claude/harness` changes only the last line of
+  `VERSION`, `137 (2026-11-20)` → `138 (2026-11-20)`.
+- After `git fetch`, `origin/main` (f86efd2) is at 137 and is an ancestor of
+  HEAD; no open PR claims 138.
+- The merge brought in 14 lines of `selftest-needed.test.sh` (HARNESS-119:
+  `H115_M` and `h115_real` skip `project-*.test.sh`). This repository has no
+  `project-*` suite, so AC-1's copied set is unchanged, and its pinned answer
+  does not depend on the count. `scripts/selftest-needed.sh` is untouched by
+  the merge; main's `selftest-needed` floor is still 976, so 1099 holds.
+- The story diff is the expected seven files; both changed scripts pass
+  `bash -n`; `check-boundaries.sh` fails only on the expected GATES row.
+
+No findings.
+
+Not checked: the suite on the merged tree (left to the self-test run).
+
+Verdict: Ship.
 
 ## Gate results
 
