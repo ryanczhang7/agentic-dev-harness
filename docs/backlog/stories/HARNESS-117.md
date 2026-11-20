@@ -4,8 +4,8 @@ title: A changed paths, phases or models conf selects every suite
 slug: conf-change-selects-every-suite
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-117-conf-change-selects-every-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1104,3 +1104,10 @@ Verdict: Ship.
   `attest.sh check -- bash scripts/selftest.sh selftest-needed` was `fresh`,
   exit 0, `selftest-needed: 1099 passed, 0 failed` (log
   `.claude/state/attest-logs/20261120T164016Z.2145225.log`). Not re-run.
+- **Self-test at GATES → REVIEW (2026-11-20): passed.** `selftest-needed`
+  answered `run`; a feature-developer dispatch (opus, resolved
+  claude-opus-5-5) ran `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+  through `attest.sh`. `attest.sh check` was `fresh`, exit 0,
+  `19 harness suite(s) passed.`, 4744s, tree df46ee2, log
+  `.claude/state/attest-logs/20261120T180552Z.2245085.log`. Every suite
+  0 failed; all 19 met their floors (4224 assertions against 4195 declared).
