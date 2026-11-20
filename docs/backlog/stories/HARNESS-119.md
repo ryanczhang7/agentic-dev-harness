@@ -4,8 +4,8 @@ title: A consumer's own suites stay out of the pinned real-suite lists
 slug: consumer-suites-stay-out-of-pinned-lists
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-119-consumer-suites-stay-out-of-pinned-lists
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/selftest-needed.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -124,8 +124,28 @@ name, below the table.
 
 ## Test plan
 
+The change is to the test suite itself: `h115_real` and `H115_M` in
+`.claude/tests/selftest-needed.test.sh` skip `project-*.test.sh`. No
+assertion is added, removed or reworded; AC-1 is observed by running the
+suite with a consumer-style probe suite in the tree (the Context's
+reproduction), AC-2 by running it without one.
+
 ## Handoff: RED -> GREEN
 
+Written by the orchestrating session (Opus 5.5, `claude-opus-5-5`), acting
+as Test Developer. The RED failure is the Context's reproduction (24 failed
+with the probe, on the unfixed suite). On the corrected suite, 2026-11-20:
+
+    with the probe .claude/tests/project-probe.test.sh (names VERSION and floors.conf), untracked:
+    selftest-needed: 976 passed, 0 failed
+    with-probe exit 0
+    probe removed:
+    selftest-needed: 976 passed, 0 failed
+    no-probe exit 0
+
+These pass on arrival because the suite is corrected against code that
+already exists; DV-1 earns the correction at GATES by putting the plain copy
+back with the probe present. GREEN writes only `VERSION` (137).
 ## Regressions
 
 ## Gate results
