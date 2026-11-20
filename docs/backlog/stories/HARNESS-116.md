@@ -332,6 +332,7 @@ name, below the table.
 - RED: `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 - GREEN: `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 - GATES (full gates): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
+- DIFF-REVIEW round 1: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override.
 
 ## Out of scope
 
@@ -674,6 +675,34 @@ red on the three whole-file assertions (not run; prediction).
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+## Diff review
+
+Round 1, 2026-11-19. `lead-po` on the DIFF-REVIEW row, planned `fable`,
+resolved Fable 5.2 (`claude-fable-5-2`); no override. Reviewed HEAD 44b096d
+against `origin/main`. No file changed.
+
+- **Diff against criteria and Contract:** C-1 to C-4 built as written;
+  `make_project_fixture` untouched and commits the stamp; the two shape
+  assertions on the real file (`doctor.test.sh:355-366`) unchanged (AC-5).
+- **Every reader of a fixture's stamp** (`VERSION` across `.claude/tests/*.sh`,
+  `VERSION|release_of` across `scripts/` and `.claude/hooks/`): `worktree`
+  reads the number from the fixture itself with anchored patterns;
+  `doctor.sh` compares stamps for equality only; `boundaries` writes its own
+  baseline; `refresh` and `security-audit` build their own upstreams;
+  `sigpipe.test.sh:240` is quoted test data. No suite compares a fixture's
+  stamp with the real one or expects the real header in a fixture.
+- **The new `trap ... EXIT` in `lib.test.sh:1166`** keeps `"$FIX"` from the
+  only earlier trap (line 10); no cleanup dropped.
+- **Needles:** whole-file comparisons against a literal; AC-3 first shows the
+  stand-in root reached the helper; both suites guard an empty real stamp.
+- **Suites on HEAD 44b096d:** `lib` 332 passed, 0 failed; `doctor` 71 passed,
+  0 failed.
+- Not checked by the reviewer: release 135 free against `origin/main`
+  (checked by the orchestrator after the review: `origin/main` has no new
+  commits); the full self-test.
+
+Verdict: Ship.
 
 ## Gate results
 
