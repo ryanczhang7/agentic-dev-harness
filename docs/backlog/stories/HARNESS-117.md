@@ -483,6 +483,7 @@ name, below the table.
 - GATES (full gates): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 - DIFF-REVIEW round 1: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported. Verdict: Ship.
 - RED (R-1): `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
+- DIFF-REVIEW round 2: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported. Verdict: fix 1 first (GATES).
 
 ## Out of scope
 
@@ -898,6 +899,43 @@ Verdict: Ship.
 **Orchestrator, on the Nice to have (2026-11-20):** not taken in this story.
 It is a return to RED for a reason-line choice that changes no selection, and
 the verdict is Ship. Recorded here; the user was told it was left.
+
+### Round 2 (2026-11-20) — `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`)
+
+Reviewed `git diff dd9038c HEAD -- .claude/tests`, R-1, and the whole story
+diff. No file changed; no `selftest.sh` command run.
+
+What I checked:
+- R-1's mutation earns the case: whole-stderr `assert_eq`, one line mutated
+  (284, the conf arm only), two FAILs, both the new case (root and subdir),
+  `1097 passed, 2 failed` = 1099; restore verified.
+- Reproduced in a scratch clone with a path of my own: guard present keeps
+  the unmapped reason, guard dropped prints the conf's; renamed to sort after
+  the conf, the conf's reason prints, so the case depends on sort order.
+- Floor: 4 assertions × 2 directories = 8; 1091 + 8 = 1099 in both places.
+- The new case builds its own fixture; no earlier pin moves.
+- Against today's `origin/main` (HARNESS-119 merged since round 1): a trial
+  merge is clean; HARNESS-119's edits to `selftest-needed.test.sh` do not
+  touch the HARNESS-117 cases.
+
+**Should fix:**
+
+1. **Two different harness releases would both be numbered 137**
+   (`.claude/harness/VERSION`). HARNESS-119 merged and `origin/main` is now
+   also `137 (2026-11-20)`; git merges the identical line silently, and the
+   VERSION check in `check-boundaries.sh:267` is skipped on story branches.
+   Fix: merge `origin/main`, set `VERSION` to `138 (2026-11-20)`, run the gates
+   again. If skipped, two consumers on different code both report 137.
+   **Route:** GATES
+
+Not checked: the suites on the tree after merging `origin/main`.
+
+Verdict: fix 1 first.
+
+**Orchestrator (2026-11-20):** `classify.sh .claude/harness/VERSION` →
+`harness`; a GATES label on a harness path is followable. Taken in GATES:
+`origin/main` merged by the orchestrator, `VERSION` set by a
+feature-developer dispatch.
 
 ## Gate results
 
