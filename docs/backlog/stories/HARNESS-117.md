@@ -484,6 +484,7 @@ name, below the table.
 - DIFF-REVIEW round 1: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported. Verdict: Ship.
 - RED (R-1): `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 - DIFF-REVIEW round 2: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported. Verdict: fix 1 first (GATES).
+- GATES (round 2 fix 1, VERSION 138, gates): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 
 ## Out of scope
 
@@ -941,9 +942,9 @@ feature-developer dispatch.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-20T17:50:19Z
-    commit: 5846efd
-    tree:   9e59f428f861114ee614bc84b69eb98d79f6902b
+    run:    2026-11-20T18:00:39Z
+    commit: 44702dd (working tree had uncommitted changes)
+    tree:   77d0813f2908cb4399a48c2b5292ad7fe5f1762a
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
