@@ -5,7 +5,7 @@ slug: fixtures-carry-their-own-harness-stamp
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-116-fixtures-carry-their-own-harness-stamp
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/lib.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/doctor.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -831,13 +831,34 @@ against `origin/main`. No file changed.
 
 Verdict: Ship.
 
+Round 2, 2026-11-19, after R-1. `lead-po` on the DIFF-REVIEW row, planned
+`fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. Reviewed
+HEAD 84d8e6f: the R-1 diff (`ed6a1b2..HEAD -- .claude/`) and the whole
+story diff against `origin/main`. No file changed. No findings.
+
+- `h115_real` (`selftest-needed.test.sh:1180`) is the only place that pins a
+  selection over the real suites; its three VERSION uses now carry `lib`, and
+  the fourth (floors.conf only, `selftest` alone) is right, since
+  `lib.test.sh` names none of floors.conf, selftest.test.sh or
+  shipped-docs.test.sh. Every other `hdr` pin runs over stub suites.
+- No pin selects over the real suites for `_lib.sh`, `lib.test.sh` or
+  `doctor.test.sh`; `host-load`, `run-lock`, `run-queue` and `selftest` copy
+  `_lib.sh` only and build stub suites.
+- `lib` carries no `# fixture-only:` line, correctly: line 1176 reads the
+  real stamp.
+- Arithmetic: +2 per pin, +6, 970 to 976; floors.conf and COUNTS agree.
+- Evidence: `attest.sh check` on `selftest.sh selftest-needed selftest lib`
+  is fresh, exit 0, on tree f317580.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-20T00:18:28Z
-    commit: fa3a2e4
-    tree:   b3e2366f3884fd591e00dd1414b99934b48f5bb0
+    run:    2026-11-20T01:27:09Z
+    commit: 84d8e6f
+    tree:   95eb9c9ded188178d1534f6193f63b208776e10c
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -992,3 +1013,6 @@ Verdict: Ship.
   (`claude-opus-5-5`); no override. ADJUDICATE R-1: `lead-po`, planned
   `fable`, resolved Fable 5.2 (`claude-fable-5-2`). Self-test round 1:
   `feature-developer`, resolved Opus 5.5.
+- GATES round 2 (full gates): `feature-developer`, resolved Opus 5.5
+  (`claude-opus-5-5`). DIFF-REVIEW round 2: `lead-po`, resolved Fable 5.2
+  (`claude-fable-5-2`).
