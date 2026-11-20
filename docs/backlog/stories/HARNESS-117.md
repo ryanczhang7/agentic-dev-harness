@@ -624,3 +624,9 @@ name, below the table.
 - **The story's own `--changed` run at GATES** will not answer `all`: it
   changes no conf. It selects by mention of `scripts/selftest-needed.sh`,
   `advance-story.md` and the suite files, as any story does.
+- **Answers from the user, 2026-11-19.** D-1: option 1, a change to one of
+  the three confs answers `all` ("Every suite (Recommended)"). Q-1 is settled
+  by that answer: the story stands as written. Q-2: keep `models.conf` in the
+  rule ("Include it (Recommended)"). No criterion changes. The planning branch
+  was renamed to `story/HARNESS-117-conf-change-selects-every-suite` and the
+  story committed at PLANNED as `c9107b1`.
