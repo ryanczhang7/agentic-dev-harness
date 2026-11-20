@@ -4,8 +4,8 @@ title: A changed paths, phases or models conf selects every suite
 slug: conf-change-selects-every-suite
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-117-conf-change-selects-every-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
