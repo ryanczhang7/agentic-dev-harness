@@ -480,6 +480,7 @@ name, below the table.
 - PLANNED: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported.
 - RED: `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 - GREEN: `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
+- GATES (full gates): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 
 ## Out of scope
 
@@ -768,10 +769,21 @@ until GREEN. Declined in RED, left to their owner, GATES.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-20T14:14:59Z
+    commit: a161003
+    tree:   051e514848009effd005eefadc732c50f28fb4e9
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
