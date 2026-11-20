@@ -4,8 +4,8 @@ title: Fixtures carry their own harness stamp
 slug: fixtures-carry-their-own-harness-stamp
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-116-fixtures-carry-their-own-harness-stamp
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/lib.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/doctor.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
