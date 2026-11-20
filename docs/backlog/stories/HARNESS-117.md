@@ -481,6 +481,7 @@ name, below the table.
 - RED: `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 - GREEN: `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 - GATES (full gates): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
+- DIFF-REVIEW round 1: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported. Verdict: Ship.
 
 ## Out of scope
 
@@ -766,6 +767,53 @@ until GREEN. Declined in RED, left to their owner, GATES.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+## Diff review
+
+### Round 1 (2026-11-20) — `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`)
+
+Reviewed `git diff origin/main...HEAD` after the merge of `origin/main`
+(4bb0f54). No file changed.
+
+What I checked:
+- The rule (`scripts/selftest-needed.sh:283-285`) sits inside the
+  `if [ "$MODE" = suites ]` block, a whole-path `case` arm with R2's
+  guard-and-`continue` shape. Run/skip mode is not touched.
+- In a scratch clone: a conf edited, deleted (staged), renamed, edited beside
+  an earlier-sorting mapped path, and run from `scripts/` all print `all`,
+  exit 0, with the pinned reason; run/skip mode prints `run`, exit 0, for
+  each. Controls: `.claude/harness/project.conf` and `rules.md` still print
+  their by-mention lists (6 and 8 of 35).
+- The caller, `scripts/selftest.sh --changed` (`:312-320`), takes `rc=0` and
+  stdout `all` and builds its header from the text after `all: `; the new
+  reason has that shape. No change needed there.
+- All three confs classify as `harness`; `_lib.sh` has exactly three
+  single-file copies from `$REPO_ROOT` (`:120-122`), matching AC-4.
+- Floor arithmetic: 976 + 115 = 1091 in `floors.conf` and the COUNTS table;
+  DV-1's run executed 1049 + 42 = 1091. 35 suites after the merge.
+- `advance-story.md:310` changed in place; no other suite pins the old
+  clause; no other document lists the R2 paths.
+
+**Nice to have:**
+
+1. **The conf arm's "first reason wins" guard has no test that fails without
+   it** (`scripts/selftest-needed.sh:284`; `selftest-needed.test.sh:1539-1543`).
+   The only sort-order case puts the conf first. With an unmapped
+   `.claude/aaa-h117-unmapped.txt` and `phases.conf` both changed, the script
+   prints the unmapped path's R5 reason; with the guard deleted it prints the
+   conf's. Stdout is `all` either way and `selftest.sh --changed` runs every
+   suite either way; only which true reason line prints changes.
+   Fix: one case beside the C-1 case, floor raised, earned by one mutation.
+   **Route:** RED
+
+Not checked: the `selftest-needed` suite on the merged tree (left to the
+orchestrator's self-test run).
+
+Verdict: Ship.
+
+**Orchestrator, on the Nice to have (2026-11-20):** not taken in this story.
+It is a return to RED for a reason-line choice that changes no selection, and
+the verdict is Ship. Recorded here; the user was told it was left.
 
 ## Gate results
 
