@@ -5,7 +5,7 @@ slug: conf-change-selects-every-suite
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-117-conf-change-selects-every-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -343,6 +343,31 @@ one suite or the one command named, never the full self-test.
   where `all` is expected. Run against
   `bash scripts/selftest.sh selftest-needed`. **Owner: GATES.**
 
+  **Result (GATES, 2026-11-20): passed — the suite went red where it should.**
+  Run by the orchestrator with `scripts/mutate.sh`, against
+  `bash scripts/selftest.sh selftest-needed`. The mutation removes the conf
+  arm's pattern, so no path reaches it. 42 failures, every one in the
+  HARNESS-117 block (AC-1 ×18, C-1 ×2, AC-2(a) ×10, AC-2(b) ×6, AC-4 ×6);
+  AC-5's four text pins stay green, as they should, since the text is not
+  mutated. AC-1's `phases.conf` case shows a list where `all` is expected.
+  File restored and verified; `mutate.sh --check` clean.
+
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by s#^      \.claude/harness/paths\.conf|\.claude/harness/phases\.conf|\.claude/harness/models\.conf)$#      __h117_dv1_removed__)#) ===
+      283 -       .claude/harness/paths.conf|.claude/harness/phases.conf|.claude/harness/models.conf)
+      283 +       __h117_dv1_removed__)
+        FAIL AC-1: .claude/harness/phases.conf changed over the real suites answers all, saying it is copied into every fixture [from root]: stdout is exactly the pinned list
+             expected: all
+             actual:   lib
+             plan
+             refresh
+             selftest-needed
+        FAIL AC-1: .claude/harness/phases.conf changed over the real suites answers all, saying it is copied into every fixture [from root]: stderr is exactly the pinned text
+             expected: selftest-needed: suites — all: .claude/harness/phases.conf is copied into every fixture make_fixture builds
+             actual:   selftest-needed: suites — 4 of 35 selected from 1 harness path(s) changed against main (merge-base 9254643)
+    selftest-needed: 1049 passed, 42 failed
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-117/.claude/state/mutations/scripts_selftest-needed.sh.20261120T135805Z.1844862.bak) ===
+
 - **DV-2, the rule on the real tree (the story's claim, on the real
   file).** In the story's worktree, with one comment line appended to the
   real `.claude/harness/phases.conf`, the real script **must** print the one
@@ -354,6 +379,17 @@ one suite or the one command named, never the full self-test.
 
   The command: `bash scripts/mutate.sh .claude/harness/phases.conf '$a# HARNESS-117 probe' -- bash scripts/selftest-needed.sh --suites`
 
+  **Result (GATES, 2026-11-20): passed.** Run by the orchestrator, the
+  command above, in the story's worktree. The real script printed `all` with
+  the conf reason; the real `phases.conf` was restored and verified.
+
+    === mutate: .claude/harness/phases.conf (1 line(s) changed by $a# HARNESS-117 probe) ===
+      26 + # HARNESS-117 probe
+    === mutate: running bash scripts/selftest-needed.sh --suites ===
+    selftest-needed: suites — all: .claude/harness/phases.conf is copied into every fixture make_fixture builds
+    all
+    === mutate: command exited 0; restored (verified byte-for-byte against /d/adh-HARNESS-117/.claude/state/mutations/.claude_harness_phases.conf.20261120T135750Z.1844688.bak) ===
+
 - **DV-3, the controls of AC-3 earned.** With the rule's match for one conf
   widened from the whole path to a pattern (for example
   `.claude/harness/paths.conf` to `.claude/harness/paths.conf*`; written at
@@ -361,6 +397,26 @@ one suite or the one command named, never the full self-test.
   `.claude/harness/paths.conf.bak` case **must** fail, its actual stdout
   being `all`. Run against `bash scripts/selftest.sh selftest-needed`.
   **Owner: GATES.**
+
+  **Result (GATES, 2026-11-20): passed — the control went red.** Run by the
+  orchestrator against `bash scripts/selftest.sh selftest-needed`. 5
+  failures, all AC-3's `paths.conf.bak` case (both directories, plus its
+  reason count); the `h117/phases.conf` control, not widened, stayed green.
+  File restored and verified; `mutate.sh --check` clean.
+
+    === mutate: scripts/selftest-needed.sh (1 line(s) changed by s#^      \.claude/harness/paths\.conf|#      .claude/harness/paths.conf*|#) ===
+      283 -       .claude/harness/paths.conf|.claude/harness/phases.conf|.claude/harness/models.conf)
+      283 +       .claude/harness/paths.conf*|.claude/harness/phases.conf|.claude/harness/models.conf)
+        FAIL AC-3: .claude/harness/paths.conf.bak, named by stub backup, prints backup, not all [from root]: stdout is exactly the pinned list
+             expected: backup
+             actual:   all
+        FAIL AC-3: backup's reason is exactly `.claude/harness/paths.conf.bak (mentioned)`
+             expected: 1
+             actual:   0
+    selftest-needed: 1086 passed, 5 failed
+    1 of 1 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-117/.claude/state/mutations/scripts_selftest-needed.sh.20261120T140558Z.1876040.bak) ===
+    mutate: no stranded mutation; nothing of a previous run is in the tree.
 
 ## Amendments
 
