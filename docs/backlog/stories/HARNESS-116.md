@@ -5,10 +5,10 @@ slug: fixtures-carry-their-own-harness-stamp
 epic: 
 type: fix
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-116-fixtures-carry-their-own-harness-stamp
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
-touches: [.claude/tests/_lib.sh, .claude/tests/lib.test.sh, .claude/tests/doctor.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
+touches: [.claude/tests/_lib.sh, .claude/tests/lib.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/doctor.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
 required_gates: []  # every gate is unconfigured here; the artifact is judged by the lib and doctor suites under their selftest floors, which CI runs in full on the PR
 ---
 
@@ -847,3 +847,12 @@ Verdict: Ship.
   `  ok       harness ver  1 (2000-01-01)` and `worktree ... harness 1
   (2000-01-01)`; the real-stamp preconditions pass on `135 (2026-11-19)`.
   No divergence.
+- **Self-test at GATES → REVIEW, 2026-11-19: failed, 1 of 35.**
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` (all suites, because
+  `_lib.sh` changed), log `.claude/state/attest-logs/20261120T002159Z.492541.log`:
+  `selftest-needed: 952 passed, 18 failed`. Each failure is an extra `lib`
+  in HARNESS-115's pinned selections for a `VERSION` change, because this
+  story's `lib.test.sh:1176` reads the real `VERSION`. Put to the user, who
+  chose "Add lib to the lists (Recommended)" over "Drop the real read from
+  lib". Adjudicated upheld (R-1); return to RED; `touches:` gains
+  `.claude/tests/selftest-needed.test.sh`.
