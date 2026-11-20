@@ -133,6 +133,8 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+- PLANNED, RED, GREEN, GATES: run inline by the orchestrating session; resolved Opus 5.5 (`claude-opus-5-5`). PLANNED was planned for `lead-po` on `fable` and ran on `opus`: a two-line test fix cut from a CI log, with the fresh `fable` judgement spent on the diff review.
+- DIFF-REVIEW round 1: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override.
 ## Out of scope
 
 - `scripts/selftest-needed.sh`: its selection is right; a consumer suite
@@ -164,6 +166,33 @@ These pass on arrival because the suite is corrected against code that
 already exists; DV-1 earns the correction at GATES by putting the plain copy
 back with the probe present. GREEN writes only `VERSION` (137).
 ## Regressions
+
+## Diff review
+
+### Round 1 (2026-11-20)
+
+`lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2
+(`claude-fable-5-2`); no override reported. Changed no file.
+
+Checked: the count and the copy use the same glob and the same skip, so the
+header's total and the fixture cannot drift apart; top-level `for f` was
+already `for f` and nothing later reads it; `local f` in `h115_real`
+shadows nothing its callbacks (`h115_decl_doctor`, `h115_decl_selftest`)
+read, and HARNESS-117's new calls pass no argument; no other suite copies
+or counts the real suites into a pinned list (`shipped-docs.test.sh:215`
+already skips `project-*.test.sh`; `scripts/selftest-needed.sh` counts
+consumer suites on purpose); `project-*.test.sh` is the convention
+`floors.conf`, `selftest.sh`, `refresh-harness.sh` and `shipped-docs`
+already use. Ran AC-2: `selftest-needed: 976 passed, 0 failed`, exit 0.
+HARNESS-117's new `h115_real` cases expect `all`, independent of what was
+copied.
+
+No findings.
+
+Not checked: AC-1 with the probe was not re-run by the reviewer (relies on
+the pasted handoff and DV-1).
+
+Verdict: Ship.
 
 ## Gate results
 
