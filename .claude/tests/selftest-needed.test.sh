@@ -1129,7 +1129,14 @@ H115_P3='.claude/harness/h115-three.conf'
 H115_DESPITE='mentioned under $REPO_ROOT, despite fixture-only'
 H115_NS='  not selected (fixture-only): '
 H115_M=0
-for f in "$REPO_ROOT"/.claude/tests/*.test.sh; do [ -e "$f" ] && H115_M=$((H115_M+1)); done
+# A consumer's own project-*.test.sh suites are not the shipped suites these
+# pins describe (HARNESS-119: fantasy-world-builder's project-handoff and
+# project-harness-deps name VERSION and floors.conf), so neither the count
+# nor h115_real's copy takes them.
+for f in "$REPO_ROOT"/.claude/tests/*.test.sh; do
+  case "${f##*/}" in project-*) continue ;; esac
+  [ -e "$f" ] && H115_M=$((H115_M+1))
+done
 
 # h115_ns_count   How many lines of the last run's stderr begin with the
 # not-selected prefix.
@@ -1180,7 +1187,10 @@ h115_expect() {
 h115_real() {
   new_fixture; SN="$d/scripts/selftest-needed.sh"
   mkdir -p "$d/.claude/tests"
-  cp "$REPO_ROOT"/.claude/tests/*.test.sh "$d/.claude/tests/"
+  local f
+  for f in "$REPO_ROOT"/.claude/tests/*.test.sh; do
+    case "${f##*/}" in project-*) ;; *) cp "$f" "$d/.claude/tests/" ;; esac
+  done
   printf 'floor | h115 | 1\n' > "$d/$H115_F"
   [ -z "${1-}" ] || "$1"
   commit_all "the real suites"
