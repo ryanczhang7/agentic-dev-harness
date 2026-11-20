@@ -65,7 +65,46 @@ if [ -n "$CHECKOUT_BRANCH" ] && [ -n "${BRANCH:-}" ] && [ "$CHECKOUT_BRANCH" != 
   OTHER_SESSION=1
 fi
 
+# --- a gate run already in flight (HARNESS-118) ------------------------------
+# gates.sh writes the stamp at the END of a run, so while one is running the
+# stamp is missing, older than the phase, or the previous partial run's - and
+# every block below fired on it. Measured downstream (fantasy-world-builder,
+# WORLD-055): six blocks in one 10-15 minute full run, each demanding the run
+# that already held the lock, which a second run could not have taken.
+#
+# The record of a run in flight is the run lock (scripts/run-lock.sh,
+# HARNESS-034): gates.sh takes <root>/.claude/state/run.lock before the first
+# gate and releases it on EXIT; --list and --audit never take it. The helpers
+# come from the hook's own tree, the lock from the tree being judged. Sourcing
+# run-lock.sh only defines functions and two globals: nothing here takes,
+# rewrites or releases the lock. Any doubt - no lock, no helpers, no numeric
+# pid, a pid that is gone, a lock held by another command - is "not in
+# flight", and the hook blocks exactly as before.
+gate_run_in_flight() {
+  local lock="$HARNESS_ROOT/.claude/state/run.lock" rl
+  rl="$(dirname "${BASH_SOURCE[0]}")/../../scripts/run-lock.sh"
+  [ -f "$lock" ] && [ -f "$rl" ] || return 1
+  . "$rl" 2>/dev/null || return 1
+  INFLIGHT_PID="$(run_lock_field "$lock" pid)"
+  case "$INFLIGHT_PID" in ''|*[!0-9]*) return 1 ;; esac
+  INFLIGHT_COMMAND="$(run_lock_field "$lock" command)"
+  case "$INFLIGHT_COMMAND" in scripts/gates.sh|'scripts/gates.sh '*) ;; *) return 1 ;; esac
+  run_lock_alive "$INFLIGHT_PID" || return 1
+  INFLIGHT_STARTED="$(run_lock_field "$lock" started)"
+  return 0
+}
+
 block() {
+  if gate_run_in_flight; then
+    local partial=""
+    if [ "$PHASE" = GATES ] && ! run_lock_full "$INFLIGHT_COMMAND"; then
+      partial=" That run is partial, so it will not discharge GATES: a full bash scripts/gates.sh is still owed once it exits."
+    fi
+    warn "A gate run is in flight in this tree: pid ${INFLIGHT_PID}, started ${INFLIGHT_STARTED}: ${INFLIGHT_COMMAND}. Its record lands in the story when it exits, so there is nothing to run now - a second run would be refused by the run lock.${partial}
+
+Once it has exited, this is what stands:
+$1"
+  fi
   if [ "$OTHER_SESSION" = 1 ]; then
     warn "$1
 
