@@ -350,4 +350,137 @@ set_phase "$FIX" GATES
 stamp_run pass no
 assert_blocks "a partial run in GATES, on the story's branch" "partial"
 
+# --- a gate run already in flight (HARNESS-118) ------------------------------
+describe "HARNESS-118: a gate run in flight is waited for, not demanded"
+
+# Field report, fantasy-world-builder WORLD-055: one full gates.sh run, ten to
+# fifteen minutes, and the hook blocked six times demanding `bash
+# scripts/gates.sh` while that run held .claude/state/run.lock. gates.sh writes
+# the stamp at the END of a run, so a run in flight looks exactly like no run.
+# A second one would be refused by the run lock with exit 2.
+#
+# The live pid is a background sleep the suite owns and kills; the dead one is
+# a sleep that has already been reaped, so kill -0 on it fails.
+LOCK="$FIX/.claude/state/run.lock"
+sleep 600 </dev/null >/dev/null 2>&1 & H118_LIVE=$!
+sleep 0 </dev/null >/dev/null 2>&1 & H118_DEAD=$!
+wait "$H118_DEAD" 2>/dev/null
+trap 'kill "$H118_LIVE" 2>/dev/null; rm -rf "$FIX"' EXIT
+
+# h118_lock <pid> <command>   Writes the lock as run-lock.sh writes it.
+h118_lock() {
+  printf 'pid\t%s\nstarted\t2026-11-19T21:00:00Z\ncommand\t%s\n' "$1" "$2" > "$LOCK"
+}
+
+# assert_lock_untouched <label> <pid> <command>   AC-9.
+assert_lock_untouched() {
+  local want got
+  want="$(printf 'pid\t%s\nstarted\t2026-11-19T21:00:00Z\ncommand\t%s\nx' "$2" "$3")"
+  if [ -f "$LOCK" ]; then got="$(cat "$LOCK"; printf x)"; else got="(no lock file)"; fi
+  assert_eq "the hook left the lock as written: $1" "$want" "$got"
+}
+
+# assert_continues <label>   The raw output carries continue:true and no decision.
+assert_continues() {
+  local out; out="$(hook)"
+  case "$out" in
+    *'"decision"'*) _bad "continues: $1" "it carries a decision: $out" ;;
+    *'"continue":true'*) _ok "continues: $1" ;;
+    *) _bad "continues: $1" "no continue:true in: $out" ;;
+  esac
+}
+
+# AC-1: the case the report measured.
+set_phase "$FIX" GREEN
+rm -f "$STAMP"
+h118_lock "$H118_LIVE" "scripts/gates.sh"
+assert_warns "AC-1: no stamp, a live gates lock" "in flight"
+assert_continues "AC-1: no stamp, a live gates lock"
+w="$(warned)"
+assert_contains "AC-1: the message names the pid" "pid $H118_LIVE" "$w"
+assert_contains "AC-1: and when it started" "2026-11-19T21:00:00Z" "$w"
+assert_contains "AC-1: and its command" "scripts/gates.sh" "$w"
+assert_contains "AC-1: and that its record lands when it exits" "when it exits" "$w"
+assert_contains "AC-1: and what it would otherwise have said" "has not been run" "$w"
+assert_lock_untouched "AC-1" "$H118_LIVE" "scripts/gates.sh"
+
+# AC-2: the other two blocks.
+set_phase "$FIX" GATES
+stamp_run pass
+phase_moved
+h118_lock "$H118_LIVE" "scripts/gates.sh"
+assert_warns "AC-2: a stamp older than GATES, a live gates lock" "in flight"
+assert_continues "AC-2: a stamp older than GATES, a live gates lock"
+# R-1 (diff review round 1, finding 1): a FULL run in flight in GATES is the
+# run GATES owes, so it must not be called partial.
+w="$(warned)"
+case "$w" in
+  *"will not discharge"*) _bad "AC-2: a full run in flight in GATES is not called partial" "$w" ;;
+  *"in flight"*) _ok "AC-2: a full run in flight in GATES is not called partial" ;;
+  *) _bad "AC-2: a full run in flight in GATES is not called partial" "no in-flight message: $w" ;;
+esac
+
+set_phase "$FIX" GATES
+stamp_run pass no
+h118_lock "$H118_LIVE" "scripts/gates.sh"
+assert_warns "AC-2: a partial stamp in GATES, a live full run" "in flight"
+assert_lock_untouched "AC-2" "$H118_LIVE" "scripts/gates.sh"
+
+# AC-3: a partial run in flight in GATES is waited for, and named as partial.
+set_phase "$FIX" GATES
+rm -f "$STAMP"
+h118_lock "$H118_LIVE" "scripts/gates.sh --fast"
+assert_warns "AC-3: a live --fast run in GATES" "in flight"
+w="$(warned)"
+assert_contains "AC-3: and it says that run will not discharge GATES" "will not discharge GATES" "$w"
+assert_contains "AC-3: and names the command with its argument" "scripts/gates.sh --fast" "$w"
+
+# The same --fast run in GREEN is what GREEN asks for: no partial sentence.
+set_phase "$FIX" GREEN
+rm -f "$STAMP"
+h118_lock "$H118_LIVE" "scripts/gates.sh --fast"
+w="$(warned)"
+case "$w" in
+  *"will not discharge"*) _bad "AC-3: in GREEN a --fast run is not called partial" "$w" ;;
+  *"in flight"*) _ok "AC-3: in GREEN a --fast run is not called partial" ;;
+  *) _bad "AC-3: in GREEN a --fast run is not called partial" "no in-flight message: $w" ;;
+esac
+
+# AC-4: a dead pid is a stale lock, not a run.
+set_phase "$FIX" GREEN
+rm -f "$STAMP"
+h118_lock "$H118_DEAD" "scripts/gates.sh"
+assert_blocks "AC-4: a gates lock whose pid is not running" "has not been run"
+assert_lock_untouched "AC-4" "$H118_DEAD" "scripts/gates.sh"
+
+# AC-5: a self-test holding the lock writes no gate stamp.
+h118_lock "$H118_LIVE" "scripts/selftest.sh"
+assert_blocks "AC-5: a live lock held by selftest.sh" "has not been run"
+h118_lock "$H118_LIVE" "scripts/gates.shx"
+assert_blocks "AC-5: a command that only starts with the gates name" "has not been run"
+assert_lock_untouched "AC-5" "$H118_LIVE" "scripts/gates.shx"
+
+# AC-6: a lock with no usable pid.
+printf 'pid\t\nstarted\t2026-11-19T21:00:00Z\ncommand\tscripts/gates.sh\n' > "$LOCK"
+assert_blocks "AC-6: a lock recording no pid" "has not been run"
+printf 'pid\t%sx\nstarted\t2026-11-19T21:00:00Z\ncommand\tscripts/gates.sh\n' "$H118_LIVE" > "$LOCK"
+assert_blocks "AC-6: a lock whose pid is not a number" "has not been run"
+printf 'garbage\n' > "$LOCK"
+assert_blocks "AC-6: a lock that is not a record at all" "has not been run"
+
+# AC-7: no lock, as before.
+rm -f "$LOCK"
+assert_blocks "AC-7: no lock file" "has not been run"
+[ -e "$LOCK" ] && _bad "AC-9: the hook created no lock" "$LOCK exists" || _ok "AC-9: the hook created no lock"
+
+# AC-8: a lock never makes the hook say something it would not otherwise say.
+set_phase "$FIX" GREEN
+stamp_run pass
+h118_lock "$H118_LIVE" "scripts/gates.sh"
+assert_silent "AC-8: a passing run in this phase, with a live gates lock"
+assert_lock_untouched "AC-8" "$H118_LIVE" "scripts/gates.sh"
+rm -f "$LOCK"
+
+kill "$H118_LIVE" 2>/dev/null
+
 summary "gate-reminder"
