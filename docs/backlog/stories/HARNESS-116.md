@@ -238,8 +238,8 @@ copies the real file until GREEN.
   `lib` went red in the HARNESS-116 block only, AC-3 showing
   `999 (2099-12-31)`; the file was restored and verified.
 
-      bash scripts/mutate.sh .claude/tests/_lib.sh '/printf .1 (2000-01-01)/c\  cp "$REPO_ROOT/.claude/harness/VERSION"     "$d/.claude/harness/VERSION" 2>/dev/null' -- bash scripts/selftest.sh lib
-      === mutate: .claude/tests/_lib.sh (1 line(s) changed by ...) ===
+    bash scripts/mutate.sh .claude/tests/_lib.sh '/printf .1 (2000-01-01)/c\  cp "$REPO_ROOT/.claude/harness/VERSION"     "$d/.claude/harness/VERSION" 2>/dev/null' -- bash scripts/selftest.sh lib
+    === mutate: .claude/tests/_lib.sh (1 line(s) changed by ...) ===
         126 -   printf '1 (2000-01-01)\n' > "$d/.claude/harness/VERSION"
         126 +   cp "$REPO_ROOT/.claude/harness/VERSION"     "$d/.claude/harness/VERSION" 2>/dev/null
           FAIL HARNESS-116 AC-1: make_fixture's VERSION is exactly '1 (2000-01-01)' and one newline
@@ -250,8 +250,8 @@ copies the real file until GREEN.
                x
                actual:   999 (2099-12-31)
           FAIL HARNESS-116 AC-3: and 999 appears nowhere in the fixture's VERSION
-      lib: 327 passed, 5 failed
-      === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_tests__lib.sh.20261120T001610Z.480290.bak) ===
+    lib: 327 passed, 5 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_tests__lib.sh.20261120T001610Z.480290.bak) ===
 
 - **DV-2, run D repeated on the built tree (the story's claim, on the real
   file).** At PLANNED, with the real stamp set to `44 (2026-09-01)`,
@@ -261,13 +261,13 @@ copies the real file until GREEN.
   count has moved by then for another reason, the condition is "0 failed,
   and the three assertions named in run D pass". **Owner: GATES.**
 
-      bash scripts/mutate.sh .claude/harness/VERSION '$s/.*/44 (2026-09-01)/' -- bash scripts/selftest.sh worktree
+    bash scripts/mutate.sh .claude/harness/VERSION '$s/.*/44 (2026-09-01)/' -- bash scripts/selftest.sh worktree
 
   **DV-2 result (GATES, 2026-11-19, run by the orchestrator): PASSED.**
   Measured red at PLANNED (70 passed, 3 failed); on the GREEN commit:
 
-      worktree: 73 passed, 0 failed
-      === mutate: command exited 0; restored (verified byte-for-byte against .../.claude_harness_VERSION.20261120T001658Z.483650.bak) ===
+    worktree: 73 passed, 0 failed
+    === mutate: command exited 0; restored (verified byte-for-byte against .../.claude_harness_VERSION.20261120T001658Z.483650.bak) ===
 
 ## Amendments
 
@@ -686,7 +686,7 @@ red on the three whole-file assertions (not run; prediction).
 
 - **R-1 (selftest-needed pins, HARNESS-115 AC-1/AC-2/AC-5).**
 
-**Adjudicated R-1:** `fable` (resolved Fable 5.2, claude-fable-5-2), 2026-11-19, upheld: in a scratch clone of ed6a1b2, a VERSION-only change prints `doctor lib worktree` with `lib .claude/harness/VERSION (mentioned)`, and with origin/main's lib.test.sh in the base prints `doctor worktree`; a floors.conf-only change prints `selftest` either way; a `# fixture-only:` declaration added to lib is overridden (`mentioned under $REPO_ROOT, despite fixture-only`) because line 1176 reads the real stamp. lib's selection is this story's own real read and a correct R3 mention; the three HARNESS-115 pins (AC-1, AC-2, AC-5 doctor copy) lack `lib` and are wrong; the floors.conf-only pin is unaffected.
+- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2), 2026-11-19, upheld: in a scratch clone of ed6a1b2, a VERSION-only change prints `doctor lib worktree` with `lib .claude/harness/VERSION (mentioned)`, and with origin/main's lib.test.sh in the base prints `doctor worktree`; a floors.conf-only change prints `selftest` either way; a `# fixture-only:` declaration added to lib is overridden (`mentioned under $REPO_ROOT, despite fixture-only`) because line 1176 reads the real stamp. lib's selection is this story's own real read and a correct R3 mention; the three HARNESS-115 pins (AC-1, AC-2, AC-5 doctor copy) lack `lib` and are wrong; the floors.conf-only pin is unaffected.
 
   * **Which tests, and what was wrong.** Three `h115_expect` blocks in
     `.claude/tests/selftest-needed.test.sh` pin the exact `--suites` output
