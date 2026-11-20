@@ -1,0 +1,626 @@
+---
+id: HARNESS-117
+title: A changed paths, phases or models conf selects every suite
+slug: conf-change-selects-every-suite
+epic: 
+type: fix
+status: todo
+phase: PLANNED
+branch: story/HARNESS-117-conf-change-selects-every-suite
+depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
+touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
+required_gates: []  # every gate is unconfigured here; the artifact is judged by the selftest-needed suite under its selftest floor, which CI runs in full on the PR
+---
+
+## Context
+
+`bash scripts/selftest-needed.sh --suites` picks the suites
+`selftest.sh --changed` runs before a PR. It selects by mention (R3): a
+suite is chosen for a changed path when its source names the path. That is
+sound only while a suite that never names a path does not read it.
+
+`make_fixture` in `.claude/tests/_lib.sh` (`:120`-`:122`) breaks that for
+three files: it copies the REAL `.claude/harness/paths.conf`,
+`phases.conf` and `models.conf` into every fixture, and
+`make_project_fixture` builds on it. 24 of the 35 suites call one or the
+other, and most never name the confs. Unlike `VERSION` (HARNESS-116), the
+content matters here: these are the classification rules, the phase
+permissions and the model plan that the suites assert on. HARNESS-116
+recorded this as a finding from `grep -l` only (its Notes, Q-2), and the
+user asked for a story.
+
+This story measures it, and then makes a change to one of the three confs
+select every suite, the way a change to `_lib.sh` already does.
+
+**The measurement, PLANNED, 2026-11-19, release 135 (`da9d4bb`), worktree
+`D:\adh-HARNESS-117`.**
+
+*Table 1. Who gets the real file.* All 24 helper suites get all three (the
+helper copies them unconditionally): attest, boundaries, ci-local,
+classify, doctor, gate-reminder, gates, grep-count, host-load, lib, mutate,
+phase-guard, phase, plan, profiles, run-lock, run-queue, selftest-needed,
+selftest, settings, sigpipe, spawns, story, worktree. Reads that do not go
+through the helper: `selftest-needed.test.sh:204` and `:703` (`cp -r` of the
+real `.claude/harness`), `lib.test.sh:1205`-`:1206` (the real `paths.conf`
+and `phases.conf` into a stand-in root), `boundaries.test.sh:3930`-`:3931`
+and `dispatch.test.sh:980` (the real `models.conf`). The other 11 suites
+(briefs, dispatch, new-story, policy, procedure, refresh, reporting,
+rules-trim, security-audit, shipped-docs, tidy) build no helper fixture;
+`refresh` writes confs of its own (`:40`, `:44`, `:90`).
+
+Which suites can depend on the content, read from the scripts each one
+names (an upper bound on candidates, not a proof; the runs
+below are the evidence):
+
+| Conf | Read by | Helper suites whose source names a reader (`grep -l`) |
+|---|---|---|
+| `paths.conf` | `.claude/hooks/lib.sh` (`classify`, so the guard hook, `gates.sh`, `check-boundaries.sh`, `classify.sh`, `selftest-needed.sh`), `doctor.sh` | 19 name `gates.sh`; 13 name `check-boundaries.sh` |
+| `phases.conf` | `.claude/hooks/lib.sh` (`phase_allows`), `phase.sh:20`, `plan.sh:29`, `check-boundaries.sh:156`, `doctor.sh` | 9 set a phase (boundaries, gate-reminder, gates, mutate, phase-guard, phase, plan, spawns, worktree) |
+| `models.conf` | `plan.sh:28`, `check-boundaries.sh:1219`, `doctor.sh:133` (presence) | 5 name `plan.sh` (grep-count, host-load, phase-guard, phase, plan); 13 name `check-boundaries.sh` |
+
+*Table 2. What `--suites` selects today.* A scratch clone at `da9d4bb`, one
+comment line appended to one conf and committed on a branch,
+`bash scripts/selftest-needed.sh --suites da9d4bb`:
+
+| Changed | Selected (all by `(mentioned)`) | Helper suites NOT selected |
+|---|---|---|
+| `paths.conf` | 8 of 35: attest, classify, lib, phase-guard, refresh, selftest-needed, sigpipe, spawns | 17: boundaries, ci-local, doctor, gate-reminder, gates, grep-count, host-load, mutate, phase, plan, profiles, run-lock, run-queue, selftest, settings, story, worktree |
+| `phases.conf` | 3 of 35: lib, plan, refresh | 22: every helper suite but lib and plan; `phase-guard` and `phase` among them |
+| `models.conf` | 4 of 35: boundaries, dispatch, plan, rules-trim | 22: every helper suite but boundaries and plan |
+
+    selftest-needed: suites — 3 of 35 selected from 1 harness path(s) changed against da9d4bb (merge-base da9d4bb)
+      lib      .claude/harness/phases.conf (mentioned)
+      plan     .claude/harness/phases.conf (mentioned)
+      refresh  .claude/harness/phases.conf (mentioned)
+
+The same change made in this worktree and not committed (DV-2's command)
+prints the same three names.
+(`lib` is there since HARNESS-116: its stand-in root names two of the
+(`lib` is there since HARNESS-116: its stand-in root names two of the
+confs. HARNESS-116's Q-2 list predates that.)
+
+*Table 3. The runs.* One plausible content change per conf, each one
+`SELFTEST_JOBS=4 bash scripts/mutate.sh <conf> '<expr>' -- bash
+scripts/selftest.sh <every suite table 2 does not select for that conf>`,
+the 11 non-helper suites included; restore verified by `mutate.sh`. Other
+gate runs shared the host.
+
+| | Conf, mutation | Suites run | Result |
+|---|---|---|---|
+| M-1 | `phases.conf`: `/^RED /s/test,manifest,/test,/` (RED may no longer write a manifest) | 32 | **`phase-guard` red**, 383 passed, 5 failed: "allows: RED may write Cargo.toml", "... package.json", "... pyproject.toml", "... the lockfile", "... pnpm-lock.yaml". The other 31 green, 6148 assertions. Exit 1, 56 min |
+| M-2 | `paths.conf`: `s/^manifest \| package\.json$/config \| package.json/` (one file moves category) | 27 | **`boundaries` red**, 684 passed, 3 failed, all under "RED may add a test dependency, and only a test dependency": "the same in package.json", "and a production dependency in package.json", "and production AFTER the dev block is still read". The other 26 green. Exit 1, 26 min |
+| M-3 | `models.conf`: `/^model /s/\| fable \|/\| opus  \|/` (the four `fable` rows become `opus`) | 31 | **all 31 green**, 5758 assertions, exit 0, 17 min |
+| M-4 | `models.conf`: `/^model  \| GREEN /d` (the GREEN row deleted) | the same 31 | **all 31 green**, 5758 assertions, exit 0, 20 min |
+
+    phase-guard: 383 passed, 5 failed
+    1 of 32 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-117/.claude/state/mutations/.claude_harness_phases.conf.20261120T025805Z.997062.bak) ===
+    boundaries: 684 passed, 3 failed
+    1 of 27 harness suite(s) FAILED.
+    === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-117/.claude/state/mutations/.claude_harness_paths.conf.20261120T035419Z.1209880.bak) ===
+    31 harness suite(s) passed.
+    === mutate: command exited 0; restored (verified byte-for-byte against /d/adh-HARNESS-117/.claude/state/mutations/.claude_harness_models.conf.20261120T042038Z.1353181.bak) ===
+    31 harness suite(s) passed.
+    === mutate: command exited 0; restored (verified byte-for-byte against /d/adh-HARNESS-117/.claude/state/mutations/.claude_harness_models.conf.20261120T043748Z.1475095.bak) ===
+    mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+**What it shows.** The gap is real for two of the three files. A story
+that took `manifest` out of RED's row in `phases.conf` and changed nothing else would select `lib`,
+`plan` and `refresh` locally, pass, and fail CI in `phase-guard`, the suite
+that tests the phase lock (M-1). A story that moved `package.json` out of
+`manifest` would select 8 suites, pass, and fail CI in `boundaries` (M-2).
+Both red suites call the helper and hold the conf's path nowhere: each
+says the bare file name in comments, which is not a mention. No suite that
+builds no fixture
+went red in any run.
+
+For `models.conf` no unselected suite went red under either mutation: the
+four suites that mention it (`boundaries`, `dispatch`, `plan`, `rules-trim`)
+are where its content is asserted today. It is in this story's rule all
+the same, because the helper copies it by the same line and a suite that
+runs `plan.sh` in a fixture reads it without naming it (Notes, Q-2).
+
+A green suite under one mutation shows only that this mutation did not
+reach it. One mutation per conf is a lower bound on who depends on the
+content, not a list: `phase` was green under M-1 and still sets phases in
+every case it runs.
+
+**How often.** `git log --oneline -- <file> | wc -l` at `da9d4bb`:
+`paths.conf` 9, `phases.conf` 6, `models.conf` 5; 15 distinct commits out
+of 1115, 4 of them on or after 2026-10-05 (`2856bca`, `46790ed`, HARNESS-101,
+HARNESS-102), against 135 for `VERSION`. A story changes one of them about
+twice a month at the recent rate, not every time.
+
+**The required gate.** Every gate in `project.conf` is unconfigured here.
+The artifact is judged by the `selftest-needed` suite under its floor in
+`floors.conf`, which CI runs in full on the PR and the local `--changed`
+run selects by R1 (the suite itself changes).
+
+## Acceptance criteria
+
+"The three confs" are `.claude/harness/paths.conf`,
+`.claude/harness/phases.conf` and `.claude/harness/models.conf`, compared as
+whole repo-relative paths. "The conf answer for `<path>`" is: `bash
+scripts/selftest-needed.sh --suites` exits 0, stdout is exactly the one line
+`all`, and stderr is exactly the one line
+
+    selftest-needed: suites — all: <path> is copied into every fixture make_fixture builds
+
+"The real suites" means this repository's `.claude/tests/*.test.sh` as the
+story's tree holds them, copied from `$REPO_ROOT` into a fixture checkout
+whose base holds them unchanged (HARNESS-115, Contract C-5). Every answer is
+asserted from the fixture root and from `src/`.
+
+- **AC-1 (the gap, reproduced on the real suites)** — Given the real suites,
+  when exactly one of the three confs is changed, then the answer is the
+  conf answer for that path. One case per conf. *(Today each prints a list:
+  8, 3 and 4 of 35 at PLANNED, Context table 2. `phase-guard` is in none
+  of the three lists for `phases.conf`, and run M-1 turns it red.)*
+- **AC-2 (no mention and no declaration narrows it)** — Given stub suites
+  in a fixture: (a) when one stub names `.claude/harness/phases.conf` and
+  that path is changed, alone and also beside a second changed path that
+  another stub names, the answer is the conf answer for
+  `.claude/harness/phases.conf`; (b) when two stubs name
+  `.claude/harness/models.conf`, one of them on a column-0 line
+  `# fixture-only: .claude/harness/models.conf`, and that path is changed,
+  the answer is the conf answer for it, and stderr holds no
+  `not selected (fixture-only):` line. *(Today (a) prints the naming stub,
+  or both stubs, and (b) prints the undeclared stub and the not-selected
+  line.)*
+- **AC-3 (control: only those three whole paths)** — Given stub suites, one
+  of which names `.claude/harness/h117/phases.conf` and one of which names
+  `.claude/harness/paths.conf.bak`: when `.claude/harness/h117/phases.conf`
+  is changed, stdout is exactly the stub that names it, with the reason
+  `.claude/harness/h117/phases.conf (mentioned)`; and the same for
+  `.claude/harness/paths.conf.bak` and its stub. Neither answers `all`.
+  And the lists HARNESS-115's AC-1 and AC-2 pin for
+  `.claude/harness/VERSION` and `.claude/tests/floors.conf` do not change:
+  those assertions stay as they are and stay green.
+- **AC-4 (the rule covers what the helper copies)** — Given the real
+  `.claude/tests/_lib.sh`, the set of repo-relative paths on its lines of the
+  form `cp "$REPO_ROOT/<path>" ...` (a single-file copy: no `-r`) is exactly
+  the three confs; and for each path of that extracted set, changed alone
+  in a stub fixture whose suites do not name it, the answer is the conf
+  answer for that path. *(Today the set is the three confs, and each
+  answers `all` only through R5, with the reason `<path> is mapped by no
+  rule; defaulting to every suite`: the stderr comparison is what fails.)*
+  A fourth single-file copy added to the helper later turns the set
+  assertion red until the rule, or the helper, is changed.
+- **AC-5 (the rule is written where it is read)** — The header of
+  `scripts/selftest-needed.sh` and step 2 of GATES → REVIEW in
+  `.claude/commands/advance-story.md` each state the rule, in the texts
+  Contract C-4 pins.
+
+## Contract
+
+**Writes:** `scripts/selftest-needed.sh`, `.claude/tests/selftest-needed.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, `.claude/commands/advance-story.md`, `.claude/harness/VERSION`
+
+RED may amend any block below, in place, with a reason; GREEN builds what
+the amended block says. The acceptance criteria are not amendable this way.
+
+Every path above classifies as `harness`, so the lock permits each in every
+phase; who writes what is by role. RED (Test Developer):
+`selftest-needed.test.sh`, the `selftest-needed` floor in `floors.conf` and
+its entry in `selftest.test.sh`'s COUNTS table. GREEN (Feature Developer):
+`scripts/selftest-needed.sh`, `advance-story.md`, `VERSION` (the next free
+release number when the branch is cut; 136 at PLANNED).
+
+**C-1. The rule.** In `scripts/selftest-needed.sh`, `--suites` mode, the
+per-path loop already answers `all` for four paths before any other rule is
+read (R2: `.claude/tests/_lib.sh`, `.claude/tests/_spawns.sh`,
+`scripts/selftest.sh`, `.claude/hooks/lib.sh`; the `case` with
+`why_all="$p is read by every suite"` and `continue`). The three confs join
+that step with a reason of their own:
+
+    why_all="$p is copied into every fixture make_fixture builds"
+
+set only when `why_all` is still empty, then `continue`, exactly as R2 does.
+What follows from sitting there, and is meant:
+
+- The match is the whole repo-relative path, by `case` with no glob. Not a
+  basename, not a prefix: `.claude/harness/h117/phases.conf` and
+  `.claude/harness/paths.conf.bak` are ordinary paths (AC-3).
+- R3 is never asked about a conf, so no mention maps it and no
+  `# fixture-only:` line narrows it (AC-2). `refresh.test.sh`,
+  `lib.test.sh` and the others that name a conf need no declaration and
+  get none.
+- When several changed paths answer `all`, the first in sort order gives
+  the reason, as today. `.claude/harness/...` sorts before
+  `.claude/hooks/lib.sh`, `.claude/tests/_lib.sh` and `scripts/selftest.sh`,
+  so a conf changed beside one of those gives the conf's reason.
+- Why `all` and not "the 24 suites that call the helper": Notes, D-1.
+  Why not the wording `is read by every suite`: 11 of the 35 suites build no
+  fixture, so that sentence would be false for these paths.
+
+stdout's format, the exit statuses, the header line, every existing reason
+and every existing `all` line are byte for byte as they are. The run/skip
+mode (no `--suites`) is not touched: a changed conf already answers `run`.
+
+**C-2. Callers.** No signature or output format changes. The one consumer
+of the answer is `scripts/selftest.sh --changed` (`:312`-`:320`): on `all`
+it runs every suite and prints `selftest: --changed — every suite: <the
+text after "all: ">`, so for a conf change its header reads `... every
+suite: .claude/harness/phases.conf is copied into every fixture
+make_fixture builds`. `selftest.sh` is not edited, and no test of it pins a
+reason text for a conf (`grep -n 'harness/\(paths\|phases\|models\)\.conf'
+.claude/tests/selftest.test.sh`: no line, at PLANNED).
+
+**C-3. The tests,** in `selftest-needed.test.sh`, in a block of their own
+at the end under `describe` lines that start `HARNESS-117`. They reuse the
+suite's helpers as they are: `h115_real` and `h115_edit` for AC-1 (the real
+suites, C-5 of HARNESS-115); a stub builder of their own for AC-2, AC-3 and
+AC-4, as `h096_fixture` does, so the `9` in the existing `hdr ... 9 ...`
+pins does not move. Every `all` answer is asserted with `expect_suites ...
+"all" whole "<the whole stderr line>" --suites`: the needle is the WHOLE
+stderr, because R5 gives the same stdout with a different reason (the
+needle rule; HARNESS-094 AM-1 has the precedent).
+
+- AC-1: three cases, one conf each, `h115_real` then `h115_edit <conf>`.
+  The suite may spell the three confs whole. Its own copy in the fixture
+  then mentions them, which changes nothing: R2 never reads a mention.
+- AC-2 (b) also asserts `h115_ns_count` is 0.
+- AC-3: `expect_suites` with the one stub name as stdout, `first` and the
+  `hdr 1 <m> 1` header, and `reason_lines <stub> <path> mentioned` is 1.
+  The two controls pass on arrival in RED and after GREEN; DV-3 earns
+  them. HARNESS-115's AC-1 and AC-2 blocks are not edited.
+- AC-4: the extraction reads `"$REPO_ROOT/.claude/tests/_lib.sh"`, CR
+  stripped, and takes from each line matching
+  `^[[:space:]]*cp "\$REPO_ROOT/` the text between `"$REPO_ROOT/` and the
+  next `"`. Sorted, it is compared as a whole string with the three confs,
+  one per line (`paths.conf` is at `_lib.sh:120`, `phases.conf` at `:121`,
+  `models.conf` at `:122`, release 135). `cp -r "$REPO_ROOT/scripts"` and
+  `cp -r "$REPO_ROOT/.claude/hooks"` (`:161`, `:162`) do not match the
+  pattern and are out of scope. Then one stub-fixture case per extracted
+  path, driven by the extracted list and not by a second literal list, so
+  a path added to the helper is asked about without editing the loop.
+- AC-5: whole lines counted with `==`, and position by the lines around
+  them, as HARNESS-115's AC-8 does (`snh_count`, the `AS_STEP2` join).
+
+**C-4. The two texts (AC-5).**
+
+*`scripts/selftest-needed.sh`, header.* Every line HARNESS-096 AC-4 and
+HARNESS-115 AC-8 pin stays byte for byte, the three R2 lines included. A
+new block goes directly after the line `# CI's full run is the backstop.`
+(the last line of the `Known limit:` paragraph) and before the blank line
+that precedes `set -uo pipefail`:
+
+    #
+    # R2, for the fixture confs (HARNESS-117). `make_fixture` in
+    # .claude/tests/_lib.sh copies the real .claude/harness/paths.conf,
+    # phases.conf and models.conf into every fixture it builds, so a suite
+    # reads them without naming them. A change to one of the three answers
+    # `all`, like an R2 path, with the reason
+    # `<path> is copied into every fixture make_fixture builds`. No mention
+    # and no `# fixture-only:` line narrows that.
+
+*`.claude/commands/advance-story.md`, step 2 of GATES → REVIEW.* One
+clause, on the line it already sits on (line 310 at release 135), so no
+line number in the file moves:
+
+- before: `suite when a path cannot be placed or the library changed; the full run's`
+- after: `suite when a path cannot be placed or the library or a fixture conf changed; the full run's`
+
+The test matches the clause `every suite when a path cannot be placed or
+the library or a fixture conf changed;` once in the joined step
+(`AS_STEP2`), and the old clause `or the library changed;` zero times.
+`CLAUDE.md` is not edited: its `--suites` paragraph names no R2 path.
+
+**C-5. Floors.** `selftest-needed` rises from 976 by the number of
+assertions C-3 adds, in `floors.conf` and in `selftest.test.sh`'s COUNTS
+table (`:557`). No other literal pins that floor (`grep -n 976
+.claude/tests/selftest.test.sh`: that one line).
+
+**Oracle partition.** AC-1 is settled: the answer is `all` and the reason
+is the pinned line; the "today" lists in the Context are a record, not an
+expected value, and no test asserts them. AC-2 to AC-5 are mechanical: pin
+stdout whole, stderr whole, lines whole. Nothing is derived or calibrated.
+
+**Baselines the story may read out** (release 135, `da9d4bb`): 35 suites;
+24 call `make_fixture` or `make_project_fixture`; today's selections for
+one changed conf are Context table 2; `_lib.sh` holds exactly three
+single-file copies from `$REPO_ROOT`.
+
+**How a test changes a conf.** By appending one comment line to the
+fixture's own copy (`h115_edit`, `# edited on the story branch`), never by
+editing the real file: a comment keeps the fixture's `paths.conf` valid for
+the classify step that runs before any rule.
+
+## Deferred verifications
+
+The budget is `rules.md`, "Mutation work per story": DV-1 is the defect put
+back for the central claim; DV-2 is the probe against a real line of the
+tree that a story changing a rule over the tree owes; DV-3 is the one
+mutation that earns the controls of AC-3, which pass on arrival. RED cannot
+run any of them: the rule does not exist until GREEN. Each runs against the
+one suite or the one command named, never the full self-test.
+
+- **DV-1, the defect put back (AC-1, AC-2, AC-4).** With the three confs
+  taken out of the `--suites` step that C-1 adds them to (the expression is
+  written at GATES against the script as built; it must change code, not a
+  comment, and is recorded with the result), the `selftest-needed` suite
+  **must** fail, in the HARNESS-117 block and nowhere else, and AC-1's
+  `phases.conf` case must show a list of suite names as its actual stdout
+  where `all` is expected. Run against
+  `bash scripts/selftest.sh selftest-needed`. **Owner: GATES.**
+
+- **DV-2, the rule on the real tree (the story's claim, on the real
+  file).** In the story's worktree, with one comment line appended to the
+  real `.claude/harness/phases.conf`, the real script **must** print the one
+  line `all` and the reason `.claude/harness/phases.conf is copied into
+  every fixture make_fixture builds`. Measured at PLANNED on `da9d4bb`
+  (Context, table 2) the same change prints `lib`, `plan`, `refresh`. At
+  GATES the story's own changed paths are in the diff as well; `all` wins
+  over them. **Owner: GATES.**
+
+  The command: `bash scripts/mutate.sh .claude/harness/phases.conf '$a# HARNESS-117 probe' -- bash scripts/selftest-needed.sh --suites`
+
+- **DV-3, the controls of AC-3 earned.** With the rule's match for one conf
+  widened from the whole path to a pattern (for example
+  `.claude/harness/paths.conf` to `.claude/harness/paths.conf*`; written at
+  GATES against the script as built and recorded), AC-3's
+  `.claude/harness/paths.conf.bak` case **must** fail, its actual stdout
+  being `all`. Run against `bash scripts/selftest.sh selftest-needed`.
+  **Owner: GATES.**
+
+## Amendments
+
+<!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
+     out to be wrong or unsatisfiable, stop, put it to the product owner, and
+     record the change here: which AC, what it said, what it says now, who
+     approved it and why. check-boundaries.sh fails a PR whose criteria differ
+     from their last committed PLANNED state (else the base branch) without an
+     entry here. Omit the section if unused.
+     Head each entry AM-<n> (`- **AM-1 (AC-2).** ...`), and give it its
+     adjudication record, a line of its own in this section, outside any
+     comment or fence - check-boundaries.sh refuses a new entry without one:
+       - **Adjudicated AM-<n>:** `fable` (resolved <name>), <date>, <what it reproduced>
+     A claim that a criterion is wrong is also what an agent says when it
+     wants to stop failing, so it is judged by a fresh `fable` dispatch - a
+     `lead-po` on the ADJUDICATE row of models.conf, on different inputs, not
+     the claimant's code - and that dispatch writes the judgement and the
+     record line; the judgement is never the orchestrator's. An entry that
+     follows a diff-review or PR-feedback finding routed RED or AMEND was
+     judged by that review, so the orchestrator writes its record, naming the
+     round and finding (or the PR-feedback item) and the model the review was
+     planned on and resolved to:
+       - **Adjudicated AM-<n>:** `fable` (resolved <name>), <date>, diff review round <r>, finding <f>
+     Its being upheld does not replace the user's approval; both go in the
+     entry. A change
+     the user asked for unprompted is not a claim: `- **Adjudicated AM-<n>:**
+     requested by the user, <date>`. -->
+
+## Suppressions
+
+<!-- One line per suppression this story's GREEN or GATES deliberately added:
+     the path, the rule id in brackets, `approved by <who>`, and why that line
+     and not a fix. check-boundaries.sh refuses any lint, type, coverage or
+     mutation suppression a GREEN or GATES commit adds to source or config
+     unless one line here names it. Omit the section if unused. -->
+
+## Model guidance
+
+Planned by `bash scripts/plan.sh write HARNESS-117` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
+
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| DIFF-REVIEW | `lead-po` | `fable` | reading a whole diff for the defect no test was written for is judgement against the contract, and it is where a wrong call ships; a finding it labels goes back to GATES or RED, on opus |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
+| ADJUDICATE | `lead-po` | `fable` | a claim that an acceptance criterion, a threshold or a frozen test is wrong is judged against the contract by a fresh dispatch on different inputs, never by the orchestrator that wants the answer; needed in any phase, so it is last |
+
+**Resolved:**
+
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
+- PLANNED: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported.
+
+## Out of scope
+
+- **`.claude/tests/_lib.sh`.** Not edited. `make_fixture` keeps copying the
+  real three confs on purpose: the rules under test are the shipped ones
+  (Notes, D-1, option 3).
+- **Any other suite.** No suite gains or loses a line, a mention or a
+  `# fixture-only:` declaration. `refresh` names all three confs only to
+  write its own copies and stays selected by the rule like every other
+  suite; a declaration could not narrow it (AC-2).
+- **Selecting only the suites that call the helper.** Not built (Notes,
+  D-1, option 2).
+- **The helper's directory copies.** `make_project_fixture` also copies
+  `scripts/` and `.claude/hooks/` whole. A changed script is placed by
+  mention, by a `SCANS` row or by R5, and a suite that reaches it only
+  through another script is HARNESS-094's declared limit. Not changed here.
+- **Other files under `.claude/harness/`.** `VERSION` (HARNESS-116),
+  `project.conf`, `rules.md`: selected as today.
+- **`scripts/selftest.sh`, `CLAUDE.md`, `selftest-needed.sh`'s run/skip
+  mode.** Not edited.
+- **`phase-guard`, `boundaries` or any suite the Context shows red under a
+  mutation.** They are red because the mutation is wrong, which is what
+  they are for. Nothing in them is a defect of this story.
+- **A suite the full self-test at GATES shows red.** A finding to record
+  and route, not a licence to edit it here.
+
+## Design notes
+
+<!-- Filled by the Lead Designer for user-facing stories: layout, states,
+     tokens, accessibility requirements. Omit for non-UI stories. -->
+
+## Test plan
+
+<!-- Filled by the Test Developer during RED: which tests, at which level,
+     and which AC each one covers. -->
+
+## Handoff: RED -> GREEN
+
+<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
+     to the Feature Developer, whose context is fresh. Must contain:
+       * the exact command that runs the new tests
+       * the failure output, and why it is the RIGHT failure
+       * every file touched, and which AC each test covers
+       * the EXPORT SHAPE the tests already pin: every module they import, the
+         exact exported names and signatures, and the types the assertions
+         destructure. Not a suggestion - a test already imports them, so a
+         wrong guess is a compile error. Say what the tests do NOT constrain
+         too, so it stays the implementer's choice.
+       * any test that passed on arrival, and the probe or negative control
+         that earns it
+       * the EXPECTED VALUE of every negative control, as a table: threshold,
+         candidate range, and the number the control measured. In RED the
+         suite fails at import, so no assertion in it has run - the controls
+         are claims until GREEN confirms them against the shipped module
+       * anything discovered that changes the approach -->
+
+## Regressions
+
+<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
+     otherwise. A test that is wrong is never edited into passing, and the
+     return is not a footnote - it is the story failing to be one clean cycle,
+     and the next person needs to know why. One block per return, headed
+     R-<n> (`### R-1 (the count test)`), and carrying its adjudication
+     record - a line of its own, outside any comment or fence, written by
+     the fresh `fable` dispatch (a `lead-po` on the ADJUDICATE row of
+     models.conf) that judged the claim the test is wrong; the judgement is
+     never the orchestrator's. check-boundaries.sh refuses a new entry
+     without one:
+       - **Adjudicated R-<n>:** `fable` (resolved <name>), <date>, <what it reproduced>
+     A return that follows a diff-review or PR-feedback finding routed RED
+     or AMEND was judged by that review, so the orchestrator writes the
+     record, naming the round and finding (or the PR-feedback item) and the
+     model the review was planned on and resolved to:
+       - **Adjudicated R-<n>:** `fable` (resolved <name>), <date>, diff review round <r>, finding <f>
+     Then:
+       * which test, what it asserted, and what was wrong with it
+       * how the defect was found
+       * what it asserts now
+       * what earns it, since "watched it fail" cannot apply once the
+         implementation exists - the corrected assertion passes on its first
+         run and every run after, whether or not it asserts anything: either a
+         PROBE (mutate the specific behaviour the test pins, paste the red,
+         confirm the revert) or, where the defect was cost rather than
+         correctness, a BEFORE/AFTER measurement taken under the gate command -
+         not the plain test command, which is the faster one.
+         PASTE THE OUTPUT. check-boundaries.sh refuses a PR whose Regressions
+         or Gate probes section describes a failure without showing one.
+         A result counts only as a block: a line beginning with three
+         backticks or three tildes (a fence), or a line indented by exactly
+         four spaces. Prose does not count, nor inline code in backticks, nor
+         a tab, nor anything inside an HTML comment
+       * whether GREEN was a no-op, and the command output proving the source
+         was untouched and still passes -->
+
+## Gate results
+
+<!-- Written by scripts/gates.sh itself on every full run, stamped with the
+     commit and a hash of the code it ran against. Do not paste or edit it:
+     check-boundaries.sh refuses a PR whose recorded run does not match the
+     code being merged. -->
+
+## Gate probes
+
+<!-- REQUIRED if this story adds or changes a gate, its command, or its
+     evidence line. Omit the section entirely otherwise.
+     A gate that has never been observed to fail is not a gate: break the thing
+     it guards, run the gate, paste the failure, revert. A result counts
+     only as a block: a line beginning with three backticks or three tildes
+     (a fence), or a line indented by exactly four spaces. Prose does not
+     count, nor inline code in backticks, nor a tab, nor anything inside an
+     HTML comment. One block per gate:
+       * what was broken, and where
+       * the gate output proving it failed
+       * confirmation the probe was reverted -->
+
+## Scaffold inventory
+
+<!-- REQUIRED for a bootstrap or chore story that writes production code under
+     SCAFFOLD, where nothing forces a test to exist first, and for a spike that
+     commits its throwaway code. Omit otherwise.
+     One line per production file written, and for anything with behaviour
+     rather than configuration, the test that covers it:
+       src/core/palette.ts        - src/core/palette.test.ts
+       vite.config.ts             - configuration, no behaviour
+     check-boundaries.sh refuses the PR if any changed source file is not
+     named here. -->
+
+## Notes
+
+- **Planned 2026-11-19 on release 135 (`da9d4bb`)** in the worktree
+  `D:\adh-HARNESS-117`, branch `story/HARNESS-117-plan`. The id was checked
+  free on `origin/main`, the remote branches and the PR titles before
+  planning. Nothing is committed and the phase is not set. The story's
+  `branch:` is `story/HARNESS-117-conf-change-selects-every-suite`; the
+  planning branch is renamed or the story branch cut before RED.
+- **D-1, a PO decision for the user: what to do about the conf copies.**
+  The measurement is in the Context. The options:
+  1. *A change to one of the three confs answers `all`* (recommended; the
+     story as written). One `case` arm beside R2's. A conf change then
+     selects 35 of 35 where it selects 8, 3 and 4 today. The cost is a full
+     local self-test on the stories that change a conf: 15 commits in the
+     repository's life, 4 on or after 2026-10-05. That is what a change to
+     `_lib.sh` already costs. Nothing to maintain, and no suite can make it
+     stale.
+  2. *Select only the suites that call the helper,* plus the mentions: 24
+     of 35 today. It saves the 11 suites that build no fixture, 1011 of
+     6983 floored assertions and none of the slow ones (`boundaries`,
+     `gates`, `run-queue` and `selftest-needed` all call the helper), so
+     the saving in time is small. It costs a second scan of every suite, a
+     new reason, and it has a hole: `manifest_fixture` in `_lib.sh:307`
+     wraps `make_project_fixture`, and a suite that used only the wrapper
+     would not be found by name. Its two callers today (`doctor`, `gates`)
+     also name the helper; the next need not. HARNESS-116 rejected this
+     shape for `VERSION` because `VERSION` changes every story. That
+     objection does not apply here, and the shape is sound; it buys little
+     over option 1 for more code.
+  3. *Each suite that depends on a conf names it,* so plain mention selects
+     it. Up to 22 suites to edit for `phases.conf`, and "depends" cannot be
+     read off: `phase` was green under M-1 and sets a phase in every case.
+     A new suite forgets. Rejected.
+  4. *The helper stops copying and fixtures get fixed confs.* Rejected:
+     the confs under test are the shipped rules. `phase-guard` over a
+     frozen copy would stay green while the shipped `phases.conf` was
+     wrong, so M-1 would be green everywhere, CI included.
+  5. *No change; keep the measurement as the record.* Defensible: CI runs
+     every suite on every PR, and the gap costs one CI round trip on a rare
+     story. Not recommended: M-1 and M-2 show the local run passing a
+     break in the phase lock's own rules, and the local run is what is
+     relied on before a PR is opened.
+- **Q-1, for the user.** Is option 1 the one to build, or option 2? The
+  story's criteria are written for option 1; option 2 changes AC-1's
+  expected answer from `all` to a pinned list of 24 or more and needs the
+  story re-planned before RED.
+- **Q-2, for the user.** Keep `models.conf` in the rule? No unselected
+  suite went red under M-3 or M-4, so by the measurement alone the four
+  suites that mention it are enough today. The story includes it
+  (recommended): the helper copies it exactly as it copies the other two,
+  AC-4 then holds for everything the helper copies with no exception to
+  explain, and the cost is a full run on a file with 5 commits in its
+  life. Leaving it out is defensible and changes AC-1 (two cases), AC-2
+  (b), AC-4 (the set is three, two of them in the rule and one named as
+  left to mention) and the two texts of C-4.
+- **A correction to the brief's command.** `bash scripts/mutate.sh <file>
+  '<expr>' -- SELFTEST_JOBS=4 bash scripts/selftest.sh ...` does not run:
+  `mutate.sh` executes the words after `--` as a command, so the assignment
+  is taken for one (`scripts/mutate.sh: line 493: SELFTEST_JOBS=4: command
+  not found`, exit 127, file restored). The runs here put the assignment in
+  front: `SELFTEST_JOBS=4 bash scripts/mutate.sh ... -- bash
+  scripts/selftest.sh ...`. `attest.sh` does accept a leading assignment
+  after `--` (its suite pins it); `mutate.sh` does not. Not a defect this
+  story fixes.
+- **Not already delivered.** Reproduced at PLANNED on `da9d4bb`: table 2,
+  M-1 and M-2.
+- **Not split.** One behaviour (three paths join one existing step), one
+  script, one suite.
+- **Collisions, read by hand.** `floors.conf`, `selftest.test.sh` and
+  `VERSION` are written by every harness story; any story in flight shares
+  them and is a collision, not a dependency. Whichever merges second merges
+  `main`, takes the next release number and has its gates run again.
+- **The story's own `--changed` run at GATES** will not answer `all`: it
+  changes no conf. It selects by mention of `scripts/selftest-needed.sh`,
+  `advance-story.md` and the suite files, as any story does.
