@@ -5,7 +5,7 @@ slug: fixtures-carry-their-own-harness-stamp
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-116-fixtures-carry-their-own-harness-stamp
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/lib.test.sh, .claude/tests/doctor.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -760,3 +760,22 @@ red on the three whole-file assertions (not run; prediction).
   `VERSION` are written by every harness story; any story in flight shares
   them and is a collision, not a dependency. Whichever merges second
   merges `main`, takes the next release number and has its gates run again.
+- **GREEN, 2026-11-19.** Feature Developer dispatched on `opus`; resolved
+  `claude-opus-5-5` (Opus 5.5), no override. `_lib.sh` `make_fixture`: the
+  `cp` of the real `VERSION` and its two comment lines replaced by
+  `printf '1 (2000-01-01)\n' > "$d/.claude/harness/VERSION"`, before the
+  `git add -A`; the function's header comment now says the stamp is the
+  fixture's own. `make_project_fixture` not edited. `VERSION`: stamp line
+  `134 (2026-11-19)` replaced by `135 (2026-11-19)`. `bash scripts/attest.sh
+  -- bash scripts/selftest.sh lib doctor`: exit 0, `doctor: 71 passed, 0
+  failed`, `lib: 332 passed, 0 failed`, floors met (403/403), log
+  `.claude/state/attest-logs/20261120T001404Z.474911.log`. `gates.sh --fast`:
+  exit 0, vacuous as in RED (0 ran, 5 unconfigured), log
+  `.claude/state/attest-logs/20261120T001512Z.479558.log`. Controls measured
+  against the shipped helper, all as the handoff predicted: fixture VERSION
+  is the 15 bytes `1 (2000-01-01)\n`; the AC-3 stand-in root (999) gives
+  `1 (2000-01-01)\n`; project fixture `git show HEAD:` gives the fixture
+  stamp with empty porcelain; doctor in a project fixture prints
+  `  ok       harness ver  1 (2000-01-01)` and `worktree ... harness 1
+  (2000-01-01)`; the real-stamp preconditions pass on `135 (2026-11-19)`.
+  No divergence.

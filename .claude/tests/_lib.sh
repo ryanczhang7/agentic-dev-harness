@@ -110,7 +110,8 @@ hold_until_killed() {
 # make_fixture   Creates a throwaway repository that looks enough like a project
 # for the hooks to work on, and echoes its path. paths.conf and phases.conf are
 # COPIES OF THE REAL ONES: the classification rules under test are the ones
-# this repository actually ships.
+# this repository actually ships. The harness stamp (VERSION) is not: it is
+# the fixture's own, `1 (2000-01-01)`.
 make_fixture() {
   local d
   d="$(mktemp -d 2>/dev/null || mktemp -d -t harness.XXXXXX)"
@@ -119,9 +120,10 @@ make_fixture() {
   cp "$REPO_ROOT/.claude/harness/paths.conf"  "$d/.claude/harness/paths.conf"
   cp "$REPO_ROOT/.claude/harness/phases.conf" "$d/.claude/harness/phases.conf"
   cp "$REPO_ROOT/.claude/harness/models.conf" "$d/.claude/harness/models.conf" 2>/dev/null
-  # The real stamp, for the same reason the confs are the real ones: a fixture
-  # carrying a made-up version would let doctor.sh print anything and pass.
-  cp "$REPO_ROOT/.claude/harness/VERSION"     "$d/.claude/harness/VERSION" 2>/dev/null
+  # The harness stamp is the fixture's own, on purpose (HARNESS-116): a copy of
+  # the real one made every suite's input change with each release. paths.conf,
+  # phases.conf and models.conf above are still copies of the real ones.
+  printf '1 (2000-01-01)\n' > "$d/.claude/harness/VERSION"
   printf 'export const x = 1\n' > "$d/src/main.ts"
   printf 'test("x", () => {})\n' > "$d/tests/main.test.ts"
   printf '# notes\n' > "$d/docs/notes.md"
