@@ -4,8 +4,8 @@ title: The Stop hook sees a gate run in flight
 slug: stop-hook-sees-a-gate-run-in-flight
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-118-stop-hook-sees-a-gate-run-in-flight
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/gate-reminder.sh, .claude/tests/gate-reminder.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
