@@ -5,7 +5,7 @@ slug: conf-change-selects-every-suite
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-117-conf-change-selects-every-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1035,3 +1035,8 @@ the verdict is Ship. Recorded here; the user was told it was left.
   `bash scripts/gates.sh --fast` (exit 0, every gate unconfigured). Not re-run.
   The feature developer confirmed every RED control value against the built
   script; measured equalled expected for all six.
+- **GREEN after R-1 (orchestrator, 2026-11-20): a no-op, verified.** R-1
+  added a test for code that already existed; nothing to build.
+  `attest.sh check -- bash scripts/selftest.sh selftest-needed` was `fresh`,
+  exit 0, `selftest-needed: 1099 passed, 0 failed` (log
+  `.claude/state/attest-logs/20261120T164016Z.2145225.log`). Not re-run.
