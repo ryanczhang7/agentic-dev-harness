@@ -100,7 +100,7 @@ block() {
     if [ "$PHASE" = GATES ] && ! run_lock_full "$INFLIGHT_COMMAND"; then
       partial=" That run is partial, so it will not discharge GATES: a full bash scripts/gates.sh is still owed once it exits."
     fi
-    warn "A gate run is in flight in this tree: pid ${INFLIGHT_PID}, started ${INFLIGHT_STARTED}: ${INFLIGHT_COMMAND}. Its record lands in the story when it exits, so there is nothing to run now - a second run would be refused by the run lock.${partial}
+    warn "A gate run is in flight in this tree: pid ${INFLIGHT_PID}, started ${INFLIGHT_STARTED}: ${INFLIGHT_COMMAND}. Its record lands in the story when it exits, so there is nothing to run now - a second run would be refused by the run lock.${partial} If pid ${INFLIGHT_PID} is not that run, delete .claude/state/run.lock and run the gates.
 
 Once it has exited, this is what stands:
 $1"
