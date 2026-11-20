@@ -212,6 +212,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 - PLANNED, RED, GREEN, GATES: run inline by the orchestrating session, not dispatched; resolved Opus 5.5 (`claude-opus-5-5`). PLANNED was planned for `lead-po` on `fable` and ran on `opus` instead: the story was cut from a precise field-report brief, and the fresh `fable` judgement was spent on the diff review.
 - DIFF-REVIEW round 1: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override.
+- DIFF-REVIEW round 2: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override.
 ## Out of scope
 
 - `scripts/run-lock.sh`, `scripts/gates.sh`: not edited.
@@ -339,6 +340,27 @@ direction).
 
 Verdict: Ship.
 
+### Round 2 (2026-11-20)
+
+`lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2
+(`claude-fable-5-2`); no override reported. Changed no file. Reviewed
+`a411ab3..a93eca3` and the whole story diff.
+
+Found sound: R-1's needle `will not discharge` occurs only in the partial
+sentence, and its three arms make an empty message a failure; it leaves its
+neighbours' fixture state alone; the stale-lock sentence breaks no existing
+assertion, interpolates only the digit-checked pid, and mirrors
+`run_lock_refuse` (`scripts/run-lock.sh:75`); no other file reads the
+message. Ran `bash scripts/selftest.sh gate-reminder`: 61 passed, 0 failed.
+
+1. **Nice to have: nothing fails if the stale-lock sentence is deleted**
+   (`gate-reminder.sh:103`). Advice text, not a decision. Fix: one
+   `assert_contains` beside the AC-1 message assertions. **Route: RED.**
+   Not taken: optional, and the hook's decisions are all pinned; left as a
+   follow-up (Notes).
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
@@ -365,3 +387,8 @@ Verdict: Ship.
   HARNESS-117 was taken (worktree `D:\adh-HARNESS-117`, PLANNED, unpushed),
   so this is 118; checked against `origin/main`, the remote branches and
   open PRs the same day.
+- **Follow-up, not taken (diff review round 2, finding 1).** No assertion
+  pins the in-flight message's stale-lock hint. Optional; the hook's
+  decisions are all pinned.
+- **VERSION.** 136 here; HARNESS-117 (planned in parallel) bumps it too,
+  so whichever merges second takes 137.
