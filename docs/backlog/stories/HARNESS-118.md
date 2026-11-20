@@ -5,7 +5,7 @@ slug: stop-hook-sees-a-gate-run-in-flight
 epic: 
 type: fix
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-118-stop-hook-sees-a-gate-run-in-flight
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/gate-reminder.sh, .claude/tests/gate-reminder.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -210,6 +210,8 @@ name, below the table.
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
+- PLANNED, RED, GREEN, GATES: run inline by the orchestrating session, not dispatched; resolved Opus 5.5 (`claude-opus-5-5`). PLANNED was planned for `lead-po` on `fable` and ran on `opus` instead: the story was cut from a precise field-report brief, and the fresh `fable` judgement was spent on the diff review.
+- DIFF-REVIEW round 1: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override.
 ## Out of scope
 
 - `scripts/run-lock.sh`, `scripts/gates.sh`: not edited.
@@ -286,6 +288,56 @@ They are controls against GREEN over-widening the condition; DV-2 earns
 AC-5 by widening the command test and watching it go red. The floor is not
 raised (32; the suite now executes 60).
 ## Regressions
+
+- **R-1 (2026-11-20), from diff review round 1, finding 1 (Route RED).**
+  No assertion checked that a FULL run in flight in GATES is not called
+  partial; deleting `&& ! run_lock_full "$INFLIGHT_COMMAND"` left the suite
+  green. Added `AC-2: a full run in flight in GATES is not called partial`
+  in `.claude/tests/gate-reminder.test.sh`. Written against a hook that
+  already exists, so earned by one mutation of the line it pins:
+
+    bash scripts/mutate.sh .claude/hooks/gate-reminder.sh 's/^    if \[ "\$PHASE" = GATES \] \&\& ! run_lock_full "\$INFLIGHT_COMMAND"; then$/    if [ "$PHASE" = GATES ]; then/' -- bash scripts/selftest.sh gate-reminder
+      100 -     if [ "$PHASE" = GATES ] && ! run_lock_full "$INFLIGHT_COMMAND"; then
+      100 +     if [ "$PHASE" = GATES ]; then
+        FAIL AC-2: a full run in flight in GATES is not called partial
+    gate-reminder: 60 passed, 1 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_hooks_gate-reminder.sh.20261120T050334Z.1625259.bak) ===
+    mutate: no stranded mutation; nothing of a previous run is in the tree.
+
+## Diff review
+
+### Round 1 (2026-11-20)
+
+`lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2
+(`claude-fable-5-2`); no override reported. Changed no file.
+
+Found sound: sourcing `run-lock.sh` collides with nothing in the hook or
+`lib.sh`; helpers from the hook's own tree, lock from `HARNESS_ROOT`; a
+consumer without `run-lock.sh` gets the old block; the three blocks, their
+order and text, and every warn path are unchanged; no pipeline, `set -u`
+safe, bash 3.2; pid, started and command go through `json_escape`;
+`run_lock_full` matches how `gates.sh` computes `FULL=no`; the test's
+background sleep cannot hold the output pipe and is killed by the trap;
+every "any doubt" path blocks as before.
+
+1. **Should fix: nothing fails if a full run in GATES is called partial**
+   (`gate-reminder.test.sh`, AC-2; `gate-reminder.sh:100`). The suite
+   checked the partial sentence present for `--fast` in GATES and absent in
+   GREEN, never absent for a full run in GATES. Fix: one assertion, earned
+   by one mutation. **Route: RED.** Done: R-1.
+2. **Nice to have: a stale lock whose pid was reused switches the block
+   off** (`gate-reminder.sh:92,102`). `kill -0` answers "some process of
+   this user has that number". After a hard kill plus pid reuse the hook
+   would say "nothing to run now" on every stop. `check-boundaries.sh` still
+   refuses a PR with no gate record. Fix: add the sentence
+   `run_lock_refuse` uses, if pid N is not that run, delete
+   `.claude/state/run.lock`. **Route: GATES.**
+
+Not checked: whether `kill -0` on Windows sees a `gates.sh` started from a
+different Git Bash process tree; if not, the hook blocks as before (the safe
+direction).
+
+Verdict: Ship.
 
 ## Gate results
 

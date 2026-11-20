@@ -411,6 +411,14 @@ phase_moved
 h118_lock "$H118_LIVE" "scripts/gates.sh"
 assert_warns "AC-2: a stamp older than GATES, a live gates lock" "in flight"
 assert_continues "AC-2: a stamp older than GATES, a live gates lock"
+# R-1 (diff review round 1, finding 1): a FULL run in flight in GATES is the
+# run GATES owes, so it must not be called partial.
+w="$(warned)"
+case "$w" in
+  *"will not discharge"*) _bad "AC-2: a full run in flight in GATES is not called partial" "$w" ;;
+  *"in flight"*) _ok "AC-2: a full run in flight in GATES is not called partial" ;;
+  *) _bad "AC-2: a full run in flight in GATES is not called partial" "no in-flight message: $w" ;;
+esac
 
 set_phase "$FIX" GATES
 stamp_run pass no
