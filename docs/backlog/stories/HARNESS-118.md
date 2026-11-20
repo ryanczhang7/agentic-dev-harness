@@ -305,7 +305,7 @@ raised (32; the suite now executes 60).
     === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_hooks_gate-reminder.sh.20261120T050334Z.1625259.bak) ===
     mutate: no stranded mutation; nothing of a previous run is in the tree.
 
-- **Adjudicated R-1:** `fable` (resolved Fable 5.2, `claude-fable-5-2`), 2026-11-20, diff review round 1, finding 1
+- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2), 2026-11-20, diff review round 1, finding 1
 
 ## Diff review
 
