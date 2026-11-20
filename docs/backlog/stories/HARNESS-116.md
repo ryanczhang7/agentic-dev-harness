@@ -5,7 +5,7 @@ slug: fixtures-carry-their-own-harness-stamp
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-116-fixtures-carry-their-own-harness-stamp
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/lib.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/doctor.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -983,3 +983,12 @@ Verdict: Ship.
   chose "Add lib to the lists (Recommended)" over "Drop the real read from
   lib". Adjudicated upheld (R-1); return to RED; `touches:` gains
   `.claude/tests/selftest-needed.test.sh`.
+- **GREEN on re-entry after R-1, 2026-11-19: a no-op, verified by the
+  orchestrator.** No source changes. `attest.sh check` on
+  `bash scripts/selftest.sh selftest-needed selftest lib` and on
+  `bash scripts/gates.sh --fast`: both `fresh`, exit 0 (lib 332/0,
+  selftest-needed 976/0, selftest 366/0).
+- RED re-entry (R-1): `test-developer`, planned `opus`, resolved Opus 5.5
+  (`claude-opus-5-5`); no override. ADJUDICATE R-1: `lead-po`, planned
+  `fable`, resolved Fable 5.2 (`claude-fable-5-2`). Self-test round 1:
+  `feature-developer`, resolved Opus 5.5.
