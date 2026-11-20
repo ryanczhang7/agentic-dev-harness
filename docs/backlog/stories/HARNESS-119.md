@@ -4,8 +4,8 @@ title: A consumer's own suites stay out of the pinned real-suite lists
 slug: consumer-suites-stay-out-of-pinned-lists
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-119-consumer-suites-stay-out-of-pinned-lists
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/selftest-needed.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -218,3 +218,8 @@ Verdict: Ship.
   `claude-opus-5-5`) from the CI log of fantasy-world-builder PR #130. Id
   checked free on `origin/main`, the remote branches and open PRs (117 is
   in flight in `D:\adh-HARNESS-117`, 118 is DONE).
+- **REVIEW, 2026-11-20.** `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`:
+  7 of 35 suites, all passed (doctor 71, grep-count 38, lib 332,
+  selftest-needed 976, shipped-docs 24, sigpipe 91, worktree 73; floors
+  met). CI's full run is the run of record. The downstream CI run named
+  `selftest-needed` as its only failing suite (1 of 40).
