@@ -4,8 +4,8 @@ title: The Stop hook sees a gate run in flight
 slug: stop-hook-sees-a-gate-run-in-flight
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-118-stop-hook-sees-a-gate-run-in-flight
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/gate-reminder.sh, .claude/tests/gate-reminder.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -184,8 +184,70 @@ name, below the table.
 
 ## Test plan
 
+Level: the hook's own suite, `.claude/tests/gate-reminder.test.sh`, block
+`HARNESS-118`, running the real hook over the suite's fixture. The live pid
+is a background `sleep 600` the suite owns (killed at the end and in the
+EXIT trap); the dead pid is a `sleep 0` already reaped with `wait`. The lock
+is written as `run-lock.sh` writes it, three TAB-separated lines.
+
+| AC | Assertions (name prefix) | Red in RED? |
+|---|---|---|
+| AC-1 | `warns: AC-1`, `continues: AC-1`, `AC-1: the message names the pid` / `when it started` / `its command` / `when it exits` / `what it would otherwise have said` | **red** (7) |
+| AC-2 | `warns: AC-2` x2, `continues: AC-2` | **red** (3) |
+| AC-3 | `warns: AC-3`, `AC-3: ... will not discharge GATES`, `... command with its argument`, `AC-3: in GREEN a --fast run is not called partial` | **red** (4) |
+| AC-4 | `blocks: AC-4: a gates lock whose pid is not running` | green (unchanged behaviour; earned at GATES only through DV-1's restore, see Handoff) |
+| AC-5 | `blocks: AC-5` x2 (selftest.sh; `scripts/gates.shx`) | green (unchanged; earned by DV-2) |
+| AC-6 | `blocks: AC-6` x3 (empty pid, non-numeric pid, garbage) | green (unchanged) |
+| AC-7 | `blocks: AC-7: no lock file` | green (unchanged) |
+| AC-8 | `silent: AC-8` | green (unchanged) |
+| AC-9 | `the hook left the lock as written: AC-1/2/4/5/8`, `AC-9: the hook created no lock` | green (no code reads the lock yet) |
+
 ## Handoff: RED -> GREEN
 
+Written by the orchestrating session (Opus 5.5, `claude-opus-5-5`), acting
+as Test Developer.
+
+**Command.** `bash scripts/selftest.sh gate-reminder` (about one minute).
+
+**Failure, RED, 2026-11-19:** `gate-reminder: 46 passed, 14 failed`. Every
+failure is an AC-1, AC-2 or AC-3 assertion, and each fails because the hook
+blocks with today's text; that is the right failure: the hook does not read
+the lock.
+
+    FAIL warns: AC-1: no stamp, a live gates lock
+         it blocked instead: The gate suite has not been run for story T-1 at all. ...
+    FAIL continues: AC-1: no stamp, a live gates lock
+         it carries a decision: {"decision":"block","reason":"The gate suite has not been run for story T-1 at all. ..."}
+    FAIL AC-1: the message names the pid
+    FAIL AC-1: and when it started
+    FAIL AC-1: and its command
+    FAIL AC-1: and that its record lands when it exits
+    FAIL AC-1: and what it would otherwise have said
+    FAIL warns: AC-2: a stamp older than GATES, a live gates lock
+         it blocked instead: The last gate run for story T-1 happened before the story entered GATES, ...
+    FAIL continues: AC-2: a stamp older than GATES, a live gates lock
+    FAIL warns: AC-2: a partial stamp in GATES, a live full run
+         it blocked instead: The last gate run for story T-1 was a partial one - ...
+    FAIL warns: AC-3: a live --fast run in GATES
+    FAIL AC-3: and it says that run will not discharge GATES
+    FAIL AC-3: and names the command with its argument
+    FAIL AC-3: in GREEN a --fast run is not called partial
+         no in-flight message:
+    gate-reminder: 46 passed, 14 failed
+
+**What the tests pin for GREEN.** Needles, in the `systemMessage`: `in
+flight`, `pid <pid>`, the `started` value verbatim, the command verbatim,
+`when it exits`, and the original block reason (`has not been run`). In
+GATES with a non-full command: `will not discharge GATES`; that phrase must
+NOT appear in GREEN. Raw output: `"continue":true` and no `"decision"`. The
+lock's bytes are compared whole after the hook runs. Not constrained:
+function names, wording beyond those needles, where the helpers are sourced
+from (C-2 says the hook's own tree).
+
+**Passed on arrival.** AC-4..AC-9 describe today's behaviour and pass now.
+They are controls against GREEN over-widening the condition; DV-2 earns
+AC-5 by widening the command test and watching it go red. The floor is not
+raised (32; the suite now executes 60).
 ## Regressions
 
 ## Gate results
