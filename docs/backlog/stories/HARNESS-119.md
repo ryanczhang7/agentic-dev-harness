@@ -5,7 +5,7 @@ slug: consumer-suites-stay-out-of-pinned-lists
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-119-consumer-suites-stay-out-of-pinned-lists
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/selftest-needed.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -92,6 +92,23 @@ second re-runs the suite.
   `bash scripts/mutate.sh .claude/tests/selftest-needed.test.sh 'EXPR' --
   bash scripts/selftest.sh selftest-needed`. **Owner: GATES.**
 
+  **DV-1 result (GATES, 2026-11-20, run by the orchestrator): PASSED.**
+  With the probe `.claude/tests/project-probe.test.sh` (naming VERSION and
+  floors.conf) present and the copy put back, the suite went red on the
+  same 24 HARNESS-115 assertions as the Context's reproduction; restored and
+  verified; probe removed.
+
+    bash scripts/mutate.sh .claude/tests/selftest-needed.test.sh 's/^    case "\${f##\*\/}" in project-\*) ;; \*) cp "\$f" "\$d\/.claude\/tests\/" ;; esac$/    cp "$f" "$d\/.claude\/tests\/"/' -- bash scripts/selftest.sh selftest-needed
+      1192 -     case "${f##*/}" in project-*) ;; *) cp "$f" "$d/.claude/tests/" ;; esac
+      1192 +     cp "$f" "$d/.claude/tests/"
+    selftest-needed: 952 passed, 24 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_tests_selftest-needed.test.sh.20261120T141917Z.1924008.bak) ===
+          6     FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them
+          6     FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree
+          6     FAIL AC-5: a copy of the real doctor.test.sh declaring VERSION is still printed when VERSION changes
+          6     FAIL AC-5: a copy of the real selftest.test.sh declaring floors.conf is still printed when floors.conf changes
+    mutate: no stranded mutation; nothing of a previous run is in the tree.
+
 ## Model guidance
 
 Planned by `bash scripts/plan.sh write HARNESS-119` from `.claude/harness/models.conf`.
@@ -149,6 +166,22 @@ back with the probe present. GREEN writes only `VERSION` (137).
 ## Regressions
 
 ## Gate results
+
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-20T14:24:31Z
+    commit: 9cd5ae8
+    tree:   0f5e1fc2352e35737459c461339b7b35b357b2d4
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
