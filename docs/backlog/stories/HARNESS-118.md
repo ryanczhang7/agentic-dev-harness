@@ -343,9 +343,9 @@ Verdict: Ship.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-20T05:00:57Z
-    commit: 9977eea
-    tree:   c09104f2a30bb56845bad413716d18d36f373b19
+    run:    2026-11-20T05:09:17Z
+    commit: 77bf9da
+    tree:   c986d1955c33911031c99fca846b55cea771e9ef
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
