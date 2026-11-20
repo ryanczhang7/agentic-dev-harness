@@ -1146,4 +1146,74 @@ for s in scripts/new-story.sh scripts/gates.sh scripts/phase.sh; do
   assert_eq "HARNESS-046 AC-5: $s calls valid_story_id on a non-comment line" calls "$h46_got"
 done
 
+# ---------------------------------------------------------------------------
+describe "HARNESS-116 AC-1: make_fixture writes a harness stamp of its own"
+
+# The fixture stamp is the literal `1 (2000-01-01)`, written out here and never
+# read back from _lib.sh or from a fixture (C-2): a test that read the expected
+# value from the helper would pass on whatever the helper wrote. "Exactly" is a
+# whole-file comparison, newline included: `$(cat f; printf x)` keeps every
+# trailing newline that a bare `$(cat f)` would strip, so a missing newline, a
+# second line or a kept comment header all change the string compared.
+# Before HARNESS-116 the helper copied the real VERSION, comments and all, so
+# every suite's fixtures carried bytes that change with every harness story
+# while the suites were never selected for that path.
+h116_stamp='1 (2000-01-01)'
+h116_file() { cat "$1" 2>/dev/null; printf x; }
+h116_work="$(mktemp -d 2>/dev/null || mktemp -d -t harness.XXXXXX)"
+h116_fix="$(make_fixture)"
+h116_pfix="$(make_project_fixture)"
+trap 'rm -rf "$FIX" "$h116_work" "$h116_fix" "$h116_pfix" "${h116_sfix:-}"' EXIT
+
+assert_eq "HARNESS-116 AC-1: make_fixture's VERSION is exactly '1 (2000-01-01)' and one newline" \
+  "$h116_stamp
+x" "$(h116_file "$h116_fix/.claude/harness/VERSION")"
+
+# The real stamp is read as doctor.sh's release_of reads it: the first line
+# that is neither blank nor a comment. Empty, or equal to the fixture stamp,
+# and the comparison above could not tell "the helper wrote its own" from
+# "the helper copied the real file".
+h116_real="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$REPO_ROOT/.claude/harness/VERSION" | head -1)"
+case "$h116_real" in
+  ''|"$h116_stamp") _bad "HARNESS-116 AC-1: the real stamp is not empty and is not the fixture stamp" "real stamp: '$h116_real'" ;;
+  *) _ok "HARNESS-116 AC-1: the real stamp is not empty and is not the fixture stamp" ;;
+esac
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-116 AC-2: make_project_fixture commits the same stamp"
+
+assert_eq "HARNESS-116 AC-2: make_project_fixture's VERSION is exactly '1 (2000-01-01)' and one newline" \
+  "$h116_stamp
+x" "$(h116_file "$h116_pfix/.claude/harness/VERSION")"
+assert_eq "HARNESS-116 AC-2: git show HEAD:.claude/harness/VERSION prints the fixture stamp" \
+  "$h116_stamp
+x" "$(git -C "$h116_pfix" show HEAD:.claude/harness/VERSION 2>&1; printf x)"
+assert_eq "HARNESS-116 AC-2: and the project fixture's git status --porcelain names no path" \
+  "" "$(git -C "$h116_pfix" status --porcelain 2>&1)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-116 AC-3: the stamp does not follow the tree it was built from"
+
+# A stand-in root of the suite's own: copies of the real paths.conf and
+# phases.conf, and a VERSION no real release will carry. The helper is called
+# in a subshell so the suite's own REPO_ROOT is untouched (C-2). The stand-in's
+# paths.conf carries one extra comment line, so the fixture shows that the
+# stand-in root - not the real one - is what reached the helper; without that,
+# a helper that ignored REPO_ROOT would satisfy the two assertions after it.
+h116_stand="$h116_work/stand"
+mkdir -p "$h116_stand/.claude/harness"
+cp "$REPO_ROOT/.claude/harness/paths.conf"  "$h116_stand/.claude/harness/paths.conf"
+cp "$REPO_ROOT/.claude/harness/phases.conf" "$h116_stand/.claude/harness/phases.conf"
+printf '# HARNESS-116 stand-in root\n' >> "$h116_stand/.claude/harness/paths.conf"
+printf '999 (2099-12-31)\n' > "$h116_stand/.claude/harness/VERSION"
+h116_sfix="$( ( REPO_ROOT="$h116_stand"; make_fixture ) )"
+
+assert_contains "HARNESS-116 AC-3: the fixture was built from the stand-in root (its paths.conf)" \
+  "# HARNESS-116 stand-in root" "$(cat "$h116_sfix/.claude/harness/paths.conf" 2>&1)"
+assert_eq "HARNESS-116 AC-3: under a stand-in root saying 999, the fixture's VERSION is exactly '1 (2000-01-01)'" \
+  "$h116_stamp
+x" "$(h116_file "$h116_sfix/.claude/harness/VERSION")"
+assert_not_contains "HARNESS-116 AC-3: and 999 appears nowhere in the fixture's VERSION" \
+  "999" "$(h116_file "$h116_sfix/.claude/harness/VERSION")"
+
 summary "lib"

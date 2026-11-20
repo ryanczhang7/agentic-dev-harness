@@ -4,8 +4,8 @@ title: Fixtures carry their own harness stamp
 slug: fixtures-carry-their-own-harness-stamp
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-116-fixtures-carry-their-own-harness-stamp
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/lib.test.sh, .claude/tests/doctor.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -341,6 +341,49 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Level: shell unit tests in the harness's own suites. The helper is a bash
+function, so `lib.test.sh` calls it directly (AC-1..AC-3); `doctor.test.sh`
+runs the copied `doctor.sh` in a project fixture (AC-4, AC-5). Every
+assertion is unconditional, so the executed count is fixed. All criteria are
+mechanical: each pins the literal `1 (2000-01-01)`, written out in the test.
+
+| AC | Suite | Assertion (exact name) | Red in RED? |
+|---|---|---|---|
+| AC-1 | lib | `HARNESS-116 AC-1: make_fixture's VERSION is exactly '1 (2000-01-01)' and one newline` | **red** |
+| AC-1 | lib | `HARNESS-116 AC-1: the real stamp is not empty and is not the fixture stamp` | green (precondition) |
+| AC-2 | lib | `HARNESS-116 AC-2: make_project_fixture's VERSION is exactly '1 (2000-01-01)' and one newline` | **red** |
+| AC-2 | lib | `HARNESS-116 AC-2: git show HEAD:.claude/harness/VERSION prints the fixture stamp` | **red** |
+| AC-2 | lib | `HARNESS-116 AC-2: and the project fixture's git status --porcelain names no path` | green (guard) |
+| AC-3 | lib | `HARNESS-116 AC-3: the fixture was built from the stand-in root (its paths.conf)` | green (reach control) |
+| AC-3 | lib | `HARNESS-116 AC-3: under a stand-in root saying 999, the fixture's VERSION is exactly '1 (2000-01-01)'` | **red** |
+| AC-3 | lib | `HARNESS-116 AC-3: and 999 appears nowhere in the fixture's VERSION` | **red** |
+| AC-4 | doctor | `HARNESS-116 AC-4: the real stamp is not empty` | green (precondition) |
+| AC-4 | doctor | `and it is the one in the file` (`:102`, respelled: `assert_eq` on the whole `harness ver` row, `  ok       harness ver  1 (2000-01-01)`) | **red** |
+| AC-4 | doctor | `HARNESS-116 AC-4: and the real stamp appears nowhere in doctor's output` | **red** |
+| AC-5 | doctor | `the shipped version starts with a release number`, `and carries the real release date` (unchanged, still read `"$REPO_ROOT/.claude/harness/VERSION"`) | green (control) |
+
+Whole-file comparison (AC-1, AC-2, AC-3): `h116_file f` is `cat f; printf x`,
+compared with `$'1 (2000-01-01)\nx'`, so trailing newlines are not stripped
+the way a bare `$(cat f)` strips them. A missing newline, an extra line or a
+kept comment header each change the compared string. AC-2's `git show` is
+compared the same way.
+
+AC-3's stand-in root is `$h116_work/stand` (the block's own `mktemp -d`),
+holding copies of the real `paths.conf` and `phases.conf`, the stand-in's
+`paths.conf` carrying one extra line `# HARNESS-116 stand-in root`, and
+`VERSION` = `999 (2099-12-31)`. The fixture is made by
+`h116_sfix="$( ( REPO_ROOT="$h116_stand"; make_fixture ) )"`. The marker
+assertion is what keeps AC-3 meaningful after GREEN: without it, a helper
+that ignored `REPO_ROOT` altogether would satisfy the stamp assertions.
+
+The C-3 restore at `doctor.test.sh` (after the legacy-date block) writes
+`1 (2000-01-01)` back, not `$first`. No `# fixture-only:` line was added to
+`doctor.test.sh`; the `:340`-`:351` block is untouched.
+
+Cleanup: `lib.test.sh`'s single `trap ... EXIT` is re-set in the block to
+remove `$FIX`, `$h116_work` (and the stand-in in it), `$h116_fix`,
+`$h116_pfix` and `$h116_sfix`. `doctor.test.sh` makes no new fixture.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -360,6 +403,211 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the Test Developer, dispatched on `opus`; resolved model
+`claude-opus-5-5` (Opus 5.5), no override.
+
+**Command.** `bash scripts/selftest.sh lib doctor` (both suites, about 3.5
+min locally). `bash scripts/selftest.sh lib` alone for DV-1.
+
+**Attested run on the final test tree** (Windows host, local):
+
+    run:      2026-11-20T00:06:12Z
+    command:  bash scripts/selftest.sh lib doctor
+    tree:     50eedd6ad81735c7469971c072fd58ba232d52d2
+    exit:     1
+    last:     2 of 2 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261120T000612Z.462584.log
+
+Also on this tree: `bash scripts/selftest.sh selftest` (the COUNTS table and
+the `lib is floored at its 332` pin moved): exit 0, `last: 1 harness suite(s)
+passed.`, `selftest: 366 passed, 0 failed`, log
+`.claude/state/attest-logs/20261120T000938Z.467417.log`. And
+`bash scripts/gates.sh --fast`: exit 0, `last: All required gates passed (0
+ran, 5 unconfigured, 0 known).`, log
+`.claude/state/attest-logs/20261120T001217Z.473415.log`. Vacuous, as
+expected: format, lint, typecheck, unit and coverage are UNCONFIGURED
+(BOOTSTRAPPED=no), mutation ON REQUEST, integration build skipped by
+`--fast`. The suites under their floors are what judges this story.
+
+**Counts.** `doctor: 69 passed, 2 failed` (71 executed); `lib: 327 passed,
+5 failed` (332 executed). Both are below their new floors, as they must be
+in RED: `FAIL doctor  did 69 units of work, below the floor of 71`, `FAIL lib
+did 327 units of work, below the floor of 332`. Before this story: doctor 69
+executed, 69 passed; lib 324 executed, 324 passed.
+
+**The failure, verbatim from the log** (the real VERSION's 30-odd comment
+lines are elided where marked `[...]`; the log has them in full):
+
+```
+    FAIL and it is the one in the file
+         expected:   ok       harness ver  1 (2000-01-01)
+         actual:     ok       harness ver  134 (2026-11-19)
+    FAIL HARNESS-116 AC-4: and the real stamp appears nowhere in doctor's output
+         expected NOT to contain: 134 (2026-11-19)
+         actual:                   Harness prerequisites
+           ok       git          /mingw64/bin/git
+           ok       bash         /usr/bin/bash
+           ok       bash ver     5.3.15
+           ok       harness ver  134 (2026-11-19)
+           ok       worktree     main checkout, harness 134 (2026-11-19)
+         [...]
+doctor: 69 passed, 2 failed
+FAIL doctor  did 69 units of work, below the floor of 71 in .claude/tests/floors.conf
+
+  HARNESS-116 AC-1: make_fixture writes a harness stamp of its own
+    FAIL HARNESS-116 AC-1: make_fixture's VERSION is exactly '1 (2000-01-01)' and one newline
+         expected: 1 (2000-01-01)
+         x
+         actual:   # The upstream harness version this tree was taken from. One line, first
+         # non-comment: a release NUMBER, monotonically increasing, with the real
+         # calendar date of that release beside it in brackets.
+         [...]
+         #   * no file at all - from before stamping entirely.
+         134 (2026-11-19)
+         x
+
+  HARNESS-116 AC-2: make_project_fixture commits the same stamp
+    FAIL HARNESS-116 AC-2: make_project_fixture's VERSION is exactly '1 (2000-01-01)' and one newline
+         expected: 1 (2000-01-01)
+         x
+         actual:   # The upstream harness version this tree was taken from. One line, first
+         [...]
+         134 (2026-11-19)
+         x
+    FAIL HARNESS-116 AC-2: git show HEAD:.claude/harness/VERSION prints the fixture stamp
+         expected: 1 (2000-01-01)
+         x
+         actual:   # The upstream harness version this tree was taken from. One line, first
+         [...]
+         134 (2026-11-19)
+         x
+
+  HARNESS-116 AC-3: the stamp does not follow the tree it was built from
+    FAIL HARNESS-116 AC-3: under a stand-in root saying 999, the fixture's VERSION is exactly '1 (2000-01-01)'
+         expected: 1 (2000-01-01)
+         x
+         actual:   999 (2099-12-31)
+         x
+    FAIL HARNESS-116 AC-3: and 999 appears nowhere in the fixture's VERSION
+         expected NOT to contain: 999
+         actual:                   999 (2099-12-31)
+         x
+
+lib: 327 passed, 5 failed
+FAIL lib  did 327 units of work, below the floor of 332 in .claude/tests/floors.conf
+```
+
+Why it is the right failure: each red assertion is the stamp comparison
+itself, and each actual value is the real file's bytes (or the stand-in's
+`999 (2099-12-31)`): the helper copies `$REPO_ROOT/.claude/harness/VERSION`.
+AC-3's actual value also shows the stand-in root reached the helper. No
+syntax error, no missing file, no other assertion in either suite went red.
+
+**Per test** (assertion name: what it asserts, AC):
+
+- lib `HARNESS-116 AC-1: make_fixture's VERSION is exactly ...`: the whole
+  file is `1 (2000-01-01)` + one newline. AC-1.
+- lib `HARNESS-116 AC-1: the real stamp is not empty and is not the fixture
+  stamp`: precondition on the real file, so the comparison above can tell a
+  write from a copy. AC-1.
+- lib `HARNESS-116 AC-2: make_project_fixture's VERSION is exactly ...`: the
+  same, through `make_project_fixture`. AC-2.
+- lib `HARNESS-116 AC-2: git show HEAD:.claude/harness/VERSION prints the
+  fixture stamp`: the committed blob, whole. AC-2.
+- lib `HARNESS-116 AC-2: and the project fixture's git status --porcelain
+  names no path`: committed, nothing left dirty. AC-2.
+- lib `HARNESS-116 AC-3: the fixture was built from the stand-in root (its
+  paths.conf)`: the stand-in's marker line is in the fixture's `paths.conf`.
+  AC-3 (reach control).
+- lib `HARNESS-116 AC-3: under a stand-in root saying 999, ...`: whole file.
+  AC-3.
+- lib `HARNESS-116 AC-3: and 999 appears nowhere in the fixture's VERSION`.
+  AC-3.
+- doctor `HARNESS-116 AC-4: the real stamp is not empty`: `_bad` when the
+  first non-blank, non-comment line of the real VERSION is empty. AC-4.
+- doctor `and it is the one in the file` (respelled `:102`): `assert_eq` of
+  the `harness ver` row (`grep 'harness ver'` over doctor's output) against
+  `  ok       harness ver  1 (2000-01-01)`. AC-4.
+- doctor `HARNESS-116 AC-4: and the real stamp appears nowhere in doctor's
+  output`: `assert_not_contains` the real stamp (an empty real stamp is
+  replaced by a sentinel needle, so it cannot match vacuously; the `_bad`
+  above has already failed the run). AC-4. This also covers the `worktree`
+  row, which prints `main checkout, harness <stamp>`.
+- doctor `the shipped version starts with a release number`, `and carries the
+  real release date`: unchanged. AC-5.
+
+**Files touched.** `.claude/tests/lib.test.sh` (new block at the end),
+`.claude/tests/doctor.test.sh` (`:102` respelled with two assertions added;
+the restore after the legacy-date block writes the fixture stamp),
+`.claude/tests/floors.conf` (lib 324 -> 332, doctor 69 -> 71, history note),
+`.claude/tests/selftest.test.sh` (COUNTS `doctor 71`, `lib 332`; the named
+`lib is floored at its 332 executed assertions` assertion, name and value),
+this story (`## Test plan`, this section).
+
+**Export shape pinned.** None new. The tests call `make_fixture` and
+`make_project_fixture` from `.claude/tests/_lib.sh` with no arguments and
+read the path each prints on stdout, as every suite does today. AC-3 also
+pins that `make_fixture` reads `REPO_ROOT` at call time (for the copy of
+`paths.conf`). Fixed by the tests: the fixture's
+`.claude/harness/VERSION` is exactly the 15 bytes `1 (2000-01-01)\n`, in
+both helpers, and committed in `make_project_fixture`'s fixture with a clean
+status afterwards. Not constrained: how the helper writes it (`printf`,
+heredoc), the comment wording above it, and whether `models.conf` is
+copied.
+
+**Passed on arrival (green in RED), and what earns each.**
+
+| Assertion | Why green today | What earns it |
+|---|---|---|
+| lib AC-1 real stamp precondition | real file says `134 (2026-11-19)` | a control on the input, not on the helper. Fires if the real VERSION is unstamped or holds `1 (2000-01-01)` (that is PLANNED run B's shape, applied to this assertion: `$d` makes the first line empty) |
+| lib AC-2 `git status --porcelain` empty | the helper commits its copy today | a guard that the fix stays committed: a GREEN that wrote VERSION after the `git add -A` would turn it red. Not probed in RED (no source mutation owed in RED) |
+| lib AC-3 stand-in marker | the helper copies `paths.conf` from `$REPO_ROOT` today | the red AC-3 stamp assertions are themselves the proof the stand-in reached the helper in RED (actual `999 (2099-12-31)`); the marker carries that proof past GREEN |
+| doctor AC-4 real stamp not empty | real file stamped | same as lib's precondition; fires under PLANNED run B's `$d` mutation |
+
+**Negative controls, expected values.** All mechanical; no thresholds.
+
+| Control | Expected now (RED, measured) | Expected after GREEN |
+|---|---|---|
+| lib AC-3 actual VERSION under the stand-in | `999 (2099-12-31)\n` (measured, log above) | `1 (2000-01-01)\n` |
+| lib/doctor real-stamp preconditions | `134 (2026-11-19)`, non-empty, not the fixture stamp (measured: pass) | the release GREEN writes, `135 (...)`: still pass |
+| doctor `harness ver` row | `  ok       harness ver  134 (2026-11-19)` (measured) | `  ok       harness ver  1 (2000-01-01)` |
+
+Unlike an import-failing suite, every assertion in both files executed in
+this run, so the values in the "now" column are measured, not claimed.
+
+**DV-1 / DV-2: declined in RED.** I cannot run either: both need the helper
+as GREEN builds it (DV-1 puts the old copy back into the new helper; DV-2
+needs a tree where no fixture holds the real stamp). Both are GATES's, per
+the story. Predicted outcome of DV-1 (replace the stamp write with the old
+`cp "$REPO_ROOT/.claude/harness/VERSION" "$d/.claude/harness/VERSION"`,
+`bash scripts/selftest.sh lib`), against this RED run:
+
+| Assertion | DV-1 prediction |
+|---|---|
+| AC-1 whole file (make_fixture) | red, actual = real VERSION with comments |
+| AC-1 real stamp precondition | green |
+| AC-2 whole file (make_project_fixture) | red |
+| AC-2 `git show HEAD:` | red |
+| AC-2 porcelain empty | green |
+| AC-3 stand-in marker | green |
+| AC-3 whole file | red, actual `999 (2099-12-31)` |
+| AC-3 no `999` | red |
+| total | `lib: 327 passed, 5 failed`, every failure in the HARNESS-116 block |
+
+A DV-1 mutant that changes only the comment must be refused as the story
+says; a mutant that writes `1 (2000-01-01)` without a newline would also go
+red on the three whole-file assertions (not run; prediction).
+
+**For the implementer.**
+
+- The C-1 write must land before `git add -A` in `make_fixture`, so that
+  `make_project_fixture`'s commit holds it and the porcelain stays empty.
+- `doctor.test.sh` does not touch `make_fixture`; its two red assertions go
+  green purely through the helper. `worktree.test.sh` was not edited; PLANNED
+  run C measured it green with the prototype.
+- The `lib` and `doctor` floors (332, 71) equal the executed counts, so GREEN
+  must reach `lib: 332 passed, 0 failed` and `doctor: 71 passed, 0 failed`.
 
 ## Regressions
 

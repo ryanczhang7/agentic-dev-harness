@@ -98,8 +98,23 @@ describe "the harness says which version it is"
 # "already fixed in 2026-09-11" a comparison instead of an afternoon.
 out="$(doctor)"
 assert_contains "doctor prints the harness version" "harness ver" "$out"
-assert_contains "and it is the one in the file" \
-  "$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$REPO_ROOT/.claude/harness/VERSION" | head -1)" "$out"
+# HARNESS-116 (AC-4): "the one in the file" is the FIXTURE's file. The fixture
+# carries a stamp of its own, `1 (2000-01-01)`, which no real release can be,
+# so matching it on the `harness ver` row shows that doctor.sh reads the tree
+# it runs in. Before HARNESS-116 the fixture held a copy of the real file and
+# this compared doctor's output with the real stamp - which passed on an empty
+# needle when the real file was unstamped (PLANNED, run B). The real stamp is
+# read exactly as before, and an empty one fails here rather than matching
+# everything below.
+h116_real="$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$REPO_ROOT/.claude/harness/VERSION" | head -1)"
+case "$h116_real" in
+  '') _bad "HARNESS-116 AC-4: the real stamp is not empty" "got an empty first line from $REPO_ROOT/.claude/harness/VERSION" ;;
+  *) _ok "HARNESS-116 AC-4: the real stamp is not empty" ;;
+esac
+assert_eq "and it is the one in the file" \
+  "  ok       harness ver  1 (2000-01-01)" "$(printf '%s\n' "$out" | grep 'harness ver')"
+assert_not_contains "HARNESS-116 AC-4: and the real stamp appears nowhere in doctor's output" \
+  "${h116_real:-<the real stamp was empty>}" "$out"
 
 # Absent, it says so rather than printing an empty field. A blank where a
 # version should be reads as "no version", which is the one thing it must not
@@ -359,7 +374,9 @@ case "$out" in
   *unstamped*) _bad "and is not mistaken for unstamped" "called it unstamped: $out" ;;
   *) _ok "and is not mistaken for unstamped" ;;
 esac
-printf '%s\n' "$first" > "$FIX/.claude/harness/VERSION"
+# Put the FIXTURE's stamp back, not the real one (HARNESS-116, C-3): from here
+# on the fixture must never carry the real stamp.
+printf '1 (2000-01-01)\n' > "$FIX/.claude/harness/VERSION"
 
 # ============================================================================
 # HARNESS-024: doctor.sh and task.sh parse the manifest without a process per
