@@ -5,7 +5,7 @@ slug: conf-change-selects-every-suite
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-117-conf-change-selects-every-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -422,6 +422,8 @@ name, below the table.
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
 - PLANNED: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported.
+- RED: `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
+- GREEN: `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override reported.
 
 ## Out of scope
 
@@ -822,3 +824,14 @@ until GREEN. Declined in RED, left to their owner, GATES.
   rule ("Include it (Recommended)"). No criterion changes. The planning branch
   was renamed to `story/HARNESS-117-conf-change-selects-every-suite` and the
   story committed at PLANNED as `c9107b1`.
+- **Release number (GREEN, 2026-11-20).** HARNESS-118 merged to main while
+  this story ran and took release 136, so this story's `VERSION` is
+  `137 (2026-11-20)`. HARNESS-118 touched no file this story declares besides
+  `VERSION`; `origin/main` is merged into the branch before the PR opens.
+- **GREEN verified (orchestrator, 2026-11-20).** `attest.sh check` was `fresh`
+  for both `bash scripts/selftest.sh selftest-needed` (exit 0,
+  `selftest-needed: 1091 passed, 0 failed`, log
+  `.claude/state/attest-logs/20261120T065412Z.1793557.log`) and
+  `bash scripts/gates.sh --fast` (exit 0, every gate unconfigured). Not re-run.
+  The feature developer confirmed every RED control value against the built
+  script; measured equalled expected for all six.

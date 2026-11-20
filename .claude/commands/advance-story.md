@@ -307,7 +307,7 @@ Then, **in this order**:
    `selftest-needed.sh --suites` chooses them: a suite that mentions a
    changed path and does not declare it `fixture-only`, a changed suite
    itself, the five tree-scanning suites for the paths they scan, and every
-   suite when a path cannot be placed or the library changed; the full run's
+   suite when a path cannot be placed or the library or a fixture conf changed; the full run's
    floors audit runs first. CI runs every suite, and one the story never
    touched can still fail on its change: a
    line number another suite pins, a floor, a value an upstream suite
