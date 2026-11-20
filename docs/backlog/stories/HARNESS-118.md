@@ -5,7 +5,7 @@ slug: stop-hook-sees-a-gate-run-in-flight
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-118-stop-hook-sees-a-gate-run-in-flight
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/gate-reminder.sh, .claude/tests/gate-reminder.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -145,9 +145,46 @@ GREEN.
   else. Run with `bash scripts/mutate.sh .claude/hooks/gate-reminder.sh
   'EXPR' -- bash scripts/selftest.sh gate-reminder`, expression written at
   GATES against the hook as built. **Owner: GATES.**
+
+  **DV-1 result (GATES, 2026-11-20, run by the orchestrator): PASSED.**
+  `gate-reminder` went red on the 14 AC-1..AC-3 assertions and nowhere
+  else; the file was restored and verified.
+
+    bash scripts/mutate.sh .claude/hooks/gate-reminder.sh 's/^  if gate_run_in_flight; then$/  if false \&\& gate_run_in_flight; then/' -- bash scripts/selftest.sh gate-reminder
+      98 -   if gate_run_in_flight; then
+      98 +   if false && gate_run_in_flight; then
+        FAIL warns: AC-1: no stamp, a live gates lock
+        FAIL continues: AC-1: no stamp, a live gates lock
+        FAIL AC-1: the message names the pid
+        FAIL AC-1: and when it started
+        FAIL AC-1: and its command
+        FAIL AC-1: and that its record lands when it exits
+        FAIL AC-1: and what it would otherwise have said
+        FAIL warns: AC-2: a stamp older than GATES, a live gates lock
+        FAIL continues: AC-2: a stamp older than GATES, a live gates lock
+        FAIL warns: AC-2: a partial stamp in GATES, a live full run
+        FAIL warns: AC-3: a live --fast run in GATES
+        FAIL AC-3: and it says that run will not discharge GATES
+        FAIL AC-3: and names the command with its argument
+        FAIL AC-3: in GREEN a --fast run is not called partial
+    gate-reminder: 46 passed, 14 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_hooks_gate-reminder.sh.20261120T045544Z.1608897.bak) ===
 - **DV-2, the command condition (AC-5).** With C-2's command test widened to
   accept any command, the AC-5 assertion **must** go red. Same command
   shape. **Owner: GATES.**
+
+  **DV-2 result (GATES, 2026-11-20, run by the orchestrator): PASSED.**
+  A probe against the real line of the hook: with the command test
+  accepting anything, both AC-5 assertions went red and nothing else.
+
+    bash scripts/mutate.sh .claude/hooks/gate-reminder.sh "s/^  case \"\$INFLIGHT_COMMAND\" in scripts\/gates.sh|'scripts\/gates.sh '\*) ;; \*) return 1 ;; esac$/  case \"\$INFLIGHT_COMMAND\" in *) ;; esac/" -- bash scripts/selftest.sh gate-reminder
+      91 -   case "$INFLIGHT_COMMAND" in scripts/gates.sh|'scripts/gates.sh '*) ;; *) return 1 ;; esac
+      91 +   case "$INFLIGHT_COMMAND" in *) ;; esac
+        FAIL blocks: AC-5: a live lock held by selftest.sh
+        FAIL blocks: AC-5: a command that only starts with the gates name
+    gate-reminder: 58 passed, 2 failed
+    === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_hooks_gate-reminder.sh.20261120T045709Z.1615454.bak) ===
+    mutate: no stranded mutation; nothing of a previous run is in the tree.
 
 ## Model guidance
 
@@ -251,6 +288,22 @@ raised (32; the suite now executes 60).
 ## Regressions
 
 ## Gate results
+
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-20T05:00:57Z
+    commit: 9977eea
+    tree:   c09104f2a30bb56845bad413716d18d36f373b19
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Notes
 
