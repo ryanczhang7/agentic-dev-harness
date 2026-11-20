@@ -5,7 +5,7 @@ slug: fixtures-carry-their-own-harness-stamp
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-116-fixtures-carry-their-own-harness-stamp
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/lib.test.sh, .claude/tests/doctor.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -234,6 +234,25 @@ copies the real file until GREEN.
   and is recorded with the result. Run against
   `bash scripts/selftest.sh lib`. **Owner: GATES.**
 
+  **DV-1 result (GATES, 2026-11-19, run by the orchestrator): PASSED.**
+  `lib` went red in the HARNESS-116 block only, AC-3 showing
+  `999 (2099-12-31)`; the file was restored and verified.
+
+      bash scripts/mutate.sh .claude/tests/_lib.sh '/printf .1 (2000-01-01)/c\  cp "$REPO_ROOT/.claude/harness/VERSION"     "$d/.claude/harness/VERSION" 2>/dev/null' -- bash scripts/selftest.sh lib
+      === mutate: .claude/tests/_lib.sh (1 line(s) changed by ...) ===
+        126 -   printf '1 (2000-01-01)\n' > "$d/.claude/harness/VERSION"
+        126 +   cp "$REPO_ROOT/.claude/harness/VERSION"     "$d/.claude/harness/VERSION" 2>/dev/null
+          FAIL HARNESS-116 AC-1: make_fixture's VERSION is exactly '1 (2000-01-01)' and one newline
+          FAIL HARNESS-116 AC-2: make_project_fixture's VERSION is exactly '1 (2000-01-01)' and one newline
+          FAIL HARNESS-116 AC-2: git show HEAD:.claude/harness/VERSION prints the fixture stamp
+          FAIL HARNESS-116 AC-3: under a stand-in root saying 999, the fixture's VERSION is exactly '1 (2000-01-01)'
+               expected: 1 (2000-01-01)
+               x
+               actual:   999 (2099-12-31)
+          FAIL HARNESS-116 AC-3: and 999 appears nowhere in the fixture's VERSION
+      lib: 327 passed, 5 failed
+      === mutate: command exited 1; restored (verified byte-for-byte against .../.claude_tests__lib.sh.20261120T001610Z.480290.bak) ===
+
 - **DV-2, run D repeated on the built tree (the story's claim, on the real
   file).** At PLANNED, with the real stamp set to `44 (2026-09-01)`,
   `worktree` is red: 70 passed, 3 failed (Context, run D). On the GREEN
@@ -243,6 +262,12 @@ copies the real file until GREEN.
   and the three assertions named in run D pass". **Owner: GATES.**
 
       bash scripts/mutate.sh .claude/harness/VERSION '$s/.*/44 (2026-09-01)/' -- bash scripts/selftest.sh worktree
+
+  **DV-2 result (GATES, 2026-11-19, run by the orchestrator): PASSED.**
+  Measured red at PLANNED (70 passed, 3 failed); on the GREEN commit:
+
+      worktree: 73 passed, 0 failed
+      === mutate: command exited 0; restored (verified byte-for-byte against .../.claude_harness_VERSION.20261120T001658Z.483650.bak) ===
 
 ## Amendments
 
