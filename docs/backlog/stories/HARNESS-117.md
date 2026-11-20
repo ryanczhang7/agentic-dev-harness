@@ -903,9 +903,9 @@ the verdict is Ship. Recorded here; the user was told it was left.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-20T15:04:45Z
-    commit: 2753734
-    tree:   586a1df8fa76392c4f51c163d3eea11efb17dea9
+    run:    2026-11-20T17:50:19Z
+    commit: 5846efd
+    tree:   9e59f428f861114ee614bc84b69eb98d79f6902b
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
