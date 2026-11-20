@@ -4,8 +4,8 @@ title: The Stop hook sees a gate run in flight
 slug: stop-hook-sees-a-gate-run-in-flight
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-118-stop-hook-sees-a-gate-run-in-flight
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/hooks/gate-reminder.sh, .claude/tests/gate-reminder.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -392,3 +392,7 @@ Verdict: Ship.
   decisions are all pinned.
 - **VERSION.** 136 here; HARNESS-117 (planned in parallel) bumps it too,
   so whichever merges second takes 137.
+- **REVIEW, 2026-11-20.** `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`:
+  7 of 35 suites selected, all passed (doctor 71, gate-reminder 61,
+  grep-count 38, lib 332, shipped-docs 24, sigpipe 91, worktree 73; 690
+  assertions, floors met). CI's full run is the run of record.
