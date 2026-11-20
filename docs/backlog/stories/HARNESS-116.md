@@ -4,8 +4,8 @@ title: Fixtures carry their own harness stamp
 slug: fixtures-carry-their-own-harness-stamp
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-116-fixtures-carry-their-own-harness-stamp
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/_lib.sh, .claude/tests/lib.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/doctor.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1016,3 +1016,11 @@ Verdict: Ship.
 - GATES round 2 (full gates): `feature-developer`, resolved Opus 5.5
   (`claude-opus-5-5`). DIFF-REVIEW round 2: `lead-po`, resolved Fable 5.2
   (`claude-fable-5-2`).
+- **Self-test at GATES → REVIEW, round 2, 2026-11-19: passed.**
+  `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` (every suite, because
+  `_lib.sh` changed), tree f317580, exit 0, `35 harness suite(s) passed.`,
+  1126 s, 6987 assertions executed against 6983 declared, log
+  `.claude/state/attest-logs/20261120T013116Z.771308.log`. `feature-developer`,
+  resolved Opus 5.5 (`claude-opus-5-5`). A first dispatch of this round was
+  refused by the worktree's run lock (exit 2) while the round-2 reviewer's
+  `selftest.sh selftest-needed` held it, and was re-dispatched once that ended.
