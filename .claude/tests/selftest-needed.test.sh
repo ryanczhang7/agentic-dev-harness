@@ -1480,4 +1480,183 @@ assert_eq "step 2 no longer says only \`a suite that mentions a changed path,\`"
   "$(h115_occ 'a suite that mentions a changed path,')"
 assert_eq "the backticked word \`fixture-only\` appears in step 2 exactly once" 1 "$(h115_occ '`fixture-only`')"
 
+# ---------------------------------------------------------------------------
+# HARNESS-117. make_fixture in _lib.sh copies the real paths.conf, phases.conf
+# and models.conf into every fixture it builds, so a suite reads them without
+# naming them. A change to one of the three answers `all`, at the R2 step,
+# with a reason of its own (Contract C-1).
+#
+# THE NEEDLE IS THE WHOLE STDERR (C-3). R5 gives the same stdout, `all`, for
+# a path no rule maps, with a different reason; so every conf answer below is
+# `expect_suites ... "all" whole "<the one pinned stderr line>"`, and a
+# conf that reached `all` only through R5 fails on the stderr comparison.
+#
+# THE ORACLES. AC-1 is settled: the answer and its reason are the story's,
+# read out, never derived from the script. AC-2..AC-5 are mechanical: stdout
+# whole, stderr whole, lines whole, from the root and from src/.
+#
+# THIS SUITE SPELLS THE THREE CONFS WHOLE (C-3, AC-1). Its own copy in the
+# real-tree fixtures then mentions them, which changes nothing once GREEN
+# lands: the R2 step answers before any mention is read.
+#
+# THE RED SHAPE. scripts/selftest-needed.sh has no conf step yet: AC-1 and
+# AC-2 print a list, AC-2 (b) also its not-selected line, AC-4 answers `all`
+# through R5, and AC-5's texts are absent. Every case runs and every
+# assertion is unconditional, so the executed count is the same in RED and
+# GREEN. AC-3's controls and AC-2 (a)'s second-path control pass on arrival;
+# the story's DV-3 earns AC-3's at GATES.
+
+H117_PATHS='.claude/harness/paths.conf'
+H117_PHASES='.claude/harness/phases.conf'
+H117_MODELS='.claude/harness/models.conf'
+H117_REASON='is copied into every fixture make_fixture builds'
+
+# h117_conf <label> <path>   The conf answer for <path>, from the root and
+# from src/: exit 0, stdout exactly `all`, stderr exactly the one pinned line.
+h117_conf() {
+  expect_suites "$1" 0 "all" whole "${SUITES_ALL}$2 $H117_REASON" --suites
+}
+
+# h117_fixture [name|line ...]   d := a fixture whose `main` holds one stub
+# suite per argument, .claude/tests/<name>.test.sh, its one line being
+# `# fixture suite <name>: <line>` (a newline in <line> starts a second line
+# at column 0), on a story branch with no change yet. A
+# builder of its own (C-3), so the `9` of the HARNESS-094/096 pins does not
+# move. No stub name is a scanner suite's, so no SCANS row is live.
+h117_fixture() {
+  local s
+  new_fixture; SN="$d/scripts/selftest-needed.sh"
+  for s in "$@"; do put ".claude/tests/${s%%|*}.test.sh" "# fixture suite ${s%%|*}: ${s#*|}"; done
+  commit_all "h117 stubs"
+  story_branch
+}
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-117 AC-1: one conf changed over the real suites answers all, with the conf's reason"
+
+h115_real
+h115_edit "$H117_PATHS"
+h117_conf "AC-1: .claude/harness/paths.conf changed over the real suites answers all, saying it is copied into every fixture" "$H117_PATHS"
+
+h115_real
+h115_edit "$H117_PHASES"
+h117_conf "AC-1: .claude/harness/phases.conf changed over the real suites answers all, saying it is copied into every fixture" "$H117_PHASES"
+
+h115_real
+h115_edit "$H117_MODELS"
+h117_conf "AC-1: .claude/harness/models.conf changed over the real suites answers all, saying it is copied into every fixture" "$H117_MODELS"
+
+# C-1: `.claude/harness/...` sorts before `.claude/tests/_lib.sh`, so a conf
+# changed beside an existing R2 path gives the conf's reason.
+h117_fixture "quiet|reads nothing"
+h115_edit "$H117_PHASES" .claude/tests/_lib.sh
+h117_conf "C-1: phases.conf changed beside .claude/tests/_lib.sh answers all with phases.conf's reason, the first in sort order" "$H117_PHASES"
+
+# C-1, the other order (R-1, diff review round 1 finding 1): a path no rule
+# maps sorts BEFORE `.claude/harness/` and answers `all` through R5 first, so
+# its reason stands. Pins the conf arm's `[ -n "$why_all" ] ||` guard: without
+# it the conf, read second, overwrites the earlier reason.
+h117_fixture "quiet|reads nothing"
+h115_edit "$H117_PHASES"
+put .claude/aaa-h117-unmapped.txt 'unmapped'
+expect_suites "C-1: an unmapped .claude/aaa-h117-unmapped.txt, first in sort order, keeps its reason when phases.conf changes beside it" 0 \
+  "all" whole "${SUITES_ALL}.claude/aaa-h117-unmapped.txt is mapped by no rule; defaulting to every suite" --suites
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-117 AC-2: no mention and no fixture-only declaration narrows a conf"
+
+h117_fixture "named|reads $H117_PHASES" "other|reads .claude/harness/h117-other.conf"
+h115_edit "$H117_PHASES"
+h117_conf "AC-2(a): phases.conf, which stub named names, changed alone answers all, not named" "$H117_PHASES"
+
+h117_fixture "named|reads $H117_PHASES" "other|reads .claude/harness/h117-other.conf"
+put .claude/harness/h117-other.conf 'other'
+expect_suites "AC-2(a) control: h117-other.conf alone, which stub other names, prints other, so the next case's second path is a mapped one" 0 \
+  "other" first "$(hdr 1 2 1)" --suites
+assert_eq "AC-2(a) control: other's reason is exactly \`.claude/harness/h117-other.conf (mentioned)\`" 1 \
+  "$(reason_lines other .claude/harness/h117-other.conf mentioned)"
+
+h117_fixture "named|reads $H117_PHASES" "other|reads .claude/harness/h117-other.conf"
+h115_edit "$H117_PHASES"
+put .claude/harness/h117-other.conf 'other'
+h117_conf "AC-2(a): phases.conf changed beside h117-other.conf, which stub other names, answers all with phases.conf's reason, not both stubs" "$H117_PHASES"
+
+# decl's second line is its declaration, at column 0, committed on main.
+h117_fixture "plain|reads $H117_MODELS" "decl|writes \$FIX/$H117_MODELS"$'\n'"# fixture-only: $H117_MODELS"
+h115_edit "$H117_MODELS"
+h115_expect "AC-2(b): models.conf, named by plain and declared fixture-only by decl, answers all, with no not-selected line" \
+  "all" whole "${SUITES_ALL}$H117_MODELS $H117_REASON" ""
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-117 AC-3 (control): only the three whole paths; a nested or longer name is an ordinary path"
+
+h117_fixture "nested|reads .claude/harness/h117/phases.conf" "backup|reads .claude/harness/paths.conf.bak"
+put .claude/harness/h117/phases.conf 'nested'
+expect_suites "AC-3: .claude/harness/h117/phases.conf, named by stub nested, prints nested, not all" 0 \
+  "nested" first "$(hdr 1 2 1)" --suites
+assert_eq "AC-3: nested's reason is exactly \`.claude/harness/h117/phases.conf (mentioned)\`" 1 \
+  "$(reason_lines nested .claude/harness/h117/phases.conf mentioned)"
+
+h117_fixture "nested|reads .claude/harness/h117/phases.conf" "backup|reads .claude/harness/paths.conf.bak"
+put .claude/harness/paths.conf.bak 'backup'
+expect_suites "AC-3: .claude/harness/paths.conf.bak, named by stub backup, prints backup, not all" 0 \
+  "backup" first "$(hdr 1 2 1)" --suites
+assert_eq "AC-3: backup's reason is exactly \`.claude/harness/paths.conf.bak (mentioned)\`" 1 \
+  "$(reason_lines backup .claude/harness/paths.conf.bak mentioned)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-117 AC-4: the rule covers every single-file copy _lib.sh makes from \$REPO_ROOT"
+
+# The path on each line of the real _lib.sh that is `cp "$REPO_ROOT/<path>"`
+# (no `-r`), CR stripped, sorted. The loop below is driven by this list, not
+# by a second literal one, so a fourth copy is asked about unedited.
+H117_COPIED="$(tr -d '\r' < "$REPO_ROOT/.claude/tests/_lib.sh" | awk '
+    match($0, /^[[:space:]]*cp "\$REPO_ROOT\//) {
+      s = substr($0, RLENGTH + 1); k = index(s, "\"")
+      if (k > 0) print substr(s, 1, k - 1)
+    }' | LC_ALL=C sort)"
+assert_eq "AC-4: the real _lib.sh copies exactly the three confs, single-file, from \$REPO_ROOT" "$H117_MODELS
+$H117_PATHS
+$H117_PHASES" "$H117_COPIED"
+
+H117_COPIED_LIST=()
+mapfile -t H117_COPIED_LIST <<<"$H117_COPIED"
+for p in "${H117_COPIED_LIST[@]}"; do
+  [ -n "$p" ] || continue
+  h117_fixture "quiet|reads nothing"
+  h115_edit "$p"
+  h117_conf "AC-4: $p, copied by _lib.sh and named by no stub, changed alone answers all with the conf's reason, not R5's" "$p"
+done
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-117 AC-5: the header and advance-story.md state the rule"
+
+SNH_BACKSTOP="# CI's full run is the backstop."
+SNH_F1='# R2, for the fixture confs (HARNESS-117). `make_fixture` in'
+SNH_F2='# .claude/tests/_lib.sh copies the real .claude/harness/paths.conf,'
+SNH_F3='# phases.conf and models.conf into every fixture it builds, so a suite'
+SNH_F4='# reads them without naming them. A change to one of the three answers'
+SNH_F5='# `all`, like an R2 path, with the reason'
+SNH_F6='# `<path> is copied into every fixture make_fixture builds`. No mention'
+SNH_F7='# and no `# fixture-only:` line narrows that.'
+assert_eq "precondition: the header's Known limit paragraph ends on its one backstop line" 1 "$(snh_count "$SNH_BACKSTOP")"
+assert_eq "the header's fixture-conf block opens exactly once" 1 "$(snh_count "$SNH_F1")"
+assert_eq "the header's fixture-conf block sits directly after the backstop line, then a blank line and \`set -uo pipefail\`" "#
+$SNH_F1
+$SNH_F2
+$SNH_F3
+$SNH_F4
+$SNH_F5
+$SNH_F6
+$SNH_F7
+
+set -uo pipefail" "$(awk -v a="$SNH_BACKSTOP" 'f && n < 10 { print; n++ } $0 == a { f = 1 }' <<SNH_CONF
+$SNH_TEXT
+SNH_CONF
+)"
+assert_eq "step 2 says every suite is chosen when the library or a fixture conf changed, once" 1 \
+  "$(h115_occ 'every suite when a path cannot be placed or the library or a fixture conf changed;')"
+assert_eq "step 2 no longer says only \`or the library changed;\`" 0 \
+  "$(h115_occ 'or the library changed;')"
+
 summary "selftest-needed"

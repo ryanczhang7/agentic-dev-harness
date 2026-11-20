@@ -77,6 +77,14 @@
 # script, and never names it, is not selected. Transitive selection was
 # measured and rejected (one level from gates.sh selects nearly every suite);
 # CI's full run is the backstop.
+#
+# R2, for the fixture confs (HARNESS-117). `make_fixture` in
+# .claude/tests/_lib.sh copies the real .claude/harness/paths.conf,
+# phases.conf and models.conf into every fixture it builds, so a suite
+# reads them without naming them. A change to one of the three answers
+# `all`, like an R2 path, with the reason
+# `<path> is copied into every fixture make_fixture builds`. No mention
+# and no `# fixture-only:` line narrows that.
 
 set -uo pipefail
 
@@ -271,6 +279,9 @@ shipped-docs map .claude/commands/*.md .claude/agents/*.md .claude/skills/*.md'
     case "$p" in
       .claude/tests/_lib.sh|.claude/tests/_spawns.sh|scripts/selftest.sh|.claude/hooks/lib.sh)
         [ -n "$why_all" ] || why_all="$p is read by every suite"
+        continue ;;
+      .claude/harness/paths.conf|.claude/harness/phases.conf|.claude/harness/models.conf)
+        [ -n "$why_all" ] || why_all="$p is copied into every fixture make_fixture builds"
         continue ;;
     esac
     case "$p" in
