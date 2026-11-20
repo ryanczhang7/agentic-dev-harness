@@ -4,8 +4,8 @@ title: A changed paths, phases or models conf selects every suite
 slug: conf-change-selects-every-suite
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-117-conf-change-selects-every-suite
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest-needed.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/commands/advance-story.md, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -455,8 +455,41 @@ name, below the table.
 
 ## Test plan
 
-<!-- Filled by the Test Developer during RED: which tests, at which level,
-     and which AC each one covers. -->
+One level: the `selftest-needed` suite, driving the fixture's copy of
+`scripts/selftest-needed.sh --suites` in throwaway git fixtures (the
+contract is the script's stdout, stderr and exit status), plus whole-line
+text pins over the real `_lib.sh`, `selftest-needed.sh` header and
+`advance-story.md`. All new cases are one block at the end of
+`.claude/tests/selftest-needed.test.sh`, under `describe` lines starting
+`HARNESS-117`. 115 assertions, all unconditional.
+
+Helpers. `h117_conf <label> <path>` is `expect_suites <label> 0 "all"
+whole "selftest-needed: suites — all: <path> is copied into every fixture
+make_fixture builds" --suites`: from the root and from `src/`, exit 0,
+stdout exactly `all`, its line count 1, and the WHOLE stderr (8
+assertions). `h117_fixture "name|line" ...` is a stub builder of its own
+(one `.claude/tests/<name>.test.sh` per argument, committed on `main`), so
+the `hdr ... 9 ...` pins of HARNESS-094/096 do not move. AC-1 reuses
+`h115_real`/`h115_edit` as they are; AC-2 (b) reuses `h115_expect` with an
+empty not-selected argument (expect_suites's four assertions plus "stderr
+holds 0 not-selected line(s)", per directory).
+
+| Case | Oracle | Assertions | AC |
+|---|---|---|---|
+| paths.conf, phases.conf, models.conf each changed over the real suites -> conf answer | settled | 3 x 8 | AC-1 |
+| phases.conf changed beside `.claude/tests/_lib.sh` -> conf answer with phases.conf's reason (first in sort order) | mechanical | 8 | C-1 |
+| stub `named` names phases.conf; phases.conf alone -> conf answer | mechanical | 8 | AC-2 (a) |
+| control: `.claude/harness/h117-other.conf` alone -> exactly `other`, `hdr 1 2 1`, reason `(mentioned)` | mechanical | 9 | AC-2 (a) |
+| phases.conf beside h117-other.conf -> conf answer, not both stubs | mechanical | 8 | AC-2 (a) |
+| `plain` names models.conf, `decl` declares it fixture-only at column 0; models.conf changed -> conf answer, 0 not-selected lines | mechanical | 10 | AC-2 (b) |
+| `.claude/harness/h117/phases.conf` -> exactly `nested`, `hdr 1 2 1`, reason line | mechanical (control) | 9 | AC-3 |
+| `.claude/harness/paths.conf.bak` -> exactly `backup`, `hdr 1 2 1`, reason line | mechanical (control) | 9 | AC-3 |
+| the sorted `cp "$REPO_ROOT/<path>"` set from the real `_lib.sh` is exactly the three confs | mechanical | 1 | AC-4 |
+| per EXTRACTED path, stub fixture naming nothing -> conf answer (not R5's reason) | mechanical | 3 x 8 | AC-4 |
+| header: backstop line once; fixture-conf block opens once; the 10 lines after the backstop are `#`, C-4's seven lines, blank, `set -uo pipefail` | mechanical | 3 | AC-5 |
+| advance-story.md step 2 (`AS_STEP2`): new clause once, `or the library changed;` zero times | mechanical | 2 | AC-5 |
+
+HARNESS-115's AC-1 and AC-2 blocks are not edited (AC-3's second half).
 
 ## Handoff: RED -> GREEN
 
@@ -477,6 +510,165 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+RED, 2026-11-20, Test Developer, dispatched as `test-developer` (declared
+`opus`); resolved to Opus 5.5 (`claude-opus-5-5`), no override reported.
+
+**Command.** `bash scripts/selftest.sh selftest-needed` (the whole suite;
+the new cases are the `HARNESS-117` describe blocks at its end). Run as
+`bash scripts/attest.sh -- bash scripts/selftest.sh selftest-needed`.
+
+**Files touched (RED).** `.claude/tests/selftest-needed.test.sh` (the new
+block, appended before `summary`; nothing above it edited),
+`.claude/tests/floors.conf` (`floor | selftest-needed | 976` -> `1091`, plus
+a log paragraph at the end), `.claude/tests/selftest.test.sh` (COUNTS row
+`selftest-needed 976` -> `selftest-needed 1091`, `:557`), and this story's
+`## Test plan` and this section. No Contract amendment.
+
+**The run (local, Windows host, final RED tree; the failure
+output below is quoted from that log).**
+
+    last:     1 of 1 harness suite(s) FAILED.
+    log:      .claude/state/attest-logs/20261120T063135Z.1770676.log
+    selftest-needed: 1045 passed, 46 failed
+    FAIL selftest-needed  did 1045 units of work, below the floor of 1091 in .claude/tests/floors.conf
+
+1091 executed = the new floor. All 46 failures are in the HARNESS-117
+block (the first FAIL in the log is the first assertion after the
+`HARNESS-117 AC-1` describe line); every assertion above it is green,
+HARNESS-115 AC-1/AC-2 included.
+
+Verbatim, representative (from the log):
+
+    FAIL AC-1: .claude/harness/phases.conf changed over the real suites answers all, saying it is copied into every fixture [from root]: stdout is exactly the pinned list
+         expected: all
+         actual:   lib
+         plan
+         refresh
+         selftest-needed
+    FAIL AC-1: .claude/harness/phases.conf changed over the real suites answers all, saying it is copied into every fixture [from root]: stderr is exactly the pinned text
+         expected: selftest-needed: suites — all: .claude/harness/phases.conf is copied into every fixture make_fixture builds
+         actual:   selftest-needed: suites — 4 of 35 selected from 1 harness path(s) changed against main (merge-base 28d26ea)
+           lib              .claude/harness/phases.conf (mentioned)
+           plan             .claude/harness/phases.conf (mentioned)
+           refresh          .claude/harness/phases.conf (mentioned)
+           selftest-needed  .claude/harness/phases.conf (mentioned)
+    FAIL AC-2(b): models.conf, named by plain and declared fixture-only by decl, answers all, with no not-selected line [from root]: stderr is exactly the pinned text
+         expected: selftest-needed: suites — all: .claude/harness/models.conf is copied into every fixture make_fixture builds
+         actual:   selftest-needed: suites — 1 of 2 selected from 1 harness path(s) changed against main (merge-base 924cfcd)
+           plain  .claude/harness/models.conf (mentioned)
+           not selected (fixture-only): decl
+    FAIL AC-4: .claude/harness/models.conf, copied by _lib.sh and named by no stub, changed alone answers all with the conf's reason, not R5's [from root]: stderr is exactly the pinned text
+         expected: selftest-needed: suites — all: .claude/harness/models.conf is copied into every fixture make_fixture builds
+         actual:   selftest-needed: suites — all: .claude/harness/models.conf is mapped by no rule; defaulting to every suite
+    FAIL the header's fixture-conf block opens exactly once
+    FAIL step 2 says every suite is chosen when the library or a fixture conf changed, once
+         expected: 1
+         actual:   0
+    FAIL step 2 no longer says only `or the library changed;`
+         expected: 0
+         actual:   1
+
+(AC-1 today selects 4, not table 2's 3, for `phases.conf`: this suite now
+spells the conf whole, so its own copy is a mention. Expected; C-3 says so.)
+
+**The 46 failures, by case** (per directory = root and src/):
+
+| Case | Fails | Which assertions, and why that is the right failure |
+|---|---|---|
+| AC-1 paths/phases/models over the real suites | 3 x 6 = 18 | stdout, its line count, whole stderr: a mention list where `all` is expected |
+| C-1 phases.conf beside `_lib.sh` | 2 | stderr only: today phases.conf sorts first and R5 gives `... is mapped by no rule; ...` (stdout is already `all`) |
+| AC-2 (a) phases.conf alone | 4 | stdout (`named`) and stderr; the line count is 1 either way |
+| AC-2 (a) phases.conf beside h117-other.conf | 6 | stdout (`named`, `other`), line count, stderr |
+| AC-2 (b) models.conf, plain + declaring decl | 6 | stdout (`plain`), stderr, and the not-selected count (1, want 0) |
+| AC-4, one per extracted path (3) | 3 x 2 = 6 | stderr only: stdout is `all` today, through R5 - exactly the case the whole-stderr needle exists for |
+| AC-5 header | 2 | the block's first line (0 times), and the 10-line position pin |
+| AC-5 advance-story.md step 2 | 2 | new clause 0 times, old `or the library changed;` once |
+
+**Passing on arrival (69 of the 115), and what earns them.**
+
+- AC-3's two controls (18): `.claude/harness/h117/phases.conf` prints
+  exactly `nested`, `.claude/harness/paths.conf.bak` exactly `backup`, each
+  with `hdr 1 2 1` and its `(mentioned)` reason line. They pass today
+  because no conf step exists; after GREEN they pass only if the step
+  matches whole paths. **Earned by DV-3 at GATES** (widen one arm to a
+  glob, the `.bak` case must go red with stdout `all`). Not earned in RED.
+- AC-2 (a)'s control (9): `.claude/harness/h117-other.conf` alone prints
+  exactly `other` with its reason. It exists so the "beside a second changed
+  path another stub names" case is provably beside a MAPPED path. It does
+  not depend on the conf step; nothing GREEN does should move it.
+- AC-4's set assertion (1): the sorted single-file `cp "$REPO_ROOT/..."`
+  set of the real `_lib.sh` is the three confs today, as the AC's own
+  "Today" says. Probe it (not done in RED; GATES' or an audit's choice):
+  `bash scripts/mutate.sh .claude/tests/_lib.sh '122s/models\.conf"/models.conf.x"/' -- bash scripts/selftest.sh selftest-needed`
+  would change the extracted set and must turn it red.
+- AC-5's precondition (1): `# CI's full run is the backstop.` appears once
+  in the header today, and must stay once.
+- The other 40: every exit-status assertion of the conf cases (0 today
+  and after), the line counts where today's list is one line (AC-2 (a)
+  alone, AC-2 (b)), and the stdout/line-count halves of the C-1 and AC-4
+  cases, which are already `all` through R5. In each such case the stderr
+  assertion beside them is the one that discriminates, and it is red.
+
+**Negative controls, expected values.** The suite does not fail at import:
+every assertion above RAN in RED, against the shipped script, so these are
+measured, not claims.
+
+| Control | Threshold (pinned) | Measured in RED (log above) | Must hold after GREEN |
+|---|---|---|---|
+| AC-3 `.claude/harness/h117/phases.conf` | stdout exactly `nested`, header `1 of 2 ... 1 harness path(s)`, reason line once | passed, 9/9 | 9/9 |
+| AC-3 `.claude/harness/paths.conf.bak` | stdout exactly `backup`, header `1 of 2`, reason line once | passed, 9/9 | 9/9 |
+| AC-2 (a) `.claude/harness/h117-other.conf` | stdout exactly `other`, header `1 of 2`, reason line once | passed, 9/9 | 9/9 |
+| HARNESS-115 AC-1 / AC-2 (unchanged) | their lists, as pinned | passed | passed |
+
+**The shape the tests pin (GREEN builds exactly this).**
+
+- `scripts/selftest-needed.sh --suites`: for a changed path exactly
+  `.claude/harness/paths.conf`, `.claude/harness/phases.conf` or
+  `.claude/harness/models.conf` (whole repo-relative path), stdout is the
+  one line `all`, exit 0, and stderr is the one line
+  `selftest-needed: suites — all: <path> is copied into every fixture make_fixture builds`
+  - nothing else on stderr (no header, no not-selected line), from the root
+  and from `src/`. When it is first in sort order among the paths that
+  answer `all`, its reason wins (C-1 case: beside `.claude/tests/_lib.sh`).
+  No mention, no `# fixture-only:` line changes that.
+- `.claude/harness/h117/phases.conf` and `.claude/harness/paths.conf.bak`
+  stay ordinary R3 paths.
+- Header: the 10 lines directly after `# CI's full run is the backstop.`
+  are exactly `#`, C-4's seven `# ...` lines in order, an empty line, and
+  `set -uo pipefail`. C-4's opening line appears once in the file.
+- `advance-story.md` step 2, joined with single spaces: `every suite when a
+  path cannot be placed or the library or a fixture conf changed;` once,
+  `or the library changed;` zero times. HARNESS-115's step-2 pins (the
+  `fixture-only` clause, the step head line) must still hold.
+- Not constrained: where in the loop the arm sits (as long as no rule ahead
+  of it can set a different reason first for the conf itself), whether it
+  shares R2's `case` or has its own, the variable names, the VERSION number.
+
+**Attest records.**
+
+    selftest-needed: last: 1 of 1 harness suite(s) FAILED.  log: .claude/state/attest-logs/20261120T063135Z.1770676.log
+    selftest:        last: 1 harness suite(s) passed.  log: .claude/state/attest-logs/20261120T062746Z.1756905.log   (366 passed, floor met)
+    gates --fast:    last: All required gates passed (0 ran, 5 unconfigured, 0 known).  log: .claude/state/attest-logs/20261120T063954Z.1786633.log
+
+All three on tree `ca2b2ee7d7056ca101042ef073508996411d9a98`, the final RED tree. (An earlier selftest-needed run, `20261120T060457Z.1683477.log`, gave the identical 1045/46 on the tree before the floors.conf log comment.)
+
+`gates.sh --fast` shape: every gate is UNCONFIGURED in this repository
+(`BOOTSTRAPPED=no`), so it runs nothing and says so; there is no lint or
+coverage gate that could refuse the test file. The suite's real judge is its
+floor, which CI runs in full.
+
+**Deferred verifications.** DV-1, DV-2 and DV-3 I cannot run: each mutates
+or probes the conf step of `scripts/selftest-needed.sh`, which does not exist
+until GREEN. Declined in RED, left to their owner, GATES.
+
+**For GREEN.**
+
+- The header block adds 8 lines above `set -uo pipefail`. No suite pins a
+  `selftest-needed.sh:<line>` number (`grep -rn "selftest-needed.sh:[0-9]"
+  .claude/tests/`: none), but `check-sigpipe.sh`/`check-grep-count.sh` scan
+  the file; run them.
+- Expected after GREEN: `selftest-needed: 1091 passed, 0 failed`.
 
 ## Regressions
 
