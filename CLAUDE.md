@@ -164,6 +164,7 @@ bash scripts/gates.sh            # all gates
 bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and GREEN
 bash scripts/gates.sh --gate unit
 bash scripts/attest.sh -- CMD        # run CMD, record it against the tree; `check -- CMD` instead of a re-run
+bash scripts/run-status.sh       # is this tree's run running or queued, and behind what?
 bash scripts/check-boundaries.sh # the other half of CI: the commit, not the code
 bash scripts/check-sigpipe.sh   # refuse a pipefail SIGPIPE matcher, tree-wide
 bash scripts/check-grep-count.sh # refuse a printing `grep -c` fallback
@@ -217,6 +218,13 @@ coverage instrumentation. A suite can pass RED, pass GREEN, pass every local
 gate and still fail a required gate on CI hardware. A gate is in `--fast` unless
 a `slow` line in `project.conf` says otherwise, and a `--fast` run is never
 recorded: it is not a full run.
+
+A full `gates.sh` or `selftest.sh`, and every `selftest.sh --changed`, waits in
+a machine-wide queue for any other such run, in any tree, on this machine: the
+lock is `${HARNESS_RUN_QUEUE_DIR:-$HOME/.cache/agentic-harness}/run-queue.lock`,
+reached through `scripts/run-lock.sh`, so it is not in `gates.sh`. `--fast`,
+`--gate` and a single suite do not queue. A queued run starts by itself.
+Never stop a queued run to requeue it.
 
 If a command you need is not in `project.conf`, add it there rather than
 memorising it — the next agent has a fresh context and will not know.

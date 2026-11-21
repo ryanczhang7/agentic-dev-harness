@@ -21,6 +21,7 @@ in here is ever committed; only this file and `.gitkeep` are tracked.
 | `plan-write.<pid>.md` | `scripts/plan.sh write` | `awk`, while it splices the section | yes |
 | `run.lock` | `scripts/gates.sh`, `scripts/selftest.sh` | `scripts/run-lock.sh`, in the next run | yes |
 | `run.lock.<pid>` | `scripts/run-lock.sh` | `ln`, while it takes the lock | yes |
+| `run.queued` | `scripts/run-queue.sh`, while a run waits in the machine-wide queue | `scripts/run-status.sh` | yes |
 | `selftest.<pid>/*.out` | `scripts/selftest.sh`, with `SELFTEST_JOBS` above 1 | `scripts/selftest.sh`, to print each suite in order | yes |
 | `check-boundaries/*` | `scripts/check-boundaries.sh` | nothing; scratch for a `git show` result | yes |
 
@@ -144,6 +145,13 @@ live process, the next run refuses, and the refusal says to delete the file.
 It is `yes` because deleting it is that remedy. `run.lock.<pid>` is the record
 being written before `ln` puts it in place as `run.lock`, removed straight
 after; one left behind is safe to delete.
+
+`run.queued` says the run holding `run.lock` is waiting in the machine-wide
+queue below (HARNESS-120): its pid, since when it has waited, and its command,
+three TAB-separated lines. It is written as the run prints `run-queue: queued:`
+and removed when the run starts its work or is stopped. **One left behind means
+a waiter was killed outright**, and it is safe to delete. `scripts/run-status.sh`
+believes it only when its pid is the live pid `run.lock` records.
 
 **The machine-wide queue lock is not in this directory, and not in the table.**
 The table is this tree's own state files; the queue is one file per user per

@@ -273,14 +273,14 @@ if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ] && [ -f "$ROOT/scripts/mutate.sh" ]; then
   fi
 fi
 
-# THE RUN LOCK (HARNESS-034). Two harness runs in one tree - this and a
-# self-test, or two of either - starve each other: issue #97 measured a hang
-# past 30 minutes that passed alone. scripts/run-lock.sh takes
-# .claude/state/run.lock or refuses with 2, before any gate runs and before
-# last-gate-run is written; it never waits. --list and --audit read the
-# manifest, not the tree, and keep working beside a run in flight. The traps go
-# in BEFORE the take, so no signal can strand a lock; trapped, a TERM or INT
-# waits for the running gate command instead of orphaning it, and EXIT releases.
+# THE RUN LOCK (HARNESS-034). Two harness runs in one tree starve each other
+# (issue #97: a hang past 30 minutes that passed alone). scripts/run-lock.sh
+# takes .claude/state/run.lock or refuses with 2 before any gate runs or
+# last-gate-run is written; the run lock is never waited on. A full run then
+# waits in the machine-wide queue, scripts/run-queue.sh, for any other such
+# run on the machine; `bash scripts/run-status.sh` says which. --list and
+# --audit skip both. Traps go in BEFORE the take, so no signal strands a lock;
+# a trapped TERM or INT waits for the running gate command; EXIT releases.
 if [ "$LIST" = 0 ] && [ "$AUDIT" = 0 ]; then
   . "$ROOT/scripts/run-lock.sh" || { printf 'run-lock: scripts/run-lock.sh is missing; nothing was run.\n' >&2; exit 2; }
   trap run_lock_release EXIT

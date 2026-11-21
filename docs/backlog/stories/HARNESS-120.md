@@ -5,7 +5,7 @@ slug: a-queued-run-answers-when-asked-and-the
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-120-a-queued-run-answers-when-asked-and-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-status.sh, scripts/run-queue.sh, scripts/gates.sh, scripts/selftest.sh, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/feature-developer.md, .claude/state/README.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -503,6 +503,8 @@ name, below the table.
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
 - PLANNED (2026-11-21): `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. Dispatched by `/plan-story`; wrote Context, the criteria, the Contract, the deferred verifications and Out of scope, then ran `plan.sh write`.
+- RED (2026-11-21): `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
+- GREEN (2026-11-21): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 
 ## Out of scope
 
@@ -877,3 +879,16 @@ and no status script to ask. All three are left to their owner, GATES.
   "queued". The user added: "we will want to plan the shared queue as well".
   A machine-wide list of every waiting tree is therefore a follow-up story
   of its own, to be planned after this one; it stays out of scope here.
+- **GREEN verified (orchestrator, 2026-11-21).** feature-developer (opus,
+  resolved claude-opus-5-5). `attest.sh check -- bash scripts/selftest.sh
+  run-queue` was `fresh`, exit 0, `run-queue: 579 passed, 0 failed`, floor met
+  (log `.claude/state/attest-logs/20261121T194212Z.2871176.log`);
+  `attest.sh check -- bash scripts/gates.sh --fast` `fresh`, exit 0 (vacuous).
+  Every negative-control value the handoff recorded was measured against the
+  shipped script and matched (seven states). Deviations reported by GREEN:
+  `run_queue_unmark` is also called on the two "without the queue" exits in the
+  wait loop; `run-status.sh` exits 1 with one stderr line if its sibling
+  `run-queue.sh` is missing (uncovered by the Contract). Live check on the real
+  machine queue: `run-status.sh` printed `idle` for this tree and `machine
+  queue: held by pid 2923853 ... in /d/fantasy-world-builder: scripts/gates.sh`,
+  matching the lock file.

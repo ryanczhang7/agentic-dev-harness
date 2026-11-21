@@ -54,7 +54,25 @@
 # HARNESS_RUN_QUEUE_HEARTBEAT seconds (default 60), and one `starting` line
 # when it gets through. Waiters are not first-come-first-served: whichever
 # attempts first after a release wins. The temporary record exists only during
-# one attempt, so a waiter killed between attempts leaves nothing behind.
+# one attempt, so a waiter killed between attempts leaves nothing behind. To
+# ask whether a tree's run is waiting here, and behind what, run that tree's
+# `bash scripts/run-status.sh`.
+#
+# THE MARKER (HARNESS-120), <root>/.claude/state/run.queued, says a run in that
+# tree is waiting here. Three TAB-separated lines, the run lock's convention:
+#
+#   pid<TAB><the waiting script's $$>
+#   since<TAB><UTC, to the second: when it began waiting>
+#   command<TAB>scripts/gates.sh
+#
+# Written once per wait, as the `queued:` line is printed; removed when the run
+# takes the queue, before `starting`, and by run_queue_release, which the EXIT
+# trap reaches on TERM or INT. Only the process that wrote it removes it. A run
+# that does not wait never writes one. Writing and removing print nothing. A
+# marker that cannot be written is not reported: the run waits all the same,
+# and run-status.sh calls it `running`. One left by SIGKILL is never cleaned
+# up and need not be: run-status.sh believes a marker only when its pid is the
+# live pid the tree's run.lock records.
 #
 # STALE LOCKS are reclaimed by pid: a lock whose pid is not running (kill -0),
 # or which records no numeric pid, is removed with one line saying so, and
@@ -88,6 +106,42 @@
 RUN_QUEUE_HELD=0
 RUN_QUEUE_FILE=""
 RUN_QUEUE_TMP=""
+RUN_QUEUE_MARK=""
+
+# run_queue_dir   Prints the queue lock's directory - HARNESS_RUN_QUEUE_DIR when
+# non-empty, else $HOME/.cache/agentic-harness - or returns 1 with neither set.
+# The one copy of the rule: run_queue_acquire and scripts/run-status.sh call it.
+run_queue_dir() {
+  if [ -n "${HARNESS_RUN_QUEUE_DIR:-}" ]; then
+    printf '%s' "$HARNESS_RUN_QUEUE_DIR"
+  elif [ -n "${HOME:-}" ]; then
+    printf '%s' "$HOME/.cache/agentic-harness"
+  else
+    return 1
+  fi
+}
+
+# run_queue_mark <root> <command>   Writes <root>/.claude/state/run.queued as
+# this run starts waiting. Silent; a marker that cannot be written is not an
+# error, and the run waits as it would without one.
+run_queue_mark() {
+  local m="$1/.claude/state/run.queued"
+  # Braced, so that a redirect that cannot open the file is silent too.
+  if { printf 'pid\t%s\nsince\t%s\ncommand\t%s\n' \
+      "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" > "$m"; } 2>/dev/null; then
+    RUN_QUEUE_MARK="$m"
+  fi
+  return 0
+}
+
+# run_queue_unmark   Removes the marker iff this process wrote it and it still
+# records $$. A no-op otherwise; silent; never fails.
+run_queue_unmark() {
+  [ -n "$RUN_QUEUE_MARK" ] || return 0
+  if [ "$(run_queue_field "$RUN_QUEUE_MARK" pid)" = "$$" ]; then rm -f "$RUN_QUEUE_MARK" 2>/dev/null; fi
+  RUN_QUEUE_MARK=""
+  return 0
+}
 
 # run_queue_alive <pid>   0 if <pid> is running. One line, exactly: DV-1's sed
 # expression targets it.
@@ -157,11 +211,7 @@ run_queue_acquire() {
   local root="$1" self="$2" dir lock tmp pid queued=0 t0 last command started where
   local poll="${HARNESS_RUN_QUEUE_POLL:-5}" beat="${HARNESS_RUN_QUEUE_HEARTBEAT:-60}"
 
-  if [ -n "${HARNESS_RUN_QUEUE_DIR:-}" ]; then
-    dir="$HARNESS_RUN_QUEUE_DIR"
-  elif [ -n "${HOME:-}" ]; then
-    dir="$HOME/.cache/agentic-harness"
-  else
+  if ! dir="$(run_queue_dir)"; then
     run_queue_without 'neither HARNESS_RUN_QUEUE_DIR nor HOME is set' "$self"
     return 0
   fi
@@ -186,12 +236,14 @@ run_queue_acquire() {
   while :; do
     run_queue_link "$tmp" "$lock" "$self" "$root"
     case $? in
-      0) run_queue_took "$lock"
+      0) run_queue_unmark
+         run_queue_took "$lock"
          if [ "$queued" = 1 ]; then
            printf 'run-queue: starting %s after waiting %s.\n' "$self" "$(run_queue_span $(( SECONDS - t0 )))" >&2
          fi
          return 0 ;;
-      2) run_queue_without "cannot use $dir" "$self"
+      2) run_queue_unmark
+         run_queue_without "cannot use $dir" "$self"
          return 0 ;;
     esac
 
@@ -203,6 +255,7 @@ run_queue_acquire() {
       where="$(run_queue_field "$lock" root)"
       if [ "$queued" = 0 ]; then
         queued=1
+        run_queue_mark "$root" "$self"
         printf 'run-queue: queued: %s waits for another harness run on this machine to finish.\n' "$self" >&2
         printf 'run-queue:   behind pid %s, started %s, in %s: %s\n' "$pid" "$started" "$where" "$command" >&2
         printf 'run-queue: this is waiting, not hanging: it starts by itself when that run ends. If pid %s is not that run, delete %s and it starts.\n' "$pid" "$lock" >&2
@@ -228,6 +281,7 @@ run_queue_acquire() {
     rm -f "$lock" 2>/dev/null
     if [ -e "$lock" ] && [ "$(run_queue_pid "$lock")" = "$pid" ]; then
       # It could not be removed; trying again would print that line for ever.
+      run_queue_unmark
       run_queue_without "cannot use $dir" "$self"
       return 0
     fi
@@ -239,6 +293,7 @@ run_queue_acquire() {
 run_queue_release() {
   [ "${BASHPID:-$$}" = "$$" ] || return 0
   if [ -n "$RUN_QUEUE_TMP" ]; then rm -f "$RUN_QUEUE_TMP" 2>/dev/null; RUN_QUEUE_TMP=""; fi
+  run_queue_unmark
   [ "$RUN_QUEUE_HELD" = 1 ] || return 0
   RUN_QUEUE_HELD=0
   if [ "$(run_queue_field "$RUN_QUEUE_FILE" pid)" = "$$" ]; then rm -f "$RUN_QUEUE_FILE"; fi

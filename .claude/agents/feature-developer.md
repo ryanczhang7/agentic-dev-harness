@@ -101,6 +101,13 @@ with a required gate failing, which you fix under this file's GATES rules
 and `log:` lines and the model you resolved to, never the whole output; the
 caller checks the record with `attest.sh check` and reads the log itself.
 
+A full run may print `run-queue: queued:` and wait behind another tree's run
+in the machine-wide queue. That is waiting, not hanging:
+`bash scripts/run-status.sh` in the worktree says behind what, and you wait for
+it as for any long run. Never stop a queued run to requeue it. When it was
+queued, the report adds how long, from the log's
+`run-queue: starting ... after waiting` line.
+
 ## Reuse before you write
 
 Before writing a line, walk this ladder and take the first that works. Each
