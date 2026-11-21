@@ -59,6 +59,22 @@
 # on their own - B runs beside A. AC-3 (nested --changed) and AC-4 (no suite)
 # pass on arrival; DV-3 and DV-4 earn them at GATES.
 #
+# HARNESS-120 (asking). scripts/run-status.sh answers, for the tree whose copy
+# is run, idle / running / queued and what holds the queue; a run waiting in
+# the queue says so in <root>/.claude/state/run.queued. Every answer is
+# compared line by line, whole, against Contract C-2's text; stdout and
+# stderr apart. "Queued" is believed only for a live waiter: the planted cases
+# (a marker with a dead pid, with a pid the run.lock does not record, with no
+# run.lock) must never read as queued, and a --fast run or a queue-off run
+# beside the holder must read as running (C-8's two controls). In RED
+# run-status.sh does not exist: every assertion about an answer tests for the
+# file first and fails ONE assertion in the if and the else alike, so the
+# executed count is the same in RED and GREEN. The marker assertions fail on
+# their own: nothing writes one. An assertion that the marker is ABSENT counts
+# only once a marker has been seen (MARKER_SEEN, AC-1), so it cannot pass on a
+# tree where nothing writes one. AC-6's text pins read the real CLAUDE.md,
+# command, agent and script files, each needle inside the region C-5 names.
+#
 # fixture-only: .claude/tests/floors.conf
 #   writes its fixtures' own floors files; never reads the real one.
 
@@ -414,7 +430,7 @@ new_case() {
   for t in "$A" "$B" "$C" "$X" "$Y" "$Z"; do
     [ -n "$t" ] || continue
     rm -rf "$t/m/k"; mkdir -p "$t/m/k"
-    rm -f "$t"/.claude/state/run.lock*
+    rm -f "$t"/.claude/state/run.lock* "$t/.claude/state/run.queued"
   done
   rq_defaults
 }
@@ -1178,6 +1194,418 @@ for row in '0 0m00s' '59 0m59s' '60 1m00s' '65 1m05s' '10800 180m00s'; do
   else
     _bad "run_queue_span $n is $want" "scripts/run-queue.sh does not exist"
   fi
+done
+
+# ===========================================================================
+# HARNESS-120  a queued run answers when asked, and the queue is named where
+# an agent reads first (Contract C-1, C-2, C-5). Lines are C-2's, compared
+# whole; needles are C-5's, each inside its region.
+# ===========================================================================
+
+RS="$REPO_ROOT/scripts/run-status.sh"
+if [ -f "$RS" ]; then HAVE_RS=yes; else HAVE_RS=no; fi
+MARKER_SEEN=no
+
+# rs_eq <what> <expected> <actual>   An assertion about an answer of
+# run-status.sh: one assertion whether or not the script exists (C-7).
+rs_eq() {
+  if [ "$HAVE_RS" = yes ]; then assert_eq "$1" "$2" "$3"
+  else _bad "$1" "scripts/run-status.sh does not exist (expected: $2)"; fi
+}
+# mk_eq <what> <expected> <actual>   An assertion that a run.queued is absent:
+# it counts only once AC-1 has seen a waiter write one.
+mk_eq() {
+  if [ "$MARKER_SEEN" = yes ]; then assert_eq "$1" "$2" "$3"
+  else _bad "$1" "no run.queued was ever seen while a run was queued (AC-1); its absence here proves nothing"; fi
+}
+
+marker()     { printf '%s/.claude/state/run.queued' "$1"; }
+has_marker() { [ -f "$(marker "$1")" ]; }
+rs_line()    { awk -v n="$2" 'NR == n { print; exit }' "$1" 2>/dev/null; }
+rs_count()   { awk 'END { print NR + 0 }' "$1" 2>/dev/null; }
+
+# snapdir <dir>   Every file in <dir>, name and exact bytes; no-dir if absent.
+snapdir() {
+  local f
+  [ -d "$1" ] || { printf 'no-dir'; return 0; }
+  for f in "$1"/* "$1"/.[!.]*; do
+    [ -e "$f" ] || continue
+    printf '%s:' "${f##*/}"; cat "$f"; printf '|'
+  done
+  return 0
+}
+
+# lplant <tree> <pid-or-empty> <started> <command>   A run.lock by hand.
+lplant() {
+  mkdir -p "$1/.claude/state"
+  { [ -n "$2" ] && printf 'pid\t%s\n' "$2"
+    printf 'started\t%s\ncommand\t%s\n' "$3" "$4"; } > "$1/.claude/state/run.lock"
+}
+# mplant <tree> <pid> <since> <command>   A run.queued by hand (C-1's form).
+mplant() {
+  mkdir -p "$1/.claude/state"
+  printf 'pid\t%s\nsince\t%s\ncommand\t%s\n' "$2" "$3" "$4" > "$(marker "$1")"
+}
+
+# rs_ask <cwd> <label> [args...]   Runs run-status.sh (ASK_SCRIPT, default the
+# cwd's own scripts/run-status.sh) in the background with the queue
+# environment of rq_run, bounded at 20 s. HARNESS_RUN_QUEUE=off: C-2 reads the
+# queue lock whatever that is set to. Sets ASK_RC and ASK_TO.
+ASK_SCRIPT=""; ASK_RC=""; ASK_TO=""
+rs_ask() {
+  local RQ_MODE=off p c="$1" l="$2"; shift 2
+  rq_run p "$c" "$l" "${ASK_SCRIPT:-scripts/run-status.sh}" "$@"
+  wait_bounded "$p" 20
+  ASK_RC=$WRC; ASK_TO=$WTO
+}
+
+# rs_expect <what> <label> <line>...   The whole answer: within the bound,
+# exit 0, nothing on stderr, exactly these lines on stdout, in order.
+rs_expect() {
+  local what="$1" f="$W/$2" n=0 l; shift 2
+  rs_eq "$what: answers within the bound: it never waits" no "$ASK_TO"
+  rs_eq "$what: exits 0" 0 "$ASK_RC"
+  rs_eq "$what: prints nothing on stderr" "" "$(readf "$f.err")"
+  rs_eq "$what: prints exactly $# line(s) on stdout" "$#" "$(rs_count "$f.out")"
+  for l in "$@"; do
+    n=$((n+1))
+    rs_eq "$what: stdout line $n" "$l" "$(rs_line "$f.out" "$n")"
+  done
+}
+
+# C-2's lines.
+s_idle()   { printf 'run-status: idle: no harness run holds %s.' "$1"; }
+s_left()   { printf 'run-status: idle: .claude/state/run.lock is left over from pid %s, which is no longer running; the next run reclaims it.' "$1"; }
+S_NOPID='run-status: idle: .claude/state/run.lock records no pid; the next run reclaims it.'
+s_run()    { printf 'run-status: running: pid %s, started %s: %s' "$1" "$2" "$3"; }               # P T C
+s_q1()     { printf 'run-status: queued: pid %s, waiting since %s: %s' "$1" "$2" "$3"; }          # P since C
+s_q2()     { printf 'run-status:   behind pid %s, started %s, in %s: %s' "$1" "$2" "$3" "$4"; }  # Q T2 R2 C2
+S_Q2NONE='run-status:   behind nothing at this instant: it takes the queue at its next poll.'
+S_Q3='run-status: this is waiting, not hanging: it starts by itself when that run ends. Never stop a queued run to requeue it.'
+S_NOHOME='run-status: machine queue: cannot be located: neither HARNESS_RUN_QUEUE_DIR nor HOME is set.'
+s_free()   { printf 'run-status: machine queue: free (%s)' "$1"; }
+s_held()   { printf 'run-status: machine queue: held by pid %s, started %s, in %s: %s' "$1" "$2" "$3" "$4"; }
+s_stale()  { printf 'run-status: machine queue: stale lock from pid %s, which is no longer running; the next run that queues reclaims it (%s)' "$1" "$2"; }
+s_unread() { printf 'run-status: machine queue: unreadable lock, no pid recorded; the next run that queues reclaims it (%s)' "$1"; }
+PLANT_SINCE="2026-01-02T03:05:06Z"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-120 AC-1  asked while queued: the queued lines, behind what, and the holder; asked in the holder: running"
+
+new_case
+hold_run hp "$A" st1-A scripts/gates.sh
+assert_eq "HARNESS-120 AC-1: precondition: A's full gates.sh holds the queue, its work in progress" yes "$HOLDING"
+rq_run wp "$B" st1-B scripts/gates.sh
+wait_until 60 is_queued "$W/st1-B.err"
+assert_eq "HARNESS-120 AC-1: precondition: B's full gates.sh has printed its run-queue: queued: line" 1 \
+  "$(count_line "$(q1 scripts/gates.sh)" "$W/st1-B.err")"
+wait_until 5 has_marker "$B"
+MK="$(marker "$B")"
+assert_eq "HARNESS-120 C-1: while B waits, B's tree holds .claude/state/run.queued" present "$(present "$MK")"
+if [ -f "$MK" ]; then MARKER_SEEN=yes; cp "$MK" "$W/st1-B.marker"; else : > "$W/st1-B.marker"; fi
+assert_eq "HARNESS-120 C-1: the marker is three TAB-separated lines: pid, since, command" \
+  "pid since command" "$(rec_keys "$W/st1-B.marker")"
+assert_eq "HARNESS-120 C-1: the marker records the waiting script's pid" "$wp" "$(rec_field "$W/st1-B.marker" pid)"
+assert_eq "HARNESS-120 C-1: the marker records when it began waiting, UTC to the second" 1 \
+  "$(rec_field "$W/st1-B.marker" since | awk -v re="$UTC_RE" '$0 ~ re { n++ } END { print n + 0 }')"
+assert_eq "HARNESS-120 C-1: the marker records the command the queue lock would record" scripts/gates.sh \
+  "$(rec_field "$W/st1-B.marker" command)"
+mk_eq "HARNESS-120 C-1: the holder, which never waited, writes no marker in A" absent "$(present "$(marker "$A")")"
+SINCE="$(rec_field "$W/st1-B.marker" since)"
+cp "$QL" "$W/st1.qrec" 2>/dev/null || : > "$W/st1.qrec"
+T2="$(rec_field "$W/st1.qrec" started)"; R2="$(rec_field "$W/st1.qrec" root)"; C2="$(rec_field "$W/st1.qrec" command)"
+BC="$(rec_field "$B/.claude/state/run.lock" command)"
+AT="$(rec_field "$A/.claude/state/run.lock" started)"; AC="$(rec_field "$A/.claude/state/run.lock" command)"
+assert_eq "HARNESS-120 AC-1: precondition: B's run.lock records B's pid, and the queue lock A's" "$wp $hp" \
+  "$(rec_field "$B/.claude/state/run.lock" pid) $(rec_field "$W/st1.qrec" pid)"
+
+rs_ask "$B" st1-askB
+rs_expect "HARNESS-120 AC-1 asked in B (queued)" st1-askB \
+  "$(s_q1 "$wp" "$SINCE" "$BC")" \
+  "$(s_q2 "$hp" "$T2" "$R2" "$C2")" \
+  "$S_Q3" \
+  "$(s_held "$hp" "$T2" "$R2" "$C2")"
+rs_ask "$A" st1-askA
+rs_expect "HARNESS-120 AC-1 asked in A (the holder, at the same moment)" st1-askA \
+  "$(s_run "$hp" "$AT" "$AC")" \
+  "$(s_held "$hp" "$T2" "$R2" "$C2")"
+rs_eq "HARNESS-120 AC-1: B's work has still not started after both answers, and A is still running" "absent alive" \
+  "$(present "$B/m/k/started") $(is_alive "$hp")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-120 AC-2  once B gets through: running and held by B, no marker; once it ends: idle and free"
+
+touch "$B/m/k/hold"
+touch "$A/m/k/release"
+wait_bounded "$hp" 60
+assert_eq "HARNESS-120 AC-2: precondition: A finishes, exit 0" 0 "$WRC"
+if wait_until 60 is_started "$B"; then st2=yes; else st2=no; fi
+rm -f "$B/m/k/hold"
+assert_eq "HARNESS-120 AC-2: precondition: B, through the queue, has started its work (held)" yes "$st2"
+mk_eq "HARNESS-120 AC-2: once B has started its work, its run.queued is gone" absent "$(present "$MK")"
+cp "$QL" "$W/st2.qrec" 2>/dev/null || : > "$W/st2.qrec"
+rs_ask "$B" st2-askB
+rs_expect "HARNESS-120 AC-2 asked in B (running, holding the queue)" st2-askB \
+  "$(s_run "$wp" "$(rec_field "$B/.claude/state/run.lock" started)" "$BC")" \
+  "$(s_held "$wp" "$(rec_field "$W/st2.qrec" started)" "$B" "$(rec_field "$W/st2.qrec" command)")"
+touch "$B/m/k/release"
+wait_bounded "$wp" 60
+assert_eq "HARNESS-120 AC-2: precondition: B finishes with the status it has alone ($SOLO_GATES)" "$SOLO_GATES" "$WRC"
+rs_ask "$B" st2-idleB
+rs_expect "HARNESS-120 AC-2 asked in B after both ended" st2-idleB "$(s_idle "$B")" "$(s_free "$QL")"
+rs_ask "$A" st2-idleA
+rs_expect "HARNESS-120 AC-2 asked in A after both ended" st2-idleA "$(s_idle "$A")" "$(s_free "$QL")"
+mk_eq "HARNESS-120 AC-2: neither tree holds a run.queued afterwards" "absent absent" \
+  "$(present "$(marker "$A")") $(present "$(marker "$B")")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-120 AC-3 (a)  a waiter sent TERM exits 143 and takes its marker with it"
+
+# term_marker <label> <script>
+term_marker() {
+  local lbl="$1" s="$2" p seen
+  new_case
+  qplant "$LIVE1" "$PLANT_STARTED" "scripts/gates.sh" "$A"
+  rq_run p "$B" "$lbl" "scripts/$s"
+  wait_until 60 is_queued "$W/$lbl.err"
+  assert_eq "$lbl: precondition: the run is queued" 1 "$(count_line "$(q1 "scripts/$s")" "$W/$lbl.err")"
+  if wait_until 5 has_marker "$B"; then seen=seen; else seen=never-written; fi
+  kill -TERM "$p" 2>/dev/null
+  wait_bounded "$p" 10
+  assert_eq "$lbl: it wrote a marker while queued, exits 143 on TERM, and the marker is gone" "seen 143 absent" \
+    "$seen $WRC $(present "$(marker "$B")")"
+}
+term_marker "HARNESS-120 AC-3 (a) gates.sh waiter" gates.sh
+term_marker "HARNESS-120 AC-3 (a) selftest.sh waiter" selftest.sh
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-120 AC-3 (b), (c)  queued means a live waiter the run.lock records, never a file"
+
+assert_eq "HARNESS-120 AC-3: precondition: the dead pid is gone and both live holders are alive" "gone alive alive" \
+  "$(is_alive "$DEAD") $(is_alive "$LIVE1") $(is_alive "$LIVE2")"
+
+# plant_case <label> <run.lock pid|-none-> <marker pid|-none-> <expected first line>
+# B's state planted by hand, an empty queue directory: the answer is the
+# state line the run.lock alone decides, then the free line.
+plant_case() {
+  local lbl="$1"
+  new_case
+  [ "$2" = -none- ] || lplant "$B" "$2" "$PLANT_STARTED" scripts/gates.sh
+  [ "$3" = -none- ] || mplant "$B" "$3" "$PLANT_SINCE" scripts/gates.sh
+  rs_ask "$B" "$lbl"
+  rs_expect "$lbl" "$lbl" "$4" "$(s_free "$QL")"
+}
+plant_case "HARNESS-120 AC-3 (b) marker and run.lock both name a dead pid" \
+  "$DEAD" "$DEAD" "$(s_left "$DEAD")"
+plant_case "HARNESS-120 AC-3 (b) marker names a dead pid, run.lock a live one" \
+  "$LIVE1" "$DEAD" "$(s_run "$LIVE1" "$PLANT_STARTED" scripts/gates.sh)"
+plant_case "HARNESS-120 AC-3 (b) marker names a live pid the run.lock does not record" \
+  "$LIVE1" "$LIVE2" "$(s_run "$LIVE1" "$PLANT_STARTED" scripts/gates.sh)"
+plant_case "HARNESS-120 AC-3 (b) a marker naming a live pid and no run.lock" \
+  -none- "$LIVE1" "$(s_idle "$B")"
+plant_case "HARNESS-120 AC-3 (c) a run.lock whose pid is not running" \
+  "$DEAD" -none- "$(s_left "$DEAD")"
+plant_case "HARNESS-120 C-2 a run.lock with no pid" \
+  "" -none- "$S_NOPID"
+plant_case "HARNESS-120 C-2 a run.lock with a non-numeric pid" \
+  "not-a-pid" -none- "$S_NOPID"
+plant_case "HARNESS-120 C-2 a live run.lock and no marker" \
+  "$LIVE1" -none- "$(s_run "$LIVE1" "$PLANT_STARTED" scripts/gates.sh)"
+plant_case "HARNESS-120 C-2 nothing in the tree" \
+  -none- -none- "$(s_idle "$B")"
+
+describe "HARNESS-120 C-2  the planted waiter that IS believed: the control for the controls above"
+
+# A marker and a run.lock naming the same live pid is a waiter. The planted
+# cases above are controls only if this one reads as queued.
+new_case
+lplant "$B" "$LIVE1" "$PLANT_STARTED" scripts/gates.sh
+mplant "$B" "$LIVE1" "$PLANT_SINCE" scripts/gates.sh
+qplant "$LIVE2" "$PLANT_STARTED" "scripts/selftest.sh ghost" "/ghost/tree"
+rs_ask "$B" st3-live
+rs_expect "HARNESS-120 C-2 planted waiter behind a live holder" st3-live \
+  "$(s_q1 "$LIVE1" "$PLANT_SINCE" scripts/gates.sh)" \
+  "$(s_q2 "$LIVE2" "$PLANT_STARTED" /ghost/tree "scripts/selftest.sh ghost")" \
+  "$S_Q3" \
+  "$(s_held "$LIVE2" "$PLANT_STARTED" /ghost/tree "scripts/selftest.sh ghost")"
+
+new_case
+lplant "$B" "$LIVE1" "$PLANT_STARTED" scripts/gates.sh
+mplant "$B" "$LIVE1" "$PLANT_SINCE" scripts/gates.sh
+rs_ask "$B" st3-none
+rs_expect "HARNESS-120 C-2 planted waiter, no queue lock: behind nothing at this instant" st3-none \
+  "$(s_q1 "$LIVE1" "$PLANT_SINCE" scripts/gates.sh)" "$S_Q2NONE" "$S_Q3" "$(s_free "$QL")"
+
+new_case
+lplant "$B" "$LIVE1" "$PLANT_STARTED" scripts/gates.sh
+mplant "$B" "$LIVE1" "$PLANT_SINCE" scripts/gates.sh
+qplant "$LIVE1" "$PLANT_STARTED" scripts/gates.sh "$B"
+rs_ask "$B" st3-self
+rs_expect "HARNESS-120 C-2 planted waiter, the queue lock naming the waiter itself: behind nothing" st3-self \
+  "$(s_q1 "$LIVE1" "$PLANT_SINCE" scripts/gates.sh)" "$S_Q2NONE" "$S_Q3" \
+  "$(s_held "$LIVE1" "$PLANT_STARTED" "$B" scripts/gates.sh)"
+
+describe "HARNESS-120 C-2  the queue line for each state of the queue lock"
+
+# queue_case <label> <queue pid|-none-> <expected queue line>   B idle.
+queue_case() {
+  local lbl="$1"
+  new_case
+  [ "$2" = -none- ] || qplant "$2" "$PLANT_STARTED" "scripts/selftest.sh ghost" "/ghost/tree"
+  rs_ask "$B" "$lbl"
+  rs_expect "$lbl" "$lbl" "$(s_idle "$B")" "$3"
+}
+queue_case "HARNESS-120 C-2 queue held by a live pid" "$LIVE2" \
+  "$(s_held "$LIVE2" "$PLANT_STARTED" /ghost/tree "scripts/selftest.sh ghost")"
+queue_case "HARNESS-120 C-2 queue lock from a dead pid" "$DEAD" "$(s_stale "$DEAD" "$QL")"
+queue_case "HARNESS-120 C-2 queue lock with no pid" "" "$(s_unread "$QL")"
+queue_case "HARNESS-120 C-2 queue lock with a non-numeric pid" "not-a-pid" "$(s_unread "$QL")"
+
+describe "HARNESS-120 C-2  the root is the script's own, never \$PWD or CLAUDE_PROJECT_DIR"
+
+new_case
+lplant "$A" "$LIVE1" "$PLANT_STARTED" scripts/gates.sh
+OLD_CPD="${CLAUDE_PROJECT_DIR-<unset>}"
+CLAUDE_PROJECT_DIR="$A"; export CLAUDE_PROJECT_DIR
+ASK_SCRIPT="$B/scripts/run-status.sh"
+rs_ask "$A" st3-root
+ASK_SCRIPT=""
+if [ "$OLD_CPD" = "<unset>" ]; then unset CLAUDE_PROJECT_DIR; else CLAUDE_PROJECT_DIR="$OLD_CPD"; fi
+rs_expect "HARNESS-120 C-2 B's copy run from A's directory, CLAUDE_PROJECT_DIR=A, A running: answers for B" st3-root \
+  "$(s_idle "$B")" "$(s_free "$QL")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-120 AC-4  a run beside the holder is running, not queued"
+
+new_case
+hold_run hp "$A" st4-A scripts/gates.sh
+assert_eq "HARNESS-120 AC-4: precondition: A's full gates.sh holds the queue, its work in progress" yes "$HOLDING"
+cp "$QL" "$W/st4.qrec" 2>/dev/null || : > "$W/st4.qrec"
+T2="$(rec_field "$W/st4.qrec" started)"
+
+# beside_status <label> <script> [args...]   B started beside A, held; asked.
+beside_status() {
+  local lbl="$1" bp; shift
+  rm -rf "$B/m/k"; mkdir -p "$B/m/k"; rm -f "$B"/.claude/state/run.lock* "$(marker "$B")"
+  hold_run bp "$B" "$lbl" "$@"
+  assert_eq "$lbl: precondition: B's run is in progress beside A, held" "yes alive" "$HOLDING $(is_alive "$hp")"
+  rs_ask "$B" "$lbl-ask"
+  rs_expect "$lbl" "$lbl-ask" \
+    "$(s_run "$bp" "$(rec_field "$B/.claude/state/run.lock" started)" "$(rec_field "$B/.claude/state/run.lock" command)")" \
+    "$(s_held "$hp" "$T2" "$A" scripts/gates.sh)"
+  mk_eq "$lbl: B holds no run.queued" absent "$(present "$(marker "$B")")"
+  touch "$B/m/k/release"; wait_bounded "$bp" 60
+}
+beside_status "HARNESS-120 AC-4 (a) gates.sh --fast beside the holder" scripts/gates.sh --fast
+RQ_MODE=off
+beside_status "HARNESS-120 AC-4 (b) full gates.sh, HARNESS_RUN_QUEUE=off, beside the holder" scripts/gates.sh
+RQ_MODE=""
+touch "$A/m/k/release"; wait_bounded "$hp" 60
+assert_eq "HARNESS-120 AC-4: precondition: A then finishes, exit 0" 0 "$WRC"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-120 AC-5  asking changes nothing, creates nothing, and never waits"
+
+new_case
+lplant "$B" "$LIVE1" "$PLANT_STARTED" scripts/gates.sh
+mplant "$B" "$LIVE1" "$PLANT_SINCE" scripts/gates.sh
+qplant "$LIVE2" "$PLANT_STARTED" "scripts/selftest.sh ghost" "/ghost/tree"
+qbefore="$(snapdir "$Q")"; sbefore="$(snapdir "$B/.claude/state")"
+rs_ask "$B" st5-same
+rs_eq "HARNESS-120 AC-5: asked with the queue and the run.lock held, it answers within the bound, exit 0" "no 0" "$ASK_TO $ASK_RC"
+rs_eq "HARNESS-120 AC-5: and it did answer: its first line is the queued line" \
+  "$(s_q1 "$LIVE1" "$PLANT_SINCE" scripts/gates.sh)" "$(rs_line "$W/st5-same.out" 1)"
+rs_eq "HARNESS-120 AC-5: the queue directory holds exactly the files, byte for byte, it held before" "$qbefore" "$(snapdir "$Q")"
+rs_eq "HARNESS-120 AC-5: the tree's .claude/state holds exactly the files, byte for byte, it held before" "$sbefore" \
+  "$(snapdir "$B/.claude/state")"
+
+new_case; rm -rf "$W/q-absent"; RQ_DIR="$W/q-absent"
+rs_ask "$B" st5-absent
+RQ_DIR="$Q"
+rs_expect "HARNESS-120 AC-5 an absent queue directory" st5-absent "$(s_idle "$B")" "$(s_free "$W/q-absent/run-queue.lock")"
+rs_eq "HARNESS-120 AC-5: and the queue directory is still absent afterwards" absent "$(present "$W/q-absent")"
+
+new_case; RQ_DIR="<unset>"; RQ_NOHOME=1
+rs_ask "$B" st5-nohome
+rq_defaults
+rs_expect "HARNESS-120 AC-5 neither HARNESS_RUN_QUEUE_DIR nor HOME" st5-nohome "$(s_idle "$B")" "$S_NOHOME"
+
+# usage_case <label> <arg>...
+usage_case() {
+  local lbl="$1"; shift
+  new_case
+  rs_ask "$B" "$lbl" "$@"
+  rs_eq "$lbl: exits 2" 2 "$ASK_RC"
+  rs_eq "$lbl: prints exactly the usage line on stderr" "usage: bash scripts/run-status.sh" "$(readf "$W/$lbl.err")"
+  rs_eq "$lbl: and nothing on stdout" "" "$(readf "$W/$lbl.out")"
+}
+usage_case "HARNESS-120 AC-5 an argument (--help)" --help
+usage_case "HARNESS-120 AC-5 an argument (a tree path)" "$A"
+usage_case "HARNESS-120 AC-5 an empty argument" ""
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-120 AC-6  the queue is named where an agent reads first, each needle inside its region"
+
+NEVER="Never stop a queued run to requeue it"
+FENCE='```'
+# md_section <file> <heading>   From the heading line to the next ## heading.
+md_section() { awk -v h="$2" 'f && index($0, "## ") == 1 { exit } $0 == h { f = 1 } f' "$1" 2>/dev/null; }
+# first_fence   The first fenced block of stdin, its fences excluded.
+first_fence() { awk -v t="$FENCE" 'index($0, t) == 1 { if (f) exit; f = 1; next } f'; }
+# md_between <file> <start prefix> <end prefix>
+md_between() { awk -v s="$2" -v e="$3" 'f && index($0, e) == 1 { exit } !f && index($0, s) == 1 { f = 1 } f' "$1" 2>/dev/null; }
+# lock_comment <file>   The comment block holding the HARNESS-034 run-lock
+# heading, to the first non-comment line, each line's leading # stripped.
+lock_comment() {
+  awk 'f && index($0, "#") != 1 { exit }
+       !f && index($0, "#") == 1 && $0 ~ /[Rr][Uu][Nn] [Ll][Oo][Cc][Kk] \(HARNESS-034\)/ { f = 1 }
+       f { sub(/^#+ ?/, ""); print }' "$1" 2>/dev/null
+}
+# has <needle>   yes if stdin, each line trimmed and the lines joined by one
+# space, contains the needle as a fixed string: a sentence wrapped across two
+# lines of prose is still the same words.
+has() {
+  awk -v n="$1" '{ sub(/^[ \t]+/, ""); sub(/[ \t]+$/, ""); j = j s $0; s = " " }
+                 END { if (index(j, n) > 0) printf "yes"; else printf "no" }'
+}
+# tool_entries <file>   The frontmatter allowed-tools: line, one entry per line.
+tool_entries() {
+  awk 'NR == 1 && $0 == "---" { f = 1; next }
+       f && $0 == "---" { exit }
+       f && index($0, "allowed-tools:") == 1 { sub(/^allowed-tools:[ ]*/, ""); n = split($0, a, /,[ ]*/); for (i = 1; i <= n; i++) print a[i] }' "$1" 2>/dev/null
+}
+
+md_section "$REPO_ROOT/CLAUDE.md" "## Running things" > "$W/rt.sect"
+first_fence < "$W/rt.sect" > "$W/rt.fence"
+assert_eq "HARNESS-120 AC-6 (a): CLAUDE.md's Running things command block has one line beginning bash scripts/run-status.sh, then a # comment" 1 \
+  "$(count_span "bash scripts/run-status.sh" '^ +# [^ ]' "$W/rt.fence")"
+assert_eq "HARNESS-120 AC-6 (a): CLAUDE.md's Running things section names run-queue.lock" yes "$(has run-queue.lock < "$W/rt.sect")"
+assert_eq "HARNESS-120 AC-6 (a): CLAUDE.md's Running things section carries: $NEVER" yes "$(has "$NEVER" < "$W/rt.sect")"
+
+md_between "$REPO_ROOT/.claude/commands/advance-story.md" "**GREEN → GATES.**" "**GATES → REVIEW.**" > "$W/adv.gg"
+assert_eq "HARNESS-120 AC-6 (b): /advance-story's GREEN → GATES brief names bash scripts/run-status.sh" yes \
+  "$(has "bash scripts/run-status.sh" < "$W/adv.gg")"
+assert_eq "HARNESS-120 AC-6 (b): /advance-story's GREEN → GATES brief carries: $NEVER" yes "$(has "$NEVER" < "$W/adv.gg")"
+assert_eq "HARNESS-120 AC-6 (b): /advance-story's GREEN → GATES brief tells it to report queued behind" yes \
+  "$(has "queued behind" < "$W/adv.gg")"
+
+md_section "$REPO_ROOT/.claude/agents/feature-developer.md" "## Run and report" > "$W/fd.rr"
+assert_eq "HARNESS-120 AC-6 (c): feature-developer.md's Run and report names bash scripts/run-status.sh" yes \
+  "$(has "bash scripts/run-status.sh" < "$W/fd.rr")"
+assert_eq "HARNESS-120 AC-6 (c): feature-developer.md's Run and report carries: $NEVER" yes "$(has "$NEVER" < "$W/fd.rr")"
+
+for cf in advance-story complete-story; do
+  tool_entries "$REPO_ROOT/.claude/commands/$cf.md" > "$W/$cf.tools"
+  assert_eq "HARNESS-120 AC-6 (d): /$cf's allowed-tools line carries the entry Bash(bash scripts/run-status.sh:*), exactly once" 1 \
+    "$(count_line 'Bash(bash scripts/run-status.sh:*)' "$W/$cf.tools")"
+done
+
+for sf in gates.sh selftest.sh; do
+  lock_comment "$REPO_ROOT/scripts/$sf" > "$W/$sf.lockc"
+  assert_eq "HARNESS-120 AC-6 (e): the run-lock comment in scripts/$sf names scripts/run-queue.sh" yes \
+    "$(has scripts/run-queue.sh < "$W/$sf.lockc")"
+  assert_eq "HARNESS-120 AC-6 (e): the run-lock comment in scripts/$sf is there and no longer says it never waits" "found no" \
+    "$(if [ -s "$W/$sf.lockc" ]; then printf found; else printf missing; fi) $(has "it never waits" < "$W/$sf.lockc")"
 done
 
 summary "run-queue"

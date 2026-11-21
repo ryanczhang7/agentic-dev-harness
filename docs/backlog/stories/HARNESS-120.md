@@ -4,8 +4,8 @@ title: A queued run answers when asked, and the briefs say to ask
 slug: a-queued-run-answers-when-asked-and-the
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-120-a-queued-run-answers-when-asked-and-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-status.sh, scripts/run-queue.sh, scripts/gates.sh, scripts/selftest.sh, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/feature-developer.md, .claude/state/README.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -551,6 +551,33 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One suite, `.claude/tests/run-queue.test.sh`, a new block headed
+`HARNESS-120` at its end, before `summary`. Level: integration through the
+fixture trees A and B the suite already builds (`make_project_fixture`
+copies the real `scripts/`, so each fixture gets GREEN's `run-status.sh` and
+`run-queue.sh`), plus text pins over the real repository files for AC-6.
+218 new assertions; floor 361 -> 579 (`floors.conf` line 63 and
+`selftest.test.sh` line 554, with a dated comment at the end of
+`floors.conf`).
+
+| Describe block | Assertions | AC |
+|---|---|---|
+| AC-1 a real queued pair: A's full `gates.sh` held, B's full `gates.sh` queued behind it | 24 | AC-1, C-1 |
+| AC-2 the same pair: A released, B through and held, then B released | 23 | AC-2, C-1 |
+| AC-3 (a) a queued `gates.sh` and a queued `selftest.sh`, each sent TERM | 4 | AC-3 (a) |
+| AC-3 (b), (c) nine planted tree states, empty queue directory | 55 | AC-3 (b), (c), C-2 state table |
+| the planted waiter that IS believed (behind a live holder; no queue lock; the queue lock naming the waiter) | 24 | C-2, the positive half of AC-3 (b)'s control |
+| the queue line for each queue-lock state (live, dead, no pid, non-numeric) | 24 | C-2 queue table |
+| the root is the script's own (B's copy run from A's cwd with `CLAUDE_PROJECT_DIR=A`) | 6 | C-2 |
+| AC-4 `gates.sh --fast`, and full `gates.sh` with `HARNESS_RUN_QUEUE=off`, beside the holder | 18 | AC-4 |
+| AC-5 nothing changes; absent queue dir; neither variable nor `HOME`; three argument cases | 26 | AC-5 |
+| AC-6 text pins, each inside C-5's region | 14 | AC-6 (a)-(e) |
+
+Every answer is compared whole by `rs_expect`: within a 20 s bound, exit 0,
+stderr empty, exactly N stdout lines, then each line compared whole against
+C-2's text. One helper change outside the block: `new_case` also removes
+`.claude/state/run.queued` in every tree, so no marker leaks between cases.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -570,6 +597,206 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Model: test-developer resolved to **Opus 5.5** (`claude-opus-5-5`), as its
+definition declares; no override.
+
+**Command.**
+
+    bash .claude/tests/run-queue.test.sh
+    bash scripts/attest.sh -- bash scripts/selftest.sh run-queue   # what RED ran
+
+**RED runs (Windows host, local).**
+
+    bash scripts/attest.sh -- bash scripts/selftest.sh run-queue
+      exit:     1
+      last:     1 of 1 harness suite(s) FAILED.
+      log:      .claude/state/attest-logs/20261121T192003Z.2849520.log
+      run-queue: 374 passed, 205 failed      (579 executed; floor now 579)
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+      exit:     0
+      last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+      log:      .claude/state/attest-logs/20261121T193303Z.2863362.log
+
+`gates.sh --fast` has nothing to judge here (every gate is unconfigured,
+`BOOTSTRAPPED=no`); the judge is the suite. Neighbours, single-suite, local,
+unchanged: `dispatch: 205 passed, 0 failed`, `procedure: 183 passed, 0
+failed`, `settings: 71 passed, 0 failed`, `sigpipe: 91 passed, 0 failed`,
+`selftest: 366 passed, 0 failed` (it checks the COUNTS row against `floors.conf`). `check-sigpipe.sh` and `check-grep-count.sh`: 0
+findings with the new suite in.
+
+**Why it is the right failure.** Every one of the 361 pre-existing
+assertions passes (no `FAIL` line in the log lacks `HARNESS-120`). The 205
+new failures are, exactly:
+
+- 179 answers of `run-status.sh`, each `scripts/run-status.sh does not exist
+  (expected: <C-2's line>)` - the file is absent; the if/else emits one
+  assertion either way (C-7).
+- 5 marker fields of C-1 (present, keys, pid, since, command): failing on
+  their own - nothing writes `run.queued`.
+- 5 marker-absent assertions (`mk_eq`): `no run.queued was ever seen while a
+  run was queued (AC-1); its absence here proves nothing`. They count only
+  once AC-1 has seen a marker, so they cannot pass on a tree that writes none.
+- 2 AC-3 (a): `expected: seen 143 absent / actual: never-written 143 absent` -
+  the TERM exit is already right (HARNESS-108); the marker is what is missing.
+- 14 AC-6 text pins, failing on their own assertion against the real files.
+
+Excerpts, verbatim from the log:
+
+```
+    FAIL HARNESS-120 C-1: while B waits, B's tree holds .claude/state/run.queued
+         expected: present
+         actual:   absent
+    FAIL HARNESS-120 AC-2: once B has started its work, its run.queued is gone
+         no run.queued was ever seen while a run was queued (AC-1); its absence here proves nothing
+    FAIL HARNESS-120 AC-3 (a) gates.sh waiter: it wrote a marker while queued, exits 143 on TERM, and the marker is gone
+         expected: seen 143 absent
+         actual:   never-written 143 absent
+    FAIL HARNESS-120 AC-3 (b) marker and run.lock both name a dead pid: stdout line 1
+         scripts/run-status.sh does not exist (expected: run-status: idle: .claude/state/run.lock is left over from pid 2792431, which is no longer running; the next run reclaims it.)
+    FAIL HARNESS-120 AC-4 (a) gates.sh --fast beside the holder: stdout line 1
+         scripts/run-status.sh does not exist (expected: run-status: running: pid 2819843, started 2026-11-21T18:59:29Z: scripts/gates.sh --fast)
+    FAIL HARNESS-120 AC-4 (a) gates.sh --fast beside the holder: stdout line 2
+         scripts/run-status.sh does not exist (expected: run-status: machine queue: held by pid 2819654, started 2026-11-21T18:59:23Z, in /tmp/tmp.2Sbu7QdOCm: scripts/gates.sh)
+    FAIL HARNESS-120 AC-6 (a): CLAUDE.md's Running things command block has one line beginning bash scripts/run-status.sh, then a # comment
+         expected: 1
+         actual:   0
+    FAIL HARNESS-120 AC-6 (a): CLAUDE.md's Running things section names run-queue.lock
+         expected: yes
+         actual:   no
+    FAIL HARNESS-120 AC-6 (b): /advance-story's GREEN → GATES brief tells it to report queued behind
+         expected: yes
+         actual:   no
+    FAIL HARNESS-120 AC-6 (d): /complete-story's allowed-tools line carries the entry Bash(bash scripts/run-status.sh:*), exactly once
+         expected: 1
+         actual:   0
+    FAIL HARNESS-120 AC-6 (e): the run-lock comment in scripts/gates.sh is there and no longer says it never waits
+         expected: found no
+         actual:   found yes
+
+run-queue: 374 passed, 205 failed
+```
+
+**Passed on arrival: 13, all preconditions, none a claim of this story.**
+A's full run holds (AC-1, AC-4: 2), B printed its queued line, B's run.lock
+and the queue lock record B and A, A finishes, B started its work once
+through, B's status, the two AC-3 (a) "is queued" checks, the dead/live pid
+check, the two AC-4 "B in progress beside A" checks, and A finishing in AC-4.
+Each pins queue behaviour HARNESS-108/111 built and that suite's own
+assertions already pin; they are there so a broken fixture fails as itself.
+No story claim passes on arrival, so none is owed a mutation.
+
+**What the tests pin (fact, not suggestion).**
+
+- `scripts/run-status.sh`, run as `bash scripts/run-status.sh` with cwd = the
+  tree, and once as `bash <B>/scripts/run-status.sh` with cwd = A and
+  `CLAUDE_PROJECT_DIR=A` (must answer for B). The root it prints is compared
+  with `$(cd <tree> && pwd)`, the same form the queue lock's `root` already
+  takes from `gates.sh`: resolve it the way `gates.sh` resolves `ROOT`.
+- The lock path it prints is compared with `$HARNESS_RUN_QUEUE_DIR/run-queue.lock`
+  verbatim (the suite passes an absolute, `pwd`-resolved directory).
+- Every ask runs with `HARNESS_RUN_QUEUE=off` (C-2: reading ignores it), with
+  `HARNESS_RUN_QUEUE_DIR` set to the suite's own directory except AC-5's
+  "neither" case, which unsets it and `HOME`.
+- stdout is compared line by line and by line count; stderr must be empty on
+  every answer; exit 0 on every answer; within 20 s. Lines are C-2's text
+  exactly, including the two spaces in `run-status:   behind` and the
+  trailing `.` on the `idle` lines and none on the `free`, `held`, `stale`,
+  `unreadable` lines.
+- Usage: any argument, including one empty argument `""`, gives exactly
+  `usage: bash scripts/run-status.sh` on stderr, nothing on stdout, exit 2.
+- The marker `<root>/.claude/state/run.queued`: exactly the three
+  TAB-separated keys `pid since command`, in that order and nothing else;
+  `pid` = the waiting script's `$$` (the pid `rq_run` gets from `exec`);
+  `since` matches `^YYYY-MM-DDTHH:MM:SSZ$`; `command` = `scripts/gates.sh`.
+  The suite waits for the queued stderr line, then **at most 5 s** for the
+  marker: write it at the queued line, as C-1 says. It must be gone once the
+  run has started its work (removed at the take), gone after TERM, and never
+  written by the holder, by `--fast`, or with the queue off.
+- AC-6 regions and needles, all fixed strings:
+  - `CLAUDE.md`: section = from the line `## Running things` to the next line
+    beginning `## `; block = the first ```` ``` ```` fence in it. Exactly one
+    block line = `bash scripts/run-status.sh`, then one or more spaces, `# `,
+    a non-space. The section must contain `run-queue.lock` and
+    `Never stop a queued run to requeue it` (capital N).
+  - `advance-story.md`: from the line beginning `**GREEN → GATES.**` to the
+    line beginning `**GATES → REVIEW.**`: `bash scripts/run-status.sh`,
+    `Never stop a queued run to requeue it`, `queued behind`.
+  - `feature-developer.md`: `## Run and report` to the next `## `:
+    `bash scripts/run-status.sh`, `Never stop a queued run to requeue it`.
+  - the frontmatter `allowed-tools:` line of `advance-story.md` and
+    `complete-story.md`, split on `,` + spaces: exactly one entry equal to
+    `Bash(bash scripts/run-status.sh:*)`.
+  - `gates.sh`, `selftest.sh`: from the first `#` line matching
+    `run lock (HARNESS-034)` (any case) to the first line not starting `#`,
+    `#` prefixes stripped: must contain `scripts/run-queue.sh` and must not
+    contain `it never waits`. Keep `(HARNESS-034)` and the words `run lock`
+    on the heading line, or the region is not found and both fail.
+  - Prose needles are matched after joining the region's lines with one
+    space (leading/trailing whitespace trimmed), so a sentence wrapped across
+    two lines still counts - and `it never` / `waits` split across two
+    comment lines still counts as present.
+
+**Not constrained:** the function name that holds the queue-lock path rule
+(C-2 says RED does not pin it), the order of reads, how `run-status.sh`
+sources `run-queue.sh`, the header wording, the `.claude/state/README.md`
+row (C-6; `settings.test.sh` judges it), the `wc -l` of `gates.sh` and
+`selftest.sh` (C-4; `sigpipe.test.sh` pins `gates.sh`'s line numbers -
+GREEN checks both by hand), and the prose around the needles.
+
+**Negative controls - expected values.** No assertion about an answer has
+run (the script is absent). Measured outside the suite with a scratch
+candidate (not shipped) in three modes - `right` (C-2), `file` (queued iff a
+`run.queued` exists: the AC-3 (b) defect) and `infer` (queued iff the
+run.lock pid is alive and the queue is held by another live pid: the AC-4
+defect) - first line's state word:
+
+| Planted state | C-2 expects | `right` | `file` | `infer` | fires on |
+|---|---|---|---|---|---|
+| marker + run.lock both a dead pid | idle (`left over`) | idle | **queued** | idle | file |
+| marker dead, run.lock live | running | running | **queued** | running | file |
+| marker live but not the run.lock's pid | running | running | **queued** | running | file |
+| marker live, no run.lock | idle (`no harness run holds`) | idle | **queued** | idle | file |
+| run.lock dead, no marker (AC-3 c) | idle (`left over`) | idle | idle | idle | - (pins the line) |
+| run.lock live, queue held by another, no marker (AC-4) | running | running | running | **queued** | infer |
+| marker = run.lock live pid, queue held by another (positive) | queued | queued | queued | queued | - (the control's control) |
+
+So each control can fail (C-8): AC-3 (b) against a marker-existence rule, AC-4
+against inference from the two locks. GREEN confirms these against the
+shipped script, not merely that the cases pass. In the suite each of those
+fires as: the stdout line count (4 vs 2) and lines 1 and 2 of that case.
+
+**Mutation table (predictions, all for GATES; none run in RED).**
+
+| Mutation (through `mutate.sh`, suite `bash .claude/tests/run-queue.test.sh`) | Predicted red | Which |
+|---|---|---|
+| DV-1: the one marker write in `run_queue_acquire` made a no-op | 17 | C-1's 5 marker fields; AC-1 asked in B: count + lines 1-4 (5); AC-3 (a) both (2); all 5 `mk_eq` (MARKER_SEEN stays no: C-1's A, AC-2 x2, AC-4 x2). AC-1 asked in A, AC-4's `running`/`held` lines, the planted cases and all 361 HARNESS-108/111/112 assertions stay green |
+| DV-2: `bash scripts/run-status.sh` respelled on CLAUDE.md's block line | 1 | AC-6 (a) block line only; `run-queue.lock` and the sentence are separate needles |
+| `run-status.sh` believes any marker (the `file` mode) | 12 | AC-3 (b) four marker cases x (count, line 1, line 2) |
+| `run-status.sh` infers queued from the two locks (the `infer` mode) | 6 | AC-4 (a), (b) x (count, line 1, line 2); AC-1's B still queued, so green |
+| marker removal at the take dropped (release still removes) | 4 | AC-2 `mk_eq` once started; AC-2 asked in B: count, lines 1-2 (it reads queued) |
+| marker removal in `run_queue_release` dropped (take still removes) | 2 | AC-3 (a) both (TERM leaves it) |
+
+Only DV-1 and DV-2 are owed (rules.md, "Mutation work per story"); the rest
+are predictions for `/audit-mutations`.
+
+**Deferred verifications.** RED cannot run DV-1, DV-2 or DV-3: there is no
+marker write to remove, no `run-status.sh` line in `CLAUDE.md` to respell
+and no status script to ask. All three are left to their owner, GATES.
+
+**For GREEN.**
+
+- The whole suite took **1221 s**, then **776 s** on the final tree, locally under host load (attest
+  `duration:`; earlier HARNESS-112 runs of the 361-assertion suite were not
+  timed in its story). The new block adds about 45 `run-status.sh` calls,
+  each bounded at 20 s, and four real held runs. The suite has no per-suite
+  timeout; if GREEN's measured time is far above RED's, say so.
+- The floor counts passes: the suite sits below 579 until GREEN lands.
+  GREEN re-measures the executed count; if it is not 579, the handoff was
+  wrong - report it rather than moving the number (C-7).
+- Files touched in RED: `.claude/tests/run-queue.test.sh`,
+  `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh`, and this
+  story's `## Test plan` and `## Handoff`.
 
 ## Regressions
 
