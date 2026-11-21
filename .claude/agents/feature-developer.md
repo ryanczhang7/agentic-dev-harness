@@ -104,8 +104,10 @@ caller checks the record with `attest.sh check` and reads the log itself.
 A full run may print `run-queue: queued:` and wait behind another tree's run
 in the machine-wide queue. That is waiting, not hanging:
 `bash scripts/run-status.sh` in the worktree says behind what, and you wait for
-it as for any long run. Never stop a queued run to requeue it. When it was
-queued, the report adds how long, from the log's
+it as for any long run. `run-status.sh` only reads, so it is the one command
+allowed in that worktree while the run is out: the one exception to the
+brief's "run nothing else in this worktree while it runs". Never stop a queued
+run to requeue it. When it was queued, the report adds how long, from the log's
 `run-queue: starting ... after waiting` line.
 
 ## Reuse before you write

@@ -905,6 +905,71 @@ and no status script to ask. All three are left to their owner, GATES.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Round 1 (b1f3616, against merge-base fcf3835)
+
+Dispatched: `lead-po`, DIFF-REVIEW row, planned `fable`, resolved Fable 5.2
+(`claude-fable-5-2`). Every path the findings' fixes name classifies as
+`harness` (`classify.sh`), so the lock permits both routes and the labels
+are followed as given.
+
+**Should fix:**
+
+1. **The marker's removal on the "runs without the queue" exits has no test**
+   (`scripts/run-queue.sh:245`, `:284`; `.claude/tests/run-queue.test.sh`).
+   Deleting either `run_queue_unmark` leaves all 579 assertions green. A
+   waiter that finds the lock path turned into a directory prints `cannot use
+   ...; runs without the machine-wide queue` and starts working; with the line
+   gone its marker stays and `run-status.sh` says `queued ... Never stop a
+   queued run` for a run working beside the holder, the answer AC-4 exists to
+   rule out. Fix: one case in `run-queue.test.sh` (queue B behind a planted
+   live holder, wait for the marker, replace `run-queue.lock` with a
+   directory, wait for the `without the machine-wide queue` line, assert the
+   marker absent and the first status line `running`), earned by one
+   `mutate.sh` run dropping the unmark at line 245; floor and its mirror move.
+   **Route: RED**
+2. **The new paragraph tells the orchestrator to run a command the sentence
+   above it forbids** (`.claude/commands/advance-story.md:216-220`; the same
+   pair in `.claude/agents/feature-developer.md:104-107`). "While it is out,
+   you run nothing in that worktree either" sits directly above the new
+   instruction to run `bash scripts/run-status.sh` there. Fix: one clause in
+   the new paragraph of each file (not the paragraph `dispatch.test.sh`
+   reads): `run-status.sh` only reads, and is the one command allowed there
+   while the run is out. No needle moves. **Route: GATES**
+
+**Nice to have:**
+
+3. `run-status.sh` re-reads the queue lock for `started`, `root`, `command`
+   after reading the pid once (`:55`, `:70-71`, `:90-91`); a holder change
+   between reads gives one mixed line. Read the four fields once. **Route:
+   GATES**
+4. A `run-queue.lock` that is not a regular file is described as reclaimable
+   (`:87-88`); it is not (`run_queue_link` returns 2 and runs go ahead without
+   the queue). A separate line would be outside C-2's list: a follow-up, not
+   this story. **Route: GATES**
+
+**GREEN's two deviations, judged.** Unmark on the two "without the queue"
+exits: correct and necessary (finding 1), agrees with C-1; it only lacks a
+test. Exit 1 when `run-queue.sh` is missing: acceptable; not an answer,
+mirrors `gates.sh` on a missing `run-lock.sh`.
+
+**Checked and found sound:** wrong-process removal (BASHPID guard, `$$`
+check, nested pass-through returns before the mark); signals (EXIT and
+`selftest_exit` reach `run_queue_release` while waiting); races (half-written
+marker reads `running`; `behind nothing at this instant` pinned); paths
+(pids compared, never roots); state listings (`.gitignore:2`, README row
+`yes`, no `settings.json` rule owed; `refresh-harness.sh` ships the script);
+`gates.sh` 1315 and `selftest.sh` 728 lines unchanged; `settings` 71/0,
+`sigpipe` 91/0, `dispatch` 205/0, `procedure` 183/0.
+
+Verdict: fix 1 and 2 first.
+
+**Orchestrator's disposition.** Finding 2 is made first in GATES; finding 1
+is a return to RED as R-1, adjudicated by this dispatch. Findings 3 and 4 are
+Nice to have and not taken: 3 corrects itself on the next ask, and 4 needs a
+line outside C-2, so it is a follow-up.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->

@@ -219,9 +219,10 @@ The run you dispatched may be waiting in the machine-wide queue behind another
 tree's full run (`run-queue: queued:` in its log). Before you tell the user a
 long run is "running" or "still in progress", run `bash scripts/run-status.sh`
 in that worktree and say what it says: when it is queued, say
-`queued behind <tree> since <time>`. Never stop a queued run to requeue it, and
-never start a second one beside it; a wait in the queue is not the stall the
-orphan advice at GATES → REVIEW is about. The brief adds the same clause: a
+`queued behind <tree> since <time>`. `run-status.sh` only reads, so it is the
+one command allowed in that worktree while the run is out. Never stop a queued
+run to requeue it, and never start a second one beside it; a wait in the queue
+is not the stall the orphan advice at GATES → REVIEW is about. The brief adds the same clause: a
 queued run is waiting, `bash scripts/run-status.sh` says behind what, and it is
 never stopped to be requeued.
 
