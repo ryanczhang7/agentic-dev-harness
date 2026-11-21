@@ -4,8 +4,8 @@ title: A queued run answers when asked, and the briefs say to ask
 slug: a-queued-run-answers-when-asked-and-the
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-120-a-queued-run-answers-when-asked-and-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-status.sh, scripts/run-queue.sh, scripts/gates.sh, scripts/selftest.sh, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/feature-developer.md, .claude/state/README.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1141,3 +1141,12 @@ Verdict: Ship.
   R-1 reaches the unmark at `scripts/run-queue.sh:245` only; the one at
   `:284` (a stale lock that cannot be removed) is still pinned by no
   assertion.
+- **Self-test at GATES → REVIEW (2026-11-21): passed.** `selftest-needed`
+  answered `run`, and `--suites` answered `all` (`scripts/selftest.sh is read
+  by every suite`). A feature-developer dispatch (opus, resolved
+  claude-opus-5-5) ran `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+  through `attest.sh`. `attest.sh check` was `fresh`, exit 0,
+  `35 harness suite(s) passed.`, 2727s, tree 1e1f3bc, log
+  `.claude/state/attest-logs/20261121T223136Z.3060923.log`. Every suite
+  0 failed; all 35 met their floors (7361 assertions against 7328 declared).
+  It did not wait: `run-status.sh` showed it holding the machine queue.
