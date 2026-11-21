@@ -5,7 +5,7 @@ slug: a-queued-run-answers-when-asked-and-the
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-120-a-queued-run-answers-when-asked-and-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-status.sh, scripts/run-queue.sh, scripts/gates.sh, scripts/selftest.sh, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/feature-developer.md, .claude/state/README.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -572,6 +572,9 @@ name, below the table.
 - RED (2026-11-21): `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 - GREEN (2026-11-21): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 - GATES (2026-11-21): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override. Ran `bash scripts/attest.sh -- bash scripts/gates.sh`; `attest.sh check` `fresh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` (log `.claude/state/attest-logs/20261121T214154Z.2978100.log`). It did not wait: `run-status.sh` showed it holding the machine queue.
+- DIFF-REVIEW round 1 (2026-11-21): `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. Verdict: fix 1 and 2 first.
+- GATES (round 1 fix 2, 2026-11-21): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
+- RED (R-1, 2026-11-21): `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 
 ## Out of scope
 
@@ -1039,9 +1042,9 @@ line outside C-2, so it is a follow-up.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-21T21:41:56Z
-    commit: 4590345
-    tree:   72baf4f0653d33920a6ad823f711e334873b1ee2
+    run:    2026-11-21T22:28:59Z
+    commit: 8049352
+    tree:   02f312bb7fd10c58afc96a3f611e28df8c3ea301
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
