@@ -5,7 +5,7 @@ slug: a-queued-run-answers-when-asked-and-the
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-120-a-queued-run-answers-when-asked-and-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-status.sh, scripts/run-queue.sh, scripts/gates.sh, scripts/selftest.sh, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/feature-developer.md, .claude/state/README.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -420,6 +420,33 @@ remove, no pinned line to break and no status script to ask.
   HARNESS-108 and HARNESS-111 assertion stay green. RED's handoff predicts
   the count. **Owner: GATES.**
 
+  **Result (GATES, 2026-11-21): passed, as predicted (17).** Run by the
+  orchestrator:
+
+```
+=== mutate: scripts/run-queue.sh (1 line(s) changed by s/^        run_queue_mark "\$root" "\$self"$/        :/) ===
+    FAIL HARNESS-120 C-1: while B waits, B's tree holds .claude/state/run.queued
+    FAIL HARNESS-120 C-1: the marker is three TAB-separated lines: pid, since, command
+    FAIL HARNESS-120 C-1: the marker records the waiting script's pid
+    FAIL HARNESS-120 C-1: the marker records when it began waiting, UTC to the second
+    FAIL HARNESS-120 C-1: the marker records the command the queue lock would record
+    FAIL HARNESS-120 C-1: the holder, which never waited, writes no marker in A
+    FAIL HARNESS-120 AC-1 asked in B (queued): prints exactly 4 line(s) on stdout
+    FAIL HARNESS-120 AC-1 asked in B (queued): stdout line 1
+    FAIL HARNESS-120 AC-1 asked in B (queued): stdout line 2
+    FAIL HARNESS-120 AC-1 asked in B (queued): stdout line 3
+    FAIL HARNESS-120 AC-1 asked in B (queued): stdout line 4
+    FAIL HARNESS-120 AC-2: once B has started its work, its run.queued is gone
+    FAIL HARNESS-120 AC-2: neither tree holds a run.queued afterwards
+    FAIL HARNESS-120 AC-3 (a) gates.sh waiter: it wrote a marker while queued, exits 143 on TERM, and the marker is gone
+    FAIL HARNESS-120 AC-3 (a) selftest.sh waiter: it wrote a marker while queued, exits 143 on TERM, and the marker is gone
+    FAIL HARNESS-120 AC-4 (a) gates.sh --fast beside the holder: B holds no run.queued
+    FAIL HARNESS-120 AC-4 (b) full gates.sh, HARNESS_RUN_QUEUE=off, beside the holder: B holds no run.queued
+run-queue: 562 passed, 17 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-120/.claude/state/mutations/scripts_run-queue.sh.20261121T212325Z.2940687.bak) ===
+dv1 rc=1
+```
+
 - **DV-2, a real line of the tree (AC-6).** The text pins read the real
   `CLAUDE.md`, command and agent files. With the `bash scripts/run-status.sh`
   line of `CLAUDE.md`'s "Running things" block mutated through `mutate.sh`
@@ -427,6 +454,18 @@ remove, no pinned line to break and no status script to ask.
   red and no other AC-6 assertion may: the sentence and the lock path in the
   same section are separate needles. A pin that stays green here was
   satisfied by some other line of the file. **Owner: GATES.**
+
+  **Result (GATES, 2026-11-21): passed, as predicted (1).** Only AC-6 (a)
+  went red; every other AC-6 pin stayed green.
+
+```
+=== mutate: CLAUDE.md (1 line(s) changed by s/^bash scripts\/run-status\.sh /bash scripts\/run-statuz.sh /) ===
+    FAIL HARNESS-120 AC-6 (a): CLAUDE.md's Running things command block has one line beginning bash scripts/run-status.sh, then a # comment
+run-queue: 578 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-120/.claude/state/mutations/CLAUDE.md.20261121T212946Z.2957657.bak) ===
+dv2 rc=1
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
 
 - **DV-3, the real tree, asked while queued (AC-1).** Not a fixture: in this
   repository, with `HARNESS_RUN_QUEUE_DIR` pointing at a scratch directory
@@ -442,6 +481,33 @@ remove, no pinned line to break and no status script to ask.
   three answers. This is the check case 1 and case 2 in Context would have
   needed, made on a real run. The host's own queue under `$HOME/.cache` is
   never touched. **Owner: GATES.**
+
+  **Result (GATES, 2026-11-21): passed.** Real `bash scripts/gates.sh` in
+  D:\adh-HARNESS-120, `HARNESS_RUN_QUEUE_DIR` a scratch directory whose lock
+  named a live `sleep` (pid 2977069); waited for the `queued:` line (bounded
+  poll, no fixed sleep), asked, removed the lock, polled until `running`,
+  waited for exit, asked again. The host queue under `$HOME/.cache` was not
+  touched.
+
+```
+--- gates.sh pid 2977078, planted holder pid 2977069
+--- ask 1 (queued)
+run-status: queued: pid 2977078, waiting since 2026-11-21T21:40:36Z: scripts/gates.sh
+run-status:   behind pid 2977069, started 2026-11-21T21:40:28Z, in /dv3/planted: dv3 planted holder (sleep)
+run-status: this is waiting, not hanging: it starts by itself when that run ends. Never stop a queued run to requeue it.
+run-status: machine queue: held by pid 2977069, started 2026-11-21T21:40:28Z, in /dv3/planted: dv3 planted holder (sleep)
+--- ask 2 (after the planted lock was removed)
+run-status: running: pid 2977078, started 2026-11-21T21:40:32Z: scripts/gates.sh
+run-status: machine queue: held by pid 2977078, started 2026-11-21T21:40:41Z, in /d/adh-HARNESS-120: scripts/gates.sh
+--- gates.sh exited 0
+--- ask 3 (after it exited)
+run-status: idle: no harness run holds /d/adh-HARNESS-120.
+run-status: machine queue: free (<scratch>/dv3-queue/run-queue.lock)
+ls: cannot access '.claude/state/run.queued': No such file or directory
+--- queue lines from gates.sh
+run-queue: queued: scripts/gates.sh waits for another harness run on this machine to finish.
+run-queue: starting scripts/gates.sh after waiting 0m10s.
+```
 
 ## Amendments
 
@@ -505,6 +571,7 @@ name, below the table.
 - PLANNED (2026-11-21): `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. Dispatched by `/plan-story`; wrote Context, the criteria, the Contract, the deferred verifications and Out of scope, then ran `plan.sh write`.
 - RED (2026-11-21): `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 - GREEN (2026-11-21): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
+- GATES (2026-11-21): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override. Ran `bash scripts/attest.sh -- bash scripts/gates.sh`; `attest.sh check` `fresh`, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` (log `.claude/state/attest-logs/20261121T214154Z.2978100.log`). It did not wait: `run-status.sh` showed it holding the machine queue.
 
 ## Out of scope
 
@@ -840,10 +907,21 @@ and no status script to ask. All three are left to their owner, GATES.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-21T21:41:56Z
+    commit: 4590345
+    tree:   72baf4f0653d33920a6ad823f711e334873b1ee2
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
