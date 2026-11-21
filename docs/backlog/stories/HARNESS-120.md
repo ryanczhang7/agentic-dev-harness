@@ -575,6 +575,7 @@ name, below the table.
 - DIFF-REVIEW round 1 (2026-11-21): `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. Verdict: fix 1 and 2 first.
 - GATES (round 1 fix 2, 2026-11-21): `feature-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
 - RED (R-1, 2026-11-21): `test-developer`, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`); no override.
+- DIFF-REVIEW round 2 (2026-11-21): `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. Verdict: Ship.
 
 ## Out of scope
 
@@ -1037,6 +1038,35 @@ Verdict: fix 1 and 2 first.
 is a return to RED as R-1, adjudicated by this dispatch. Findings 3 and 4 are
 Nice to have and not taken: 3 corrects itself on the next ask, and 4 needs a
 line outside C-2, so it is a follow-up.
+
+### Round 2 (f8ab45a; `b1f3616..HEAD`, then the whole diff against fcf3835)
+
+Dispatched: `lead-po`, DIFF-REVIEW row, planned `fable`, resolved Fable 5.2
+(`claude-fable-5-2`). No file changed.
+
+No findings.
+
+- **Fix 2 does what finding 2 asked.** `advance-story.md:216` keeps "you run
+  nothing in that worktree either"; `:222-223` names `run-status.sh` as the one
+  command allowed there. `feature-developer.md:107-109` names it as the one
+  exception to the brief. The other "one exception" sentence there (`:98`) is a
+  different rule. No other prose in `.claude/`, `scripts/`, `CLAUDE.md` or
+  `README.md` carries the "run nothing" wording. "Only reads" is pinned by
+  AC-5's byte-for-byte assertions. `dispatch` 205/0, `procedure` 183/0.
+- **R-1 reaches `scripts/run-queue.sh:245`** (`run_queue_link` returns 2 for a
+  directory). Its two pins can fail (presence of B's marker; whole-line compare
+  of status line 1, which the `queued` line cannot equal); the pasted mutation
+  shows exactly those two red, the preconditions green, restore verified. The
+  case cleans up after itself.
+- **Floor and mirror agree:** `floors.conf:63` and `selftest.test.sh:554` both
+  583.
+- **Whole diff:** nothing newly broken; `git diff 471b0ac -- scripts/` is empty.
+- **The unmark at `:284`:** not raised. Reached only when a queued run's holder
+  dies and its stale lock cannot be removed; round 1 asked for `:245`, and the
+  story records `:284` as unpinned. It fits a follow-up with round 1's
+  finding 4 (the suite's `RQ_PATH` fake-`rm` can reach it).
+
+Verdict: Ship.
 
 ## Gate results
 
