@@ -5,7 +5,7 @@ slug: a-queued-run-answers-when-asked-and-the
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-120-a-queued-run-answers-when-asked-and-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-status.sh, scripts/run-queue.sh, scripts/gates.sh, scripts/selftest.sh, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/feature-developer.md, .claude/state/README.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1100,3 +1100,11 @@ line outside C-2, so it is a follow-up.
   machine queue: `run-status.sh` printed `idle` for this tree and `machine
   queue: held by pid 2923853 ... in /d/fantasy-world-builder: scripts/gates.sh`,
   matching the lock file.
+- **GREEN after R-1 (orchestrator, 2026-11-21): a no-op, verified.** R-1
+  added a test for code that already existed; `git diff 471b0ac -- scripts/`
+  is empty. `attest.sh check -- bash scripts/selftest.sh run-queue` was
+  `fresh`, exit 0, `run-queue: 583 passed, 0 failed`, floor met (log
+  `.claude/state/attest-logs/20261121T222053Z.3046439.log`). Not re-run.
+  R-1 reaches the unmark at `scripts/run-queue.sh:245` only; the one at
+  `:284` (a stale lock that cannot be removed) is still pinned by no
+  assertion.
