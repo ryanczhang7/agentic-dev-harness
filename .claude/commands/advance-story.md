@@ -2,7 +2,7 @@
 description: Move one story forward by exactly one phase
 model: opus
 argument-hint: <story-id>
-allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(bash scripts/story.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
+allowed-tools: Bash(bash scripts/phase.sh:*), Bash(bash scripts/gates.sh:*), Bash(bash scripts/attest.sh check:*), Bash(bash scripts/check-boundaries.sh:*), Bash(bash scripts/selftest.sh:*), Bash(bash scripts/selftest-needed.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh:*), Bash(SELFTEST_JOBS=4 bash scripts/selftest.sh --changed:*), Bash(bash scripts/ci-local.sh:*), Bash(bash scripts/task.sh:*), Bash(bash scripts/story.sh:*), Bash(bash scripts/run-status.sh:*), Bash(git:*), Read, Grep, Glob, Edit, Write, Task
 ---
 
 Story: $1
@@ -214,6 +214,17 @@ absolute path and "run every command from there"; the one command, through
 and "change nothing, unless the command is `bash scripts/gates.sh` and a
 required gate fails: then fix it under your GATES rules and run it again".
 While it is out, you run nothing in that worktree either.
+
+The run you dispatched may be waiting in the machine-wide queue behind another
+tree's full run (`run-queue: queued:` in its log). Before you tell the user a
+long run is "running" or "still in progress", run `bash scripts/run-status.sh`
+in that worktree and say what it says: when it is queued, say
+`queued behind <tree> since <time>`. `run-status.sh` only reads, so it is the
+one command allowed in that worktree while the run is out. Never stop a queued
+run to requeue it, and never start a second one beside it; a wait in the queue
+is not the stall the orphan advice at GATES → REVIEW is about. The brief adds the same clause: a
+queued run is waiting, `bash scripts/run-status.sh` says behind what, and it is
+never stopped to be requeued.
 
 `gates.sh` writes its own summary into the story's `## Gate results`, whoever
 runs it; never paste or edit one. A failure the dispatch could not fix goes

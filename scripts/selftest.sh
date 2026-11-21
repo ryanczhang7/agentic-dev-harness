@@ -423,14 +423,14 @@ fi
 
 # --- the run lock (HARNESS-034) ----------------------------------------------
 # A self-test beside gates.sh, or beside another self-test, in one tree is how
-# issue #97 got a hang past 30 minutes that passed alone. Every run - full or
-# one suite - takes .claude/state/run.lock or refuses with 2 before any suite
-# runs; it never waits. After the floors audit, so a malformed floors file is
-# reported at once without contending for anything. Traps BEFORE the take, so
-# no signal strands a lock; trapped, TERM and INT wait for the running suite
-# rather than orphaning it. Suites inherit HARNESS_RUN_LOCK(_PID), which is
-# what lets a suite that runs this tree's own selftest.sh through - and what
-# a fixture tree, whose lock path differs, ignores.
+# issue #97 got a hang past 30 minutes that passed alone. Every run takes
+# .claude/state/run.lock or refuses with 2 before any suite runs; the run lock
+# is never waited on. A full run or --changed then waits in the machine-wide
+# queue, scripts/run-queue.sh, for any other such run on the machine, and
+# `bash scripts/run-status.sh` says which. After the floors audit. Traps BEFORE
+# the take, so no signal strands a lock; TERM and INT wait for the running
+# suite. Suites inherit HARNESS_RUN_LOCK(_PID), which lets a suite run this
+# tree's own selftest.sh through, and which a fixture tree's lock path ignores.
 #
 # One EXIT handler (HARNESS-036 C-4): with suites in the background the lock
 # may go only after the last of them has exited, so the handler waits for any
