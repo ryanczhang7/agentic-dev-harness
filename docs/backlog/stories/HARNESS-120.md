@@ -5,7 +5,7 @@ slug: a-queued-run-answers-when-asked-and-the
 epic: 
 type: fix
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-120-a-queued-run-answers-when-asked-and-the
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-status.sh, scripts/run-queue.sh, scripts/gates.sh, scripts/selftest.sh, CLAUDE.md, .claude/commands/advance-story.md, .claude/commands/complete-story.md, .claude/agents/feature-developer.md, .claude/state/README.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -904,6 +904,71 @@ and no status script to ask. All three are left to their owner, GATES.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+
+### R-1 (the marker is removed when a waiter goes on without the queue)
+
+- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2), 2026-11-21, diff review round 1, finding 1: the `run_queue_unmark` calls on the two "runs without the machine-wide queue" exits of `run_queue_acquire` (`scripts/run-queue.sh:245`, `:284`) are pinned by no assertion; the reviewer reproduced, in a scratch tree, a waiter whose lock path became a directory going on to work while `run-status.sh` still said `queued`. Upheld by that dispatch, routed RED; no separate ADJUDICATE needed.
+
+- **Which test.** None existed: this return adds a case rather than
+  correcting one. `.claude/tests/run-queue.test.sh`, HARNESS-120 block, new
+  `describe "HARNESS-120 C-1  a waiter that goes on without the queue takes
+  its marker with it (R-1)"`, placed between AC-4 and AC-5. Before it, no
+  assertion pinned the `run_queue_unmark` on either "runs without the
+  machine-wide queue" exit inside `run_queue_acquire`'s wait loop: deleting
+  either left 579/579 green.
+- **How it was found.** Diff review round 1, finding 1 (Should fix, routed
+  RED).
+- **Which site the case reaches.** The `2)` arm of the `case $?` after
+  `run_queue_link` (`scripts/run-queue.sh:245`, `2) run_queue_unmark`): with
+  `run-queue.lock` a directory, `run_queue_link` returns 2 on its first check
+  (`[ -e "$2" ] && [ ! -f "$2" ]`). It does not reach `:284`, the
+  "could not remove a stale lock" exit; that one is not pinned by this case.
+- **What it asserts (4 assertions, run-queue floor 579 -> 583).** In a
+  case-private queue (`new_case`'s `$Q`), a live planted holder (`qplant
+  "$LIVE1" ...`); B's full `gates.sh` started with its work held; bounded
+  waits (`wait_until`, never a fixed sleep) for B's `run-queue: queued:` line
+  and its `.claude/state/run.queued`; `run-queue.lock` replaced by a
+  directory; bounded waits for B's cannot-use line and for its work to start.
+  1. precondition: B's `q1` line exactly once (whole-line `grep -cxF`) and
+     the marker present;
+  2. precondition: the whole `cannot_line "$Q" scripts/gates.sh` line
+     exactly once, and B's work started;
+  3. B's `run.queued` is absent;
+  4. `bash scripts/run-status.sh` asked in B: line 1, compared whole, is
+     `s_run <B's pid> <run.lock started> scripts/gates.sh`. The negation
+     (`run-status: queued: pid ...`) cannot match it.
+- **What earns it.** One mutation no-opping exactly the reached unmark;
+  1 line changed, the two pins red and the two preconditions green, every
+  other assertion green, restore verified:
+
+```
+=== mutate: scripts/run-queue.sh (1 line(s) changed by s/2) run_queue_unmark/2) :/) ===
+  245 -       2) run_queue_unmark
+  245 +       2) :
+
+=== mutate: running bash .claude/tests/run-queue.test.sh ===
+
+  HARNESS-120 C-1  a waiter that goes on without the queue takes its marker with it (R-1)
+    FAIL HARNESS-120 C-1 R-1: once B goes on without the queue, B's run.queued is gone
+         expected: absent
+         actual:   present
+    FAIL HARNESS-120 C-1 R-1: asked in B, working without the queue, the first line is running for B's pid
+         expected: run-status: running: pid 3045865, started 2026-11-21T22:20:20Z: scripts/gates.sh
+         actual:   run-status: queued: pid 3045865, waiting since 2026-11-21T22:20:20Z: scripts/gates.sh
+
+run-queue: 581 passed, 2 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-120/.claude/state/mutations/scripts_run-queue.sh.20261121T221538Z.3035331.bak) ===
+  245:       2) run_queue_unmark
+```
+
+  Unmutated, same tree, local Windows host: `run-queue: 583 passed, 0 failed`
+  (about 5 min wall). `bash scripts/mutate.sh --check`: no stranded mutation.
+- **GREEN is a no-op.** No source file changed in this return
+  (`git status`: only `.claude/tests/run-queue.test.sh`,
+  `.claude/tests/floors.conf`, `.claude/tests/selftest.test.sh` and this
+  story); the shipped `scripts/run-queue.sh` already satisfies the case.
 
 ## Diff review
 

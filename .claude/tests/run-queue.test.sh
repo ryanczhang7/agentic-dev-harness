@@ -1504,6 +1504,37 @@ touch "$A/m/k/release"; wait_bounded "$hp" 60
 assert_eq "HARNESS-120 AC-4: precondition: A then finishes, exit 0" 0 "$WRC"
 
 # ---------------------------------------------------------------------------
+describe "HARNESS-120 C-1  a waiter that goes on without the queue takes its marker with it (R-1)"
+
+# B queues behind a planted live holder; the queue lock then becomes a
+# directory, so B's next poll gets run_queue_link's 2 and takes the
+# "cannot use ...; runs without the machine-wide queue" exit in the wait
+# loop (the `2)` arm of run_queue_acquire's case). B then works, held, beside
+# nothing: its marker must be gone, and asked it must read as running, never
+# queued - AC-4's answer for a run working beside the holder.
+saw_cannot() { [ "$(count_line "$(cannot_line "$Q" scripts/gates.sh)" "$1")" -gt 0 ]; }
+new_case
+qplant "$LIVE1" "$PLANT_STARTED" "scripts/selftest.sh ghost" "/ghost/tree"
+touch "$B/m/k/hold"
+rq_run wp "$B" st6-B scripts/gates.sh
+wait_until 60 is_queued "$W/st6-B.err"
+if wait_until 5 has_marker "$B"; then st6m=present; else st6m=absent; fi
+assert_eq "HARNESS-120 C-1 R-1: precondition: B is queued behind the planted holder and has written its marker" "1 present" \
+  "$(count_line "$(q1 scripts/gates.sh)" "$W/st6-B.err") $st6m"
+rm -f "$QL"; mkdir "$QL"
+wait_until 30 saw_cannot "$W/st6-B.err"
+if wait_until 30 is_started "$B"; then st6s=yes; else st6s=no; fi
+rm -f "$B/m/k/hold"
+assert_eq "HARNESS-120 C-1 R-1: precondition: with the queue lock a directory, B prints the cannot-use line once and starts its work" "1 yes" \
+  "$(count_line "$(cannot_line "$Q" scripts/gates.sh)" "$W/st6-B.err") $st6s"
+assert_eq "HARNESS-120 C-1 R-1: once B goes on without the queue, B's run.queued is gone" absent "$(present "$(marker "$B")")"
+rs_ask "$B" st6-askB
+rs_eq "HARNESS-120 C-1 R-1: asked in B, working without the queue, the first line is running for B's pid" \
+  "$(s_run "$wp" "$(rec_field "$B/.claude/state/run.lock" started)" scripts/gates.sh)" "$(rs_line "$W/st6-askB.out" 1)"
+touch "$B/m/k/release"; wait_bounded "$wp" 60
+rmdir "$QL" 2>/dev/null
+
+# ---------------------------------------------------------------------------
 describe "HARNESS-120 AC-5  asking changes nothing, creates nothing, and never waits"
 
 new_case
