@@ -5,7 +5,7 @@ slug: one-command-lists-every-run-waiting-in-t
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-121-one-command-lists-every-run-waiting-in-t
 depends_on: [HARNESS-120]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-status.sh, CLAUDE.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -537,6 +537,158 @@ drop and no pinned line to break.
   scratch directory. Paste the answers. The host's own queue under
   `$HOME/.cache` is never touched. **Owner: GATES.**
 
+### Results, run in GATES on 2026-11-22 (orchestrator, before the full gates)
+
+Each mutation ran through `scripts/mutate.sh` against `bash .claude/tests/run-queue.test.sh`, one after another; `mutate.sh --check` afterwards: `no stranded mutation`.
+
+**DV-1 result: red, as owed; 51 failed against RED's predicted 49.** Every one is a HARNESS-121 assertion; no HARNESS-108, 111, 112 or 120 assertion failed, and AC-4 (a) and (b) stayed green. The two beyond the prediction are AC-4 (c)'s two preconditions, which in that block are reached only once the record has been seen; with no record they fail with it. Restored byte for byte.
+
+```
+=== mutate: scripts/run-queue.sh (1 line(s) changed by s/^      mv -f "\$w\.tmp" "\$w" 2>\/dev\/null$/      :/) ===
+=== mutate: running bash .claude/tests/run-queue.test.sh ===
+run-queue: 847 passed, 51 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-121/.claude/state/mutations/scripts_run-queue.sh.20261122T061136Z.3499877.bak) ===
+FAIL HARNESS-121 C-1: while B waits, the queue directory holds run-queue.waiter.<B's pid>
+FAIL HARNESS-121 C-1: the record is four TAB-separated lines: pid, since, command, root
+FAIL HARNESS-121 C-1: the record's pid is the waiting script's own pid
+FAIL HARNESS-121 C-1: the record's since is the since of B's run.queued, to the second (one date call)
+FAIL HARNESS-121 C-1: the record's command and root are the strings the queue lock would record
+FAIL HARNESS-121 AC-1 --all in A (the holder): prints exactly 6 line(s) on stdout
+FAIL HARNESS-121 AC-1 --all in A (the holder): stdout line 3
+FAIL HARNESS-121 AC-1 --all in A (the holder): stdout line 4
+FAIL HARNESS-121 AC-1 --all in A (the holder): stdout line 5
+FAIL HARNESS-121 AC-1 --all in A (the holder): stdout line 6
+FAIL HARNESS-121 AC-1 --all in B (the first waiter): prints exactly 8 line(s) on stdout
+FAIL HARNESS-121 AC-1 --all in B (the first waiter): stdout line 5
+FAIL HARNESS-121 AC-1 --all in B (the first waiter): stdout line 6
+FAIL HARNESS-121 AC-1 --all in B (the first waiter): stdout line 7
+FAIL HARNESS-121 AC-1 --all in B (the first waiter): stdout line 8
+FAIL HARNESS-121 AC-1 --all in C (the second waiter): prints exactly 8 line(s) on stdout
+FAIL HARNESS-121 AC-1 --all in C (the second waiter): stdout line 5
+FAIL HARNESS-121 AC-1 --all in C (the second waiter): stdout line 6
+FAIL HARNESS-121 AC-1 --all in C (the second waiter): stdout line 7
+FAIL HARNESS-121 AC-1 --all in C (the second waiter): stdout line 8
+FAIL HARNESS-121 AC-1 --all in D (nothing runs there): prints exactly 6 line(s) on stdout
+FAIL HARNESS-121 AC-1 --all in D (nothing runs there): stdout line 3
+FAIL HARNESS-121 AC-1 --all in D (nothing runs there): stdout line 4
+FAIL HARNESS-121 AC-1 --all in D (nothing runs there): stdout line 5
+FAIL HARNESS-121 AC-1 --all in D (nothing runs there): stdout line 6
+FAIL HARNESS-121 AC-1: the since on B's waiting line is the since on B's own no-argument queued line
+FAIL HARNESS-121 AC-2 --all in D, one waiter through: prints exactly 5 line(s) on stdout
+FAIL HARNESS-121 AC-2 --all in D, one waiter through: stdout line 3
+FAIL HARNESS-121 AC-2 --all in D, one waiter through: stdout line 4
+FAIL HARNESS-121 AC-2 --all in D, one waiter through: stdout line 5
+FAIL HARNESS-121 AC-2: the queue directory holds no record for the one that started (seen while it waited)
+FAIL HARNESS-121 AC-2: the queue directory holds no record at all, each having been seen while its run waited
+FAIL HARNESS-121 AC-3 (a) gates.sh waiter: --all in D while it waits: prints exactly 5 line(s) on stdout
+FAIL HARNESS-121 AC-3 (a) gates.sh waiter: --all in D while it waits: stdout line 3
+FAIL HARNESS-121 AC-3 (a) gates.sh waiter: --all in D while it waits: stdout line 4
+FAIL HARNESS-121 AC-3 (a) gates.sh waiter: --all in D while it waits: stdout line 5
+FAIL HARNESS-121 AC-3 (a) gates.sh waiter: its record was seen while it waited; it exits 143 on TERM; the record is gone
+FAIL HARNESS-121 AC-3 (a) selftest.sh waiter: --all in D while it waits: prints exactly 5 line(s) on stdout
+FAIL HARNESS-121 AC-3 (a) selftest.sh waiter: --all in D while it waits: stdout line 3
+FAIL HARNESS-121 AC-3 (a) selftest.sh waiter: --all in D while it waits: stdout line 4
+FAIL HARNESS-121 AC-3 (a) selftest.sh waiter: --all in D while it waits: stdout line 5
+FAIL HARNESS-121 AC-3 (a) selftest.sh waiter: its record was seen while it waited; it exits 143 on TERM; the record is gone
+FAIL HARNESS-121 AC-3 (c): the new waiter wrote its record, and the dead pid's record is gone
+FAIL HARNESS-121 AC-3 (c): and so is the dead pid's .tmp
+FAIL HARNESS-121 AC-3 (c): and so is a record whose name is not all digits
+FAIL HARNESS-121 AC-3 (c): the live waiter's record is byte for byte what it was
+FAIL HARNESS-121 AC-3 (c): a live pid's .tmp is byte for byte what it was
+FAIL HARNESS-121 AC-3 (c): B printed its queued line once, and no run-queue: line says anything about either record
+FAIL HARNESS-121 AC-4 (c): precondition: with the queue lock a directory, B prints the cannot-use line once and starts its work
+FAIL HARNESS-121 AC-4 (c): B's record, seen while it waited, is gone once it goes on without the queue
+FAIL HARNESS-121 AC-4 (c): precondition: the no-argument answer in B is running for B's pid, then 120's unreadable-lock line
+```
+
+**DV-2 result: red, as owed; 18 failed, RED's prediction exactly.** AC-3 (b)'s dead-pid case is listed and its `nothing is waiting` line fails; AC-1, AC-2, AC-3 (a) and every HARNESS-120 assertion stayed green. Restored byte for byte.
+
+```
+=== mutate: scripts/run-status.sh (1 line(s) changed by s/^  run_queue_alive "\$WP" || continue /  true || continue /) ===
+=== mutate: running bash .claude/tests/run-queue.test.sh ===
+run-queue: 880 passed, 18 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-121/.claude/state/mutations/scripts_run-status.sh.20261122T061702Z.3517321.bak) ===
+FAIL HARNESS-121 AC-3 (b) rule 3: a record whose pid is not running: prints exactly 4 line(s) on stdout
+FAIL HARNESS-121 AC-3 (b) rule 3: a record whose pid is not running: stdout line 3
+FAIL HARNESS-121 AC-3 (b) rule 3: a record whose pid is not running: stdout line 4
+FAIL HARNESS-121 AC-3 (b) all seven together: prints exactly 4 line(s) on stdout
+FAIL HARNESS-121 AC-3 (b) all seven together: stdout line 3
+FAIL HARNESS-121 AC-3 (b) all seven together: stdout line 4
+FAIL HARNESS-121 C-2 the seven and the control: only the control is listed: prints exactly 5 line(s) on stdout
+FAIL HARNESS-121 C-2 the seven and the control: only the control is listed: stdout line 3
+FAIL HARNESS-121 C-2 the seven and the control: only the control is listed: stdout line 4
+FAIL HARNESS-121 C-2 the seven and the control: only the control is listed: stdout line 5
+FAIL HARNESS-121 AC-5 --all with a held queue, two live waiters and a dead record: prints exactly 6 line(s) on stdout
+FAIL HARNESS-121 AC-5 --all with a held queue, two live waiters and a dead record: stdout line 3
+FAIL HARNESS-121 AC-5 --all with a held queue, two live waiters and a dead record: stdout line 4
+FAIL HARNESS-121 AC-5 --all with a held queue, two live waiters and a dead record: stdout line 5
+FAIL HARNESS-121 AC-5 --all with a held queue, two live waiters and a dead record: stdout line 6
+FAIL HARNESS-121 AC-5: it answered, and the queue directory holds exactly the files, byte for byte, it held before
+FAIL HARNESS-121 AC-5: it answered, and every tree's .claude/state holds exactly what it held before
+FAIL HARNESS-121 AC-5: it answered, and the dead record is still there: the reader never sweeps
+```
+
+**DV-3 result: red, as owed; 2 failed, both AC-6.** HARNESS-120's AC-6 (a) pin for the no-argument line stayed green. Restored byte for byte.
+
+```
+=== mutate: CLAUDE.md (1 line(s) changed by s/^bash scripts\/run-status\.sh --all /bash scripts\/run-status.sh --every /) ===
+=== mutate: running bash .claude/tests/run-queue.test.sh ===
+run-queue: 896 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-121/.claude/state/mutations/CLAUDE.md.20261122T062116Z.3532255.bak) ===
+FAIL HARNESS-121 AC-6: the Running things command block has one line beginning bash scripts/run-status.sh --all, then a # comment
+FAIL HARNESS-121 AC-6: it and HARNESS-120's no-argument line are two different lines of that block
+```
+
+**DV-4 result: as owed.** A real `bash scripts/gates.sh` in this repository, queued behind a planted `sleep` holder in a scratch queue directory (the host's `$HOME/.cache` queue untouched). `--all` named its pid and this repository's root, `1 run is waiting.`; after the planted lock was removed it started by itself, and `--all` then ended `machine queue: free`, `nothing is waiting`, with the scratch directory empty. The first attempt never started: `setsid` does not exist in Git Bash (`setsid: command not found`), and it was retried with `nohup … &`. **The second ask was not from another worktree's own copy:** the only other worktrees (`D:/agentic-dev-harness` on main, `D:/adh-HARNESS-120`) are on release 139, whose `run-status.sh` has no `--all`; it was asked instead with this tree's script from `D:/agentic-dev-harness` as the working directory, and answered identically, because the list is the queue directory's, not the asking tree's. The scratch path is shown as `<scratch>` throughout.
+
+```
+$ (planted holder: sleep pid 3547320 in <scratch>/run-queue.lock; bash scripts/gates.sh started detached with HARNESS_RUN_QUEUE_DIR=<scratch>, pid 3547741; its queued line appeared after 2 s)
+run-queue: queued: scripts/gates.sh waits for another harness run on this machine to finish.
+run-queue:   behind pid 3547320, started 2026-11-22T06:26:04Z, in <scratch>: DV-4 planted holder (sleep)
+run-queue: this is waiting, not hanging: it starts by itself when that run ends. If pid 3547320 is not that run, delete <scratch>/dv4q/run-queue.lock and it starts.
+
+$ cd /d/adh-HARNESS-121 && HARNESS_RUN_QUEUE_DIR=<scratch> bash scripts/run-status.sh --all
+run-status: queued: pid 3547741, waiting since 2026-11-22T06:27:24Z: scripts/gates.sh
+run-status:   behind pid 3547320, started 2026-11-22T06:26:04Z, in <scratch>: DV-4 planted holder (sleep)
+run-status: this is waiting, not hanging: it starts by itself when that run ends. Never stop a queued run to requeue it.
+run-status: machine queue: held by pid 3547320, started 2026-11-22T06:26:04Z, in <scratch>: DV-4 planted holder (sleep)
+run-status: waiting: pid 3547741, since 2026-11-22T06:27:24Z, in /d/adh-HARNESS-121: scripts/gates.sh
+run-status: 1 run is waiting.
+run-status: a run in a tree whose harness predates this list waits without appearing in it.
+
+$ cd /d/agentic-dev-harness && HARNESS_RUN_QUEUE_DIR=<scratch> bash /d/adh-HARNESS-121/scripts/run-status.sh --all
+run-status: queued: pid 3547741, waiting since 2026-11-22T06:27:24Z: scripts/gates.sh
+run-status:   behind pid 3547320, started 2026-11-22T06:26:04Z, in <scratch>: DV-4 planted holder (sleep)
+run-status: this is waiting, not hanging: it starts by itself when that run ends. Never stop a queued run to requeue it.
+run-status: machine queue: held by pid 3547320, started 2026-11-22T06:26:04Z, in <scratch>: DV-4 planted holder (sleep)
+run-status: waiting: pid 3547741, since 2026-11-22T06:27:24Z, in /d/adh-HARNESS-121: scripts/gates.sh
+run-status: 1 run is waiting.
+run-status: a run in a tree whose harness predates this list waits without appearing in it.
+
+$ ls <scratch>
+run-queue.lock
+run-queue.waiter.3547741
+$ cat <scratch>/run-queue.waiter.*  (tabs shown as spaces)
+pid 3547741
+since 2026-11-22T06:27:24Z
+command scripts/gates.sh
+root /d/adh-HARNESS-121
+
+$ rm <scratch>/run-queue.lock; kill <sleep pid>   (gates.sh pid 3547741 had exited after 6 s)
+run-queue: starting scripts/gates.sh after waiting 0m15s.
+It is not a gate because it judges the COMMIT rather than the code - the phase in
+the committed frontmatter, the criteria against the base branch, and whether this
+very record still matches the tree. Run it after committing, before the PR.
+
+$ HARNESS_RUN_QUEUE_DIR=<scratch> bash scripts/run-status.sh --all
+run-status: idle: no harness run holds /d/adh-HARNESS-121.
+run-status: machine queue: free (<scratch>/dv4q/run-queue.lock)
+run-status: nothing is waiting in the machine queue.
+run-status: a run in a tree whose harness predates this list waits without appearing in it.
+$ ls -A <scratch>
+(end of listing)
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -600,6 +752,7 @@ name, below the table.
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-21, dispatched by `/advance-story` to re-plan on `main` at b30f2b6 after HARNESS-120 merged; no override was stated in the dispatch. Wrote only this file.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-21; no override.
 - GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-21; no override. Orchestrator checked both records with `attest.sh check`: `selftest.sh run-queue` fresh, exit 0, 898 passed 0 failed; `gates.sh --fast` fresh, exit 0. Neither re-run by hand.
+- GATES, `feature-developer` (full `gates.sh`): planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-22; no override. `attest.sh check` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, did not queue. DV-1 to DV-4 were run by the orchestrator before it (results under `## Deferred verifications`).
 
 ## Out of scope
 
@@ -1186,10 +1339,21 @@ appended after them).
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-22T06:28:29Z
+    commit: 5051c93 (working tree had uncommitted changes)
+    tree:   d9e344e1b7e68373d64cd3c3c580b0ad178598f9
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
