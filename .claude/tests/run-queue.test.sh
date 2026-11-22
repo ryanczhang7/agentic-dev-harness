@@ -1567,7 +1567,7 @@ usage_case() {
   new_case
   rs_ask "$B" "$lbl" "$@"
   rs_eq "$lbl: exits 2" 2 "$ASK_RC"
-  rs_eq "$lbl: prints exactly the usage line on stderr" "usage: bash scripts/run-status.sh" "$(readf "$W/$lbl.err")"
+  rs_eq "$lbl: prints exactly the usage line on stderr" "usage: bash scripts/run-status.sh [--all]" "$(readf "$W/$lbl.err")"
   rs_eq "$lbl: and nothing on stdout" "" "$(readf "$W/$lbl.out")"
 }
 usage_case "HARNESS-120 AC-5 an argument (--help)" --help
@@ -1638,5 +1638,451 @@ for sf in gates.sh selftest.sh; do
   assert_eq "HARNESS-120 AC-6 (e): the run-lock comment in scripts/$sf is there and no longer says it never waits" "found no" \
     "$(if [ -s "$W/$sf.lockc" ]; then printf found; else printf missing; fi) $(has "it never waits" < "$W/$sf.lockc")"
 done
+
+
+# ===========================================================================
+# HARNESS-121  one command lists every run waiting in the machine queue
+# (Contract C-1, C-2, C-4, C-5). A run that begins to wait writes
+# <queue dir>/run-queue.waiter.<pid> and removes it when it stops waiting;
+# `bash scripts/run-status.sh --all` prints the no-argument lines, then one
+# `waiting` line per BELIEVED record, a count line and the `predates` line.
+# Every line is C-2's, compared whole; stdout and stderr apart.
+#
+# RED: --all is a usage error and no record is written. Every answer
+# assertion fails ONE assertion per expected line whether --all is supported
+# or not, and every loop is over a fixed list, so the executed count is the
+# same in RED and GREEN. An assertion that a record is ABSENT is made only
+# beside the case's own sighting of it ("seen absent", C-2 "Presence before
+# absence"), and the byte-for-byte assertions that a reader or a sweep left
+# something alone are made only beside the evidence that the reader answered
+# or the sweep ran - so none of them passes on a tree that writes nothing.
+#
+# D, "a fourth tree where nothing runs", is the --changed tree Z: new_case
+# resets it, and no HARNESS-121 case runs anything in it but run-status.sh.
+# ===========================================================================
+
+D="$Z"
+
+# Live processes the planted cases own: eight, so that every planted record
+# of AC-3 (b) has a pid of its own and a combined case can hold all of them.
+for _v in WL1 WL2 WL3 WL4 WL5 WL6 WL7 WL8; do
+  hold_until_killed "$_v"; eval "BG=\"\$BG \$$_v\""
+done
+
+wrec()    { printf '%s/run-queue.waiter.%s' "$Q" "$1"; }   # <pid or name suffix>
+has_rec() { [ -f "$(wrec "$1")" ]; }
+# wrecs   The waiter records and their .tmp files in $Q, by name, or none.
+wrecs() {
+  local f o=""
+  for f in "$Q"/run-queue.waiter.*; do [ -e "$f" ] && o="$o ${f##*/}"; done
+  o="${o# }"; printf '%s' "${o:-none}"
+}
+# rplant <name suffix> <pid value|-none-> <since> <root> <command>   A
+# record by hand, in C-1's order: pid, since, command, root.
+rplant() {
+  mkdir -p "$Q"
+  { [ "$2" = -none- ] || printf 'pid\t%s\n' "$2"
+    printf 'since\t%s\ncommand\t%s\nroot\t%s\n' "$3" "$5" "$4"; } > "$(wrec "$1")"
+}
+# snaptree <dir>   Every regular file under <dir>, recursively (gate-logs/
+# included), path and exact bytes; no-dir if absent.
+snaptree() {
+  [ -d "$1" ] || { printf 'no-dir'; return 0; }
+  ( cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s:' "$f"; cat "$f"; printf '|'; done )
+}
+# states5   The four trees' .claude/state, for AC-5.
+states5() {
+  printf '%s#%s#%s#%s' "$(snaptree "$A/.claude/state")" "$(snaptree "$B/.claude/state")" \
+    "$(snaptree "$C/.claude/state")" "$(snaptree "$D/.claude/state")"
+}
+# same_file <a> <b>
+same_file() { if cmp -s "$1" "$2"; then printf same; else printf differs; fi; }
+# utc_after <since>   0 once the UTC second is past <since>.
+utc_after() { [ "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \> "$1" ]; }
+# since_of <answer file> <pid>   The since of the waiting line for <pid>.
+since_of() {
+  awk -v p="run-status: waiting: pid $2, since " 'index($0, p) == 1 { s = substr($0, length(p) + 1); sub(/, in .*/, "", s); print s; exit }' "$1" 2>/dev/null
+}
+# since_q1 <answer file>   The since of a no-argument queued line.
+since_q1() {
+  awk 'index($0, "run-status: queued: pid ") == 1 { s = $0; sub(/^run-status: queued: pid [0-9]+, waiting since /, "", s); sub(/: .*/, "", s); print s; exit }' "$1" 2>/dev/null
+}
+
+# C-2's list lines.
+s_wait()  { printf 'run-status: waiting: pid %s, since %s, in %s: %s' "$1" "$2" "$3" "$4"; }   # P S R C
+S_NONE='run-status: nothing is waiting in the machine queue.'
+S_ONE='run-status: 1 run is waiting.'
+s_many()  { printf 'run-status: %s runs are waiting, listed in the order they began to wait. Whichever polls first after the holder ends starts next; that need not be the first listed.' "$1"; }
+S_PRED='run-status: a run in a tree whose harness predates this list waits without appearing in it.'
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-1  asked with --all in the holder, in each waiter and in an idle tree: every waiter, in the order they began to wait"
+
+new_case
+hold_run hp "$A" w1-A scripts/gates.sh
+assert_eq "HARNESS-121 AC-1: precondition: A's full gates.sh holds the queue, its work in progress" yes "$HOLDING"
+rq_run bp "$B" w1-B scripts/gates.sh
+wait_until 60 is_queued "$W/w1-B.err"
+if wait_until 5 has_rec "$bp"; then seenB=seen; cp "$(wrec "$bp")" "$W/w1-B.rec"; else seenB=never-written; : > "$W/w1-B.rec"; fi
+wait_until 5 has_marker "$B"
+SINCE_B="$(rec_field "$(marker "$B")" since)"
+# C starts only once B's record is there and the UTC second has moved on
+# (C-2): bounded waits on the condition, never a fixed sleep.
+wait_until 5 utc_after "$SINCE_B"
+rq_run cp_ "$C" w1-C scripts/gates.sh
+wait_until 60 is_queued "$W/w1-C.err"
+if wait_until 5 has_rec "$cp_"; then seenC=seen; else seenC=never-written; fi
+wait_until 5 has_marker "$C"
+SINCE_C="$(rec_field "$(marker "$C")" since)"
+assert_eq "HARNESS-121 AC-1: precondition: B and then C have each printed their run-queue: queued: line" "1 1" \
+  "$(count_line "$(q1 scripts/gates.sh)" "$W/w1-B.err") $(count_line "$(q1 scripts/gates.sh)" "$W/w1-C.err")"
+assert_eq "HARNESS-121 AC-1: precondition: B began to wait in an earlier UTC second than C" yes \
+  "$(if [ -n "$SINCE_B" ] && [ "$SINCE_B" \< "$SINCE_C" ]; then printf yes; else printf 'no (%s / %s)' "$SINCE_B" "$SINCE_C"; fi)"
+assert_eq "HARNESS-121 AC-1: precondition: B's and C's run.lock record B's and C's pids, the queue lock A's" "$bp $cp_ $hp" \
+  "$(rec_field "$B/.claude/state/run.lock" pid) $(rec_field "$C/.claude/state/run.lock" pid) $(rec_field "$QL" pid)"
+
+assert_eq "HARNESS-121 C-1: while B waits, the queue directory holds run-queue.waiter.<B's pid>" seen "$seenB"
+assert_eq "HARNESS-121 C-1: the record is four TAB-separated lines: pid, since, command, root" \
+  "pid since command root" "$(rec_keys "$W/w1-B.rec")"
+assert_eq "HARNESS-121 C-1: the record's pid is the waiting script's own pid" "$bp" "$(rec_field "$W/w1-B.rec" pid)"
+assert_eq "HARNESS-121 C-1: the record's since is the since of B's run.queued, to the second (one date call)" \
+  "$SINCE_B" "$(rec_field "$W/w1-B.rec" since)"
+assert_eq "HARNESS-121 C-1: the record's command and root are the strings the queue lock would record" \
+  "scripts/gates.sh|$B" "$(rec_field "$W/w1-B.rec" command)|$(rec_field "$W/w1-B.rec" root)"
+
+cp "$QL" "$W/w1.qrec" 2>/dev/null || : > "$W/w1.qrec"
+T2="$(rec_field "$W/w1.qrec" started)"; R2="$(rec_field "$W/w1.qrec" root)"; C2="$(rec_field "$W/w1.qrec" command)"
+AT="$(rec_field "$A/.claude/state/run.lock" started)"; AC="$(rec_field "$A/.claude/state/run.lock" command)"
+BC="$(rec_field "$B/.claude/state/run.lock" command)"; CC="$(rec_field "$C/.claude/state/run.lock" command)"
+WB="$(s_wait "$bp" "$SINCE_B" "$B" scripts/gates.sh)"
+WC="$(s_wait "$cp_" "$SINCE_C" "$C" scripts/gates.sh)"
+HELD="$(s_held "$hp" "$T2" "$R2" "$C2")"
+
+rs_ask "$A" w1-askA --all
+rs_expect "HARNESS-121 AC-1 --all in A (the holder)" w1-askA \
+  "$(s_run "$hp" "$AT" "$AC")" "$HELD" "$WB" "$WC" "$(s_many 2)" "$S_PRED"
+rs_ask "$B" w1-askB --all
+rs_expect "HARNESS-121 AC-1 --all in B (the first waiter)" w1-askB \
+  "$(s_q1 "$bp" "$SINCE_B" "$BC")" "$(s_q2 "$hp" "$T2" "$R2" "$C2")" "$S_Q3" "$HELD" "$WB" "$WC" "$(s_many 2)" "$S_PRED"
+rs_ask "$C" w1-askC --all
+rs_expect "HARNESS-121 AC-1 --all in C (the second waiter)" w1-askC \
+  "$(s_q1 "$cp_" "$SINCE_C" "$CC")" "$(s_q2 "$hp" "$T2" "$R2" "$C2")" "$S_Q3" "$HELD" "$WB" "$WC" "$(s_many 2)" "$S_PRED"
+rs_ask "$D" w1-askD --all
+rs_expect "HARNESS-121 AC-1 --all in D (nothing runs there)" w1-askD \
+  "$(s_idle "$D")" "$HELD" "$WB" "$WC" "$(s_many 2)" "$S_PRED"
+rs_ask "$B" w1-askB0
+rs_eq "HARNESS-121 AC-1: the since on B's waiting line is the since on B's own no-argument queued line" \
+  "$(since_q1 "$W/w1-askB0.out")" "$(since_of "$W/w1-askD.out" "$bp")"
+assert_eq "HARNESS-121 AC-1: neither B's nor C's work has started after all four answers, and A is still running" \
+  "absent absent alive" "$(present "$B/m/k/started") $(present "$C/m/k/started") $(is_alive "$hp")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-2  one waiter through: held by it, the other listed alone; all ended: nothing waits, no record left"
+
+touch "$B/m/k/hold" "$C/m/k/hold"
+touch "$A/m/k/release"
+wait_bounded "$hp" 60
+assert_eq "HARNESS-121 AC-2: precondition: A finishes, exit 0" 0 "$WRC"
+either_started() { is_started "$B" || is_started "$C"; }
+wait_until 60 either_started
+if is_started "$B"; then fp="$bp"; ft="$B"; fseen="$seenB"; op="$cp_"; ot="$C"; osince="$SINCE_C"
+elif is_started "$C"; then fp="$cp_"; ft="$C"; fseen="$seenC"; op="$bp"; ot="$B"; osince="$SINCE_B"
+else fp=none; ft=none; fseen=never-written; op=none; ot=none; osince=none; fi
+assert_eq "HARNESS-121 AC-2: precondition: exactly one of B and C has started its work, through the queue" 1 \
+  "$(( $(if is_started "$B"; then echo 1; else echo 0; fi) + $(if is_started "$C"; then echo 1; else echo 0; fi) ))"
+cp "$QL" "$W/w2.qrec" 2>/dev/null || : > "$W/w2.qrec"
+rs_ask "$D" w2-askD --all
+rs_expect "HARNESS-121 AC-2 --all in D, one waiter through" w2-askD \
+  "$(s_idle "$D")" "$(s_held "$fp" "$(rec_field "$W/w2.qrec" started)" "$ft" scripts/gates.sh)" \
+  "$(s_wait "$op" "$osince" "$ot" scripts/gates.sh)" "$S_ONE" "$S_PRED"
+assert_eq "HARNESS-121 AC-2: the queue directory holds no record for the one that started (seen while it waited)" \
+  "seen absent" "$fseen $(present "$(wrec "$fp")")"
+touch "$B/m/k/release" "$C/m/k/release"
+wait_bounded "$bp" 60; w2b="$WRC $WTO"
+wait_bounded "$cp_" 60; w2c="$WRC $WTO"
+assert_eq "HARNESS-121 AC-2: precondition: B and C both finish within the bound, with the status they have alone ($SOLO_GATES)" \
+  "$SOLO_GATES no $SOLO_GATES no" "$w2b $w2c"
+rs_ask "$D" w2-endD --all
+rs_expect "HARNESS-121 AC-2 --all in D after all three ended" w2-endD "$(s_idle "$D")" "$(s_free "$QL")" "$S_NONE" "$S_PRED"
+rs_ask "$B" w2-endB --all
+rs_expect "HARNESS-121 AC-2 --all in B after all three ended" w2-endB "$(s_idle "$B")" "$(s_free "$QL")" "$S_NONE" "$S_PRED"
+assert_eq "HARNESS-121 AC-2: the queue directory holds no record at all, each having been seen while its run waited" \
+  "seen seen none" "$seenB $seenC $(wrecs)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-3 (a)  a waiter sent TERM exits 143, takes its record with it, and is no longer listed"
+
+# term_record <label> <script>   B queued behind a planted live holder.
+term_record() {
+  local lbl="$1" s="$2" p seen sn
+  new_case
+  qplant "$LIVE1" "$PLANT_STARTED" scripts/gates.sh "$A"
+  rq_run p "$B" "$lbl" "scripts/$s"
+  wait_until 60 is_queued "$W/$lbl.err"
+  assert_eq "$lbl: precondition: the run is queued" 1 "$(count_line "$(q1 "scripts/$s")" "$W/$lbl.err")"
+  if wait_until 5 has_rec "$p"; then seen=seen; else seen=never-written; fi
+  wait_until 5 has_marker "$B"; sn="$(rec_field "$(marker "$B")" since)"
+  rs_ask "$D" "$lbl-before" --all
+  rs_expect "$lbl: --all in D while it waits" "$lbl-before" \
+    "$(s_idle "$D")" "$(s_held "$LIVE1" "$PLANT_STARTED" "$A" scripts/gates.sh)" \
+    "$(s_wait "$p" "$sn" "$B" "scripts/$s")" "$S_ONE" "$S_PRED"
+  kill -TERM "$p" 2>/dev/null
+  wait_bounded "$p" 10
+  assert_eq "$lbl: its record was seen while it waited; it exits 143 on TERM; the record is gone" "seen 143 absent" \
+    "$seen $WRC $(present "$(wrec "$p")")"
+  rs_ask "$D" "$lbl-after" --all
+  rs_expect "$lbl: --all in D once it has exited" "$lbl-after" \
+    "$(s_idle "$D")" "$(s_held "$LIVE1" "$PLANT_STARTED" "$A" scripts/gates.sh)" "$S_NONE" "$S_PRED"
+}
+term_record "HARNESS-121 AC-3 (a) gates.sh waiter" gates.sh
+term_record "HARNESS-121 AC-3 (a) selftest.sh waiter" selftest.sh
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-3 (b)  listed means a live waiter its tree's run.lock records, never a file: one rule per planted record"
+
+assert_eq "HARNESS-121 AC-3 (b): precondition: the dead pid is gone and the eight planted pids are alive" \
+  "gone alive alive alive alive alive alive alive alive" \
+  "$(is_alive "$DEAD") $(is_alive "$WL1") $(is_alive "$WL2") $(is_alive "$WL3") $(is_alive "$WL4") $(is_alive "$WL5") $(is_alive "$WL6") $(is_alive "$WL7") $(is_alive "$WL8")"
+
+# The planted world. The queue is held by WL1, whose recorded root WR/h has a
+# run.lock recording WL1 too. Each bad record has a root of its own; the
+# control record CTL shares WR/2 with the rule-5 record, whose pid that
+# run.lock does not record.
+WR="$W/wr"
+WR_SINCE="2026-01-02T03:06:07Z"
+HELD_PLANT="$(s_held "$WL1" "$PLANT_STARTED" "$WR/h" "scripts/selftest.sh ghost")"
+wr_world() {
+  new_case
+  rm -rf "$WR"; mkdir -p "$WR/1" "$WR/2" "$WR/3" "$WR/5" "$WR/6" "$WR/7" "$WR/h"
+  qplant "$WL1" "$PLANT_STARTED" "scripts/selftest.sh ghost" "$WR/h"
+  lplant "$WR/h" "$WL1" "$PLANT_STARTED" "scripts/selftest.sh ghost"
+  lplant "$WR/1" "$DEAD" "$PLANT_STARTED" scripts/gates.sh
+  lplant "$WR/2" "$WL3"  "$PLANT_STARTED" scripts/gates.sh
+  lplant "$WR/5" "$WL5"  "$PLANT_STARTED" scripts/gates.sh
+  lplant "$WR/6" "$WL7"  "$PLANT_STARTED" scripts/gates.sh
+  lplant "$WR/7" "$WL8"  "$PLANT_STARTED" scripts/gates.sh
+}
+# The seven, each failing exactly one rule of C-2 and passing the other four.
+r_dead()    { rplant "$DEAD"     "$DEAD"     "$WR_SINCE" "$WR/1" scripts/gates.sh; }   # rule 3: not alive
+r_notlock() { rplant "$WL2"      "$WL2"      "$WR_SINCE" "$WR/2" scripts/gates.sh; }   # rule 5: run.lock records WL3
+r_nolock()  { rplant "$WL4"      "$WL4"      "$WR_SINCE" "$WR/3" scripts/gates.sh; }   # rule 5: no run.lock in WR/3
+r_holder()  { rplant "$WL1"      "$WL1"      "$WR_SINCE" "$WR/h" scripts/gates.sh; }   # rule 4: the queue holder
+r_nopid()   { rplant "$WL5"      not-a-pid   "$WR_SINCE" "$WR/5" scripts/gates.sh; }   # rule 2: no numeric pid
+r_differ()  { rplant "$WL6"      "$WL7"      "$WR_SINCE" "$WR/6" scripts/gates.sh; }   # rule 2: name WL6, pid WL7
+r_tmp()     { rplant "$WL8.tmp"  "$WL8"      "$WR_SINCE" "$WR/7" scripts/gates.sh; }   # rule 1: a .tmp
+r_ctl()     { rplant "$WL3"      "$WL3"      "$WR_SINCE" "$WR/2" "scripts/gates.sh ctl"; }   # passes all five
+
+# bad_case <label> <planter>...   The world, these records; --all in D lists none.
+bad_case() {
+  local lbl="$1" f; shift
+  wr_world
+  for f in "$@"; do "$f"; done
+  rs_ask "$D" "$lbl" --all
+  rs_expect "$lbl" "$lbl" "$(s_idle "$D")" "$HELD_PLANT" "$S_NONE" "$S_PRED"
+}
+bad_case "HARNESS-121 AC-3 (b) rule 3: a record whose pid is not running" r_dead
+bad_case "HARNESS-121 AC-3 (b) rule 5: a live pid its tree's run.lock does not record" r_notlock
+bad_case "HARNESS-121 AC-3 (b) rule 5: a live pid whose tree has no run.lock" r_nolock
+bad_case "HARNESS-121 AC-3 (b) rule 4: the pid that holds the queue, beside a run.lock recording it" r_holder
+bad_case "HARNESS-121 AC-3 (b) rule 2: a record with no numeric pid" r_nopid
+bad_case "HARNESS-121 AC-3 (b) rule 2: a record whose file name and recorded pid differ" r_differ
+bad_case "HARNESS-121 AC-3 (b) rule 1: a .tmp record" r_tmp
+bad_case "HARNESS-121 AC-3 (b) all seven together" r_dead r_notlock r_nolock r_holder r_nopid r_differ r_tmp
+
+describe "HARNESS-121 C-2  the planted waiter that IS believed: the control for the seven above"
+
+wr_world; r_ctl
+rs_ask "$D" w3-ctl --all
+rs_expect "HARNESS-121 C-2 the control record alone is listed" w3-ctl \
+  "$(s_idle "$D")" "$HELD_PLANT" "$(s_wait "$WL3" "$WR_SINCE" "$WR/2" "scripts/gates.sh ctl")" "$S_ONE" "$S_PRED"
+wr_world; r_dead; r_notlock; r_nolock; r_holder; r_nopid; r_differ; r_tmp; r_ctl
+rs_ask "$D" w3-ctl8 --all
+rs_expect "HARNESS-121 C-2 the seven and the control: only the control is listed" w3-ctl8 \
+  "$(s_idle "$D")" "$HELD_PLANT" "$(s_wait "$WL3" "$WR_SINCE" "$WR/2" "scripts/gates.sh ctl")" "$S_ONE" "$S_PRED"
+
+describe "HARNESS-121 C-2  believed records in ascending order of since, ties in ascending numeric pid"
+
+if [ "$WL4" -gt "$WL5" ]; then OBIG="$WL4"; OSMALL="$WL5"; else OBIG="$WL5"; OSMALL="$WL4"; fi
+o_world() {
+  wr_world; rm -rf "$WR/o1" "$WR/o2"
+  lplant "$WR/o1" "$OBIG"   "$PLANT_STARTED" scripts/gates.sh
+  lplant "$WR/o2" "$OSMALL" "$PLANT_STARTED" scripts/gates.sh
+}
+# The larger pid began to wait first: since order is not pid order.
+o_world
+rplant "$OBIG"   "$OBIG"   "2026-01-02T03:06:08Z" "$WR/o1" scripts/gates.sh
+rplant "$OSMALL" "$OSMALL" "2026-01-02T03:06:09Z" "$WR/o2" scripts/gates.sh
+rs_ask "$D" w3-ord --all
+rs_expect "HARNESS-121 C-2 two waiters, the larger pid earlier: listed by since" w3-ord \
+  "$(s_idle "$D")" "$HELD_PLANT" \
+  "$(s_wait "$OBIG" "2026-01-02T03:06:08Z" "$WR/o1" scripts/gates.sh)" \
+  "$(s_wait "$OSMALL" "2026-01-02T03:06:09Z" "$WR/o2" scripts/gates.sh)" "$(s_many 2)" "$S_PRED"
+o_world
+rplant "$OBIG"   "$OBIG"   "2026-01-02T03:06:08Z" "$WR/o1" scripts/gates.sh
+rplant "$OSMALL" "$OSMALL" "2026-01-02T03:06:08Z" "$WR/o2" scripts/gates.sh
+rs_ask "$D" w3-tie --all
+rs_expect "HARNESS-121 C-2 two waiters in the same second: the smaller pid first" w3-tie \
+  "$(s_idle "$D")" "$HELD_PLANT" \
+  "$(s_wait "$OSMALL" "2026-01-02T03:06:08Z" "$WR/o2" scripts/gates.sh)" \
+  "$(s_wait "$OBIG" "2026-01-02T03:06:08Z" "$WR/o1" scripts/gates.sh)" "$(s_many 2)" "$S_PRED"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-3 (c)  the next waiter sweeps dead records by name, and leaves a live waiter's alone"
+
+new_case
+qplant "$LIVE1" "$PLANT_STARTED" scripts/gates.sh "$A"
+rplant "$DEAD"     "$DEAD" "$WR_SINCE" "$W/wr/1" scripts/gates.sh
+rplant "$DEAD.tmp" "$DEAD" "$WR_SINCE" "$W/wr/1" scripts/gates.sh
+rplant abc         "$WL2"  "$WR_SINCE" "$W/wr/2" scripts/gates.sh
+rplant "$WL6"      "$WL6"  "$WR_SINCE" "$W/wr/6" "scripts/gates.sh live"
+rplant "$WL7.tmp"  "$WL7"  "$WR_SINCE" "$W/wr/6" "scripts/gates.sh live"
+cp "$(wrec "$WL6")" "$W/w4-live.rec"; cp "$(wrec "$WL7.tmp")" "$W/w4-live.tmp"
+assert_eq "HARNESS-121 AC-3 (c): precondition: the planted records are in the queue directory" \
+  "present present present present present" \
+  "$(present "$(wrec "$DEAD")") $(present "$(wrec "$DEAD.tmp")") $(present "$(wrec abc)") $(present "$(wrec "$WL6")") $(present "$(wrec "$WL7.tmp")")"
+rq_run sp "$B" w4-B scripts/gates.sh
+wait_until 60 is_queued "$W/w4-B.err"
+if wait_until 5 has_rec "$sp"; then sw=seen; else sw=never-written; fi
+assert_eq "HARNESS-121 AC-3 (c): the new waiter wrote its record, and the dead pid's record is gone" "seen absent" \
+  "$sw $(present "$(wrec "$DEAD")")"
+assert_eq "HARNESS-121 AC-3 (c): and so is the dead pid's .tmp" "seen absent" "$sw $(present "$(wrec "$DEAD.tmp")")"
+assert_eq "HARNESS-121 AC-3 (c): and so is a record whose name is not all digits" "seen absent" "$sw $(present "$(wrec abc)")"
+assert_eq "HARNESS-121 AC-3 (c): the live waiter's record is byte for byte what it was" "seen same" \
+  "$sw $(same_file "$W/w4-live.rec" "$(wrec "$WL6")")"
+assert_eq "HARNESS-121 AC-3 (c): a live pid's .tmp is byte for byte what it was" "seen same" \
+  "$sw $(same_file "$W/w4-live.tmp" "$(wrec "$WL7.tmp")")"
+# Every run-queue: line B printed is the queued line, its two companions or a
+# heartbeat: nothing about the sweep.
+other_rq() {
+  local a b c
+  a="$(q1 scripts/gates.sh)"; b="$(q2 "$LIVE1" "$PLANT_STARTED" "$A" scripts/gates.sh)"; c="$(q3 "$LIVE1" "$QL")"
+  rq_lines "$1" | HBR="$HB_RE" awk -v a="$a" -v b="$b" -v c="$c" -v h="$(hb_prefix "$LIVE1" "$A" scripts/gates.sh)" '
+    $0 == a || $0 == b || $0 == c { next }
+    index($0, h) == 1 && substr($0, length(h) + 1) ~ ENVIRON["HBR"] { next }
+    { n++ } END { print n + 0 }'
+}
+assert_eq "HARNESS-121 AC-3 (c): B printed its queued line once, and no run-queue: line says anything about either record" \
+  "seen 1 0" "$sw $(count_line "$(q1 scripts/gates.sh)" "$W/w4-B.err") $(other_rq "$W/w4-B.err")"
+kill -TERM "$sp" 2>/dev/null; wait_bounded "$sp" 10
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-4 (a), (b)  a run beside the holder is running, never listed, and neither writes a record"
+
+new_case
+hold_run hp "$A" w5-A scripts/gates.sh
+assert_eq "HARNESS-121 AC-4: precondition: A's full gates.sh holds the queue, its work in progress" yes "$HOLDING"
+cp "$QL" "$W/w5.qrec" 2>/dev/null || : > "$W/w5.qrec"
+T2="$(rec_field "$W/w5.qrec" started)"
+
+# beside_list <label> <script> [args...]   B started beside A, held; --all in B.
+beside_list() {
+  local lbl="$1" bp_; shift
+  rm -rf "$B/m/k"; mkdir -p "$B/m/k"; rm -f "$B"/.claude/state/run.lock* "$(marker "$B")"
+  hold_run bp_ "$B" "$lbl" "$@"
+  assert_eq "$lbl: precondition: B's run is in progress beside A, held" "yes alive" "$HOLDING $(is_alive "$hp")"
+  rs_ask "$B" "$lbl-ask" --all
+  rs_expect "$lbl" "$lbl-ask" \
+    "$(s_run "$bp_" "$(rec_field "$B/.claude/state/run.lock" started)" "$(rec_field "$B/.claude/state/run.lock" command)")" \
+    "$(s_held "$hp" "$T2" "$A" scripts/gates.sh)" "$S_NONE" "$S_PRED"
+  assert_eq "$lbl: at that moment the count line says nothing is waiting, and the queue directory holds no record (A's or B's)" \
+    "$S_NONE|none" "$(rs_line "$W/$lbl-ask.out" 3)|$(wrecs)"
+  touch "$B/m/k/release"; wait_bounded "$bp_" 60
+}
+beside_list "HARNESS-121 AC-4 (a) gates.sh --fast beside the holder" scripts/gates.sh --fast
+RQ_MODE=off
+beside_list "HARNESS-121 AC-4 (b) full gates.sh, HARNESS_RUN_QUEUE=off, beside the holder" scripts/gates.sh
+RQ_MODE=""
+touch "$A/m/k/release"; wait_bounded "$hp" 60
+assert_eq "HARNESS-121 AC-4: precondition: A then finishes, exit 0" 0 "$WRC"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-4 (c)  a waiter that goes on without the queue takes its record with it and is not listed"
+
+# Built as HARNESS-120's R-1 case: a planted live holder, B queued, the queue
+# lock then a directory, so B's next poll takes the `2)` exit and B works.
+new_case
+qplant "$LIVE1" "$PLANT_STARTED" "scripts/selftest.sh ghost" "/ghost/tree"
+touch "$B/m/k/hold"
+rq_run wp "$B" w6-B scripts/gates.sh
+wait_until 60 is_queued "$W/w6-B.err"
+if wait_until 5 has_rec "$wp"; then w6r=seen; else w6r=never-written; fi
+assert_eq "HARNESS-121 AC-4 (c): precondition: B is queued behind the planted holder" 1 \
+  "$(count_line "$(q1 scripts/gates.sh)" "$W/w6-B.err")"
+rm -f "$QL"; mkdir "$QL"
+wait_until 30 saw_cannot "$W/w6-B.err"
+if wait_until 30 is_started "$B"; then w6s=yes; else w6s=no; fi
+rm -f "$B/m/k/hold"
+assert_eq "HARNESS-121 AC-4 (c): precondition: with the queue lock a directory, B prints the cannot-use line once and starts its work" "1 yes" \
+  "$(count_line "$(cannot_line "$Q" scripts/gates.sh)" "$W/w6-B.err") $w6s"
+assert_eq "HARNESS-121 AC-4 (c): B's record, seen while it waited, is gone once it goes on without the queue" "seen absent" \
+  "$w6r $(present "$(wrec "$wp")")"
+# The first two lines are the no-argument answer at this moment, read out.
+rs_ask "$B" w6-ask0
+W6L1="$(rs_line "$W/w6-ask0.out" 1)"; W6L2="$(rs_line "$W/w6-ask0.out" 2)"
+rs_eq "HARNESS-121 AC-4 (c): precondition: the no-argument answer in B is running for B's pid, then 120's unreadable-lock line" \
+  "$(s_run "$wp" "$(rec_field "$B/.claude/state/run.lock" started)" scripts/gates.sh)|$(s_unread "$QL")" "$W6L1|$W6L2"
+rs_ask "$B" w6-ask --all
+rs_expect "HARNESS-121 AC-4 (c) --all in B, working without the queue" w6-ask "$W6L1" "$W6L2" "$S_NONE" "$S_PRED"
+touch "$B/m/k/release"; wait_bounded "$wp" 60
+rmdir "$QL" 2>/dev/null
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-5  --all changes nothing, creates nothing, never waits; one argument only"
+
+# A held queue, two live waiters (in A and C) and a dead record (in B).
+new_case
+rm -rf "$WR"; mkdir -p "$WR/h"
+qplant "$WL1" "$PLANT_STARTED" "scripts/selftest.sh ghost" "$WR/h"
+lplant "$A" "$WL2" "$PLANT_STARTED" scripts/gates.sh
+lplant "$C" "$WL3" "$PLANT_STARTED" scripts/gates.sh
+lplant "$B" "$DEAD" "$PLANT_STARTED" scripts/gates.sh
+rplant "$WL2"  "$WL2"  "2026-01-02T03:06:10Z" "$A" scripts/gates.sh
+rplant "$WL3"  "$WL3"  "2026-01-02T03:06:11Z" "$C" "scripts/selftest.sh --changed"
+rplant "$DEAD" "$DEAD" "2026-01-02T03:06:09Z" "$B" scripts/gates.sh
+q5="$(snapdir "$Q")"
+s5="$(states5)"
+rs_ask "$D" w7-same --all
+rs_expect "HARNESS-121 AC-5 --all with a held queue, two live waiters and a dead record" w7-same \
+  "$(s_idle "$D")" "$HELD_PLANT" \
+  "$(s_wait "$WL2" "2026-01-02T03:06:10Z" "$A" scripts/gates.sh)" \
+  "$(s_wait "$WL3" "2026-01-02T03:06:11Z" "$C" "scripts/selftest.sh --changed")" "$(s_many 2)" "$S_PRED"
+if [ "$(rs_line "$W/w7-same.out" 5)" = "$(s_many 2)" ]; then a5=answered; else a5=not-answered; fi
+assert_eq "HARNESS-121 AC-5: it answered, and the queue directory holds exactly the files, byte for byte, it held before" \
+  "answered same" "$a5 $(if [ "$q5" = "$(snapdir "$Q")" ]; then printf same; else printf differs; fi)"
+assert_eq "HARNESS-121 AC-5: it answered, and every tree's .claude/state holds exactly what it held before" "answered same" \
+  "$a5 $(if [ "$s5" = "$(states5)" ]; then printf same; else printf differs; fi)"
+assert_eq "HARNESS-121 AC-5: it answered, and the dead record is still there: the reader never sweeps" "answered present" \
+  "$a5 $(present "$(wrec "$DEAD")")"
+
+new_case; rm -rf "$W/q-absent"; RQ_DIR="$W/q-absent"
+rs_ask "$D" w7-absent --all
+RQ_DIR="$Q"
+rs_expect "HARNESS-121 AC-5 --all with an absent queue directory" w7-absent \
+  "$(s_idle "$D")" "$(s_free "$W/q-absent/run-queue.lock")" "$S_NONE" "$S_PRED"
+assert_eq "HARNESS-121 AC-5: it answered, and the queue directory is still absent afterwards" "$S_NONE absent" \
+  "$(rs_line "$W/w7-absent.out" 3) $(present "$W/q-absent")"
+
+new_case; RQ_DIR="<unset>"; RQ_NOHOME=1
+rs_ask "$D" w7-nohome --all
+rq_defaults
+rs_expect "HARNESS-121 AC-5 --all with neither HARNESS_RUN_QUEUE_DIR nor HOME: the cannot-be-located line is last" w7-nohome \
+  "$(s_idle "$D")" "$S_NOHOME"
+
+usage_case "HARNESS-121 AC-5 --all twice" --all --all
+usage_case "HARNESS-121 AC-5 --all and a tree path" --all "$A"
+usage_case "HARNESS-121 AC-5 a tree path and --all" "$A" --all
+usage_case "HARNESS-121 AC-5 --ALL" --ALL
+usage_case "HARNESS-121 AC-5 --all=" --all=
+usage_case "HARNESS-121 AC-5 all, without dashes" all
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-6  the list is named in CLAUDE.md's Running things command block, on a line of its own"
+
+assert_eq "HARNESS-121 AC-6: the Running things command block has one line beginning bash scripts/run-status.sh --all, then a # comment" 1 \
+  "$(count_span "bash scripts/run-status.sh --all" '^ +# [^ ]' "$W/rt.fence")"
+assert_eq "HARNESS-121 AC-6: it and HARNESS-120's no-argument line are two different lines of that block" 2 \
+  "$(awk -v p="bash scripts/run-status.sh" -v q="bash scripts/run-status.sh --all" '
+      (index($0, p) == 1 && substr($0, length(p) + 1) ~ /^ +# [^ ]/) ||
+      (index($0, q) == 1 && substr($0, length(q) + 1) ~ /^ +# [^ ]/) { n++ } END { print n + 0 }' "$W/rt.fence" 2>/dev/null)"
 
 summary "run-queue"
