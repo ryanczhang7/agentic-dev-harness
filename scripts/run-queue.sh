@@ -56,7 +56,8 @@
 # attempts first after a release wins. The temporary record exists only during
 # one attempt, so a waiter killed between attempts leaves nothing behind. To
 # ask whether a tree's run is waiting here, and behind what, run that tree's
-# `bash scripts/run-status.sh`.
+# `bash scripts/run-status.sh`; to list every run waiting here, from any tree,
+# `bash scripts/run-status.sh --all`.
 #
 # THE MARKER (HARNESS-120), <root>/.claude/state/run.queued, says a run in that
 # tree is waiting here. Three TAB-separated lines, the run lock's convention:
@@ -73,6 +74,29 @@
 # and run-status.sh calls it `running`. One left by SIGKILL is never cleaned
 # up and need not be: run-status.sh believes a marker only when its pid is the
 # live pid the tree's run.lock records.
+#
+# THE WAITER LIST (HARNESS-121), <queue dir>/run-queue.waiter.<pid>, beside the
+# queue lock, says the run with that $$ is waiting here. Four TAB-separated
+# lines, the queue lock's convention with since for started:
+#
+#   pid<TAB><the waiting script's $$>
+#   since<TAB><UTC, to the second: the marker's since, one date call>
+#   command<TAB>scripts/gates.sh
+#   root<TAB><the tree root, absolute>
+#
+# Written by run_queue_mark, to run-queue.waiter.<pid>.tmp and moved into place
+# with mv -f, so a reader never sees half a record; removed, with its .tmp, by
+# run_queue_unmark wherever the marker is - on taking the queue, on both exits
+# that go on without it, and in run_queue_release - iff it still records $$.
+# A run that does not wait never writes one. Immediately before writing its
+# own, a waiter sweeps every run-queue.waiter.<n> and .<n>.tmp whose <n> is not
+# all digits or not alive, judging by the name alone: that is the only cleanup
+# of records left by SIGKILL. Writing, removing and sweeping print nothing; a
+# record that cannot be written is not reported, and that run waits unlisted.
+# Which records are believed, and so listed, is scripts/run-status.sh's rule.
+# A killed waiter whose pid has been recycled, in a tree that has not run
+# since, is listed until the next waiter sweeps or that tree runs: kill -0's
+# limit, below. A tree on an older release waits without a record.
 #
 # STALE LOCKS are reclaimed by pid: a lock whose pid is not running (kill -0),
 # or which records no numeric pid, is removed with one line saying so, and
@@ -107,6 +131,7 @@ RUN_QUEUE_HELD=0
 RUN_QUEUE_FILE=""
 RUN_QUEUE_TMP=""
 RUN_QUEUE_MARK=""
+RUN_QUEUE_WAITER=""
 
 # run_queue_dir   Prints the queue lock's directory - HARNESS_RUN_QUEUE_DIR when
 # non-empty, else $HOME/.cache/agentic-harness - or returns 1 with neither set.
@@ -121,22 +146,55 @@ run_queue_dir() {
   fi
 }
 
-# run_queue_mark <root> <command>   Writes <root>/.claude/state/run.queued as
-# this run starts waiting. Silent; a marker that cannot be written is not an
-# error, and the run waits as it would without one.
+# run_queue_sweep <dir>   Removes every run-queue.waiter.<n> and
+# run-queue.waiter.<n>.tmp in <dir> whose <n> is not all digits or is not
+# alive. Judges by the name only, reads no record; silent; never fails.
+run_queue_sweep() {
+  local f n
+  for f in "$1"/run-queue.waiter.*; do
+    [ -e "$f" ] || continue
+    n="${f##*/run-queue.waiter.}"; n="${n%.tmp}"
+    case "$n" in
+      ''|*[!0-9]*) rm -f "$f" 2>/dev/null ;;
+      *) run_queue_alive "$n" || rm -f "$f" 2>/dev/null ;;
+    esac
+  done
+  return 0
+}
+
+# run_queue_mark <root> <command>   Writes <root>/.claude/state/run.queued and
+# <queue dir>/run-queue.waiter.<$$> as this run starts waiting, sweeping dead
+# waiter records first. Silent; a marker or record that cannot be written is
+# not an error, and the run waits as it would without one.
 run_queue_mark() {
-  local m="$1/.claude/state/run.queued"
+  local m="$1/.claude/state/run.queued" since dir w
+  since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   # Braced, so that a redirect that cannot open the file is silent too.
   if { printf 'pid\t%s\nsince\t%s\ncommand\t%s\n' \
-      "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" > "$m"; } 2>/dev/null; then
+      "$$" "$since" "$2" > "$m"; } 2>/dev/null; then
     RUN_QUEUE_MARK="$m"
+  fi
+  if dir="$(run_queue_dir)"; then
+    run_queue_sweep "$dir"
+    w="$dir/run-queue.waiter.$$"
+    RUN_QUEUE_WAITER="$w"
+    if { printf 'pid\t%s\nsince\t%s\ncommand\t%s\nroot\t%s\n' \
+        "$$" "$since" "$2" "$1" > "$w.tmp"; } 2>/dev/null; then
+      mv -f "$w.tmp" "$w" 2>/dev/null
+    fi
   fi
   return 0
 }
 
-# run_queue_unmark   Removes the marker iff this process wrote it and it still
-# records $$. A no-op otherwise; silent; never fails.
+# run_queue_unmark   Removes the waiter record and the marker, each iff this
+# process wrote it and it still records $$, and the record's .tmp. A no-op
+# otherwise; silent; never fails.
 run_queue_unmark() {
+  if [ -n "$RUN_QUEUE_WAITER" ]; then
+    rm -f "$RUN_QUEUE_WAITER.tmp" 2>/dev/null
+    if [ "$(run_queue_field "$RUN_QUEUE_WAITER" pid)" = "$$" ]; then rm -f "$RUN_QUEUE_WAITER" 2>/dev/null; fi
+    RUN_QUEUE_WAITER=""
+  fi
   [ -n "$RUN_QUEUE_MARK" ] || return 0
   if [ "$(run_queue_field "$RUN_QUEUE_MARK" pid)" = "$$" ]; then rm -f "$RUN_QUEUE_MARK" 2>/dev/null; fi
   RUN_QUEUE_MARK=""

@@ -5,7 +5,7 @@ slug: one-command-lists-every-run-waiting-in-t
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-121-one-command-lists-every-run-waiting-in-t
 depends_on: [HARNESS-120]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-status.sh, CLAUDE.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -599,6 +599,7 @@ name, below the table.
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-21, dispatched for `/plan-story`, while HARNESS-120 was at RED; no override was stated in the dispatch. (Restored: `plan.sh write` re-rendered this section on the re-plan and dropped the line.)
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-21, dispatched by `/advance-story` to re-plan on `main` at b30f2b6 after HARNESS-120 merged; no override was stated in the dispatch. Wrote only this file.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-21; no override.
+- GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-21; no override. Orchestrator checked both records with `attest.sh check`: `selftest.sh run-queue` fresh, exit 0, 898 passed 0 failed; `gates.sh --fast` fresh, exit 0. Neither re-run by hand.
 
 ## Out of scope
 
@@ -970,6 +971,73 @@ runs, adjusting the expression to the printf it wrote:
 Predicted: `1 line(s) changed`; exactly the **9** `prints exactly the usage
 line on stderr` assertions red (120's 3, 121's 6), every other assertion as
 in GREEN.
+
+**Run in GREEN, 2026-11-22, by the feature-developer (resolved Opus 5.5,
+`claude-opus-5-5`, no override).** The expression above needed no
+adjusting. Result as predicted: 1 line changed, exactly the 9 usage-line
+assertions red, `889 passed, 9 failed`, restored and verified; `mutate.sh
+--check` afterwards: `no stranded mutation`. Output (the `expected/actual`
+pair, identical for all nine, shown once):
+
+```
+=== mutate: scripts/run-status.sh (1 line(s) changed by s/usage: bash scripts\/run-status.sh \[--all\]/usage: bash scripts\/run-status.sh/) ===
+  61 -   printf 'usage: bash scripts/run-status.sh [--all]\n' >&2
+  61 +   printf 'usage: bash scripts/run-status.sh\n' >&2
+=== mutate: running bash .claude/tests/run-queue.test.sh ===
+    FAIL HARNESS-120 AC-5 an argument (--help): prints exactly the usage line on stderr
+         expected: usage: bash scripts/run-status.sh [--all]
+         actual:   usage: bash scripts/run-status.sh
+    FAIL HARNESS-120 AC-5 an argument (a tree path): prints exactly the usage line on stderr
+    FAIL HARNESS-120 AC-5 an empty argument: prints exactly the usage line on stderr
+    FAIL HARNESS-121 AC-5 --all twice: prints exactly the usage line on stderr
+    FAIL HARNESS-121 AC-5 --all and a tree path: prints exactly the usage line on stderr
+    FAIL HARNESS-121 AC-5 a tree path and --all: prints exactly the usage line on stderr
+    FAIL HARNESS-121 AC-5 --ALL: prints exactly the usage line on stderr
+    FAIL HARNESS-121 AC-5 --all=: prints exactly the usage line on stderr
+    FAIL HARNESS-121 AC-5 all, without dashes: prints exactly the usage line on stderr
+run-queue: 889 passed, 9 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-121/.claude/state/mutations/scripts_run-status.sh.20261122T045038Z.3458421.bak) ===
+  61:   printf 'usage: bash scripts/run-status.sh [--all]\n' >&2
+```
+
+### GREEN: the suite, and the controls measured (feature-developer, 2026-11-22)
+
+Suite on the GREEN tree: `run-queue: 898 passed, 0 failed`, floor met (898
+executed, 898 declared): the executed count RED predicted, unchanged.
+
+    run:      2026-11-22T04:45:04Z
+    command:  bash scripts/selftest.sh run-queue
+    tree:     5c87681f7cea5475bf28f2f2936fa9576db9fc0c
+    exit:     0
+    duration: 283s
+    last:     1 harness suite(s) passed.
+    log:      .claude/state/attest-logs/20261122T044504Z.3441842.log
+
+The controls, measured twice: by the suite (every whole-line comparison
+green), and once outside it, by a scratch script that rebuilt AC-3 (b)'s
+planted world (eight `sleep 300` pids, a reaped dead pid, the same roots and
+`run.lock` plantings) and asked the shipped `run-status.sh --all`, and that
+called the shipped `run_queue_mark` / `run_queue_unmark` over AC-3 (c)'s
+plantings. Every one matched RED's expected value; no divergence.
+
+| Control | Expected | Measured (scratch) |
+|---|---|---|
+| each of the seven bad records alone | 4 lines, 0 `waiting`, `nothing is waiting` | 4 lines, 0 `waiting`, `nothing is waiting`, for all seven |
+| all seven together | same | same |
+| the control record alone | 5 lines, its `waiting` line, `1 run is waiting.` | 5 lines, `run-status: waiting: pid <WL3>, since 2026-01-02T03:06:07Z, in <S>/wr/2: scripts/gates.sh ctl`, `1 run is waiting.` |
+| the seven + the control | the control's line only, `1 run is waiting.` | 5 lines, 1 `waiting`, `1 run is waiting.` |
+| AC-3 (c) sweep | dead, dead `.tmp`, `abc` removed; live record and live `.tmp` byte for byte | after `run_queue_mark`: `run-queue.lock`, the live record, the live `.tmp`, its own record; `cmp` same for both live files; after `run_queue_unmark` its own record gone |
+| AC-4 (a)/(b)/(c), AC-5 | as tabled above | suite only (green); not rebuilt outside it |
+
+Design notes for GATES: the record's `.tmp` is removed by
+`run_queue_unmark` whenever the run resolved a queue directory in
+`run_queue_mark`, whether or not the `mv -f` happened, so DV-1's no-op `mv`
+leaves no `.tmp` behind (the caveat above does not arise). DV-2's target is
+the line `  run_queue_alive "$WP" || continue                       # rule 3`
+in `scripts/run-status.sh`; `run_queue_alive "$WP"` occurs on no other line.
+`.claude/harness/VERSION` reads `140 (2026-11-21)`, the local calendar date
+of GREEN; C-6 asks for the date of the GATES commit, so GATES corrects it if
+that differs.
 
 ### Negative controls - expected values (claims until GREEN measures them)
 
