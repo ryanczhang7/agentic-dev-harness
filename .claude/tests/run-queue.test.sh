@@ -2027,7 +2027,33 @@ touch "$B/m/k/release"; wait_bounded "$wp" 60
 rmdir "$QL" 2>/dev/null
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-121 AC-5  --all changes nothing, creates nothing, never waits; one argument only"
+describe "HARNESS-121 R-1  a waiter whose run.queued cannot be written still takes its record with it"
+
+# C-1: run_queue_unmark's "no marker" early return must not skip the record.
+# B's run.queued is a directory before B queues, so the marker is never
+# written and RUN_QUEUE_MARK stays empty; the planted holder's lock is then
+# removed, so B takes the queue (the `0)` arm) and starts its work.
+new_case
+qplant "$LIVE1" "$PLANT_STARTED" scripts/gates.sh "$A"
+mkdir -p "$(marker "$B")"
+touch "$B/m/k/hold"
+rq_run r1p "$B" r1-B scripts/gates.sh
+wait_until 60 is_queued "$W/r1-B.err"
+if wait_until 5 has_rec "$r1p"; then r1r=seen; else r1r=never-written; fi
+r1m="$(if [ -d "$(marker "$B")" ] && [ -z "$(ls -A "$(marker "$B")" 2>/dev/null)" ]; then printf empty-dir; else printf not-empty-dir; fi)"
+assert_eq "HARNESS-121 R-1: precondition: B is queued behind the planted holder" 1 \
+  "$(count_line "$(q1 scripts/gates.sh)" "$W/r1-B.err")"
+assert_eq "HARNESS-121 R-1: while B waits its record is in the queue directory, and its run.queued is still an empty directory (no marker written)" \
+  "seen empty-dir" "$r1r $r1m"
+rm -f "$QL"
+if wait_until 30 is_started "$B"; then r1s=yes; else r1s=no; fi
+assert_eq "HARNESS-121 R-1: B's record, seen while it waited, is gone once B takes the queue and starts its work, though no marker was written" \
+  "seen yes absent" "$r1r $r1s $(present "$(wrec "$r1p")")"
+rm -f "$B/m/k/hold"; touch "$B/m/k/release"; wait_bounded "$r1p" 60
+rmdir "$(marker "$B")" 2>/dev/null
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-121 AC-5 --all changes nothing, creates nothing, never waits; one argument only"
 
 # A held queue, two live waiters (in A and C) and a dead record (in B).
 new_case

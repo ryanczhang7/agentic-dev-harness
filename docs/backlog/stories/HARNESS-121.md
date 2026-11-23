@@ -5,7 +5,7 @@ slug: one-command-lists-every-run-waiting-in-t
 epic: 
 type: feature
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-121-one-command-lists-every-run-waiting-in-t
 depends_on: [HARNESS-120]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-status.sh, CLAUDE.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -753,6 +753,8 @@ name, below the table.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-21; no override.
 - GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-21; no override. Orchestrator checked both records with `attest.sh check`: `selftest.sh run-queue` fresh, exit 0, 898 passed 0 failed; `gates.sh --fast` fresh, exit 0. Neither re-run by hand.
 - GATES, `feature-developer` (full `gates.sh`): planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-22; no override. `attest.sh check` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, did not queue. DV-1 to DV-4 were run by the orchestrator before it (results under `## Deferred verifications`).
+- DIFF-REVIEW round 1, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-22; no override. Verdict Ship, one Should fix routed RED (taken as R-1), one Nice to have routed RED (not taken).
+- RED R-1, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-22; no override. `attest.sh check` fresh for `selftest.sh run-queue` (exit 0, 901 passed) and `gates.sh --fast` (exit 0). It also changed the AC-5 `describe` title from two spaces to one after `AC-5`; nothing reads that title (grepped), so it was left.
 
 ## Out of scope
 
@@ -1299,6 +1301,13 @@ appended after them).
   record or a marker, 5 s for the UTC second to change, 20 s per answer,
   10 s after TERM). None was measured on CI.
 
+### R-1 (return to RED, 2026-11-22)
+
+- One case added, `HARNESS-121 R-1` (3 assertions), after AC-4 (c); test file only, no source touched. Floor `run-queue` 898 -> 901 in `.claude/tests/floors.conf` (with a comment) and its mirror in `.claude/tests/selftest.test.sh`. Details and the earning mutation are under `## Regressions`, R-1.
+- `bash scripts/attest.sh -- bash scripts/selftest.sh run-queue`: exit 0, 472 s (local, Windows host, another tree's `gates.sh` running), `last:     1 harness suite(s) passed.`, log `.claude/state/attest-logs/20261123T053430Z.3571292.log`: `run-queue: 901 passed, 0 failed`, floor met (901 executed, 901 declared).
+- `bash scripts/attest.sh -- bash scripts/gates.sh --fast`: exit 0, `last:` `All required gates passed (0 ran, 5 unconfigured, 0 known).`, log `.claude/state/attest-logs/20261123T054921Z.3611050.log`.
+- GREEN should be a no-op: `run_queue_unmark` already removes the record before its "no marker" return.
+
 ## Regressions
 
 <!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
@@ -1336,6 +1345,76 @@ appended after them).
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+
+### R-1 (the waiter record is removed when the marker could not be written)
+
+**Adjudicated R-1:** `fable` (resolved Fable 5.2, `claude-fable-5-2`), 2026-11-22, diff review round 1, finding 1
+
+- **Which test, and what was missing:** no test was wrong; one was absent. Every waiter in the suite writes its `run.queued` marker, so nothing distinguishes `run_queue_unmark` removing the waiter record before its "no marker" early return (what C-1 requires) from removing it after.
+- **How it was found:** the diff review, round 1, finding 1, by reading the suite.
+- **What it asserts now:** a new case, `HARNESS-121 R-1  a waiter whose run.queued cannot be written still takes its record with it`, in `.claude/tests/run-queue.test.sh` between AC-4 (c) and AC-5. Tree B's `.claude/state/run.queued` is made a directory before B queues, so `run_queue_mark` cannot write the marker and `RUN_QUEUE_MARK` stays empty. B's full `gates.sh` queues behind a planted live holder (`LIVE1`); the planted lock is then removed, so B takes the queue (the `0)` arm, which calls `run_queue_unmark`) and starts its work. Three assertions (898 -> 901):
+  1. precondition: B printed its `run-queue: queued:` line once;
+  2. while B waits, `<queue dir>/run-queue.waiter.<B's pid>` is present and `run.queued` is still an empty directory (no marker written): `seen empty-dir`;
+  3. once B has started its work, that record is gone: `seen yes absent`.
+  Every wait reuses the suite's existing bounds (60 s to queue, 5 s for the record, 30 s to start, 60 s to finish); no fixed sleep. The case removes the directory afterwards, since `new_case`'s `rm -f` cannot.
+- **What earns it:** one mutation, moving the "no marker" early return above the record block (the first statement of `run_queue_unmark`'s body), against the suite alone. Exactly the new assertion 3 goes red; assertions 1 and 2 and the other 898 stay green. Restore verified by `mutate.sh`; `bash scripts/mutate.sh --check` afterwards: `mutate: no stranded mutation; nothing of a previous run is in the tree.`
+
+```
+$ bash scripts/mutate.sh scripts/run-queue.sh 's/^run_queue_unmark() {$/run_queue_unmark() { [ -n "$RUN_QUEUE_MARK" ] || return 0;/' -- bash .claude/tests/run-queue.test.sh
+=== mutate: scripts/run-queue.sh (1 line(s) changed by s/^run_queue_unmark() {$/run_queue_unmark() { [ -n "$RUN_QUEUE_MARK" ] || return 0;/) ===
+  192 - run_queue_unmark() {
+  192 + run_queue_unmark() { [ -n "$RUN_QUEUE_MARK" ] || return 0;
+    FAIL HARNESS-121 R-1: B's record, seen while it waited, is gone once B takes the queue and starts its work, though no marker was written
+         expected: seen yes absent
+         actual:   seen yes present
+run-queue: 900 passed, 1 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-121/.claude/state/mutations/scripts_run-queue.sh.20261123T054236Z.3591213.bak) ===
+  192: run_queue_unmark() {
+```
+- **GREEN:** (filled in at GREEN)
+
+## Diff review
+
+### Round 1 (2e04569, against merge-base b30f2b6)
+
+Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-22; no override. Changed no file. Report pasted as returned.
+
+What this change does: A run that starts waiting in the machine queue now writes a small record, `<queue dir>/run-queue.waiter.<pid>`, beside the queue lock, and removes it wherever it stops waiting. `bash scripts/run-status.sh --all` prints the tree's usual lines, then one `waiting` line per record it believes (five rules), a count line and a closing line. Before writing its own record, a new waiter deletes records whose pid is dead or whose name is not a number.
+
+What I checked: the whole production diff (`scripts/run-queue.sh`, `scripts/run-status.sh`, `CLAUDE.md`, `VERSION`, both floors) and the new test block against the Acceptance criteria, Contract C-1 to C-7, Out of scope and the DV results; the one `run_queue_mark` call and all four `run_queue_unmark` calls (`scripts/run-queue.sh:297, 303, 342, 354`); `run_queue_acquire`/`run_queue_release` through `scripts/run-lock.sh:141, 214`; the traps and shell options in `scripts/gates.sh:61, 286-289` and `scripts/selftest.sh:115, 512-515`. Load assumed: one user, a handful of concurrent sessions and worktrees on one machine, so at most a few records.
+
+What held up, so the orchestrator need not re-ask:
+- Signals. `RUN_QUEUE_WAITER` is set before the `.tmp` is written, so a TERM or INT at any point after that removes both the `.tmp` and the record through the EXIT trap. Neither caller sets `-e`, so a failed `mv` or `rm` cannot end a run; both set `-u`, and every new variable is initialised.
+- The four unmark sites. All four reach the record with no new call. In the instant between taking the queue and unmarking, rule 4 keeps the new holder off the list.
+- Two waiters at once. A sweep judges by name and liveness only, so it never removes a live waiter's record or `.tmp`; two sweeps removing the same dead file is harmless. The record name carries the pid, so writers never share a name.
+- `--all` is read-only: no write, no mkdir, no rm, no lock, no sleep; an absent queue directory leaves the glob unexpanded and is skipped by rule 1.
+- Line text, order and the `cannot be located` case match C-2 exactly; the usage line and exit 2 match; the no-argument path is byte for byte the old code.
+- Bash 3.2 and Git Bash: only parameter expansion, `case`, `kill -0`, `awk`, `sort`, `cut`, `mv`, `rm`.
+
+**Should fix:**
+
+1. **The record's removal when no marker was written has no test** (`scripts/run-queue.sh:192-202`)
+   - **What this is:** `run_queue_unmark`, which removes the waiter record and then the per-tree marker (`run.queued`). Contract C-1 says in so many words that the early return for "no marker" must not skip the record.
+   - **Problem:** Every waiter in the suite writes its marker, so nothing tells the two orders apart. Case: tree B's `.claude/state/run.queued` cannot be written (it is a directory, say); B waits, its record is written, and B then goes on. If the record block were moved below `[ -n "$RUN_QUEUE_MARK" ] || return 0`, the record would stay and the suite would stay green. On the two "runs without the machine-wide queue" exits B would then be listed as waiting while it works. Confirmed by reading the suite (no case makes a marker unwritable), not by a mutation run.
+   - **Fix:** One case in `.claude/tests/run-queue.test.sh`: make `run.queued` a directory in B before B queues, see B's record present while it waits, release the holder, assert the record is gone once B starts. Earn it with one `mutate.sh` run that inserts the early return above the record block. The floors in `.claude/tests/floors.conf` and `.claude/tests/selftest.test.sh` move with it.
+   - **If we skip it:** The one ordering the Contract singles out is held only by a comment, and the natural tidy-up ("return early when nothing was marked") breaks AC-4 (c)'s promise unnoticed.
+   - **Route:** RED
+
+**Nice to have:**
+
+2. **The tie order "ascending numeric pid" cannot fail in practice** (`.claude/tests/run-queue.test.sh`, the "two waiters in the same second" case; `scripts/run-status.sh:144`)
+   - **What this is:** The assertion that two waiters with the same `since` are listed smaller pid first.
+   - **Problem:** The two planted pids are live pids of the suite's own, which have the same number of digits on any one run. For such pids, text order, numeric order and the glob's own file order are the same, so dropping `-k2,2n` (or the `n`) leaves the case green. It differs only for, say, pids 99999 and 100000.
+   - **Fix:** In `.claude/tests/run-queue.test.sh`, plant one of the two with a leading zero in the file name, the recorded pid and its `run.lock` alike (`0<bigger pid>`), so text order and numeric order disagree; check first that `kill -0` accepts the leading zero on Git Bash. Or leave it.
+   - **If we skip it:** A wrong order within one second, for pids of different lengths. Cosmetic.
+   - **Route:** RED
+
+Not checked: the suite was not re-run by me (`attest.sh check -- bash .claude/tests/run-queue.test.sh` answers `none` on this tree; the DV results in the story show 898 executed); `mv -f` over a record another process holds open on Windows was reasoned about, not run.
+
+Verdict: Ship.
+
+**Orchestrator's disposition (2026-11-22).** Finding 1 is followed: the story returns to RED as R-1, because the Contract names this ordering explicitly and HARNESS-120 took the same kind of finding the same way. Finding 2 is not followed: it is cosmetic by the reviewer's own account, and a leading-zero pid depends on `kill -0` behaviour not yet checked on this host; left for `/audit-mutations`. `classify.sh` on the fix's paths (below) gives `harness` for all three, which both phases may write, so the `RED` label decides.
 
 ## Gate results
 
