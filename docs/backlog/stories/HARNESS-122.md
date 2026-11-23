@@ -598,3 +598,4 @@ name, below the table.
   `HARNESS-121.md` (a different story) during planning; this is HARNESS-122
   on the coordinator's word, re-checked free immediately before
   `new-story.sh`.
+- **Confirmed on `main` at 40cb34f (2026-11-23), before RED, by the orchestrator.** HARNESS-120 (PR #210, release 139) and HARNESS-121 (PR #211, release 140) have both merged, so the in-flight note above no longer applies and nothing else declares this story's files. `git diff --stat 5dd9d69 40cb34f -- scripts/tidy.sh .claude/tests/tidy.test.sh scripts/phase.sh scripts/plan.sh` is empty: the Contract's line references (`scripts/phase.sh:200-201`, `scripts/plan.sh:803`) and the `tidy` floor of 128 (`floors.conf:71`, `selftest.test.sh:563`) hold as written. `.claude/harness/VERSION` is `140 (2026-11-22)`, so C-10's next free release is 141 unless another story takes it first. No re-plan was dispatched: no criterion, contract block or caller changed.
