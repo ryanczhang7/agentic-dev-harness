@@ -165,6 +165,7 @@ bash scripts/gates.sh --fast     # every gate not marked `slow` — for RED and 
 bash scripts/gates.sh --gate unit
 bash scripts/attest.sh -- CMD        # run CMD, record it against the tree; `check -- CMD` instead of a re-run
 bash scripts/run-status.sh       # is this tree's run running or queued, and behind what?
+bash scripts/run-status.sh --all # that, and every run waiting in the machine queue, from any tree
 bash scripts/check-boundaries.sh # the other half of CI: the commit, not the code
 bash scripts/check-sigpipe.sh   # refuse a pipefail SIGPIPE matcher, tree-wide
 bash scripts/check-grep-count.sh # refuse a printing `grep -c` fallback
