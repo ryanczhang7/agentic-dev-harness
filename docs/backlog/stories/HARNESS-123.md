@@ -4,8 +4,8 @@ title: Tidy suite pins dot-named folders and rule 3's path prefix
 slug: tidy-suite-pins-dot-named-folders-and-ru
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-123-tidy-suite-pins-dot-globs-and-rule3-prefix
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/tidy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -330,6 +330,46 @@ line, and `mutate.sh`'s line saying the file was restored.
   census). Every other assertion passes, HARNESS-122's dot-names block
   included. **Owner: RED.**
 
+  Result (RED, 2026-11-23, Windows host, local; matches the prediction exactly). As it came out, describe headings and blank lines dropped:
+
+```
+$ bash scripts/mutate.sh scripts/tidy.sh '171s/ \.\[!\.\]\* \.\.?\*//' -- bash scripts/selftest.sh tidy
+=== mutate: scripts/tidy.sh (1 line(s) changed by 171s/ \.\[!\.\]\* \.\.?\*//) ===
+  171 -   names="$(cd "$MAIN/.claude/worktrees" && for d in * .[!.]* ..?*; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+  171 +   names="$(cd "$MAIN/.claude/worktrees" && for d in *; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+=== mutate: running bash scripts/selftest.sh tidy ===
+selftest: 2 other test run(s) are on this host; expect this run to be slower, not wrong:
+selftest:   pid 201895: bash scripts/gates.sh --fast
+selftest:   pid 216693: bash scripts/gates.sh --fast
+=== tidy ===
+    FAIL HARNESS-123 AC-1: an empty orphan whose name starts with one dot (.o-hid) gets its ORPHAN pair, ORPHAN <path>  empty
+         expected: 1
+         actual:   0
+    FAIL HARNESS-123 AC-1: an orphan holding one file whose name starts with two dots (..o-two) gets its ORPHAN pair, ORPHAN <path>  1 file(s)
+         expected: 1
+         actual:   0
+    FAIL HARNESS-123 AC-1: the whole report is the ORPHAN pairs of ..o-two, .o-hid, o-plain in LC_ALL=C order, then the census 0 / 0 / 0 / 0
+         expected:
+         ORPHAN C:/Users/ryanc/AppData/Local/Temp/tmp.TDkq7ejKfN/h122/orph/main/.claude/worktrees/..o-two  1 file(s)
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.TDkq7ejKfN\h122\orph\main\.claude\worktrees\..o-two' -Recurse -Force
+         ORPHAN C:/Users/ryanc/AppData/Local/Temp/tmp.TDkq7ejKfN/h122/orph/main/.claude/worktrees/.o-hid  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.TDkq7ejKfN\h122\orph\main\.claude\worktrees\.o-hid' -Recurse -Force
+         ORPHAN C:/Users/ryanc/AppData/Local/Temp/tmp.TDkq7ejKfN/h122/orph/main/.claude/worktrees/o-plain  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.TDkq7ejKfN\h122\orph\main\.claude\worktrees\o-plain' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         actual:
+         ORPHAN C:/Users/ryanc/AppData/Local/Temp/tmp.TDkq7ejKfN/h122/orph/main/.claude/worktrees/o-plain  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.TDkq7ejKfN\h122\orph\main\.claude\worktrees\o-plain' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         stderr: 
+tidy: 203 passed, 3 failed
+FAIL tidy  did 203 units of work, below the floor of 206 in .claude/tests/floors.conf
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-123/.claude/state/mutations/scripts_tidy.sh.20261123T231938Z.219397.bak) ===
+  171:   names="$(cd "$MAIN/.claude/worktrees" && for d in * .[!.]* ..?*; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+```
+
 - **DV-2 (AC-2): both STRAY loops stop seeing two-dot names.** Expression
   `193s/ \.\.?\*//;207s# "\$s"/\.\.?\*##`, one run changing two lines. The
   suite **must** fail in exactly three assertions, all in HARNESS-122's
@@ -339,11 +379,90 @@ line, and `mutate.sh`'s line saying the file was restored.
   `v-hidden` must still get their pairs: that is the evidence the mutation
   removed `..?*` alone. **Owner: RED.**
 
+  Result (RED, 2026-11-23, Windows host, local; matches the prediction exactly). As it came out, describe headings and blank lines dropped:
+
+```
+$ bash scripts/mutate.sh scripts/tidy.sh '193s/ \.\.?\*//;207s# "\$s"/\.\.?\*##' -- bash scripts/selftest.sh tidy
+=== mutate: scripts/tidy.sh (2 line(s) changed by 193s/ \.\.?\*//;207s# "\$s"/\.\.?\*##) ===
+  193 - strays="$(cd "$P/" && for d in * .[!.]* ..?*; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+  193 + strays="$(cd "$P/" && for d in * .[!.]*; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+  207 -   for d in "$s"/* "$s"/.[!.]* "$s"/..?*; do
+  207 +   for d in "$s"/* "$s"/.[!.]*; do
+=== mutate: running bash scripts/selftest.sh tidy ===
+=== tidy ===
+    FAIL HARNESS-123 AC-2: a stray-shaped folder whose own name starts with two dots (..two) gets its STRAY pair
+         expected: 1
+         actual:   0
+    FAIL HARNESS-123 AC-2: a folder whose only ignored top-level directory starts with two dots (..cache) gets its STRAY pair
+         expected: 1
+         actual:   0
+    FAIL HARNESS-122 C-1 and C-2 rule 3, HARNESS-123 AC-2: the whole report is the STRAY pairs of ..two, .hidden, v-hidden, w-two in LC_ALL=C order, then the unchanged census
+         expected:
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.wtqn1XVXWi/h122/dot/..two  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.wtqn1XVXWi\h122\dot\..two' -Recurse -Force
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.wtqn1XVXWi/h122/dot/.hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.wtqn1XVXWi\h122\dot\.hidden' -Recurse -Force
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.wtqn1XVXWi/h122/dot/v-hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.wtqn1XVXWi\h122\dot\v-hidden' -Recurse -Force
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.wtqn1XVXWi/h122/dot/w-two  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.wtqn1XVXWi\h122\dot\w-two' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         actual:
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.wtqn1XVXWi/h122/dot/.hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.wtqn1XVXWi\h122\dot\.hidden' -Recurse -Force
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.wtqn1XVXWi/h122/dot/v-hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.wtqn1XVXWi\h122\dot\v-hidden' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         stderr: 
+tidy: 203 passed, 3 failed
+FAIL tidy  did 203 units of work, below the floor of 206 in .claude/tests/floors.conf
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-123/.claude/state/mutations/scripts_tidy.sh.20261123T232553Z.223890.bak) ===
+  193: strays="$(cd "$P/" && for d in * .[!.]* ..?*; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+  207:   for d in "$s"/* "$s"/.[!.]* "$s"/..?*; do
+```
+
 - **DV-3 (AC-3): rule 3 passes the bare name.** Expression
   `208s#"\./\${d#"${d#`. The suite **must** fail in exactly two assertions,
   both in HARNESS-122's rule-3 block: `c-magic` never named on a STRAY line
   (expected 0, actual 1) and the whole report (actual: `c-magic`'s pair,
   `r3-two`'s pair, the census). **Owner: RED.**
+
+  Result (RED, 2026-11-23, Windows host, local; matches the prediction exactly). As it came out, describe headings and blank lines dropped:
+
+```
+$ bash scripts/mutate.sh scripts/tidy.sh '208s#"\./\${d#"${d#' -- bash scripts/selftest.sh tidy
+=== mutate: scripts/tidy.sh (1 line(s) changed by 208s#"\./\${d#"${d#) ===
+  208 -     [ -d "$d" ] && [ ! -L "$d" ] && tops+=("./${d##*/}/")
+  208 +     [ -d "$d" ] && [ ! -L "$d" ] && tops+=("${d##*/}/")
+=== mutate: running bash scripts/selftest.sh tidy ===
+selftest: 2 other test run(s) are on this host; expect this run to be slower, not wrong:
+selftest:   pid 228408: bash scripts/gates.sh
+selftest:   pid 231610: bash scripts/gates.sh
+=== tidy ===
+    FAIL HARNESS-123 AC-3: a folder whose only top-level directory is named :(top)node_modules is never named on a STRAY line - the name is a path, not pathspec magic
+         expected: 0
+         actual:   1
+    FAIL HARNESS-122 C-2 rule 3, HARNESS-123 AC-3: the whole report is r3-two's STRAY pair, then the unchanged census - c-magic and r3-none are not in it
+         expected:
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.nYO4dqMUrj/h122/r3/r3-two  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.nYO4dqMUrj\h122\r3\r3-two' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         actual:
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.nYO4dqMUrj/h122/r3/c-magic  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.nYO4dqMUrj\h122\r3\c-magic' -Recurse -Force
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.nYO4dqMUrj/h122/r3/r3-two  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.nYO4dqMUrj\h122\r3\r3-two' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         stderr: 
+tidy: 204 passed, 2 failed
+FAIL tidy  did 204 units of work, below the floor of 206 in .claude/tests/floors.conf
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-123/.claude/state/mutations/scripts_tidy.sh.20261123T233058Z.232125.bak) ===
+  208:     [ -d "$d" ] && [ ! -L "$d" ] && tops+=("./${d##*/}/")
+```
 
 If a run fails more assertions than listed, or fewer, that is a finding:
 paste it as it came out and say so. Do not adjust a fixture until the
@@ -411,6 +530,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-23; no override reported. The oracle partition is Contract C-5: all three criteria mechanical.
+- RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, `tidy: 206 passed, 0 failed`, 206 executed of 206 declared; `gates.sh --fast` fresh, exit 0 (vacuous); `mutate.sh --check` clean; `scripts/tidy.sh` untouched. The suite is green by design (C-6): every new assertion is earned by DV-1..DV-3, pasted, each failing exactly the predicted assertions (3, 3, 2). The removed lines in the test diff are the four assertions C-3 extends in place, each keeping what it asserted.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -456,6 +576,40 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One level: the `tidy` harness suite, `.claude/tests/tidy.test.sh`, which runs
+`scripts/tidy.sh` from a copy inside real throwaway repositories. This is the
+only level where the criteria apply, because the claims are about whole reports
+over a real parent directory. Every criterion is mechanical (C-5), so every
+needle is a whole line or a whole report, compared exactly. Every assertion is
+outside any conditional, so all of them run on every host.
+
+| # | Assertion (description, abridged) | AC | New / changed |
+|---|---|---|---|
+| 1 | fixture h122/orph: `.claude/worktrees/` holds `..o-two,.o-hid,o-plain`, git lists none under it, 1/0/0 files, the parent holds `main` only | AC-1 | new |
+| 2 | `.o-hid` gets its ORPHAN pair, `ORPHAN <path>  empty` + remove-it, as consecutive whole lines, once | AC-1 | new |
+| 3 | `..o-two` gets its ORPHAN pair, `ORPHAN <path>  1 file(s)` + remove-it, once | AC-1 | new |
+| 4 | whole report = pairs `..o-two`, `.o-hid`, `o-plain`, then `census 0 0 0 0` | AC-1 | new |
+| 5 | report mode exits 0 | AC-1 | new |
+| 6 | fixture `..two`: `h_shape` = `nogit\|unlisted\|files=0\|links=0\|resolving=0\|top=node_modules\|ignored=node_modules\|nested=2` | AC-2 | new |
+| 7 | fixture `w-two`: `h_shape` = `...\|top=..cache\|ignored=..cache\|nested=2` | AC-2 | new |
+| 8 | `..two` gets its STRAY pair (`h_pairs_of` = 1) | AC-2 | new |
+| 9 | `w-two` gets its STRAY pair | AC-2 | new |
+| - | h122/dot listing: `.hidden,main,v-hidden` -> `..two,.hidden,main,v-hidden,w-two` | AC-2 | changed |
+| - | h122/dot whole report: two pairs -> `..two`, `.hidden`, `v-hidden`, `w-two`, then census | AC-2 | changed |
+| 10 | fixture `c-magic`: h_shape's first six fields `nogit\|unlisted\|files=0\|links=0\|resolving=0\|top=:(top)node_modules`, then `bare=0\|prefixed=1` from `git -C "$MR" check-ignore -q --` on `':(top)node_modules/'` and `'./:(top)node_modules/'` | AC-3 | new |
+| 11 | `c-magic` is never named on a STRAY line (`h_stray_names` = 0) | AC-3 | new |
+| - | h122/r3 listing: `main,r3-none,r3-two` -> `c-magic,main,r3-none,r3-two` | AC-3 | changed |
+| - | h122/r3 whole report: expected value unchanged (`r3-two`'s pair, census); description now names AC-3 | AC-3 | changed (description only) |
+
+Count: eleven new, matching C-3, so the floor is 206 (Windows) / 208 (CI) as
+C-8 says. No Contract block needed amending. The two ORPHAN helpers C-3 allows
+(`h_opair`, `h_opairs_of`) are new and local to the AC-1 block; no existing
+helper changed.
+
+Every new assertion passed on arrival (the implementation exists), so each is
+earned by the mutation under its criterion's entry in `## Deferred
+verifications`.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -475,6 +629,124 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+**RED, 2026-11-23, `test-developer`, declared `opus`, resolved Opus 5.5
+(`claude-opus-5-5`); no override reported to me.**
+
+**GREEN writes nothing (Contract C-7).** This is a test-only story. There is
+no production change to make, `scripts/tidy.sh` is not edited by any phase,
+and nothing below asks GREEN to build anything. GREEN's job is to confirm the
+suite is green at the new floor (206 on this Windows host, 208 on CI, where
+rule 6's two `chmod 000` assertions run) and move on. At GATES: release
+`.claude/harness/VERSION` `141 (2026-11-23)` -> **142** with the real date (or
+the next free number if `main` has taken 142, recorded in `## Notes`), and the
+orchestrator's own DV-3 re-run against the committed tree, compared with the
+count pasted under DV-3 (`tidy: 204 passed, 2 failed`).
+
+**Command.** `bash scripts/selftest.sh tidy` (a single suite; it does not
+queue). The suite file is `.claude/tests/tidy.test.sh`.
+
+**Output, and why it is not a failure.** The implementation already exists,
+so every new assertion passed on its first run, and C-6 says that is the
+expected result. Recorded through attest:
+
+```
+$ bash scripts/attest.sh -- bash scripts/selftest.sh tidy
+status:   ok
+exit:     0
+duration: 452s
+last:     1 harness suite(s) passed.
+log:      .claude/state/attest-logs/20261123T231158Z.215271.log
+tree:     5bd119a0b9bcb44ef3bd5a477f404d4932f8e019
+...
+tidy: 206 passed, 0 failed
+assertion floors: all 1 suite(s) met their declared floor (206 assertions executed, 206 declared).
+1 harness suite(s) passed.
+```
+
+The red that earns those assertions is the three `mutate.sh` runs pasted
+under `## Deferred verifications` DV-1..DV-3. Each failed exactly the
+assertions its entry predicts, no more and no fewer:
+
+| DV | Mutation | Predicted failures | Measured | Count line |
+|---|---|---|---|---|
+| DV-1 | `:171` drops ` .[!.]* ..?*` | 3, AC-1 block: `.o-hid` pair (1 -> 0), `..o-two` pair (1 -> 0), whole report (`o-plain` pair + census) | those 3, exactly | `tidy: 203 passed, 3 failed` |
+| DV-2 | `:193` drops ` ..?*`, `:207` drops ` "$s"/..?*` | 3, dot-names block: `..two` pair, `w-two` pair, whole report (`.hidden`, `v-hidden`, census); `.hidden` and `v-hidden` pairs still pass | those 3, exactly; the `.hidden` and `v-hidden` pair assertions passed | `tidy: 203 passed, 3 failed` |
+| DV-3 | `:208` passes `${d##*/}/` without `./` | 2, rule-3 block: `c-magic` on a STRAY line (0 -> 1), whole report (gains `c-magic`'s pair before `r3-two`'s) | those 2, exactly | `tidy: 204 passed, 2 failed` |
+
+Each run ended with `mutate.sh`'s "restored (verified byte-for-byte ...)"
+line, and `bash scripts/mutate.sh --check` afterwards printed
+`mutate: no stranded mutation; nothing of a previous run is in the tree.`
+(exit 0). During DV-1 and DV-3, other sessions on this host were running
+`gates.sh`; the suite said so, and the counts are unaffected.
+
+**`gates.sh --fast`.** Every gate is unconfigured in this repository, so it
+judges nothing here; the `tidy` suite is held by its floor in the self-test,
+not by a gate.
+
+```
+$ bash scripts/attest.sh -- bash scripts/gates.sh --fast
+status:   ok
+exit:     0
+last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+log:      .claude/state/attest-logs/20261123T233649Z.236832.log
+```
+
+**One line per assertion** (the full table is `## Test plan`):
+
+- AC-1, new describe `HARNESS-123 AC-1` at the end of the file, parent `h122/orph`:
+  1. fixture fact: worktrees dir = `..o-two,.o-hid,o-plain`, none listed, files 1/0/0, parent = `main`
+  2. `.o-hid` ORPHAN pair (`empty`), once, as consecutive whole lines
+  3. `..o-two` ORPHAN pair (`1 file(s)`), once
+  4. whole report: `..o-two`, `.o-hid`, `o-plain` pairs, `census 0 0 0 0`
+  5. exit 0
+- AC-2, in HARNESS-122's dot-names block (`h122/dot`):
+  6. `..two` shape (`top=node_modules|ignored=node_modules|nested=2`)
+  7. `w-two` shape (`top=..cache|ignored=..cache|nested=2`)
+  8. `..two` STRAY pair
+  9. `w-two` STRAY pair
+  - changed: parent listing now `..two,.hidden,main,v-hidden,w-two`
+  - changed: whole report now four pairs, `..two`, `.hidden`, `v-hidden`, `w-two`
+- AC-3, in HARNESS-122's rule-3 block (`h122/r3`):
+  10. `c-magic` fact: h_shape's first six fields, then `bare=0|prefixed=1`
+  11. `c-magic` never on a STRAY line
+  - changed: parent listing now `c-magic,main,r3-none,r3-two`
+  - changed (description only): the whole report, whose expected value is unchanged
+
+**Files touched.**
+
+- `.claude/tests/tidy.test.sh`: the fixtures and assertions above. The
+  `h122/dot` `.gitignore` commit now adds `.venv/` and `..cache/` in one
+  commit (message `ignore .venv and ..cache`). Block comments say what each
+  addition pins. Two new helpers, `h_opair` and `h_opairs_of`, are local to
+  the AC-1 block. No existing helper changed.
+- `.claude/tests/floors.conf`: `tidy 195 -> 206` (line 71), plus the dated note at the end.
+- `.claude/tests/selftest.test.sh`: `tidy 195 -> 206` (line 563).
+- `docs/backlog/stories/HARNESS-123.md`: `## Test plan`, this handoff, and
+  the three results under `## Deferred verifications`.
+- Not touched: `scripts/tidy.sh` (it changed only inside the three
+  `mutate.sh` runs, each restored and verified), `.claude/harness/VERSION`
+  (that is GATES's job).
+
+**Export shape.** None. The suite runs `scripts/tidy.sh` as a program and
+pins only its stdout and its exit status. No interface changes.
+
+**Negative controls.**
+
+| Control | Where | Expected | Measured (this host, against the shipped script) |
+|---|---|---|---|
+| `o-plain` (matched by `*`) is still in the AC-1 report | AC-1 whole report | present under every mutation | present under DV-1 (the actual report was `o-plain`'s pair + census) |
+| `.hidden` / `v-hidden` keep their pairs when `..?*` is dropped | dot-names block | `h_pairs_of` = 1 each | 1 each under DV-2 (both assertions passed) |
+| bare `:(top)node_modules/` is magic, `./`-prefixed is a path | `c-magic` fact | `bare=0\|prefixed=1` | `bare=0\|prefixed=1` (the fact assertion passed, unmutated and under every DV) |
+| `r3-two` still reported | rule-3 whole report | `r3-two`'s pair + census | as expected unmutated; under DV-3, still present after `c-magic`'s pair |
+
+Unlike an ordinary RED, these values were measured inside the framework,
+against the real script, because the suite loads and runs.
+
+**Discovered.** Nothing changes the approach. The count is eleven, as C-3
+says, so no Contract block was amended. The tree hash attest recorded
+(`5bd119a…`) is the same for both runs; the story-file edits made between
+them are docs.
 
 ## Regressions
 
