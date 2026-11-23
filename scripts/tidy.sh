@@ -200,20 +200,22 @@ while IFS= read -r name; do
   done
   [ "$listed" = 1 ] && continue
   { [ -e "$s/.git" ] || [ -L "$s/.git" ]; } && continue
-  # One check-ignore per directory: git refuses -q with more than one path.
-  ignored=0
+  # One check-ignore over every top-level directory: without -q git takes many
+  # paths, and exits 0 when any is ignored, 1 when none is.
+  tops=()
   for d in "$s"/* "$s"/.[!.]* "$s"/..?*; do
-    [ -d "$d" ] && [ ! -L "$d" ] || continue
-    if git -C "$MAIN" check-ignore -q -- "${d##*/}/" 2>/dev/null; then ignored=1; break; fi
+    [ -d "$d" ] && [ ! -L "$d" ] && tops+=("${d##*/}/")
   done
-  [ "$ignored" = 1 ] || continue
+  [ "${#tops[@]}" -gt 0 ] || continue
+  git -C "$MAIN" check-ignore -- "${tops[@]}" >/dev/null 2>&1 || continue
   anyfile="$(find "$s" -type f -print -quit 2>/dev/null)" || continue
   [ -z "$anyfile" ] || continue
-  links="$(find "$s" -type l 2>/dev/null)" || continue
+  # Links NUL-delimited, so a name holding a newline is one name. A find that
+  # fails appends an empty record, which no path can be: unknown, so kept.
   live=0
-  while IFS= read -r l; do
-    if [ -n "$l" ] && [ -e "$l" ]; then live=1; break; fi
-  done <<< "$links"
+  while IFS= read -r -d '' l; do
+    if [ -z "$l" ] || [ -e "$l" ]; then live=1; break; fi
+  done < <(find "$s" -type l -print0 2>/dev/null || printf '\0')
   [ "$live" = 0 ] || continue
   REPORT+=("STRAY $s  empty")
   REPORT+=("  remove it: $(remove_cmd "$s")")
