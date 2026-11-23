@@ -980,6 +980,41 @@ assert_eq "HARNESS-122 AC-2: and those are the only two STRAY lines, in any spel
 has_line "HARNESS-122 AC-2 (c): the live worktree gets the worktree line it gets today" "KEEP $(wtp "$M1" c-live)  recent" "$out"
 
 # ===========================================================================
+describe "HARNESS-122 C-2 rule 3: a folder with several top-level directories is STRAY when ANY of them is ignored, not only the first"
+
+# R-1 (diff review round 1, finding 1). Every reported fixture above has
+# node_modules as its ONLY top-level directory, so nothing failed when rule 3
+# passed every top-level directory to one `check-ignore -q` (which git refuses
+# with more than one path: exit 128, hidden by 2>/dev/null), nor when only the
+# first directory was judged. Its own parent, because the criteria's parents
+# hold nothing but what each criterion names, and AC-1/AC-2 name "stray-shaped"
+# folders as holding the ONE top-level entry node_modules. r3-two holds aaa/
+# (not ignored) before node_modules/ (ignored) in glob order; r3-none holds two
+# directories neither of which is ignored, the control that a "two or more
+# directories" shortcut would report.
+h_parent r3
+HR="$H122/r3"; MR="$HR/main"
+mkdir -p "$HR/r3-two/aaa/x" "$HR/r3-two/node_modules/a/b" "$HR/r3-none/aaa/x" "$HR/r3-none/src/y"
+GR="$(line_no "$(porc_paths "$MR")" 1)"; PR="${GR%/*}"
+
+assert_eq "fixture h122/r3: the parent holds the main checkout and the two folders, nothing else" \
+  "main,r3-none,r3-two" "$(h_ls "$HR")"
+assert_eq "fixture r3-two: no .git, unlisted, no file, no link, two top-level directories aaa then node_modules, only node_modules ignored" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=aaa,node_modules|ignored=node_modules|nested=3" "$(h_shape "$MR" "$HR/r3-two")"
+assert_eq "fixture r3-none: no .git, unlisted, no file, no link, two top-level directories aaa and src, neither ignored" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=aaa,src|ignored=-|nested=2" "$(h_shape "$MR" "$HR/r3-none")"
+
+out="$(T "$MR" "$MR")"; rc=$?
+assert_eq "HARNESS-122 C-2 rule 3: a folder whose ignored top-level directory is its second, not its first, gets its STRAY pair" \
+  1 "$(h_pairs_of "$out" "$PR/r3-two")"
+assert_eq "HARNESS-122 C-2 rule 3: a folder with two top-level directories, neither ignored, is never named on a STRAY line" \
+  0 "$(h_stray_names "$out" "$PR/r3-none")"
+whole "HARNESS-122 C-2 rule 3: the whole report is r3-two's STRAY pair, then the unchanged census" \
+  "$(h_pair "$PR/r3-two")
+$(census 0 0 0 0)" "$out"
+assert_eq "HARNESS-122 C-2 rule 3: and report mode exits 0" 0 "$rc"
+
+# ===========================================================================
 describe "HARNESS-122 AC-3: STRAY pairs follow every ORPHAN line and precede every DELETABLE line, and the census does not count them"
 
 h_parent ac3
