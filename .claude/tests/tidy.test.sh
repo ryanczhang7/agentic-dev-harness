@@ -1015,6 +1015,42 @@ $(census 0 0 0 0)" "$out"
 assert_eq "HARNESS-122 C-2 rule 3: and report mode exits 0" 0 "$rc"
 
 # ===========================================================================
+describe "HARNESS-122 C-1 and C-2 rule 3: dot names count - a hidden folder is a candidate, and a hidden top-level directory is evidence"
+
+# R-2 (diff review round 2, finding 1). C-1 makes every directory in the
+# parent a candidate, "dot names included", and rule 3 judges every top-level
+# directory, hidden ones too. No fixture above has a dot-named folder, and the
+# fixtures' .gitignore holds only node_modules/, so dropping the dot globs
+# from either loop left the suite green. Its own parent, for R-1's reason.
+# .hidden is stray-shaped under a name starting with a dot; v-hidden's only
+# top-level directory is .venv, which this parent's main checkout (and only
+# it) ignores, committed so its tree is clean.
+h_parent dot
+HD="$H122/dot"; MD="$HD/main"
+printf '.venv/\n' >> "$MD/.gitignore"
+git -C "$MD" commit -qam 'ignore .venv' >/dev/null 2>&1
+mkdir -p "$HD/.hidden/node_modules/a/b" "$HD/v-hidden/.venv/a/b"
+GD="$(line_no "$(porc_paths "$MD")" 1)"; PD="${GD%/*}"
+
+assert_eq "fixture h122/dot: the parent holds the main checkout and the two folders, nothing else" \
+  ".hidden,main,v-hidden" "$(h_ls "$HD")"
+assert_eq "fixture .hidden: stray-shaped under a name that starts with a dot - no .git, unlisted, no file, no link, node_modules ignored" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=node_modules|ignored=node_modules|nested=2" "$(h_shape "$MD" "$HD/.hidden")"
+assert_eq "fixture v-hidden: no .git, unlisted, no file, no link, its only top-level directory .venv, which this parent's main checkout ignores" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=.venv|ignored=.venv|nested=2" "$(h_shape "$MD" "$HD/v-hidden")"
+
+out="$(T "$MD" "$MD")"; rc=$?
+assert_eq "HARNESS-122 C-1: a stray-shaped folder whose own name starts with a dot gets its STRAY pair" \
+  1 "$(h_pairs_of "$out" "$PD/.hidden")"
+assert_eq "HARNESS-122 C-2 rule 3: a folder whose only ignored top-level directory is hidden (.venv) gets its STRAY pair" \
+  1 "$(h_pairs_of "$out" "$PD/v-hidden")"
+whole "HARNESS-122 C-1 and C-2 rule 3: the whole report is .hidden's STRAY pair, then v-hidden's, then the unchanged census" \
+  "$(h_pair "$PD/.hidden")
+$(h_pair "$PD/v-hidden")
+$(census 0 0 0 0)" "$out"
+assert_eq "HARNESS-122 C-1 and C-2 rule 3: and report mode exits 0" 0 "$rc"
+
+# ===========================================================================
 describe "HARNESS-122 AC-3: STRAY pairs follow every ORPHAN line and precede every DELETABLE line, and the census does not count them"
 
 h_parent ac3

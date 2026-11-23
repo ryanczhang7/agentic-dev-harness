@@ -560,7 +560,7 @@ shipped-docs 24
 sigpipe 91
 spawns 69
 story 97
-tidy 188
+tidy 195
 worktree 73
 COUNTS
 assert_eq "and each records the executed count measured on this tree" "" "$wrong"

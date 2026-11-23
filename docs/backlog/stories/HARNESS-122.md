@@ -5,7 +5,7 @@ slug: tidy-reports-stray-sibling-folders-a-rem
 epic: 
 type: fix
 status: in-progress
-phase: GATES
+phase: RED
 branch: story/HARNESS-122-tidy-reports-stray-sibling-folders-a-rem
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -509,6 +509,7 @@ name, below the table.
 - RED R-1, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Added the C-2 rule 3 block (own parent `h122/r3`, 7 assertions), earned by three `mutate.sh` runs pasted in R-1. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, `tidy: 188 passed, 0 failed`; `gates.sh --fast` fresh, exit 0; `git diff -- scripts/` empty.
 - GREEN after R-1: a no-op, verified by the orchestrator. `git diff cfabd05 -- scripts/` is empty, and `attest.sh check -- bash scripts/selftest.sh tidy` is fresh on this tree, exit 0, `tidy: 188 passed, 0 failed`.
 - GATES findings 2 and 3, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Rule 3 back to one `check-ignore` call, without `-q`; rule 5 reads links NUL-delimited, a failed `find` appending an empty record that keeps the folder (rule 6). `tidy.sh` on `D:/`: 2.5-2.9 s before, 1.1-1.2 s after. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, 188/0; `attest.sh check -- bash scripts/gates.sh` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` (queued 9m07s behind `/d/manga-translator`). The newline-named link cannot be made on Windows, so finding 3 is unverified on this host.
+- RED R-2, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Added the dot-names block (own parent `h122/dot`, 7 assertions), earned by two line-addressed `mutate.sh` runs pasted in R-2. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, `tidy: 195 passed, 0 failed`; `gates.sh --fast` fresh, exit 0; `git diff -- scripts/` empty. GREEN after R-2 is a no-op on the same evidence.
 
 ## Out of scope
 
@@ -1030,6 +1031,143 @@ below.
 ### R-2 (no fixture has a dot-named folder or a hidden ignored directory)
 
 - **Adjudicated R-2:** `fable` (resolved claude-fable-5-2), 2026-11-23, diff review round 2, finding 1
+
+**Which test was missing, and what was wrong.** No assertion changed; one
+was absent. C-1 says the candidates are the directories in the parent, "dot
+names included", and C-2 rule 3 judges every top-level directory of a
+candidate, hidden ones too. `scripts/tidy.sh` does both with the `.[!.]*` and
+`..?*` globs, in the parent loop (`:193`) and in the top-level-directory loop
+(`:206`). But no fixture in `.claude/tests/tidy.test.sh` has a dot-named
+folder, and every fixture main checkout's `.gitignore` holds only
+`node_modules/`. So nothing failed when those globs were dropped from either
+loop, and a sibling `.hidden/node_modules/a`, or a folder whose only ignored
+directory is `.venv/`, would have gone unreported.
+
+**How it was found.** Diff review round 2, finding 1: with the dot globs
+dropped from both loops in a scratch copy of `d7605c3`, the suite still gave
+188 passed, 0 failed.
+
+**What it asserts now.** A new describe, "HARNESS-122 C-1 and C-2 rule 3: dot
+names count - a hidden folder is a candidate, and a hidden top-level
+directory is evidence", after R-1's, with 7 assertions in a parent of its
+own, `h122/dot`, for R-1's reason (the criteria's parents hold nothing but
+what each criterion names). That parent's main checkout, and only it, appends
+`.venv/` to its `.gitignore` and commits it, so its tree stays clean. No
+existing assertion was touched.
+- fixture `h122/dot` holds exactly `.hidden,main,v-hidden` (`h_ls`, `ls -A`);
+- fixture `.hidden` is `nogit|unlisted|files=0|links=0|resolving=0|top=node_modules|ignored=node_modules|nested=2`
+  (`h_shape`): stray-shaped, under a name starting with a dot;
+- fixture `v-hidden` is `nogit|unlisted|files=0|links=0|resolving=0|top=.venv|ignored=.venv|nested=2`:
+  its only top-level directory is hidden, and it is ignored;
+- `.hidden` gets its STRAY pair exactly once (`h_pairs_of`);
+- `v-hidden` gets its STRAY pair exactly once;
+- the whole report is `.hidden`'s pair, then `v-hidden`'s (`LC_ALL=C`
+  order), then `census 0 0 0 0` (`whole`);
+- report mode exits 0.
+
+Not pinned separately: the `..?*` glob (a name starting with two dots).
+Both mutations below drop it together with `.[!.]*`, as the finding did, and
+no fixture is named `..x`.
+
+Count: tidy 188 -> 195 executed on this host (197 on CI, with C-2 rule 6's
+two). `floors.conf` and `selftest.test.sh:563` have moved with it.
+
+**What earns it.** The tests pass on arrival against the current
+`scripts/tidy.sh`, so each new assertion that can be red is earned by
+mutation, run with `bash scripts/mutate.sh scripts/tidy.sh '<expr>' -- bash
+scripts/selftest.sh tidy`, on a Windows host, locally. Output is filtered
+for describe headings and the host-load notice; the FAIL lines, the counts
+and the mutate frame are as printed. ("below the floor of 195" appears
+because selftest's floor counts passes.)
+
+(1) The dot globs dropped from the parent loop (`:193`) only. The expression
+is line-addressed: without `193`, it also matches the ORPHAN loop at `:171`.
+`.hidden`'s pair and the whole report go red, and nothing else does.
+`v-hidden` is still reported.
+
+```
+=== mutate: scripts/tidy.sh (1 line(s) changed by 193s/for d in \* \.\[!\.\]\* \.\.?\*; do/for d in *; do/) ===
+  193 - strays="$(cd "$P/" && for d in * .[!.]* ..?*; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+  193 + strays="$(cd "$P/" && for d in *; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+=== mutate: running bash scripts/selftest.sh tidy ===
+=== tidy ===
+    FAIL HARNESS-122 C-1: a stray-shaped folder whose own name starts with a dot gets its STRAY pair
+         expected: 1
+         actual:   0
+    FAIL HARNESS-122 C-1 and C-2 rule 3: the whole report is .hidden's STRAY pair, then v-hidden's, then the unchanged census
+         expected:
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.5EXt35uo3O/h122/dot/.hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.5EXt35uo3O\h122\dot\.hidden' -Recurse -Force
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.5EXt35uo3O/h122/dot/v-hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.5EXt35uo3O\h122\dot\v-hidden' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         actual:
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.5EXt35uo3O/h122/dot/v-hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.5EXt35uo3O\h122\dot\v-hidden' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         stderr: 
+tidy: 193 passed, 2 failed
+FAIL tidy  did 193 units of work, below the floor of 195 in .claude/tests/floors.conf
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-122/.claude/state/mutations/scripts_tidy.sh.20261123T181636Z.73033.bak) ===
+  193: strays="$(cd "$P/" && for d in * .[!.]* ..?*; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+```
+
+(2) The dot globs dropped from the top-level-directory loop (`:206`) only.
+`v-hidden`'s pair and the whole report go red, and nothing else does.
+`.hidden` is still reported, since its own top-level directory is
+`node_modules`.
+
+```
+=== mutate: scripts/tidy.sh (1 line(s) changed by 206s/for d in "\$s"\/\* "\$s"\/\.\[!\.\]\* "\$s"\/\.\.?\*; do/for d in "$s"\/*; do/) ===
+  206 -   for d in "$s"/* "$s"/.[!.]* "$s"/..?*; do
+  206 +   for d in "$s"/*; do
+=== mutate: running bash scripts/selftest.sh tidy ===
+=== tidy ===
+    FAIL HARNESS-122 C-2 rule 3: a folder whose only ignored top-level directory is hidden (.venv) gets its STRAY pair
+         expected: 1
+         actual:   0
+    FAIL HARNESS-122 C-1 and C-2 rule 3: the whole report is .hidden's STRAY pair, then v-hidden's, then the unchanged census
+         expected:
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.1518eCimBw/h122/dot/.hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.1518eCimBw\h122\dot\.hidden' -Recurse -Force
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.1518eCimBw/h122/dot/v-hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.1518eCimBw\h122\dot\v-hidden' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         actual:
+         STRAY C:/Users/ryanc/AppData/Local/Temp/tmp.1518eCimBw/h122/dot/.hidden  empty
+           remove it: Remove-Item -LiteralPath '\\?\C:\Users\ryanc\AppData\Local\Temp\tmp.1518eCimBw\h122\dot\.hidden' -Recurse -Force
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         stderr: 
+tidy: 193 passed, 2 failed
+FAIL tidy  did 193 units of work, below the floor of 195 in .claude/tests/floors.conf
+assertion floors: 0 of 1 suite(s) met their declared floor.
+1 of 1 harness suite(s) FAILED.
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-122/.claude/state/mutations/scripts_tidy.sh.20261123T182314Z.78354.bak) ===
+  206:   for d in "$s"/* "$s"/.[!.]* "$s"/..?*; do
+```
+
+The fixture-fact assertions and the exit-status assertion are preconditions,
+and they are green under both mutations. Afterwards:
+
+```
+$ bash scripts/mutate.sh --check
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**Seen in passing, outside this finding.** A first, unaddressed version of
+mutation (1) also dropped the dot globs from the ORPHAN loop (`:171`, an
+earlier story's code). The result was the same 193/2, and only the two
+assertions above went red, so no assertion pins a dot-named orphan folder
+under `.claude/worktrees/` either. That is not this story's criterion, and it
+is left for the orchestrator to judge.
+
+**GREEN is a no-op.** R-2 changes only test paths
+(`.claude/tests/tidy.test.sh`, `.claude/tests/floors.conf`,
+`.claude/tests/selftest.test.sh`) and this story file. `scripts/tidy.sh` is
+untouched (`git diff --quiet -- scripts/tidy.sh` exits 0), and the suite
+passes against it. The attested run is below.
 
 ## Diff review
 
