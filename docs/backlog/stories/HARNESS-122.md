@@ -1224,6 +1224,19 @@ Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 
 
 **Orchestrator's disposition (2026-11-23).** `classify.sh`: `harness .claude/tests/tidy.test.sh`, `harness scripts/tidy.sh`; the labels decide. Finding 1 is followed as R-2: C-1 names dot names explicitly, and round 1's finding of the same kind was followed the same way. Findings 2 and 3 are followed in GATES after R-2, one `feature-developer` dispatch, both one-line changes the reviewer measured. Then the gates, and a third round over the R-2 and GATES diff.
 
+### Round 3 (2441a5b, against round 2's tip d7605c3)
+
+Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-23; no override. Changed no file; ran commands only in this worktree (read-only) and its scratchpad. Summary of the report as returned:
+
+- **Held up:** R-2 pins both dot-glob loops at the tip (scratch copies: dots dropped at `:193` lose `.hid` and `..two`, at `:207` lose `v` only; R-2's recorded `206s` was correct for `fa67cd3`); `.venv/` touches only `h122/dot/main/.gitignore`, and `h_shape`'s `ignored=.venv` asserts it took; `./<name>/` changes no result for any name that can be one path component (ordinary, hidden, two-dot, `-x`, `!keep`, `#x`, leading space, `...`, case-folded, tracked names), and fixes `:(top)`, `:(x` and `:!` (the tip and `d7605c3` print byte-identical reports over a nine-folder scratch parent); the two-NUL fallback runs only when `find` fails, so a readable folder reads as before, and every failure path now keeps the folder; floors 188 + 7 = 195 in both places, all outside conditionals, CI's 197 clears it.
+- **The ORPHAN loop's dot names (`:171`):** a follow-up, not this story: HARNESS-066's behaviour, claimed by no criterion or contract block here.
+- **Nice to have 1 (Route: RED):** nothing fails if `..?*` alone is dropped; fix a `..two/node_modules/a` folder in `h122/dot`. Best folded into the ORPHAN follow-up.
+- **Nice to have 2 (Route: RED):** the `./` prefix and the second NUL have no test; the first needs a CI-only `:(top)node_modules` fixture beside rule 6's, the second cannot be arranged. Also a follow-up candidate.
+- **Not checked:** nothing on Linux or macOS this round; the full suite not re-run (relied on the fresh attested run at the tip).
+- Verdict: Ship.
+
+**Orchestrator's disposition (2026-11-23).** Verdict Ship, no Must or Should fix. Nice to have 1 and 2 are not followed in this story, as the reviewer advises: they go, with the ORPHAN loop's dot-name gap, to one follow-up story offered to the user at close. `classify.sh` is not needed for findings not followed.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
