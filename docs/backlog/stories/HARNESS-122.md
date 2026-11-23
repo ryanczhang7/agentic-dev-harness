@@ -5,7 +5,7 @@ slug: tidy-reports-stray-sibling-folders-a-rem
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-122-tidy-reports-stray-sibling-folders-a-rem
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -438,6 +438,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 - PLANNED: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 1, `tidy: 168 passed, 13 failed`, all 13 HARNESS-122 pins, every HARNESS-066 assertion green; `gates.sh --fast` fresh, exit 0. The dispatch measured its controls against a throwaway STRAY candidate built in its scratchpad, never in the tree (handoff table). The AC-2 (e) fixture is a junction to a directory under Git for Windows and a file symlink elsewhere; put to the user with the RED report. Every junction target and every `rm` in the new block is under the suite's own `$WORK` (read by the orchestrator).
+- GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, `tidy: 181 passed, 0 failed`, 181 executed of 181 declared; `gates.sh --fast` fresh, exit 0 (vacuous: 0 ran). No test file changed (`git status`: only `scripts/tidy.sh` and this story). The one control GREEN owns ("all six rules", expected 181/0) measured 181/0; the mutation rows are GATES' DV entries.
 
 ## Out of scope
 
@@ -872,3 +873,5 @@ write DV mutations against a line unique to the STRAY loop.
   on the coordinator's word, re-checked free immediately before
   `new-story.sh`.
 - **Confirmed on `main` at 40cb34f (2026-11-23), before RED, by the orchestrator.** HARNESS-120 (PR #210, release 139) and HARNESS-121 (PR #211, release 140) have both merged, so the in-flight note above no longer applies and nothing else declares this story's files. `git diff --stat 5dd9d69 40cb34f -- scripts/tidy.sh .claude/tests/tidy.test.sh scripts/phase.sh scripts/plan.sh` is empty: the Contract's line references (`scripts/phase.sh:200-201`, `scripts/plan.sh:803`) and the `tidy` floor of 128 (`floors.conf:71`, `selftest.test.sh:563`) hold as written. `.claude/harness/VERSION` is `140 (2026-11-22)`, so C-10's next free release is 141 unless another story takes it first. No re-plan was dispatched: no criterion, contract block or caller changed.
+- **PO decision 1 (2026-11-23), AC-2 (e) on Git for Windows.** The user accepted the RED fixture's variant: without the symlink privilege the "link that resolves, its target a file outside the folder" is a junction to a directory outside the folder on Git for Windows, and a file symlink as written on CI's Linux. The rule both exercise is the same (a folder holding any link that resolves is never STRAY), so the criterion's text is unchanged and no `## Amendments` entry is needed. The user's words: "Yes, advance it", answering "Accept the Windows junction variant and advance HARNESS-122 to GREEN?".
+- **GREEN -> GATES (2026-11-23, feature-developer, resolved to Opus 5.5, `claude-opus-5-5`, no override).** The STRAY loop is `scripts/tidy.sh` lines 187-219, after the ORPHAN loop. Lines unique to it, for the deferred mutations (the ORPHAN loop's `[ "$known" = 1 ] && continue` is not among them, so a rule-1 sed must use `listed`): rule 1 `[ "$listed" = 1 ] && continue` (:201); rule 4 `[ -z "$anyfile" ] || continue` (:210, DV-3: replace it with `:`); the scan's input `done <<< "$strays"` (:219, DV-1: replace with `done <<< ""`). Rule 3 is one `check-ignore -q` call over every top-level directory of the candidate (`<d>/` each, per the C-8 amendment); rule 5 is a shell `[ -e ]` loop over one `find -type l`; rule 6 is the `|| continue` on each of the two `find`s. `.claude/harness/VERSION` is untouched: C-10 gives the release number to GATES (141 is next on `main` at 40cb34f).
