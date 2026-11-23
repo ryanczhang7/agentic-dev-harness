@@ -5,7 +5,7 @@ slug: one-command-lists-every-run-waiting-in-t
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GATES
 branch: story/HARNESS-121-one-command-lists-every-run-waiting-in-t
 depends_on: [HARNESS-120]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-status.sh, CLAUDE.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -755,6 +755,7 @@ name, below the table.
 - GATES, `feature-developer` (full `gates.sh`): planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-22; no override. `attest.sh check` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, did not queue. DV-1 to DV-4 were run by the orchestrator before it (results under `## Deferred verifications`).
 - DIFF-REVIEW round 1, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-22; no override. Verdict Ship, one Should fix routed RED (taken as R-1), one Nice to have routed RED (not taken).
 - RED R-1, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-22; no override. `attest.sh check` fresh for `selftest.sh run-queue` (exit 0, 901 passed) and `gates.sh --fast` (exit 0). It also changed the AC-5 `describe` title from two spaces to one after `AC-5`; nothing reads that title (grepped), so it was left.
+- GATES after R-1, `feature-developer` (full `gates.sh`): planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. `attest.sh check` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`; queued 16m53s behind a `gates.sh` in another repository, and started by itself.
 
 ## Out of scope
 
@@ -1372,7 +1373,16 @@ run-queue: 900 passed, 1 failed
 === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-121/.claude/state/mutations/scripts_run-queue.sh.20261123T054236Z.3591213.bak) ===
   192: run_queue_unmark() {
 ```
-- **GREEN:** (filled in at GREEN)
+- **GREEN:** a no-op, verified by the orchestrator on 2026-11-22. No production file changed between the GATES commit and the R-1 commit, and the suite passes on that unchanged code (the RED R-1 run, `attest.sh check` fresh):
+
+```
+$ git diff --stat 2e04569 5e83d1f -- scripts/ CLAUDE.md .claude/harness/
+(no output: no source, CLAUDE.md or VERSION change)
+$ bash scripts/attest.sh check -- bash scripts/selftest.sh run-queue
+exit:     0
+last:     1 harness suite(s) passed.
+fresh
+```
 
 ## Diff review
 
@@ -1420,9 +1430,9 @@ Verdict: Ship.
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-22T06:28:29Z
-    commit: 5051c93 (working tree had uncommitted changes)
-    tree:   d9e344e1b7e68373d64cd3c3c580b0ad178598f9
+    run:    2026-11-23T06:07:59Z
+    commit: 5e83d1f
+    tree:   1c581f0600854c450cff2256c5781c6f2120b8e4
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
