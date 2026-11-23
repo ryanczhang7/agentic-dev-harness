@@ -4,8 +4,8 @@ title: One command lists every run waiting in the machine queue
 slug: one-command-lists-every-run-waiting-in-t
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-121-one-command-lists-every-run-waiting-in-t
 depends_on: [HARNESS-120]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-status.sh, CLAUDE.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1527,3 +1527,9 @@ Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 
   leaving by line 245 would be listed is read from the belief rules, not
   reproduced; AC-4 (c) is what tests it.
 
+- **Self-test at GATES → REVIEW (2026-11-23):** `selftest-needed: run`; `bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` by a `feature-developer` on the GATES row, planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), no override; checked by the orchestrator with `attest.sh check`: `fresh`. Did not queue. `--changed` rather than the full run: the story changes `scripts/run-queue.sh`, which `gates.sh` and `selftest.sh` call, but the `run-queue` suite runs real `gates.sh` and `selftest.sh` waiters, so the callers' suite is named and selected.
+
+    selftest: --changed — 17 of 35 suite(s) selected: attest doctor grep-count lib mutate phase-guard plan refresh reporting rules-trim run-queue selftest selftest-needed shipped-docs sigpipe story worktree
+    exit:     0
+    last:     17 harness suite(s) passed.
+    duration: 1758s
