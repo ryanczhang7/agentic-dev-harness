@@ -5,7 +5,7 @@ slug: tidy-reports-stray-sibling-folders-a-rem
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-122-tidy-reports-stray-sibling-folders-a-rem
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -377,6 +377,71 @@ self-test.
   `scripts/mutate.sh` against `bash scripts/selftest.sh tidy`.
   **Owner: GATES.**
 
+**Results (GATES, 2026-11-23, run by the orchestrator through `scripts/mutate.sh`, each against `bash scripts/selftest.sh tidy`).**
+
+**DV-3, first run, against the GREEN tree (5564b85): the control did not discriminate, and that found a defect.** With rule 4 replaced by `:` the suite stayed green, `tidy: 181 passed, 0 failed`. Cause, reproduced in a scratch repository: rule 3 passed every top-level directory to one `git check-ignore -q` call, and git refuses `-q` with more than one path (`fatal: --quiet is only valid with a single pathname`, exit 128, hidden by `2>/dev/null`). So any candidate with two or more top-level directories was never STRAY, case (a)'s `c-file` (`node_modules`, `s-inner`) included, whatever rule 4 said. Fixed in GATES by a `feature-developer` dispatch to the C-8 amendment's form, one `check-ignore -q -- "<d>/"` per directory (see `## Notes`). No test pins a reported candidate with two top-level directories; left for diff review to route.
+
+```
+=== mutate: scripts/tidy.sh (1 line(s) changed by s/^  \[ -z "\$anyfile" \] || continue$/  :/) ===
+  210 -   [ -z "$anyfile" ] || continue
+  210 +   :
+tidy: 181 passed, 0 failed
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/adh-HARNESS-122/.claude/state/mutations/scripts_tidy.sh.20261123T162055Z.6689.bak) ===
+
+$ git check-ignore -q -- node_modules/ s-inner/      # scratch repo, .gitignore = node_modules/
+fatal: --quiet is only valid with a single pathname
+exit 128
+```
+
+**DV-1, against the fixed tree: red as predicted, in the HARNESS-122 block only.** `done <<< "$strays"` replaced by `done <<< ""`. Seven failures, all HARNESS-122; AC-1's whole-report assertion shows the census line alone as its actual output. (The same seven failed against the GREEN tree before the fix.)
+
+```
+=== mutate: scripts/tidy.sh (1 line(s) changed by s/^done <<< "\$strays"$/done <<< ""/) ===
+    FAIL HARNESS-122 AC-1: the whole report is the STRAY pair for each stray-shaped folder, sorted by name, then the unchanged census
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+    FAIL HARNESS-122 AC-2: AC-1's s-dirs still gets its STRAY pair
+    FAIL HARNESS-122 AC-2: AC-1's s-link still gets its STRAY pair
+    FAIL HARNESS-122 AC-2: and those are the only two STRAY lines, in any spelling
+    FAIL HARNESS-122 AC-3: the whole report is the worktree line, the ORPHAN pair, the two STRAY pairs in LC_ALL=C order, the DELETABLE line, then the census
+    FAIL HARNESS-122 AC-4: report mode prints the two STRAY pairs, then the census
+    FAIL HARNESS-122 AC-4/C-5: --apply prints the same STRAY pairs and acts on neither
+tidy: 174 passed, 7 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-122/.claude/state/mutations/scripts_tidy.sh.20261123T163323Z.18967.bak) ===
+```
+
+**DV-3, against the fixed tree: red as predicted.** Rule 4 replaced by `:`; case (a) is named on a STRAY line and the STRAY count goes from 2 to 3; AC-1 stays green.
+
+```
+=== mutate: scripts/tidy.sh (1 line(s) changed by s/^  \[ -z "\$anyfile" \] || continue$/  :/) ===
+    FAIL HARNESS-122 AC-2 (a) a folder holding one regular file is never named on a STRAY line
+         expected: 0
+         actual:   1
+    FAIL HARNESS-122 AC-2: and those are the only two STRAY lines, in any spelling
+         expected: 2
+         actual:   3
+tidy: 179 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-122/.claude/state/mutations/scripts_tidy.sh.20261123T163824Z.22395.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+**DV-2, the real tree, against the fixed tree.** Main checkout `D:/agentic-dev-harness` (first record of `git worktree list`), parent `D:/`. Skeleton made with `mkdir -p /d/adh-h122-probe/node_modules/a/b`; the story's `tidy.sh` run from this worktree, report mode. The probe is the only STRAY line, spelled `D:/` as `git worktree list` spells the parent; every other sibling of `D:/` (other projects, other worktrees) is not reported. Wall time 3 s. Removal: the `rmdir` of the four empty directories was refused by the agent's own safety check (a removal directly under a drive root), so it is left for the user (`## Notes`). No `fwb-*` folder survives under `D:/`, so the optional run from `D:/fantasy-world-builder` has nothing to show.
+
+```
+$ git worktree list | head -1
+D:/agentic-dev-harness 40cb34f [main]
+$ mkdir -p /d/adh-h122-probe/node_modules/a/b && bash scripts/tidy.sh
+KEEP D:/adh-HARNESS-121  recent
+STRAY D:/adh-h122-probe  empty
+  remove it: Remove-Item -LiteralPath '\?\D:\adh-h122-probe' -Recurse -Force
+tidy: 1 worktree(s), 0 removable, 1 kept; 0 merged branch(es) deletable
+exit 0
+wall: 3s
+$ find /d/adh-h122-probe | wc -l
+4
+$ ls -d /d/fwb-*
+no fwb-* folders survive
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -439,6 +504,8 @@ name, below the table.
 - PLANNED: `lead-po`, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override reported.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 1, `tidy: 168 passed, 13 failed`, all 13 HARNESS-122 pins, every HARNESS-066 assertion green; `gates.sh --fast` fresh, exit 0. The dispatch measured its controls against a throwaway STRAY candidate built in its scratchpad, never in the tree (handoff table). The AC-2 (e) fixture is a junction to a directory under Git for Windows and a file symlink elsewhere; put to the user with the RED report. Every junction target and every `rm` in the new block is under the suite's own `$WORK` (read by the orchestrator).
 - GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, `tidy: 181 passed, 0 failed`, 181 executed of 181 declared; `gates.sh --fast` fresh, exit 0 (vacuous: 0 ran). No test file changed (`git status`: only `scripts/tidy.sh` and this story). The one control GREEN owns ("all six rules", expected 181/0) measured 181/0; the mutation rows are GATES' DV entries.
+- GATES fix, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Rule 3 rewritten to one `check-ignore -q` per top-level directory after DV-3 found the batched call refused by git (`## Deferred verifications`, `## Notes`). Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, 181/0; `gates.sh --fast` fresh, exit 0.
+- GATES full run, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/gates.sh` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` (vacuous here, BOOTSTRAPPED=no; the tidy suite under its floor is the judge). Did not queue.
 
 ## Out of scope
 
@@ -803,10 +870,21 @@ write DV mutations against a line unique to the STRAY loop.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-23T16:41:58Z
+    commit: 5564b85 (working tree had uncommitted changes)
+    tree:   90b886dddc1901f0470eb9a9119c9bb0ced05b04
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -875,3 +953,5 @@ write DV mutations against a line unique to the STRAY loop.
 - **Confirmed on `main` at 40cb34f (2026-11-23), before RED, by the orchestrator.** HARNESS-120 (PR #210, release 139) and HARNESS-121 (PR #211, release 140) have both merged, so the in-flight note above no longer applies and nothing else declares this story's files. `git diff --stat 5dd9d69 40cb34f -- scripts/tidy.sh .claude/tests/tidy.test.sh scripts/phase.sh scripts/plan.sh` is empty: the Contract's line references (`scripts/phase.sh:200-201`, `scripts/plan.sh:803`) and the `tidy` floor of 128 (`floors.conf:71`, `selftest.test.sh:563`) hold as written. `.claude/harness/VERSION` is `140 (2026-11-22)`, so C-10's next free release is 141 unless another story takes it first. No re-plan was dispatched: no criterion, contract block or caller changed.
 - **PO decision 1 (2026-11-23), AC-2 (e) on Git for Windows.** The user accepted the RED fixture's variant: without the symlink privilege the "link that resolves, its target a file outside the folder" is a junction to a directory outside the folder on Git for Windows, and a file symlink as written on CI's Linux. The rule both exercise is the same (a folder holding any link that resolves is never STRAY), so the criterion's text is unchanged and no `## Amendments` entry is needed. The user's words: "Yes, advance it", answering "Accept the Windows junction variant and advance HARNESS-122 to GREEN?".
 - **GREEN -> GATES (2026-11-23, feature-developer, resolved to Opus 5.5, `claude-opus-5-5`, no override).** The STRAY loop is `scripts/tidy.sh` lines 187-219, after the ORPHAN loop. Lines unique to it, for the deferred mutations (the ORPHAN loop's `[ "$known" = 1 ] && continue` is not among them, so a rule-1 sed must use `listed`): rule 1 `[ "$listed" = 1 ] && continue` (:201); rule 4 `[ -z "$anyfile" ] || continue` (:210, DV-3: replace it with `:`); the scan's input `done <<< "$strays"` (:219, DV-1: replace with `done <<< ""`). Rule 3 is one `check-ignore -q` call over every top-level directory of the candidate (`<d>/` each, per the C-8 amendment); rule 5 is a shell `[ -e ]` loop over one `find -type l`; rule 6 is the `|| continue` on each of the two `find`s. `.claude/harness/VERSION` is untouched: C-10 gives the release number to GATES (141 is next on `main` at 40cb34f).
+- **GATES fix (2026-11-23, feature-developer, resolved to Opus 5.5, `claude-opus-5-5`, no override): rule 3 never held for a candidate with two or more top-level directories.** Found by the orchestrator during DV-3. The STRAY loop ran one `git -C "$MAIN" check-ignore -q -- "${tops[@]}" 2>/dev/null || continue` over all of a candidate's top-level directories; git refuses `-q` with more than one path (`fatal: --quiet is only valid with a single pathname`, exit 128), and `2>/dev/null` hid it, so e.g. a folder holding only `node_modules/a` and `dist/x` was never reported, contrary to C-2 rule 3. Repro (scratch repo, `.gitignore` = `node_modules/`, `dist/`; siblings `two/{node_modules/a,dist/x}`, `mixed/{src/a,node_modules/b}`, `clean/{src/a,lib/b}`): `git check-ignore -q -- node_modules/ dist/` prints the fatal line, exit 128; the tidy at HEAD reports no STRAY at all; the fixed tidy reports `two` and `mixed` and not `clean`. Fix, as the C-8 amendment spells it: one `git -C "$MAIN" check-ignore -q -- "<d>/"` per top-level directory (not a link), stopping at the first ignored one; rule 3 holds when any one is ignored. The mutation-target lines are unchanged and still unique: `[ "$listed" = 1 ] && continue` (:201), `[ -z "$anyfile" ] || continue` (:211, was :210), `done <<< "$strays"` (:220, was :219). **No test pins a multi-directory candidate**: in `.claude/tests/tidy.test.sh` every fixture that must be reported STRAY (s-dirs, s-link) has the single top-level directory `node_modules`; the fixtures with two (c-file `node_modules,s-inner`, c-gitfile and c-gitdir `.git,node_modules`) are all expected not-STRAY and are kept out by another rule (a file, a `.git`) whatever rule 3 does, which is why the suite stayed green over the defect. For diff review to judge whether that is a test gap to route back to RED.
+- **DV-2's probe folder is left for the user (2026-11-23).** `D:/adh-h122-probe` holds four empty directories (`node_modules/a/b`) and nothing else; the orchestrator's `rmdir`, deepest first, was refused by its own safety check for a removal directly under a drive root. Until it is removed, `tidy.sh` reports it STRAY, which is this story working.

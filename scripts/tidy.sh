@@ -200,12 +200,13 @@ while IFS= read -r name; do
   done
   [ "$listed" = 1 ] && continue
   { [ -e "$s/.git" ] || [ -L "$s/.git" ]; } && continue
-  tops=()
+  # One check-ignore per directory: git refuses -q with more than one path.
+  ignored=0
   for d in "$s"/* "$s"/.[!.]* "$s"/..?*; do
-    [ -d "$d" ] && [ ! -L "$d" ] && tops+=("${d##*/}/")
+    [ -d "$d" ] && [ ! -L "$d" ] || continue
+    if git -C "$MAIN" check-ignore -q -- "${d##*/}/" 2>/dev/null; then ignored=1; break; fi
   done
-  [ ${#tops[@]} -gt 0 ] || continue
-  git -C "$MAIN" check-ignore -q -- "${tops[@]}" 2>/dev/null || continue
+  [ "$ignored" = 1 ] || continue
   anyfile="$(find "$s" -type f -print -quit 2>/dev/null)" || continue
   [ -z "$anyfile" ] || continue
   links="$(find "$s" -type l 2>/dev/null)" || continue
