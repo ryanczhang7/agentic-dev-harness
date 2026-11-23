@@ -1027,6 +1027,10 @@ mutate: no stranded mutation; nothing of a previous run is in the tree.
 `cfabd05`'s, untouched, and the suite passes against it. The attested run is
 below.
 
+### R-2 (no fixture has a dot-named folder or a hidden ignored directory)
+
+- **Adjudicated R-2:** `fable` (resolved claude-fable-5-2), 2026-11-23, diff review round 2, finding 1
+
 ## Diff review
 
 ### Round 1 (cfabd05, against merge-base 40cb34f)
@@ -1067,6 +1071,19 @@ Not checked: rule 6 on macOS or as root; the Windows junction fixtures on any ho
 Verdict: fix 1 first.
 
 **Orchestrator's disposition (2026-11-23).** `classify.sh` on every path the fixes name: `harness .claude/tests/tidy.test.sh`, `harness .claude/tests/floors.conf`, `harness .claude/tests/selftest.test.sh`, `harness scripts/tidy.sh`; both phases may write them, so the labels decide. Finding 1 is followed: the story returns to RED as R-1. Findings 2 and 3 are followed in GATES after R-1, by a `feature-developer` dispatch, in that order (2 after 1's test exists, as the reviewer asks), then the gates and a second review round.
+
+### Round 2 (d7605c3, against round 1's tip cfabd05)
+
+Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-23; no override. Changed no file; ran commands only in this worktree and its scratchpad, as briefed after round 1. Summary of the report as returned:
+
+- **Held up:** the R-1 block pins finding 2's single call and the "any directory, not the first" rule by outcome (re-adding `-q` gives exit 128 for `aaa/ node_modules/`, and the same two assertions go red); its own parent is sound, since the "holds nothing but what the criterion names" sentence governs the criteria's fixtures and R-1 asserts its own parent's listing and whole report; rule 6 is kept by the rewrite (a non-zero `find` after complete records yields a trailing empty record, `live=1`; rule 4's `find ... || continue` fires first for an unreadable directory); floors 181 + 7 = 188 in both places, a scratch-copy run gave `tidy: 188 passed, 0 failed`, CI's 190 passes a minimum; rule 3's single call measured exit 0 when any path is ignored, 1 when none.
+- **Should fix 1 (Route: RED):** nothing fails when dot-named folders stop being seen. C-1 says candidates include dot names, and rule 3 lists hidden top-level directories; with `.[!.]*` and `..?*` dropped from both loops (`scripts/tidy.sh:193`, `:206`) the suite still gives 188/0 (scratch copy of `d7605c3`), so a sibling `.hidden/node_modules/a`, or one whose only ignored directory is `.venv/`, would go unreported. Fix: one reported fixture with a dot-named folder, one whose only ignored top-level directory is hidden (its name added to that fixture's `.gitignore`), each earned by that mutation; floors move by the count added.
+- **Nice to have 2 (Route: GATES):** a `find` killed mid-name is read as a dangling link: `|| printf '\0'` ends the partial name instead of adding an empty record (`{ printf '%s\0%s' x partial; false; } || printf '\0'` gives two records, `live=0`). Fix: `printf '\0\0'` (`scripts/tidy.sh:216`).
+- **Nice to have 3 (Route: GATES):** a top-level name starting `:(` is read by git as pathspec magic (`check-ignore -- ':(top)node_modules/'` exits 0; `':(x/'` beside `node_modules/` exits 128). Fix: pass each name as `./<name>/` (measured: `./:(top)node_modules/` and `./:(x/` exit 1, `./node_modules/` beside them exits 0). Cannot occur on Windows (`scripts/tidy.sh:207-210`).
+- **Not checked:** nothing on Linux or macOS this round; the rule-5 rewrite has not run against the chmod-000 fixture on any host; a newline-named link not reproduced.
+- Verdict: Ship.
+
+**Orchestrator's disposition (2026-11-23).** `classify.sh`: `harness .claude/tests/tidy.test.sh`, `harness scripts/tidy.sh`; the labels decide. Finding 1 is followed as R-2: C-1 names dot names explicitly, and round 1's finding of the same kind was followed the same way. Findings 2 and 3 are followed in GATES after R-2, one `feature-developer` dispatch, both one-line changes the reviewer measured. Then the gates, and a third round over the R-2 and GATES diff.
 
 ## Gate results
 
