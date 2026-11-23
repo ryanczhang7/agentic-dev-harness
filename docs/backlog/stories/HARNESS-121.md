@@ -756,6 +756,7 @@ name, below the table.
 - DIFF-REVIEW round 1, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-22; no override. Verdict Ship, one Should fix routed RED (taken as R-1), one Nice to have routed RED (not taken).
 - RED R-1, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-22; no override. `attest.sh check` fresh for `selftest.sh run-queue` (exit 0, 901 passed) and `gates.sh --fast` (exit 0). It also changed the AC-5 `describe` title from two spaces to one after `AC-5`; nothing reads that title (grepped), so it was left.
 - GATES after R-1, `feature-developer` (full `gates.sh`): planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. `attest.sh check` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`; queued 16m53s behind a `gates.sh` in another repository, and started by itself.
+- DIFF-REVIEW round 2, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-23; no override. Verdict "fix 1 first": a story-file spelling, fixed.
 
 ## Out of scope
 
@@ -1350,7 +1351,7 @@ appended after them).
 
 ### R-1 (the waiter record is removed when the marker could not be written)
 
-**Adjudicated R-1:** `fable` (resolved Fable 5.2, `claude-fable-5-2`), 2026-11-22, diff review round 1, finding 1
+- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2), 2026-11-22, diff review round 1, finding 1
 
 - **Which test, and what was missing:** no test was wrong; one was absent. Every waiter in the suite writes its `run.queued` marker, so nothing distinguishes `run_queue_unmark` removing the waiter record before its "no marker" early return (what C-1 requires) from removing it after.
 - **How it was found:** the diff review, round 1, finding 1, by reading the suite.
@@ -1424,7 +1425,18 @@ Not checked: the suite was not re-run by me (`attest.sh check -- bash .claude/te
 
 Verdict: Ship.
 
-**Orchestrator's disposition (2026-11-22).** Finding 1 is followed: the story returns to RED as R-1, because the Contract names this ordering explicitly and HARNESS-120 took the same kind of finding the same way. Finding 2 is not followed: it is cosmetic by the reviewer's own account, and a leading-zero pid depends on `kill -0` behaviour not yet checked on this host; left for `/audit-mutations`. `classify.sh` on the fix's paths (below) gives `harness` for all three, which both phases may write, so the `RED` label decides.
+**Orchestrator's disposition (2026-11-22).** Finding 1 is followed: the story returns to RED as R-1, because the Contract names this ordering explicitly and HARNESS-120 took the same kind of finding the same way. Finding 2 is not followed: it is cosmetic by the reviewer's own account, and a leading-zero pid depends on `kill -0` behaviour not yet checked on this host; left for `/audit-mutations`. `classify.sh` on the fix's paths gives `harness` for all three (`harness .claude/tests/run-queue.test.sh`, `harness .claude/tests/floors.conf`, `harness .claude/tests/selftest.test.sh`), which both phases may write, so the `RED` label decides.
+
+### Round 2 (a036586, the R-1 fix: 2e04569..a036586)
+
+Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-23; no override. Changed no file. Summary of the report as returned:
+
+- **Held up:** no production file changed; the R-1 case tells the two orders apart (unmark runs before `run_queue_acquire` returns and before the fixture writes `started`, so no race; assertion 3 needs `seen` and assertion 2 needs an empty marker directory, so it cannot pass vacuously); every wait is bounded; cleanup leaves nothing a later case reads; floor 898 + 3 = 901 in both places; both R-1 fences are at column 0.
+- **Must fix 1 (Route: GATES):** the `**Adjudicated R-1:**` line read ``(resolved Fable 5.2, `claude-fable-5-2`)``, which `check-boundaries.sh`'s record rule does not match (`<name>` must be one word); it printed `FAIL story HARNESS-121: ## Regressions entry R-1 is new and has no adjudication record.` Fix: ``- **Adjudicated R-1:** `fable` (resolved claude-fable-5-2), 2026-11-22, diff review round 1, finding 1``.
+- **Nice to have 2 (Route: GATES):** round 1's disposition said "`classify.sh` on the fix's paths (below)" and nothing followed it.
+- Verdict: fix 1 first.
+
+**Orchestrator's disposition (2026-11-23).** Both followed, in this file only (a `docs` path, no code or test): the R-1 line now has the spelling above, and the three `classify.sh` lines are quoted inline in round 1's disposition. `classify.sh` is not needed for a story-file fix. The reviewer's check of the fix is `check-boundaries.sh` itself, run after the commit (below in `## Notes`).
 
 ## Gate results
 
