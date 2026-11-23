@@ -4,8 +4,8 @@ title: Tidy reports stray sibling folders a removed worktree left behind
 slug: tidy-reports-stray-sibling-folders-a-rem
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-122-tidy-reports-stray-sibling-folders-a-rem
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/tidy.sh, .claude/tests/tidy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -511,6 +511,7 @@ name, below the table.
 - GATES findings 2 and 3, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Rule 3 back to one `check-ignore` call, without `-q`; rule 5 reads links NUL-delimited, a failed `find` appending an empty record that keeps the folder (rule 6). `tidy.sh` on `D:/`: 2.5-2.9 s before, 1.1-1.2 s after. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, 188/0; `attest.sh check -- bash scripts/gates.sh` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` (queued 9m07s behind `/d/manga-translator`). The newline-named link cannot be made on Windows, so finding 3 is unverified on this host.
 - RED R-2, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Added the dot-names block (own parent `h122/dot`, 7 assertions), earned by two line-addressed `mutate.sh` runs pasted in R-2. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, `tidy: 195 passed, 0 failed`; `gates.sh --fast` fresh, exit 0; `git diff -- scripts/` empty. GREEN after R-2 is a no-op on the same evidence.
 - GATES round-2 fixes, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Rule 3 names go as `./<name>/`; the failed-`find` fallback prints two NULs. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, 195/0; `attest.sh check -- bash scripts/gates.sh` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` (queued 23m21s behind `/d/manga-translator`).
+- Changed-suite self-test, `feature-developer` on the GATES row: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` fresh, exit 0, `9 harness suite(s) passed.` (doctor, grep-count, lib, phase, selftest, shipped-docs, sigpipe, tidy, worktree; 1263 assertions executed, 1263 declared). Queued 41m33s behind `/d/manga-translator`.
 
 ## Out of scope
 
