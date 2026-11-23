@@ -11,6 +11,10 @@
 #
 # then one ORPHAN line per folder under <main>/.claude/worktrees/ that git does
 # not list, each followed by the command to remove it (printed, never run),
+# then one STRAY line per folder beside the main checkout that holds no
+# regular file and no link that resolves, has no .git, is not a listed
+# worktree, and has a top-level directory this repository ignores, each
+# followed by the command to remove it (printed, never run),
 # then one DELETABLE line per merged local story/* or harness/* branch, then the
 # census, always last:
 #
@@ -41,6 +45,7 @@
 # for the user to finish it, and the script exits 1. Nothing is ever deleted by
 # any other means: a recursive delete outside the repository is exactly what
 # an agent's own safety checks refuse, and must not be routed around.
+# A STRAY folder is reported and never removed, with or without --apply.
 #
 # The repository judged is the cwd's (`git rev-parse --show-toplevel`), not
 # this file's, so a copy in a linked worktree judges the same repository.
@@ -178,6 +183,45 @@ if [ -d "$MAIN/.claude/worktrees" ]; then
     REPORT+=("  remove it: $(remove_cmd "$o")")
   done <<< "$names"
 fi
+
+# --- strays: folders beside the main checkout that are a removal's leftovers ----
+# Judged in cost order, the first failing fact ending the judgement: not a
+# listed worktree; no .git; a top-level directory the repository ignores (the
+# evidence it was a checkout); no regular file; no link that resolves; and
+# every find over it succeeded (unreadable is unknown, and unknown is kept).
+P="${MAIN%/*}"
+strays="$(cd "$P/" && for d in * .[!.]* ..?*; do [ -d "$d" ] && [ ! -L "$d" ] && printf '%s\n' "$d"; done | LC_ALL=C sort)"
+while IFS= read -r name; do
+  [ -n "$name" ] || continue
+  s="$P/$name"
+  listed=0
+  for (( i = 0; i <= idx; i++ )); do
+    if [ "$s" -ef "${WT_PATH[i]}" ]; then listed=1; break; fi
+  done
+  [ "$listed" = 1 ] && continue
+  { [ -e "$s/.git" ] || [ -L "$s/.git" ]; } && continue
+  # One check-ignore over every top-level directory: without -q git takes many
+  # paths, and exits 0 when any is ignored, 1 when none is. Each name goes as
+  # ./<name>/, so one starting ":(" is a path, not pathspec magic.
+  tops=()
+  for d in "$s"/* "$s"/.[!.]* "$s"/..?*; do
+    [ -d "$d" ] && [ ! -L "$d" ] && tops+=("./${d##*/}/")
+  done
+  [ "${#tops[@]}" -gt 0 ] || continue
+  git -C "$MAIN" check-ignore -- "${tops[@]}" >/dev/null 2>&1 || continue
+  anyfile="$(find "$s" -type f -print -quit 2>/dev/null)" || continue
+  [ -z "$anyfile" ] || continue
+  # Links NUL-delimited, so a name holding a newline is one name. A find that
+  # fails appends two NULs: the first ends any name it died part-way through,
+  # the second is an empty record, which no path can be: unknown, so kept.
+  live=0
+  while IFS= read -r -d '' l; do
+    if [ -z "$l" ] || [ -e "$l" ]; then live=1; break; fi
+  done < <(find "$s" -type l -print0 2>/dev/null || printf '\0\0')
+  [ "$live" = 0 ] || continue
+  REPORT+=("STRAY $s  empty")
+  REPORT+=("  remove it: $(remove_cmd "$s")")
+done <<< "$strays"
 
 # --- merged local branches ------------------------------------------------------
 REMOTES=" $(G for-each-ref --format='%(refname)' refs/remotes/origin | awk '{ sub(/^refs\/remotes\/origin\//, ""); printf "%s ", $0 }')"
