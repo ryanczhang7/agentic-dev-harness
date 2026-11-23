@@ -57,7 +57,11 @@ OLD=202001010000
 # Every worktree any fixture made, so the trap can remove each through git.
 cleanup() {
   local m p
-  for m in "$WORK"/a "$WORK"/b "$WORK"/c "$WORK"/d "$WORK"/e "$WORK"/z; do
+  # HARNESS-122: the rule-6 fixture is chmod 000 on hosts that honour it, and
+  # rm -rf cannot descend into it until it is readable again.
+  chmod -R u+rwx "$WORK/h122" 2>/dev/null
+  for m in "$WORK"/a "$WORK"/b "$WORK"/c "$WORK"/d "$WORK"/e "$WORK"/z \
+           "$WORK"/h122/ac1/main "$WORK"/h122/ac3/main "$WORK"/h122/ac4/main; do
     [ -d "$m/.git" ] || continue
     for p in $(awk '/^worktree / { print substr($0, 10) }' <<< "$(git -C "$m" worktree list --porcelain 2>/dev/null)"); do
       git -C "$m" worktree unlock "$p" >/dev/null 2>&1
@@ -72,11 +76,13 @@ trap cleanup EXIT
 # --- helpers -----------------------------------------------------------------
 
 # new_repo <name>   $WORK/<name>.git (bare, the origin) and $WORK/<name> (the
-# main checkout, on `main`, pushed). Identity and autocrlf are set in the
-# repository's own config, which every linked worktree shares. scripts/ and
+# main checkout, on `main`, pushed). [origin] puts the bare repository
+# elsewhere (HARNESS-122: a parent holding nothing but what a criterion names).
+# Identity and autocrlf are set in the repository's own config, which every
+# linked worktree shares. scripts/ and
 # .claude/hooks/ are copied in UNTRACKED, so no worktree carries them.
 new_repo() {
-  local m="$WORK/$1" o="$WORK/$1.git"
+  local m="$WORK/$1" o="${2:-$WORK/$1.git}"
   git init -q --bare "$o"
   git init -q "$m"
   git -C "$m" symbolic-ref HEAD refs/heads/main
@@ -720,5 +726,340 @@ whole "AC-5: --apply prints the same report and acts on no orphan" "$EXPECT_D" "
 assert_eq "AC-5: --apply leaves every orphan and every file in it on disk" same \
   "$([ "$SNAP_D" = "$(find "$W" | LC_ALL=C sort)" ] && printf same || printf changed)"
 assert_eq "AC-5: orphans do not change the exit status: report 0, --apply 0" "0|0" "$rc_report|$rc_apply"
+
+# ===========================================================================
+# HARNESS-122 - STRAY: a folder beside the main checkout that holds nothing a
+# checkout would, which tidy now reports (story Contract C-1 to C-8). Every
+# criterion is mechanical (C-9): whole reports, whole lines, exit statuses, a
+# before-and-after listing.
+#
+# EVERY PARENT HERE IS A DIRECTORY OF ITS OWN, $WORK/h122/<case>/, never $WORK.
+# Every fixture above keeps its main checkout directly in $WORK, so $WORK is
+# the parent tidy reads for all of them, and a stray-shaped folder there would
+# move their whole-report assertions (C-8). Origins go to $WORK/h122/origins/
+# and link targets to $WORK/h122/targets/, so each parent holds exactly what
+# its criterion names - which the first fact of each case asserts. Nothing the
+# fixtures above leave in $WORK is stray-shaped: d-outside is empty (no ignored
+# top-level directory, C-2 rule 3), the bare origins and every main hold files,
+# and so does h122 itself.
+#
+# LINKS UNDER GIT FOR WINDOWS (measured by this story's RED, MINGW64, Windows
+# 11, 2026-11-23, no Developer Mode): `ln -s` to a missing target fails with
+# "No such file or directory"; `ln -s` to an existing file COPIES it (a regular
+# file, which `find -type l` does not see); with MSYS=winsymlinks:nativestrict
+# it fails "Operation not permitted", and `mklink` for a file needs a privilege
+# the host lacks. `cmd /c mklink /J` makes a junction: `find -type l` lists it,
+# `[ -L ]` is true, and once its target is removed `[ -e ]` is false. So a
+# dangling link here is a junction whose target was removed (the kind C-8 says
+# the measured folders hold), and a resolving link is a file symlink where the
+# host can make one, else a junction to a directory. That second fixture is the
+# one place the suite differs by host, and its fact assertion says which kind it
+# made. Every fixture's shape is asserted before tidy runs (h_shape).
+#
+# RULE 6 (a folder that cannot be read is never STRAY) is pinned only where a
+# directory CAN be made unreadable: a probe chmod 000s a scratch directory and
+# asks `find` to read it. Under Git for Windows chmod 000 changes nothing and
+# the probe says so, and as root nothing is unreadable; on a non-root Linux or
+# macOS runner (CI) the case runs. It is not a skipped test: where the probe
+# says no, the fixture cannot exist, so there is nothing to assert about it.
+
+H122="$WORK/h122"
+mkdir -p "$H122/origins" "$H122/targets"
+
+# h_parent <case>   $WORK/h122/<case>/main, its origin under h122/origins/.
+h_parent() {
+  mkdir -p "$H122/$1"
+  new_repo "h122/$1/main" "$H122/origins/$1.git"
+}
+
+# h_link_dangling <link>   A link whose target does not exist.
+h_link_dangling() {
+  local t="$1.gone"
+  if [ "$WIN" = 1 ]; then
+    mkdir -p "$t"
+    MSYS_NO_PATHCONV=1 cmd /c mklink /J "$(cygpath -w "$1")" "$(cygpath -w "$t")" >/dev/null 2>&1
+    rmdir "$t"
+  else
+    ln -s "$t" "$1"
+  fi
+}
+
+# h_link_resolving <link> <file>   A link that resolves to <file>, which is
+# outside the folder. Prints the kind made: `file`, or `directory` (a junction
+# to <file>'s directory) where the host cannot make a file symlink.
+h_link_resolving() {
+  if [ "$WIN" = 1 ]; then
+    if MSYS=winsymlinks:nativestrict ln -s "$2" "$1" 2>/dev/null && [ -L "$1" ]; then printf file; return 0; fi
+    MSYS_NO_PATHCONV=1 cmd /c mklink /J "$(cygpath -w "$1")" "$(cygpath -w "${2%/*}")" >/dev/null 2>&1
+    printf directory
+  else
+    ln -s "$2" "$1"; printf file
+  fi
+}
+
+# h_strays <parent> <dirs-name> <link-name>   The two stray-shaped folders of
+# AC-1: one holding directories only, one also holding a dangling link.
+h_strays() {
+  mkdir -p "$1/$2/node_modules/a/b" "$1/$2/node_modules/c" "$1/$3/node_modules/a/b"
+  h_link_dangling "$1/$3/node_modules/a/dead"
+}
+
+# h_ls <dir>   Its top-level entries, sorted, comma-joined; `-` when none.
+h_ls() {
+  ( cd "$1" && ls -A ) | LC_ALL=C sort | awk '{ s = s (NR > 1 ? "," : "") $0 } END { print (NR ? s : "-") }'
+}
+
+# h_shape <main> <dir>   The facts that make a folder stray-shaped, as
+#   git|listed|files=N|links=N|resolving=N|top=..|ignored=..|nested=N
+# `git` when it has a .git entry; `listed` when `git worktree list` names it;
+# files and links counted by find at every depth, `resolving` the links for
+# which [ -e ] is true; top its top-level entries; ignored those top-level
+# directories `git -C <main> check-ignore` matches; nested the directories
+# below the top level. Stray-shaped is nogit, unlisted, files=0, any number of
+# links with resolving=0, an ignored top-level directory, and nested above 0.
+h_shape() {
+  local m="$1" d="$2" g=nogit li=unlisted f l=0 r=0 x ig="" n
+  if [ -e "$d/.git" ] || [ -L "$d/.git" ]; then g=git; fi
+  while IFS= read -r x; do
+    [ -n "$x" ] || continue
+    if [ "$x" -ef "$d" ]; then li=listed; fi
+  done <<< "$(porc_paths "$m")"
+  f="$(find "$d" -type f 2>/dev/null | awk 'END { print NR }')"
+  while IFS= read -r x; do
+    [ -n "$x" ] || continue
+    l=$((l + 1)); if [ -e "$x" ]; then r=$((r + 1)); fi
+  done <<< "$(find "$d" -type l 2>/dev/null)"
+  for x in $(cd "$d" && ls -A); do
+    if [ -d "$d/$x" ] && [ ! -L "$d/$x" ] && git -C "$m" check-ignore -q -- "$x/" 2>/dev/null; then ig="$ig${ig:+,}$x"; fi
+  done
+  n="$(find "$d" -mindepth 2 -type d 2>/dev/null | awk 'END { print NR }')"
+  printf '%s|%s|files=%s|links=%s|resolving=%s|top=%s|ignored=%s|nested=%s' \
+    "$g" "$li" "$f" "$l" "$r" "$(h_ls "$d")" "${ig:--}" "$n"
+}
+
+# h_pair <path>   The STRAY pair for <path>, as C-3 and the criteria spell it.
+h_pair() { printf 'STRAY %s  empty\n  remove it: %s' "$1" "$(remove_cmd "$1")"; }
+
+# h_pairs_of <text> <path>   How many times the STRAY pair for <path> appears
+# as two consecutive whole lines.
+h_pairs_of() {
+  awk 'BEGIN { s = ARGV[2]; c = ARGV[3]; ARGV[2] = ""; ARGV[3] = "" }
+       prev == s && $0 == c { n++ } { prev = $0 } END { print n + 0 }' \
+    - "STRAY $2  empty" "  remove it: $(remove_cmd "$2")" <<< "$1"
+}
+
+# h_stray_names <text> <path>   How many lines beginning `STRAY ` name <path>
+# or anything under it: the rest of the line is <path>, or begins `<path> ` or
+# `<path>/`.
+h_stray_names() {
+  awk 'BEGIN { p = ARGV[2]; ARGV[2] = "" }
+       index($0, "STRAY ") == 1 { r = substr($0, 7)
+         if (r == p || index(r, p " ") == 1 || index(r, p "/") == 1) c++ }
+       END { print c + 0 }' - "$2" <<< "$1"
+}
+
+# h_listing <dir>   Every entry under <dir>, as find lists it, sorted.
+h_listing() { find "$1" | LC_ALL=C sort; }
+
+# h_link_where <link>   inside or outside <link>'s top folder, by its target.
+h_link_where() {
+  local t; t="$(readlink "$1")"
+  case "$t" in '') printf unread ;; *"$2"*) printf inside ;; *) printf outside ;; esac
+}
+
+STRAY_DIRS="nogit|unlisted|files=0|links=0|resolving=0|top=node_modules|ignored=node_modules|nested=3"
+STRAY_LINK="nogit|unlisted|files=0|links=1|resolving=0|top=node_modules|ignored=node_modules|nested=2"
+
+# ===========================================================================
+describe "HARNESS-122 AC-1: two stray-shaped folders beside the main checkout are each reported STRAY, with the command to remove them"
+
+h_parent ac1
+H1="$H122/ac1"; M1="$H1/main"
+h_strays "$H1" s-dirs s-link
+G1="$(line_no "$(porc_paths "$M1")" 1)"; P1="${G1%/*}"
+
+assert_eq "fixture h122/ac1: the parent holds the main checkout and the two folders, nothing else" \
+  "main,s-dirs,s-link" "$(h_ls "$H1")"
+assert_eq "fixture h122/ac1: git lists only the main checkout" 1 "$(porc_paths "$M1" | awk 'END { print NR }')"
+assert_eq "fixture s-dirs: stray-shaped - no .git, unlisted, no file, no link, one top-level entry node_modules (ignored), three nested directories" \
+  "$STRAY_DIRS" "$(h_shape "$M1" "$H1/s-dirs")"
+assert_eq "fixture s-link: stray-shaped, and also holds one link, which is dangling" \
+  "$STRAY_LINK" "$(h_shape "$M1" "$H1/s-link")"
+
+EXPECT_H1="$(h_pair "$P1/s-dirs")
+$(h_pair "$P1/s-link")
+$(census 0 0 0 0)"
+out="$(T "$M1" "$M1")"; rc=$?
+whole "HARNESS-122 AC-1: the whole report is the STRAY pair for each stray-shaped folder, sorted by name, then the unchanged census" \
+  "$EXPECT_H1" "$out"
+assert_eq "HARNESS-122 AC-1: and report mode exits 0" 0 "$rc"
+
+# ===========================================================================
+describe "HARNESS-122 AC-2: a folder that differs from stray-shaped in one fact is never STRAY"
+
+# (a) one regular file, three levels down; (i) a stray-shaped folder inside (a).
+mkdir -p "$H1/c-file/node_modules/a/b" "$H1/c-file/s-inner/node_modules/p/q"
+printf 'x\n' > "$H1/c-file/node_modules/a/b/f.txt"
+# (b) a .git file; a .git directory.
+mkdir -p "$H1/c-gitfile/node_modules/a/b" "$H1/c-gitdir/node_modules/a/b" "$H1/c-gitdir/.git"
+printf 'gitdir: %s\n' "$H122/no-such-gitdir" > "$H1/c-gitfile/.git"
+# (c) a live linked worktree; (d) one git still lists, reduced by hand to the
+# stray shape - everything in it removed, its .git file included.
+git -C "$M1" worktree add -q --detach "$H1/c-live" main >/dev/null 2>&1
+git -C "$M1" worktree add -q --detach "$H1/c-reduced" main >/dev/null 2>&1
+find "$H1/c-reduced" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+mkdir -p "$H1/c-reduced/node_modules/a/b"
+# (e) a link that resolves, to a target outside the folder.
+printf 'x\n' > "$H122/targets/t.txt"
+mkdir -p "$H1/c-goodlink/node_modules/a/b"
+E_KIND="$(h_link_resolving "$H1/c-goodlink/node_modules/a/ok" "$H122/targets/t.txt")"
+# (f) only top-level entry src, which the repository does not ignore.
+mkdir -p "$H1/c-src/src/a/b"
+# (g) a completely empty folder; (h) a regular file in the parent.
+mkdir -p "$H1/c-empty"
+printf 'x\n' > "$H1/c-plain"
+# C-2 rule 6, where the host can make a directory unreadable (see the header).
+RO=0
+mkdir -p "$H122/ro-probe/x"; chmod 000 "$H122/ro-probe"
+if ! find "$H122/ro-probe" >/dev/null 2>&1; then RO=1; fi
+chmod 755 "$H122/ro-probe"; rmdir "$H122/ro-probe/x" "$H122/ro-probe"
+if [ "$RO" = 1 ]; then
+  mkdir -p "$H1/c-unreadable/node_modules/a/b"
+  chmod 000 "$H1/c-unreadable/node_modules/a"
+fi
+
+assert_eq "fixture (a) c-file: differs from stray-shaped only by one regular file, three levels down (and holds (i))" \
+  "nogit|unlisted|files=1|links=0|resolving=0|top=node_modules,s-inner|ignored=node_modules|nested=5|node_modules/a/b/f.txt" \
+  "$(h_shape "$M1" "$H1/c-file")|$(cd "$H1/c-file" && find . -type f | awk '{ sub(/^\.\//, ""); print }')"
+assert_eq "fixture (i) c-file/s-inner: stray-shaped, one level further down than the parent" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=node_modules|ignored=node_modules|nested=2" "$(h_shape "$M1" "$H1/c-file/s-inner")"
+assert_eq "fixture (b) c-gitfile: differs from stray-shaped only by a .git file (itself a regular file)" \
+  "git|unlisted|files=1|links=0|resolving=0|top=.git,node_modules|ignored=node_modules|nested=2" "$(h_shape "$M1" "$H1/c-gitfile")"
+assert_eq "fixture (b) c-gitdir: differs from stray-shaped only by an empty .git directory" \
+  "git|unlisted|files=0|links=0|resolving=0|top=.git,node_modules|ignored=node_modules|nested=2" "$(h_shape "$M1" "$H1/c-gitdir")"
+assert_eq "fixture (c) c-live: a live linked worktree, listed, merged, clean, unlocked and recent" \
+  "listed|merged|clean|unlocked|recent" "$(h_shape "$M1" "$H1/c-live" | awk -F'|' '{ print $2 }')|$(facts "$M1" "$H1/c-live")"
+assert_eq "fixture (d) c-reduced: stray-shaped in every fact but one - git still lists it" \
+  "nogit|listed|files=0|links=0|resolving=0|top=node_modules|ignored=node_modules|nested=2" "$(h_shape "$M1" "$H1/c-reduced")"
+assert_eq "fixture (e) c-goodlink: differs from stray-shaped only by its one link resolving, to a $E_KIND outside the folder" \
+  "nogit|unlisted|files=0|links=1|resolving=1|top=node_modules|ignored=node_modules|nested=2|outside" \
+  "$(h_shape "$M1" "$H1/c-goodlink")|$(h_link_where "$H1/c-goodlink/node_modules/a/ok" c-goodlink)"
+assert_eq "fixture (f) c-src: differs from stray-shaped only by its top-level entry, src, which the repository does not ignore" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=src|ignored=-|nested=2" "$(h_shape "$M1" "$H1/c-src")"
+assert_eq "fixture (g) c-empty: a completely empty folder - nothing at all, so no ignored top-level directory" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=-|ignored=-|nested=0" "$(h_shape "$M1" "$H1/c-empty")"
+assert_eq "fixture (h) c-plain: a regular file in the parent, not a folder" \
+  "file" "$([ -f "$H1/c-plain" ] && [ ! -d "$H1/c-plain" ] && printf file || printf other)"
+if [ "$RO" = 1 ]; then
+  assert_eq "fixture (rule 6) c-unreadable: stray-shaped as far as it can be read, and find cannot read all of it" \
+    "nogit|unlisted|files=0|links=0|resolving=0|top=node_modules|ignored=node_modules|nested=1|unreadable" \
+    "$(h_shape "$M1" "$H1/c-unreadable")|$(find "$H1/c-unreadable" >/dev/null 2>&1 && printf readable || printf unreadable)"
+fi
+
+out="$(T "$M1" "$M1")"
+for pair in "c-file:(a) a folder holding one regular file" \
+            "c-gitfile:(b) a folder with a .git file" \
+            "c-gitdir:(b) a folder with a .git directory" \
+            "c-live:(c) a live linked worktree" \
+            "c-reduced:(d) a listed worktree reduced by hand to the stray shape" \
+            "c-goodlink:(e) a folder holding a link that resolves" \
+            "c-src:(f) a folder whose only top-level entry is src, not ignored" \
+            "c-empty:(g) a completely empty folder" \
+            "c-plain:(h) a regular file in the parent" \
+            "c-file/s-inner:(i) a stray-shaped folder one level further down" \
+            "main:the main checkout"; do
+  n="${pair%%:*}"; what="${pair#*:}"
+  assert_eq "HARNESS-122 AC-2 $what is never named on a STRAY line" 0 "$(h_stray_names "$out" "$P1/$n")"
+done
+if [ "$RO" = 1 ]; then
+  assert_eq "HARNESS-122 AC-2 (C-2 rule 6) a folder find cannot read is never named on a STRAY line" 0 "$(h_stray_names "$out" "$P1/c-unreadable")"
+fi
+assert_eq "HARNESS-122 AC-2: AC-1's s-dirs still gets its STRAY pair" 1 "$(h_pairs_of "$out" "$P1/s-dirs")"
+assert_eq "HARNESS-122 AC-2: AC-1's s-link still gets its STRAY pair" 1 "$(h_pairs_of "$out" "$P1/s-link")"
+assert_eq "HARNESS-122 AC-2: and those are the only two STRAY lines, in any spelling" 2 "$(starts "$out" 'STRAY ')"
+has_line "HARNESS-122 AC-2 (c): the live worktree gets the worktree line it gets today" "KEEP $(wtp "$M1" c-live)  recent" "$out"
+
+# ===========================================================================
+describe "HARNESS-122 AC-3: STRAY pairs follow every ORPHAN line and precede every DELETABLE line, and the census does not count them"
+
+h_parent ac3
+H3="$H122/ac3"; M3="$H3/main"
+merged_branch "$M3" story/h3-done
+git -C "$M3" push -q origin main >/dev/null 2>&1
+git -C "$M3" worktree add -q --detach "$H3/h3-rm" main >/dev/null 2>&1
+age "$H3/h3-rm" "$OLD"
+mkdir -p "$M3/.claude/worktrees/o-h3"
+G3="$(line_no "$(porc_paths "$M3")" 1)"; P3="${G3%/*}"
+
+assert_eq "fixture h3-rm: its facts are merged|clean|unlocked|idle" "merged|clean|unlocked|idle" "$(facts "$M3" "$H3/h3-rm")"
+assert_eq "fixture story/h3-done: merged, checked out nowhere, no origin copy" "merged|in|noremote" \
+  "$(git -C "$M3" merge-base --is-ancestor story/h3-done origin/main 2>/dev/null && printf merged || printf unmerged)|$(case "$(git -C "$M3" worktree list --porcelain)" in *"branch refs/heads/story/h3-done"*) printf out ;; *) printf in ;; esac)|$(git -C "$M3" rev-parse -q --verify refs/remotes/origin/story/h3-done >/dev/null 2>&1 && printf remote || printf noremote)"
+assert_eq "fixture o-h3: an empty folder under .claude/worktrees/ that git does not list" "0|unlisted" \
+  "$(find "$M3/.claude/worktrees/o-h3" -mindepth 1 | awk 'END { print NR }')|$(h_shape "$M3" "$M3/.claude/worktrees/o-h3" | awk -F'|' '{ print $2 }')"
+
+out="$(T "$M3" "$M3")"
+CENSUS_BEFORE="$(awk 'END { print }' <<< "$out")"
+assert_eq "HARNESS-122 AC-3: with the two folders absent, the census is 1 / 1 / 0 / 1" "$(census 1 1 0 1)" "$CENSUS_BEFORE"
+
+# Z-dirs before a-link: LC_ALL=C order, which a locale-aware sort reverses.
+h_strays "$H3" Z-dirs a-link
+assert_eq "fixture h122/ac3: the parent holds the main checkout, the worktree and the two folders" \
+  "Z-dirs,a-link,h3-rm,main" "$(h_ls "$H3")"
+assert_eq "fixture Z-dirs: stray-shaped, directories only" "$STRAY_DIRS" "$(h_shape "$M3" "$H3/Z-dirs")"
+assert_eq "fixture a-link: stray-shaped, with one dangling link" "$STRAY_LINK" "$(h_shape "$M3" "$H3/a-link")"
+
+EXPECT_H3="REMOVABLE $(wtp "$M3" h3-rm)
+ORPHAN $G3/.claude/worktrees/o-h3  empty
+  remove it: $(remove_cmd "$G3/.claude/worktrees/o-h3")
+$(h_pair "$P3/Z-dirs")
+$(h_pair "$P3/a-link")
+DELETABLE story/h3-done
+$(census 1 1 0 1)"
+out="$(T "$M3" "$M3")"; rc=$?
+whole "HARNESS-122 AC-3: the whole report is the worktree line, the ORPHAN pair, the two STRAY pairs in LC_ALL=C order, the DELETABLE line, then the census" \
+  "$EXPECT_H3" "$out"
+assert_eq "HARNESS-122 AC-3/C-4: the census is the one printed with the two folders absent" "$CENSUS_BEFORE" "$(awk 'END { print }' <<< "$out")"
+assert_eq "HARNESS-122 AC-3: and report mode exits 0" 0 "$rc"
+
+# ===========================================================================
+describe "HARNESS-122 AC-4: nothing is deleted, in report mode or with --apply"
+
+h_parent ac4
+H4="$H122/ac4"; M4="$H4/main"
+h_strays "$H4" s-dirs s-link
+G4="$(line_no "$(porc_paths "$M4")" 1)"; P4="${G4%/*}"
+assert_eq "fixture s-dirs (ac4): stray-shaped, directories only" "$STRAY_DIRS" "$(h_shape "$M4" "$H4/s-dirs")"
+assert_eq "fixture s-link (ac4): stray-shaped, with one dangling link" "$STRAY_LINK" "$(h_shape "$M4" "$H4/s-link")"
+
+LS_DIRS="$(h_listing "$H4/s-dirs")"; LS_LINK="$(h_listing "$H4/s-link")"
+EXPECT_H4="$(h_pair "$P4/s-dirs")
+$(h_pair "$P4/s-link")
+$(census 0 0 0 0)"
+out="$(T "$M4" "$M4")"; rc_r=$?
+out_a="$(T "$M4" "$M4" --apply)"; rc_a=$?
+whole "HARNESS-122 AC-4: report mode prints the two STRAY pairs, then the census" "$EXPECT_H4" "$out"
+whole "HARNESS-122 AC-4/C-5: --apply prints the same STRAY pairs and acts on neither" "$EXPECT_H4" "$out_a"
+assert_eq "HARNESS-122 AC-4: every entry under each stray folder is still there after both runs, find listing identical" "same|same" \
+  "$([ "$LS_DIRS" = "$(h_listing "$H4/s-dirs")" ] && printf same || printf changed)|$([ "$LS_LINK" = "$(h_listing "$H4/s-link")" ] && printf same || printf changed)"
+assert_eq "HARNESS-122 AC-4/C-5: STRAY folders do not change the exit status: report 0, --apply 0" "0|0" "$rc_r|$rc_a"
+
+# ===========================================================================
+describe "HARNESS-122 AC-5: --help states the STRAY rule (Contract C-6)"
+
+help="$(T "$WORK/z" "$WORK/z" --help)"
+C6_1="then one STRAY line per folder beside the main checkout that holds no"
+C6_2="regular file and no link that resolves, has no .git, is not a listed"
+C6_3="worktree, and has a top-level directory this repository ignores, each"
+C6_4="followed by the command to remove it (printed, never run),"
+C6_5="A STRAY folder is reported and never removed, with or without --apply."
+has_line "HARNESS-122 AC-5: --help has the whole line: $C6_1" "$C6_1" "$help"
+has_line "HARNESS-122 AC-5: --help has the whole line: $C6_2" "$C6_2" "$help"
+has_line "HARNESS-122 AC-5: --help has the whole line: $C6_3" "$C6_3" "$help"
+has_line "HARNESS-122 AC-5: --help has the whole line: $C6_4" "$C6_4" "$help"
+has_line "HARNESS-122 AC-5: --help has the whole line: $C6_5" "$C6_5" "$help"
+assert_eq "HARNESS-122 AC-5: the four lines of the STRAY rule are consecutive, in C-6's order" 1 \
+  "$(awk 'BEGIN { for (i = 2; i <= 5; i++) { w[i - 1] = ARGV[i]; ARGV[i] = "" } }
+          { l[NR] = $0 } END { for (i = 1; i + 3 <= NR; i++) if (l[i] == w[1] && l[i+1] == w[2] && l[i+2] == w[3] && l[i+3] == w[4]) c++; print c + 0 }' \
+        - "$C6_1" "$C6_2" "$C6_3" "$C6_4" <<< "$help")"
 
 summary "tidy"
