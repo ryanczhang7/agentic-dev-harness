@@ -4,8 +4,8 @@ title: One command lists every run waiting in the machine queue
 slug: one-command-lists-every-run-waiting-in-t
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-121-one-command-lists-every-run-waiting-in-t
 depends_on: [HARNESS-120]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/run-queue.sh, scripts/run-status.sh, CLAUDE.md, .claude/tests/run-queue.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1533,3 +1533,4 @@ Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 
     exit:     0
     last:     17 harness suite(s) passed.
     duration: 1758s
+- **Merged 2026-11-23** as PR #211 (merge commit 4517e2e). CI on the PR: `boundaries` passed (9 s); `gates` passed in 5m46s, its full self-test `35 harness suite(s) passed.` in 5m33s (06:51:10 to 06:56:43 UTC), with `run-queue: 901 passed, 0 failed`; nothing near a time limit. https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/45126919046
