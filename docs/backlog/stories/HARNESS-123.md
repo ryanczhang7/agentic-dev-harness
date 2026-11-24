@@ -5,7 +5,7 @@ slug: tidy-suite-pins-dot-named-folders-and-ru
 epic: 
 type: fix
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-123-tidy-suite-pins-dot-globs-and-rule3-prefix
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/tidy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -532,6 +532,7 @@ name, below the table.
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-23; no override reported. The oracle partition is Contract C-5: all three criteria mechanical.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, `tidy: 206 passed, 0 failed`, 206 executed of 206 declared; `gates.sh --fast` fresh, exit 0 (vacuous); `mutate.sh --check` clean; `scripts/tidy.sh` untouched. The suite is green by design (C-6): every new assertion is earned by DV-1..DV-3, pasted, each failing exactly the predicted assertions (3, 3, 2). The removed lines in the test diff are the four assertions C-3 extends in place, each keeping what it asserted.
 - GREEN: no dispatch; a no-op by Contract C-7, verified by the orchestrator, 2026-11-23. `git diff --stat b3a7f9e -- scripts/` is empty; `attest.sh check -- bash scripts/selftest.sh tidy` fresh on this tree, exit 0, `tidy: 206 passed, 0 failed`; `attest.sh check -- bash scripts/gates.sh --fast` fresh, exit 0. The negative controls were measured in RED against the real script (the suite loads), so there is nothing left for GREEN to confirm.
+- GATES full run, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-24; no override. Orchestrator checked: `attest.sh check -- bash scripts/gates.sh` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` (vacuous here, BOOTSTRAPPED=no; the tidy suite under its floor is the judge). Did not queue.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -789,10 +790,21 @@ them are docs.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-24T00:52:32Z
+    commit: 00abd5e (working tree had uncommitted changes)
+    tree:   c7adff18b65836653b729fe7706033ebaf289cfb
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
@@ -897,3 +909,20 @@ them are docs.
   checks pass. Its three failures are the ones every story has before
   REVIEW: the phase is PLANNED, `## Handoff` is empty, and
   `## Deferred verifications` has no pasted result yet.
+- **The ladder, GATES (2026-11-24, the orchestrator).** DV-3 re-run against the committed tree (00abd5e), through `scripts/mutate.sh` against `bash scripts/selftest.sh tidy`. It matches RED's pasted result exactly: the same two assertions, `tidy: 204 passed, 2 failed`, the file restored and `mutate.sh --check` clean. Release: `origin/main` holds 141, so this story takes **142 (2026-11-24)**.
+
+```
+=== mutate: scripts/tidy.sh (1 line(s) changed by 208s#"\./\${d#"${d#) ===
+  208 -     [ -d "$d" ] && [ ! -L "$d" ] && tops+=("./${d##*/}/")
+  208 +     [ -d "$d" ] && [ ! -L "$d" ] && tops+=("${d##*/}/")
+=== mutate: running bash scripts/selftest.sh tidy ===
+    FAIL HARNESS-123 AC-3: a folder whose only top-level directory is named :(top)node_modules is never named on a STRAY line - the name is a path, not pathspec magic
+         expected: 0
+         actual:   1
+    FAIL HARNESS-122 C-2 rule 3, HARNESS-123 AC-3: the whole report is r3-two's STRAY pair, then the unchanged census - c-magic and r3-none are not in it
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+         tidy: 0 worktree(s), 0 removable, 0 kept; 0 merged branch(es) deletable
+tidy: 204 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-123/.claude/state/mutations/scripts_tidy.sh.20261124T004534Z.247698.bak) ===
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
