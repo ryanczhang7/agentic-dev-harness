@@ -5,7 +5,7 @@ slug: tidy-suite-pins-dot-named-folders-and-ru
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-123-tidy-suite-pins-dot-globs-and-rule3-prefix
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/tidy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -531,6 +531,7 @@ name, below the table.
 
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-23; no override reported. The oracle partition is Contract C-5: all three criteria mechanical.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, `tidy: 206 passed, 0 failed`, 206 executed of 206 declared; `gates.sh --fast` fresh, exit 0 (vacuous); `mutate.sh --check` clean; `scripts/tidy.sh` untouched. The suite is green by design (C-6): every new assertion is earned by DV-1..DV-3, pasted, each failing exactly the predicted assertions (3, 3, 2). The removed lines in the test diff are the four assertions C-3 extends in place, each keeping what it asserted.
+- GREEN: no dispatch; a no-op by Contract C-7, verified by the orchestrator, 2026-11-23. `git diff --stat b3a7f9e -- scripts/` is empty; `attest.sh check -- bash scripts/selftest.sh tidy` fresh on this tree, exit 0, `tidy: 206 passed, 0 failed`; `attest.sh check -- bash scripts/gates.sh --fast` fresh, exit 0. The negative controls were measured in RED against the real script (the suite loads), so there is nothing left for GREEN to confirm.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
