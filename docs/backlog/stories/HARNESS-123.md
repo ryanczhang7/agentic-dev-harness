@@ -533,6 +533,7 @@ name, below the table.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/selftest.sh tidy` fresh, exit 0, `tidy: 206 passed, 0 failed`, 206 executed of 206 declared; `gates.sh --fast` fresh, exit 0 (vacuous); `mutate.sh --check` clean; `scripts/tidy.sh` untouched. The suite is green by design (C-6): every new assertion is earned by DV-1..DV-3, pasted, each failing exactly the predicted assertions (3, 3, 2). The removed lines in the test diff are the four assertions C-3 extends in place, each keeping what it asserted.
 - GREEN: no dispatch; a no-op by Contract C-7, verified by the orchestrator, 2026-11-23. `git diff --stat b3a7f9e -- scripts/` is empty; `attest.sh check -- bash scripts/selftest.sh tidy` fresh on this tree, exit 0, `tidy: 206 passed, 0 failed`; `attest.sh check -- bash scripts/gates.sh --fast` fresh, exit 0. The negative controls were measured in RED against the real script (the suite loads), so there is nothing left for GREEN to confirm.
 - GATES full run, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-24; no override. Orchestrator checked: `attest.sh check -- bash scripts/gates.sh` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` (vacuous here, BOOTSTRAPPED=no; the tidy suite under its floor is the judge). Did not queue.
+- GATES re-run after the date fix, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/gates.sh` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`; did not queue.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -788,13 +789,28 @@ them are docs.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+### Round 1 (aff9f36, against merge-base 300a9e3)
+
+Reviewer: `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-23; no override. Changed no file; ran commands only in this worktree and its scratchpad. Summary of the report as returned:
+
+- **What this change does:** tests only. Eleven new assertions in `.claude/tests/tidy.test.sh` pin `scripts/tidy.sh:171` (ORPHAN dot globs), `:193` and `:207` (STRAY dot globs) and `:208` (rule 3's `./` prefix); four assertions widened in place; `tidy` floor 195 -> 206 in both places; release 142. `scripts/tidy.sh` is not in the diff.
+- **Held up:** nothing loosened (the `h122/dot` listing and whole report, and the `h122/r3` listing, are strict supersets; the `h122/r3` whole report's expected value is byte-identical, only its description changed; every other HARNESS-122 assertion in both blocks is unchanged); needles are whole lines (`h_opairs_of` compares `prev == s && $0 == c` with its arguments through `ARGV`, `whole` is byte-for-byte, `h_stray_names` anchors on `STRAY <path>` then end, space or `/`); the needles fail when their line breaks (DV-1..3 pasted 3/3/2, the GATES ladder matched); `..cache/` and `c-magic` change no HARNESS-122 assertion's meaning; floor arithmetic +2 `r3`, +4 `dot`, +5 `orph` = 11, all outside the `RO` conditional, so CI executes 208.
+- **One extra mutation by the reviewer,** through `scripts/mutate.sh` against `bash scripts/selftest.sh tidy`: `171s/ \.\.?\*//` (only `..?*` dropped from the ORPHAN loop) gave `tidy: 204 passed, 2 failed`, the `..o-two` ORPHAN pair (expected 1, actual 0) and the AC-1 whole report; `.o-hid` stayed green. So the two dot fixtures each pin their own glob. Restored and verified; `mutate.sh --check` clean.
+- **Nice to have 1 (Route: GATES):** `.claude/harness/VERSION:34` read `142 (2026-11-24)`, the UTC date; earlier stamps use the local date (`5051c93`, committed 22:58 local on 11-21, stamped `140 (2026-11-21)`). Fix: `142 (2026-11-23)`.
+- **Not checked:** the Linux CI run (208, and `:(top)node_modules` there), judged by reading only.
+- Verdict: Ship.
+
+**Orchestrator's disposition (2026-11-23).** `classify.sh .claude/harness/VERSION`: `harness`. Nice to have 1 is followed: the local date is `Mon Nov 23 19:11:49 CST 2026`, so VERSION reads `142 (2026-11-23)`; a one-word harness-path fix, made by the orchestrator, after which a `feature-developer` re-ran `gates.sh` on the changed tree (`## Model guidance`). No test or source path changed, so no second review round is owed for it.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
 
-    run:    2026-11-24T00:52:32Z
-    commit: 00abd5e (working tree had uncommitted changes)
-    tree:   c7adff18b65836653b729fe7706033ebaf289cfb
+    run:    2026-11-24T01:11:56Z
+    commit: aff9f36 (working tree had uncommitted changes)
+    tree:   ac4294fb81ea0a494b44fd81f162671e48d86f94
     result: pass (0 ran, 7 unconfigured, 0 known)
 
     UNCONFIGURED format
@@ -909,7 +925,7 @@ them are docs.
   checks pass. Its three failures are the ones every story has before
   REVIEW: the phase is PLANNED, `## Handoff` is empty, and
   `## Deferred verifications` has no pasted result yet.
-- **The ladder, GATES (2026-11-24, the orchestrator).** DV-3 re-run against the committed tree (00abd5e), through `scripts/mutate.sh` against `bash scripts/selftest.sh tidy`. It matches RED's pasted result exactly: the same two assertions, `tidy: 204 passed, 2 failed`, the file restored and `mutate.sh --check` clean. Release: `origin/main` holds 141, so this story takes **142 (2026-11-24)**.
+- **The ladder, GATES (2026-11-24, the orchestrator).** DV-3 re-run against the committed tree (00abd5e), through `scripts/mutate.sh` against `bash scripts/selftest.sh tidy`. It matches RED's pasted result exactly: the same two assertions, `tidy: 204 passed, 2 failed`, the file restored and `mutate.sh --check` clean. Release: `origin/main` holds 141, so this story takes **142 (2026-11-23)**, the local date (diff review round 1, nice to have 1).
 
 ```
 === mutate: scripts/tidy.sh (1 line(s) changed by 208s#"\./\${d#"${d#) ===
