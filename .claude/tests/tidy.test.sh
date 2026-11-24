@@ -992,24 +992,40 @@ describe "HARNESS-122 C-2 rule 3: a folder with several top-level directories is
 # (not ignored) before node_modules/ (ignored) in glob order; r3-none holds two
 # directories neither of which is ignored, the control that a "two or more
 # directories" shortcut would report.
+#
+# HARNESS-123 AC-3. Rule 3 hands each top-level name to check-ignore as
+# ./<name>/ (tidy.sh :208), and nothing failed when the ./ was dropped.
+# c-magic's only entry is a directory named :(top)node_modules: bare, git reads
+# it as pathspec magic for node_modules/, which is ignored; behind ./ it is a
+# path nothing ignores. Its fact assertion records both readings, from this
+# main checkout, so the fixture proves it discriminates on the host it runs on
+# (Git for Windows included: the story's Notes, "The Git Bash probe").
 h_parent r3
 HR="$H122/r3"; MR="$HR/main"
-mkdir -p "$HR/r3-two/aaa/x" "$HR/r3-two/node_modules/a/b" "$HR/r3-none/aaa/x" "$HR/r3-none/src/y"
+mkdir -p "$HR/r3-two/aaa/x" "$HR/r3-two/node_modules/a/b" "$HR/r3-none/aaa/x" "$HR/r3-none/src/y" "$HR/c-magic/:(top)node_modules/a/b"
 GR="$(line_no "$(porc_paths "$MR")" 1)"; PR="${GR%/*}"
 
-assert_eq "fixture h122/r3: the parent holds the main checkout and the two folders, nothing else" \
-  "main,r3-none,r3-two" "$(h_ls "$HR")"
+assert_eq "fixture h122/r3: the parent holds the main checkout and the three folders c-magic, r3-none, r3-two, nothing else" \
+  "c-magic,main,r3-none,r3-two" "$(h_ls "$HR")"
 assert_eq "fixture r3-two: no .git, unlisted, no file, no link, two top-level directories aaa then node_modules, only node_modules ignored" \
   "nogit|unlisted|files=0|links=0|resolving=0|top=aaa,node_modules|ignored=node_modules|nested=3" "$(h_shape "$MR" "$HR/r3-two")"
 assert_eq "fixture r3-none: no .git, unlisted, no file, no link, two top-level directories aaa and src, neither ignored" \
   "nogit|unlisted|files=0|links=0|resolving=0|top=aaa,src|ignored=-|nested=2" "$(h_shape "$MR" "$HR/r3-none")"
+# h_shape's ignored field asks git about the bare name, which is the magic
+# reading, so c-magic's shape is h_shape's first six fields and the two exit
+# statuses spelled out.
+assert_eq "fixture c-magic (HARNESS-123 AC-3): no .git, unlisted, no file, no link, its only top-level entry :(top)node_modules; check-ignore exits 0 on the bare name (magic) and 1 on ./ before it (a path)" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=:(top)node_modules|bare=0|prefixed=1" \
+  "$(h_shape "$MR" "$HR/c-magic" | awk -F'|' '{ print $1 "|" $2 "|" $3 "|" $4 "|" $5 "|" $6 }')|bare=$(git -C "$MR" check-ignore -q -- ':(top)node_modules/' 2>/dev/null; printf '%s' "$?")|prefixed=$(git -C "$MR" check-ignore -q -- './:(top)node_modules/' 2>/dev/null; printf '%s' "$?")"
 
 out="$(T "$MR" "$MR")"; rc=$?
 assert_eq "HARNESS-122 C-2 rule 3: a folder whose ignored top-level directory is its second, not its first, gets its STRAY pair" \
   1 "$(h_pairs_of "$out" "$PR/r3-two")"
 assert_eq "HARNESS-122 C-2 rule 3: a folder with two top-level directories, neither ignored, is never named on a STRAY line" \
   0 "$(h_stray_names "$out" "$PR/r3-none")"
-whole "HARNESS-122 C-2 rule 3: the whole report is r3-two's STRAY pair, then the unchanged census" \
+assert_eq "HARNESS-123 AC-3: a folder whose only top-level directory is named :(top)node_modules is never named on a STRAY line - the name is a path, not pathspec magic" \
+  0 "$(h_stray_names "$out" "$PR/c-magic")"
+whole "HARNESS-122 C-2 rule 3, HARNESS-123 AC-3: the whole report is r3-two's STRAY pair, then the unchanged census - c-magic and r3-none are not in it" \
   "$(h_pair "$PR/r3-two")
 $(census 0 0 0 0)" "$out"
 assert_eq "HARNESS-122 C-2 rule 3: and report mode exits 0" 0 "$rc"
@@ -1025,28 +1041,46 @@ describe "HARNESS-122 C-1 and C-2 rule 3: dot names count - a hidden folder is a
 # .hidden is stray-shaped under a name starting with a dot; v-hidden's only
 # top-level directory is .venv, which this parent's main checkout (and only
 # it) ignores, committed so its tree is clean.
+#
+# HARNESS-123 AC-2. .hidden and .venv start with one dot and a non-dot, so only
+# the .[!.]* glob matches them, and dropping ..?* from the parent loop
+# (tidy.sh :193) or from rule 3's loop (:207) left this block green. ..two is
+# stray-shaped under a name starting with two dots (lost when the parent loop
+# stops seeing such names); w-two has a plain name and its only top-level
+# directory is ..cache, which this main checkout also ignores, in the same
+# commit as .venv (lost when rule 3's loop stops seeing them).
 h_parent dot
 HD="$H122/dot"; MD="$HD/main"
-printf '.venv/\n' >> "$MD/.gitignore"
-git -C "$MD" commit -qam 'ignore .venv' >/dev/null 2>&1
-mkdir -p "$HD/.hidden/node_modules/a/b" "$HD/v-hidden/.venv/a/b"
+printf '.venv/\n..cache/\n' >> "$MD/.gitignore"
+git -C "$MD" commit -qam 'ignore .venv and ..cache' >/dev/null 2>&1
+mkdir -p "$HD/.hidden/node_modules/a/b" "$HD/v-hidden/.venv/a/b" "$HD/..two/node_modules/a/b" "$HD/w-two/..cache/a/b"
 GD="$(line_no "$(porc_paths "$MD")" 1)"; PD="${GD%/*}"
 
-assert_eq "fixture h122/dot: the parent holds the main checkout and the two folders, nothing else" \
-  ".hidden,main,v-hidden" "$(h_ls "$HD")"
+assert_eq "fixture h122/dot: the parent holds the main checkout and the four folders ..two, .hidden, v-hidden, w-two, nothing else" \
+  "..two,.hidden,main,v-hidden,w-two" "$(h_ls "$HD")"
 assert_eq "fixture .hidden: stray-shaped under a name that starts with a dot - no .git, unlisted, no file, no link, node_modules ignored" \
   "nogit|unlisted|files=0|links=0|resolving=0|top=node_modules|ignored=node_modules|nested=2" "$(h_shape "$MD" "$HD/.hidden")"
 assert_eq "fixture v-hidden: no .git, unlisted, no file, no link, its only top-level directory .venv, which this parent's main checkout ignores" \
   "nogit|unlisted|files=0|links=0|resolving=0|top=.venv|ignored=.venv|nested=2" "$(h_shape "$MD" "$HD/v-hidden")"
+assert_eq "fixture ..two (HARNESS-123 AC-2): stray-shaped under a name that starts with two dots - no .git, unlisted, no file, no link, node_modules ignored" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=node_modules|ignored=node_modules|nested=2" "$(h_shape "$MD" "$HD/..two")"
+assert_eq "fixture w-two (HARNESS-123 AC-2): no .git, unlisted, no file, no link, its only top-level directory ..cache, which this parent's main checkout ignores" \
+  "nogit|unlisted|files=0|links=0|resolving=0|top=..cache|ignored=..cache|nested=2" "$(h_shape "$MD" "$HD/w-two")"
 
 out="$(T "$MD" "$MD")"; rc=$?
 assert_eq "HARNESS-122 C-1: a stray-shaped folder whose own name starts with a dot gets its STRAY pair" \
   1 "$(h_pairs_of "$out" "$PD/.hidden")"
 assert_eq "HARNESS-122 C-2 rule 3: a folder whose only ignored top-level directory is hidden (.venv) gets its STRAY pair" \
   1 "$(h_pairs_of "$out" "$PD/v-hidden")"
-whole "HARNESS-122 C-1 and C-2 rule 3: the whole report is .hidden's STRAY pair, then v-hidden's, then the unchanged census" \
-  "$(h_pair "$PD/.hidden")
+assert_eq "HARNESS-123 AC-2: a stray-shaped folder whose own name starts with two dots (..two) gets its STRAY pair" \
+  1 "$(h_pairs_of "$out" "$PD/..two")"
+assert_eq "HARNESS-123 AC-2: a folder whose only ignored top-level directory starts with two dots (..cache) gets its STRAY pair" \
+  1 "$(h_pairs_of "$out" "$PD/w-two")"
+whole "HARNESS-122 C-1 and C-2 rule 3, HARNESS-123 AC-2: the whole report is the STRAY pairs of ..two, .hidden, v-hidden, w-two in LC_ALL=C order, then the unchanged census" \
+  "$(h_pair "$PD/..two")
+$(h_pair "$PD/.hidden")
 $(h_pair "$PD/v-hidden")
+$(h_pair "$PD/w-two")
 $(census 0 0 0 0)" "$out"
 assert_eq "HARNESS-122 C-1 and C-2 rule 3: and report mode exits 0" 0 "$rc"
 
@@ -1132,5 +1166,48 @@ assert_eq "HARNESS-122 AC-5: the four lines of the STRAY rule are consecutive, i
   "$(awk 'BEGIN { for (i = 2; i <= 5; i++) { w[i - 1] = ARGV[i]; ARGV[i] = "" } }
           { l[NR] = $0 } END { for (i = 1; i + 3 <= NR; i++) if (l[i] == w[1] && l[i+1] == w[2] && l[i+2] == w[3] && l[i+3] == w[4]) c++; print c + 0 }' \
         - "$C6_1" "$C6_2" "$C6_3" "$C6_4" <<< "$help")"
+
+# ===========================================================================
+# HARNESS-123 AC-1 - ORPHAN sees dot names. tidy.sh reads .claude/worktrees/
+# with `* .[!.]* ..?*` (:171), and no fixture above has a folder there whose
+# name starts with a dot, so dropping both dot globs left the suite green.
+# .o-hid starts with one dot and a non-dot (only .[!.]* matches it); ..o-two
+# starts with two dots and one more character (only ..?* matches it); o-plain
+# matches *, the control that the loop still runs. A parent of its own, so no
+# STRAY line can appear, and not fixture d, whose whole report is HARNESS-066's.
+describe "HARNESS-123 AC-1: ORPHAN sees folders under .claude/worktrees/ whose names start with one dot or two"
+
+h_parent orph
+HO="$H122/orph"; MO="$HO/main"; WO="$MO/.claude/worktrees"
+mkdir -p "$WO/.o-hid" "$WO/..o-two/x" "$WO/o-plain"
+printf '1\n' > "$WO/..o-two/x/f"
+GO="$(line_no "$(porc_paths "$MO")" 1)"
+
+# h_opair <path> <tail>   The ORPHAN pair for <path>: `ORPHAN <path>  <tail>`
+# and its remove-it line, as C-2 of HARNESS-066 spells them.
+h_opair() { printf 'ORPHAN %s  %s\n  remove it: %s' "$1" "$2" "$(remove_cmd "$1")"; }
+# h_opairs_of <text> <path> <tail>   How many times that pair appears as two
+# consecutive whole lines.
+h_opairs_of() {
+  awk 'BEGIN { s = ARGV[2]; c = ARGV[3]; ARGV[2] = ""; ARGV[3] = "" }
+       prev == s && $0 == c { n++ } { prev = $0 } END { print n + 0 }' \
+    - "ORPHAN $2  $3" "  remove it: $(remove_cmd "$2")" <<< "$1"
+}
+
+assert_eq "fixture h122/orph: .claude/worktrees/ holds ..o-two, .o-hid, o-plain, git lists no worktree under it, they hold 1, 0, 0 files, and the parent holds the main checkout only" \
+  "..o-two,.o-hid,o-plain|listed=0|1|0|0|main" \
+  "$(h_ls "$WO")|listed=$(awk 'index($0, "/.claude/worktrees/") { c++ } END { print c + 0 }' <<< "$(porc_paths "$MO")")|$(find "$WO/..o-two" -type f | awk 'END { print NR }')|$(find "$WO/.o-hid" -type f | awk 'END { print NR }')|$(find "$WO/o-plain" -type f | awk 'END { print NR }')|$(h_ls "$HO")"
+
+out="$(T "$MO" "$MO")"; rc=$?
+assert_eq "HARNESS-123 AC-1: an empty orphan whose name starts with one dot (.o-hid) gets its ORPHAN pair, ORPHAN <path>  empty" \
+  1 "$(h_opairs_of "$out" "$GO/.claude/worktrees/.o-hid" empty)"
+assert_eq "HARNESS-123 AC-1: an orphan holding one file whose name starts with two dots (..o-two) gets its ORPHAN pair, ORPHAN <path>  1 file(s)" \
+  1 "$(h_opairs_of "$out" "$GO/.claude/worktrees/..o-two" '1 file(s)')"
+whole "HARNESS-123 AC-1: the whole report is the ORPHAN pairs of ..o-two, .o-hid, o-plain in LC_ALL=C order, then the census 0 / 0 / 0 / 0" \
+  "$(h_opair "$GO/.claude/worktrees/..o-two" '1 file(s)')
+$(h_opair "$GO/.claude/worktrees/.o-hid" empty)
+$(h_opair "$GO/.claude/worktrees/o-plain" empty)
+$(census 0 0 0 0)" "$out"
+assert_eq "HARNESS-123 AC-1: and report mode exits 0" 0 "$rc"
 
 summary "tidy"
