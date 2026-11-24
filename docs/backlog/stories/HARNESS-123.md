@@ -4,8 +4,8 @@ title: Tidy suite pins dot-named folders and rule 3's path prefix
 slug: tidy-suite-pins-dot-named-folders-and-ru
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-123-tidy-suite-pins-dot-globs-and-rule3-prefix
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/tidy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -943,3 +943,4 @@ tidy: 204 passed, 2 failed
 === mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-123/.claude/state/mutations/scripts_tidy.sh.20261124T004534Z.247698.bak) ===
 mutate: no stranded mutation; nothing of a previous run is in the tree.
 ```
+- **Merged 2026-11-23** as PR #213 (merge commit 355af77). CI on the PR: `boundaries` passed (6 s); `gates` passed in 7m26s, its full self-test `35 harness suite(s) passed.`, with `tidy: 208 passed, 0 failed` on CI Linux, as predicted. https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/45304749342
