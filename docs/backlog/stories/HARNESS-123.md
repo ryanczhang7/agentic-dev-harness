@@ -4,8 +4,8 @@ title: Tidy suite pins dot-named folders and rule 3's path prefix
 slug: tidy-suite-pins-dot-named-folders-and-ru
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-123-tidy-suite-pins-dot-globs-and-rule3-prefix
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/tidy.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -534,6 +534,7 @@ name, below the table.
 - GREEN: no dispatch; a no-op by Contract C-7, verified by the orchestrator, 2026-11-23. `git diff --stat b3a7f9e -- scripts/` is empty; `attest.sh check -- bash scripts/selftest.sh tidy` fresh on this tree, exit 0, `tidy: 206 passed, 0 failed`; `attest.sh check -- bash scripts/gates.sh --fast` fresh, exit 0. The negative controls were measured in RED against the real script (the suite loads), so there is nothing left for GREEN to confirm.
 - GATES full run, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-24; no override. Orchestrator checked: `attest.sh check -- bash scripts/gates.sh` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).` (vacuous here, BOOTSTRAPPED=no; the tidy suite under its floor is the judge). Did not queue.
 - GATES re-run after the date fix, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- bash scripts/gates.sh` fresh, exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`; did not queue.
+- Changed-suite self-test, `feature-developer` on the GATES row: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-23; no override. Orchestrator checked: `attest.sh check -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed` fresh, exit 0, `8 harness suite(s) passed.` (doctor, grep-count, lib, selftest, shipped-docs, sigpipe, tidy 206/0, worktree; 1201 executed, 1201 declared). Did not queue.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
