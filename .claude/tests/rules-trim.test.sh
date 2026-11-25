@@ -58,6 +58,9 @@
 #   - POINTERS below is the settled list of the real tree (story C-1), and the
 #     real-tree extraction must equal it, so the "resolves" assertion cannot
 #     pass by finding nothing. Pure bash string ops over J, no grep or sed.
+#
+# fixture-only: CLAUDE.md
+#   names it only in a comment; never reads the file.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

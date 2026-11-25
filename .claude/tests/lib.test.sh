@@ -4,6 +4,9 @@
 #
 # phase-guard.test.sh drives the hook end to end; this covers the pieces
 # directly, so that a failure says which one broke.
+#
+# fixture-only: CLAUDE.md
+#   names it only as a path to classify; never reads the file.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

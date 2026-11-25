@@ -88,6 +88,9 @@
 # into an early-exit reader. Counting is done with awk over a here-string, which
 # drains by nature and opens no pipe at all. WORLD-084 shipped this very bug
 # twice inside the suite written to fix it.
+#
+# fixture-only: CLAUDE.md
+#   names it only in comments; never reads the file.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

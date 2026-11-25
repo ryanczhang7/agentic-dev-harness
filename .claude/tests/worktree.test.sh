@@ -62,6 +62,9 @@
 # with awk over a here-string - no `| grep -q`, which under this suite's pipefail
 # returns 141 when the reader leaves early, and no `grep -c ... || printf 0`.
 # A row's status column is read, never the presence of a word anywhere.
+#
+# fixture-only: CLAUDE.md
+#   names it only in a comment; never reads the file.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

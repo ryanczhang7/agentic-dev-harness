@@ -11,6 +11,9 @@
 #     not merely on the fact that something was blocked. A guard that refuses
 #     `sed -i 's|a|b|' src/main.ts` because it thinks the path is `s` is
 #     right by accident and will be wrong the next time.
+#
+# fixture-only: CLAUDE.md
+#   names it only in comments; never reads the file.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

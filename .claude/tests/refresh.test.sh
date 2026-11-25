@@ -16,7 +16,7 @@
 # which is the kind of requirement this repository does not otherwise accept
 # anywhere. So the steps became a script, and the script reports what it did.
 #
-# fixture-only: .claude/harness/VERSION .claude/tests/floors.conf
+# fixture-only: .claude/harness/VERSION .claude/tests/floors.conf CLAUDE.md
 #   writes its own upstream's and project's copies; never reads the real ones.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"

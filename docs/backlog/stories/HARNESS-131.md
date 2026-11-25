@@ -4,8 +4,8 @@ title: A floor edit or a CLAUDE.md edit selects only the suites that read them
 slug: a-floor-edit-or-a-claude-md-edit-selects
 epic: 
 type: chore
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-131-a-floor-edit-or-a-claude-md-edit-selects
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/floors.test.sh, .claude/tests/selftest.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/attest.test.sh, .claude/tests/lib.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/plan.test.sh, .claude/tests/refresh.test.sh, .claude/tests/rules-trim.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/worktree.test.sh, .claude/harness/VERSION]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -258,6 +258,27 @@ the moved text, and no others:
 - nothing else: descriptions, needles, helper bodies and comments are
   byte-identical, and DV-3 shows it.
 
+*Amended in RED (test-developer, 2026-11-25).* Two refinements, neither
+widening what may change. (1) The new suite's `mktemp -d` scratch directory
+is **named `FIX`** (`FIX="$(mktemp -d ...)"`, `trap 'rm -rf "$FIX"' EXIT`),
+so `floor_root`'s body (`_fr="$FIX/floor-roots/$1"`) and the comment above
+it ("a throwaway directory under $FIX") are byte-identical rather than
+edited: the first bullet's effect - own scratch directory, no
+`make_project_fixture` - with a zero-line diff instead of a one-line one.
+DV-3's diff therefore shows only `COUNTS` rows. (2) The moved range is
+**`:415-576` on this branch's base `5f0de59`**, one line wider than the
+`:416-576` above: line 415 is the `# ----` separator that heads the
+describe, and leaving it behind would have left a dangling separator in
+`selftest.test.sh` above HARNESS-020's `# ====` banner. `selftest.test.sh`
+loses `:415-577` (the separator, the block, and the one blank line after
+it). The line numbers are the same on `d495ae7` and `5f0de59`; the only
+difference in the block between the two is the `boundaries` row (687 to
+703, HARNESS-124). Also, the rewritten `selftest.test.sh` header names the
+new suite **bare** (`floors.test.sh`), not by its whole path: the whole
+path there would be a mention, and every edit to the table (which now lives
+in that suite) would select `selftest` again - ST-3 reintroduced by a
+comment.
+
 `selftest.test.sh` loses exactly those lines; its header (`:36-38`, "The
 one real-tree assertion block reads ...") is rewritten to say the block
 lives in `floors.test.sh`; it gains the declaration of AC-6. The comment in
@@ -380,6 +401,241 @@ check; and the proof that the move was a move.
   .claude/tests/selftest.test.sh` **must** show only those lines removed,
   the header rewritten and the declaration added. **Owner: RED.**
 
+  **Result (RED, test-developer, 2026-11-25). PASS.** Compared against
+  this branch's base `5f0de59` (origin/main when the worktree was cut),
+  not `d495ae7`: HARNESS-124 merged between them, and the block's only
+  difference between the two is its `boundaries` row (687 -> 703). The
+  moved range is `:415-576` (the separator line added, C-3 as amended).
+  (a) the moved text against main: only the three `COUNTS` changes of
+  C-4 - `floor_root` needed no edit, because the new suite names its
+  scratch directory `FIX` (C-3, amended):
+
+```
+--- git show 5f0de59:.claude/tests/selftest.test.sh, lines 415-576
++++ .claude/tests/floors.test.sh, lines 28-190
+@@ -120,6 +120,7 @@
+ classify 55
+ dispatch 205
+ doctor 71
++floors 9
+ gate-reminder 32
+ gates 1002
+ grep-count 38
+@@ -139,8 +140,8 @@
+ run-lock 141
+ run-queue 901
+ security-audit 52
+-selftest 366
+-selftest-needed 1099
++selftest 357
++selftest-needed 1165
+ settings 70
+ shipped-docs 24
+ sigpipe 91
+```
+
+  (b) `git diff 5f0de59 -- .claude/tests/selftest.test.sh`, whole: the
+  header rewritten (`:36-38` -> ten lines, the declaration among them) and
+  `:415-577` removed. The removed lines were checked against main's
+  `:415-577` with `cmp`: identical, 163 lines.
+
+```
+diff --git a/.claude/tests/selftest.test.sh b/.claude/tests/selftest.test.sh
+index 0e47053..c7a764b 100644
+--- a/.claude/tests/selftest.test.sh
++++ b/.claude/tests/selftest.test.sh
+@@ -33,9 +33,16 @@
+ #    floors.conf, so nothing here depends on - or disturbs - the real suites
+ #    whose counts the shipped floors.conf records.
+ #
+-# The one real-tree assertion block reads .claude/tests/floors.conf itself and
+-# checks it against the counts measured from a full run of this repository.
+-# Those are read out, not re-derived.
++# The real-tree assertion block - the shipped floors file has a floor for every
++# suite, each at the count measured from a full run of this repository - lives
++# in floors.test.sh, beside this file (HARNESS-131). It moved so that a story
++# raising a floor selects that suite before a PR, not this one; this suite
++# never reads the real floors file. (The name is left bare on purpose: the
++# whole path here would make every edit to that suite's table select this
++# one again.)
++#
++# fixture-only: .claude/tests/floors.conf
++#   writes its fixture's own floors files; never reads the real one.
+ 
+ . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+ 
+@@ -412,169 +419,6 @@ line="$(shortfall)"
+ assert_contains "space is trimmed and the commented-out floor ignored" \
+   "did 3 units of work, below the floor of 9" "$line"
+ 
+-# ---------------------------------------------------------------------------
+-describe "AC-6/AC-7  the shipped floors file covers every suite, at its count"
+-
+-# The real tree, not a fixture. AC-6 makes C-3's table exhaustive; AC-7's own
+-# control is that `profiles` is recorded at 44 and not at its 1 call site.
+-REAL="$REPO_ROOT/.claude/tests/floors.conf"
+-
+-# One awk over the file, for the same reason as shortfall() above: `sed | head -1`
+-# is a pipeline into an early-exit reader, and check-sigpipe.sh flagged it.
+-floor_of() { # <suite> <file>   the value recorded for a suite in <file>, or empty
+-  awk -v want="$1" '
+-    { line = $0; sub(/#.*/, "", line) }
+-    { n = split(line, f, "|") }
+-    n < 3 { next }
+-    { for (i = 1; i <= n; i++) { gsub(/^[ \t]+|[ \t]+$/, "", f[i]) } }
+-    f[1] == "floor" && f[2] == want && f[3] ~ /^[0-9]+$/ { print f[3]; exit }
+-  ' "$2" 2>/dev/null
+-}
+-
+-# suites_without_floor <root>   The space-joined names of the suites in
+-# <root>/.claude/tests/*.test.sh that have a floor line in neither
+-# <root>/.claude/tests/floors.conf nor, when it exists,
+-# <root>/.claude/tests/project-floors.conf. Empty when every suite is floored.
+-# HARNESS-021: this loop used to read floors.conf only, so every consuming
+-# project that floors its project-*.test.sh suites in project-floors.conf (as
+-# HARNESS-020 designed) failed the assertion below. Taking a root is what lets
+-# the fixture cases further down point it at a tree that is not this one.
+-suites_without_floor() {
+-  _swf_dir="$1/.claude/tests"
+-  _swf_missing=""
+-  for _swf_s in "$_swf_dir"/*.test.sh; do
+-    [ -e "$_swf_s" ] || continue
+-    _swf_n="$(basename "$_swf_s" .test.sh)"
+-    [ -n "$(floor_of "$_swf_n" "$_swf_dir/floors.conf")" ] && continue
+-    if [ -f "$_swf_dir/project-floors.conf" ]; then
+-      [ -n "$(floor_of "$_swf_n" "$_swf_dir/project-floors.conf")" ] && continue
+-    fi
+-    _swf_missing="$_swf_missing $_swf_n"
+-  done
+-  printf '%s' "${_swf_missing# }"
+-}
+-
+-assert_eq "every suite in .claude/tests has a floor" "" "$(suites_without_floor "$REPO_ROOT")"
+-
+-# HARNESS-021 fixture cases for suites_without_floor. Each root is a throwaway
+-# directory under $FIX holding only the .claude/tests files the helper reads:
+-# empty suite files (it reads names, not contents) and the floors files. Every
+-# needle is the helper's WHOLE output compared with assert_eq, so a helper that
+-# reports nothing, or reports the right name among wrong ones, cannot pass.
+-
+-# floor_root <case> <suite>...   A fresh root with an empty <suite>.test.sh for
+-# each name. Prints the root. floors.conf / project-floors.conf are written by
+-# the caller, so "absent" is a case and not an accident.
+-floor_root() {
+-  _fr="$FIX/floor-roots/$1"; shift
+-  rm -rf "$_fr"; mkdir -p "$_fr/.claude/tests"
+-  for _fr_s in "$@"; do : > "$_fr/.claude/tests/$_fr_s.test.sh"; done
+-  printf '%s' "$_fr"
+-}
+-
+-describe "HARNESS-021 AC-1  a suite floored only in project-floors.conf is not reported missing"
+-
+-R="$(floor_root ac1 alpha project-mine)"
+-printf 'floor | alpha | 3\n' > "$R/.claude/tests/floors.conf"
+-printf '# a project'"'"'s own suites\nfloor | project-mine | 4\n' > "$R/.claude/tests/project-floors.conf"
+-assert_eq "a suite floored in project-floors.conf alone is not reported as missing a floor" \
+-  "" "$(suites_without_floor "$R")"
+-# The same, beside an unfloored suite: the project floor excuses project-mine
+-# and nothing else, so the output is exactly the orphan.
+-R="$(floor_root ac1b alpha project-mine project-orphan)"
+-printf 'floor | alpha | 3\n' > "$R/.claude/tests/floors.conf"
+-printf 'floor | project-mine | 4\n' > "$R/.claude/tests/project-floors.conf"
+-assert_eq "beside an unfloored suite, only the unfloored one is reported" \
+-  "project-orphan" "$(suites_without_floor "$R")"
+-
+-describe "HARNESS-021 AC-2  control: a suite floored in neither file is reported, by name"
+-
+-# Without this, a helper that reports nothing satisfies AC-1. A project-floors.conf
+-# EXISTS here (comment only), so this also refuses a helper that treats the
+-# file's mere presence as excusing every suite. Green under the old and the new
+-# helper alike - it is the control, not the change.
+-R="$(floor_root ac2 alpha project-orphan)"
+-printf 'floor | alpha | 3\n' > "$R/.claude/tests/floors.conf"
+-printf '# a project file that floors nothing\n' > "$R/.claude/tests/project-floors.conf"
+-assert_eq "a suite floored in neither file is reported, and only that suite" \
+-  "project-orphan" "$(suites_without_floor "$R")"
+-
+-describe "HARNESS-021 AC-3  with no project-floors.conf the check behaves as before"
+-
+-R="$(floor_root ac3 alpha beta gamma)"
+-printf 'floor | alpha | 3\nfloor | gamma | 1\n' > "$R/.claude/tests/floors.conf"
+-assert_eq "with no project-floors.conf, a suite missing from floors.conf is reported" \
+-  "beta" "$(suites_without_floor "$R")"
+-# Two missing, to pin the space-joined shape the real-tree message prints.
+-R="$(floor_root ac3b alpha beta gamma)"
+-printf 'floor | alpha | 3\n' > "$R/.claude/tests/floors.conf"
+-assert_eq "and several missing suites are reported space-joined, in name order" \
+-  "beta gamma" "$(suites_without_floor "$R")"
+-# AC-3's second half - this repository's real tree still passes - is the
+-# real-tree assertion above. Deliberately NOT asserted: that the real tree has
+-# no project-floors.conf. This file is copied into consuming projects, which
+-# do ship one, and there that assertion would be the defect this story removes.
+-
+-# The counts measured from a full run of THIS repository, read out rather than
+-# re-derived. MT's numbers were deliberately NOT inherited: its suite set is a
+-# different one, and a floor copied from another tree is a floor nobody
+-# measured - which is the exact defect this mechanism exists to catch, pointed
+-# at itself. Confirmed against the CI run of the same tree, and three of them
+-# (profiles, mutate, lib) re-run locally at the port.
+-wrong=""
+-while read -r n v; do
+-  [ -z "$n" ] && continue
+-  got="$(floor_of "$n" "$REAL")"
+-  [ "$got" = "$v" ] || wrong="$wrong $n=${got:-<none>}(want $v)"
+-done <<'COUNTS'
+-attest 179
+-boundaries 703
+-briefs 31
+-ci-local 52
+-classify 55
+-dispatch 205
+-doctor 71
+-gate-reminder 32
+-gates 1002
+-grep-count 38
+-host-load 72
+-lib 332
+-mutate 328
+-new-story 79
+-phase 73
+-phase-guard 388
+-plan 287
+-policy 17
+-procedure 183
+-profiles 132
+-refresh 215
+-reporting 27
+-rules-trim 50
+-run-lock 141
+-run-queue 901
+-security-audit 52
+-selftest 366
+-selftest-needed 1099
+-settings 70
+-shipped-docs 24
+-sigpipe 91
+-spawns 69
+-story 97
+-tidy 206
+-worktree 73
+-COUNTS
+-assert_eq "and each records the executed count measured on this tree" "" "$wrong"
+-
+-# Named individually, because these two are the reason AC-7 is a criterion
+-# rather than a note: a call-site implementation records 1 and 104. HARNESS-010
+-# moved lib from 139 to 197 and phase-guard from 188 to 288 - both floors are
+-# recorded in RED, so both suites sit BELOW them until the reconciled parser
+-# lands. See the note at the foot of floors.conf.
+-assert_eq "profiles is floored at its 132 executed assertions, not its call-site count" \
+-  132 "$(floor_of profiles "$REAL")"
+-assert_eq "lib is floored at its 332 executed assertions, not its call-site count" \
+-  332 "$(floor_of lib "$REAL")"
+-
+ # ===========================================================================
+ # HARNESS-020: a project declares its own suites' floors in
+ # .claude/tests/project-floors.conf, which upstream never ships and the refresh
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -440,6 +696,7 @@ name, below the table.
      actually ran, and — if a phase was planned for one model and ran on
      another — what that changed. A choice with no verdict is folklore. -->
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override reported. Planned by `/plan-story` in a batch of five (HARNESS-128 to 132).
+- RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Orchestrator checked all four attest records `fresh` itself on tree `655c422` (`selftest-needed: 1165 passed, 0 failed`, `floors: 9 passed, 0 failed`, `selftest: 357 passed, 0 failed`, `--fast` exit 0, vacuous), read the step-1 watched failure (`selftest-needed: 1110 passed, 50 failed`, every FAIL in a HARNESS-131 or changed HARNESS-115 case) and ran none of them again.
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -473,6 +730,33 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Every criterion is mechanical (C-6) and is pinned at the level where the
+selection actually happens: `scripts/selftest-needed.sh --suites` run over
+`h115_real`, a fixture repository holding a copy of every shipped suite, so
+the declarations and the moved block are judged by the real script over
+the real suite text, not by a stub. `h115_expect` compares stdout whole and
+its line count, the header exactly, the not-selected line exactly and last
+(and that there is exactly one), and each reason line exactly once, from the
+fixture root and from `src/`. `<m>` is counted from the real directory.
+
+| Test (`.claude/tests/selftest-needed.test.sh` unless named) | What it asserts | AC |
+|---|---|---|
+| `HARNESS-131 AC-1` (new) | CLAUDE.md (tracked on `main`, edited on the branch) changed: stdout exactly `mutate reporting run-queue selftest-needed story`, header `5 of <m> from 1`, five `CLAUDE.md (mentioned)` reasons, last line the nine-name not-selected line | AC-1 |
+| `HARNESS-131 AC-2` (new) | floors.conf changed: stdout exactly `floors`, header `1 of <m> from 1`, reason `.claude/tests/floors.conf (mentioned)`, last line `... host-load refresh run-lock run-queue selftest` | AC-2, AC-6's control |
+| `HARNESS-131 AC-3` (new) | the copy of the real `mutate.test.sh` with `# fixture-only: CLAUDE.md` appended on `main`: `mutate` still printed with the `despite` reason, the rest as AC-1 | AC-3 (first half) |
+| `HARNESS-115 AC-5`, second case (re-pointed, C-5) | the copy of the real `floors.test.sh` with `# fixture-only: .claude/tests/floors.conf` appended: `floors` printed with the `despite` reason; not-selected line gains `selftest` | AC-3 (second half), AC-5 |
+| `HARNESS-115 AC-1` (changed, C-5) | the four-path case prints 8: `floors` added `(mentioned)`, `selftest` now `(itself)`; not-selected line unchanged | AC-5 |
+| `HARNESS-115 AC-2` (changed, C-5) | VERSION + floors.conf: `doctor floors lib worktree`; not-selected line gains `selftest` | AC-5, AC-6 |
+| `HARNESS-115` "names none of AC-1's four paths whole" (one assertion added) | this suite's source holds the whole `floors.test.sh` path on no line, so its copy in the fixtures is not a mention | AC-5 (keeps the pinned lists reachable) |
+| `.claude/tests/floors.test.sh` (moved, 9 assertions) | the real tree has a floor for every suite; the five HARNESS-021 `suites_without_floor` cases; every floor equals the `COUNTS` row (now with `floors 9`, `selftest 357`, `selftest-needed 1160`); `profiles` and `lib` by name | AC-4 |
+| `bash scripts/selftest.sh floors` / `selftest` | `floors` executes 9, `selftest` executes 357 (366 on main), each at its floor | AC-4 |
+| `.claude/tests/selftest.test.sh` (cut) | holds `# fixture-only: .claude/tests/floors.conf` at column 0; no `$REPO_ROOT/` + floors.conf, no `suites_without_floor` | AC-6 (checked by grep in the handoff; its behavioural consequence is AC-2's not-selected line) |
+
+AC-6's three textual conditions are not given an assertion of their own:
+AC-6's stated control is AC-2's not-selected line, which fails if the
+declaration is missing (selftest printed `(mentioned)`) or contradicted
+(selftest printed `despite`); the greps are in the handoff.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -492,6 +776,233 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the test-developer dispatch (declared `model: opus`, resolved
+`claude-opus-5-5`, no override), 2026-11-25, in worktree
+`D:/adh-HARNESS-131`, branch base `5f0de59`. All timings are local, a
+loaded Windows host; none from CI.
+
+**GREEN has nothing to write.** C-1: every path this story writes is a
+suite or the floors file, classified `harness`, and RED wrote them all. The
+tests were watched to fail against the unchanged suites (step 1 below),
+then the declarations and the move landed and the same suites pass (step
+3). `scripts/selftest-needed.sh`, `scripts/selftest.sh`, `_lib.sh` and
+`CLAUDE.md` are untouched (`git diff --stat 5f0de59` lists none of them).
+GREEN's job is to confirm the step-3 records are still fresh
+(`bash scripts/attest.sh check -- <command>`) and move on; GATES writes
+`VERSION`.
+
+**Commands.**
+
+    bash scripts/attest.sh -- bash .claude/tests/selftest-needed.test.sh
+    bash scripts/attest.sh -- bash .claude/tests/floors.test.sh
+    bash scripts/attest.sh -- bash .claude/tests/selftest.test.sh
+    bash scripts/attest.sh -- bash scripts/selftest.sh floors
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+
+**Step 1, watched to fail** (new and changed pins written, every other
+file unchanged). Record: `exit: 1`, `last: selftest-needed: 1110 passed,
+50 failed`, log `.claude/state/attest-logs/20261125T222404Z.1177605.log`
+(tree `4fe2427`, 662 s). The 50, by case (each from root and from `src/`):
+
+    10  FAIL AC-1: CLAUDE.md changed over the real suites prints mutate, reporting, run-queue, selftest-needed and story, and names the nine that declare it
+    10  FAIL AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the eight suites that read, scan or are them
+     6  FAIL AC-2: VERSION and floors.conf changed over the real suites print doctor, floors, lib and worktree, and leave selftest out
+     6  FAIL AC-2: floors.conf changed over the real suites prints floors alone, and names selftest among the suites that declare it
+    10  FAIL AC-3: a copy of the real mutate.test.sh declaring CLAUDE.md is still printed when CLAUDE.md changes, saying why
+     8  FAIL AC-5 / HARNESS-131 AC-3: a copy of the real floors.test.sh declaring floors.conf is still printed when floors.conf changes
+
+The two controls the story names, verbatim from the log (root run; the
+`src/` run is identical): AC-1 prints 14 names and no not-selected line,
+AC-2 prints `selftest`.
+
+```
+  HARNESS-131 AC-1: a CLAUDE.md edit over the real suites selects the five suites that read it
+    FAIL AC-1: CLAUDE.md changed over the real suites prints mutate, reporting, run-queue, selftest-needed and story, and names the nine that declare it [from root]: stdout is exactly the pinned list
+         expected: mutate
+         reporting
+         run-queue
+         selftest-needed
+         story
+         actual:   attest
+         lib
+         mutate
+         phase-guard
+         plan
+         refresh
+         reporting
+         rules-trim
+         run-queue
+         selftest-needed
+         shipped-docs
+         sigpipe
+         story
+         worktree
+    FAIL AC-1: CLAUDE.md changed over the real suites prints mutate, reporting, run-queue, selftest-needed and story, and names the nine that declare it [from root]: stdout has exactly 5 line(s)
+         expected: 5
+         actual:   14
+    FAIL AC-1: CLAUDE.md changed over the real suites prints mutate, reporting, run-queue, selftest-needed and story, and names the nine that declare it [from root]: stderr's first line is exactly the pinned header
+         expected: selftest-needed: suites — 5 of 35 selected from 1 harness path(s) changed against main (merge-base badcd5e)
+         actual:   selftest-needed: suites — 14 of 35 selected from 1 harness path(s) changed against main (merge-base badcd5e)
+    FAIL AC-1: CLAUDE.md changed over the real suites prints mutate, reporting, run-queue, selftest-needed and story, and names the nine that declare it [from root]: stderr's last line is exactly the not-selected line
+         expected:   not selected (fixture-only): attest lib phase-guard plan refresh rules-trim shipped-docs sigpipe worktree
+         actual:     worktree         CLAUDE.md (mentioned)
+    FAIL AC-1: CLAUDE.md changed over the real suites prints mutate, reporting, run-queue, selftest-needed and story, and names the nine that declare it [from root]: stderr holds 1 not-selected line(s)
+         expected: 1
+         actual:   0
+  HARNESS-131 AC-2: a floors.conf edit over the real suites selects floors, not selftest
+    FAIL AC-2: floors.conf changed over the real suites prints floors alone, and names selftest among the suites that declare it [from root]: stdout is exactly the pinned list
+         expected: floors
+         actual:   selftest
+    FAIL AC-2: floors.conf changed over the real suites prints floors alone, and names selftest among the suites that declare it [from root]: stderr's last line is exactly the not-selected line
+         expected:   not selected (fixture-only): host-load refresh run-lock run-queue selftest
+         actual:     not selected (fixture-only): host-load refresh run-lock run-queue
+    FAIL AC-2: floors.conf changed over the real suites prints floors alone, and names selftest among the suites that declare it [from root]: stderr's reason line for floors is exactly `.claude/tests/floors.conf (mentioned)`, once
+         expected: 1
+         actual:   0
+```
+
+Why it is the right failure: every red is a selection list, a header count,
+a reason line or the not-selected line - the script ran, exited 0 and
+answered; it answered with today's selection. The AC-5 second case
+additionally showed `1 of 36` against an expected `1 of 35`, because its
+hook appended a declaration to a `floors.test.sh` copy that did not exist
+yet and so created a one-line suite in the fixture; that disappears once the
+real file exists (it did). The step-1 run predates the five AC-6
+assertions (below), which were written after it.
+
+**Step 3, passing** (final tree `655c422`, every record `status: ok`):
+
+| Command | exit | last | log |
+|---|---|---|---|
+| `bash .claude/tests/selftest-needed.test.sh` | 0 | `selftest-needed: 1165 passed, 0 failed` (993 s) | `.claude/state/attest-logs/20261125T225418Z.1234841.log` |
+| `bash .claude/tests/floors.test.sh` | 0 | `floors: 9 passed, 0 failed` (12 s) | `.claude/state/attest-logs/20261125T225306Z.1231898.log` |
+| `bash .claude/tests/selftest.test.sh` | 0 | `selftest: 357 passed, 0 failed` (436 s) | `.claude/state/attest-logs/20261125T225327Z.1232771.log` |
+| `bash scripts/selftest.sh floors` | 0 | `1 harness suite(s) passed.` - "all 1 suite(s) met their declared floor (9 assertions executed, 9 declared)" | `.claude/state/attest-logs/20261125T225335Z.1233048.log` |
+| `bash scripts/gates.sh --fast` | 0 | `All required gates passed (0 ran, 5 unconfigured, 0 known).` | `.claude/state/attest-logs/20261125T225517Z.1237362.log` |
+
+`gates.sh --fast` has the expected shape for this repository: every gate
+UNCONFIGURED (BOOTSTRAPPED=no), and it lists `floors.test.sh` as UNTRACKED -
+it is new and uncommitted, and the orchestrator's commit stages it. Tree
+guards over the final tree: `check-sigpipe: scanned 66 shell file(s), 59
+with pipefail, 0 finding(s)`, `check-grep-count: scanned 66 shell file(s),
+0 finding(s)`, both exit 0; `classify.sh --list harness` returns
+`.claude/tests/floors.test.sh`, so both scanned it.
+
+**Measured counts (C-4).** `floors` 9 and `selftest` 357, exactly the
+settled numbers: 9 + 357 = 366, `selftest`'s floor on main.
+`selftest-needed` 1099 -> 1165, +66, all unconditional: HARNESS-131 AC-1 22,
+AC-2 14, AC-3 22 (11/7/11 per run, two runs each), AC-6 5, HARNESS-115
+AC-1's added `floors` reason line 2, and one "names no path whole"
+assertion for `floors.test.sh`. Step 1 measured 1160 executed before AC-6's
+five existed. No other floor moved; the nine declaring suites gained only
+comment lines.
+
+**Files touched, and what each covers.**
+
+| File | Change | AC |
+|---|---|---|
+| `.claude/tests/selftest-needed.test.sh` | `H131_FT` built from halves; HARNESS-115 AC-1 and AC-2 cases changed (C-5); AC-5's second case re-pointed at `floors.test.sh`; new HARNESS-131 AC-1, AC-2, AC-3, AC-6 blocks; one names-no-path assertion | AC-1, AC-2, AC-3, AC-5, AC-6 |
+| `.claude/tests/floors.test.sh` (new) | header, `FIX` scratch dir, `selftest.test.sh` `:415-576` moved, `COUNTS` rows `floors 9`, `selftest 357`, `selftest-needed 1165`, `summary "floors"` | AC-4 |
+| `.claude/tests/selftest.test.sh` | `:415-577` removed; header rewritten; `# fixture-only: .claude/tests/floors.conf` | AC-4, AC-6 |
+| `.claude/tests/floors.conf` | `floor \| floors \| 9`; `selftest` 357; `selftest-needed` 1165; table-location comment names `floors.test.sh`; dated HARNESS-131 note | AC-4 |
+| `attest`, `lib`, `phase-guard`, `plan`, `rules-trim`, `shipped-docs`, `sigpipe`, `worktree` `.test.sh` | `# fixture-only: CLAUDE.md` at column 0 plus an indented reason, before the `_lib.sh` line | AC-1 |
+| `.claude/tests/refresh.test.sh` | `CLAUDE.md` appended to its existing declaration line (`:19`) | AC-1 |
+| `docs/backlog/stories/HARNESS-131.md` | C-3 amended; `## Test plan`; this handoff; DV-3's result | - |
+
+**C-2 re-read on this tree.** Every `CLAUDE.md` mention in all fourteen
+suites was re-read at `5f0de59`: the set of suites is the same fourteen,
+and every mention in the nine is at the line and of the kind the C-2 table
+gives (no line shifted - HARNESS-124 touched none of them). No suite has
+been added since PLANNED. So AC-1's list stands; no amendment needed.
+
+**Export shape.** None: no module, no function signature, nothing imported.
+What the tests pin is text: the nine declaration lines (column 0, exact),
+the absence of `$REPO_ROOT/` + floors.conf and of `suites_without_floor` in
+`selftest.test.sh`, the `$REPO_ROOT/.claude/tests/floors.conf` read in
+`floors.test.sh` (the AC-3 second half needs it), and the floors.
+
+**Passed on arrival, and what earns it.**
+
+- HARNESS-131 AC-6's five assertions were written after the move, against a
+  `selftest.test.sh` that already satisfied them. Earned by one mutation
+  through `scripts/mutate.sh` (the declaration line deleted), below; the
+  three absence needles are earned outside the framework by running the
+  same awk counts over main's `selftest.test.sh`, where each must be
+  non-zero for the needle to be able to fail:
+
+      5f0de59: summary=1 decl=0 repo=1 brace=0 swf=9
+      final:   summary=1 decl=1 repo=0 brace=0 swf=0
+
+  `${REPO_ROOT}/` is 0 on both trees: no tree has ever spelled it there, so
+  that needle is a guard against a spelling, unexercised - said so rather
+  than claimed.
+- In step 1, AC-3's `mutate ... despite` reason line passed already (the
+  script's despite rule exists since HARNESS-115); the case still failed on
+  its list, header and not-selected line.
+
+**The AC-6 probe** (declaration deleted from `selftest.test.sh`, run
+against the one suite that holds the assertion, on the final tree; local):
+
+    bash scripts/mutate.sh .claude/tests/selftest.test.sh \
+      '/^# fixture-only: \.claude\/tests\/floors\.conf$/d' \
+      -- bash .claude/tests/selftest-needed.test.sh
+
+```
+=== mutate: .claude/tests/selftest.test.sh (1 line(s) changed by /^# fixture-only: \.claude\/tests\/floors\.conf$/d) ===
+  44 - # fixture-only: .claude/tests/floors.conf
+...
+    FAIL AC-6: the real selftest suite holds `# fixture-only: <floors.conf>` at column 0, exactly once
+         expected: 1
+         actual:   0
+...
+    FAIL AC-2: floors.conf changed over the real suites prints floors alone, and names selftest among the suites that declare it [from root]: stdout is exactly the pinned list
+         expected: floors
+         actual:   floors
+         selftest
+    FAIL AC-2: floors.conf changed over the real suites prints floors alone, and names selftest among the suites that declare it [from root]: stderr's last line is exactly the not-selected line
+         expected:   not selected (fixture-only): host-load refresh run-lock run-queue selftest
+         actual:     not selected (fixture-only): host-load refresh run-lock run-queue
+
+selftest-needed: 1138 passed, 27 failed
+
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-131/.claude/state/mutations/.claude_tests_selftest.test.sh.20261125T231116Z.1271618.bak) ===
+  44: # fixture-only: .claude/tests/floors.conf
+```
+
+The 27, by case: AC-6's declaration assertion 1; HARNESS-131 AC-2 8;
+HARNESS-115 AC-2 8; HARNESS-115 AC-5 / HARNESS-131 AC-3 8; HARNESS-115
+AC-1 2 (its `selftest (itself)` reason line - with the declaration gone,
+the floors.conf mention sorts first and becomes the reason). No other
+assertion moved. `bash scripts/mutate.sh --check` afterwards: `no stranded
+mutation`. This doubles as AC-6's stated control ("with the path left ...
+AC-2 fails"), in its declaration-missing form.
+
+**Negative controls, expected values.**
+
+| Control | Where | Expected | Measured |
+|---|---|---|---|
+| AC-1 before the declarations | step 1 | 14 names, no not-selected line | 14 names, 0 not-selected lines (above) |
+| AC-2 before the move | step 1 | `selftest` | `selftest`, not-selected line without `selftest` (above) |
+| AC-3 / C-5: a declaring copy that reads `$REPO_ROOT/` | step 3 | `mutate` and `floors` printed `despite` | passed, both, from root and `src/` |
+| AC-4: a dropped moved assertion | `selftest.sh floors` | count below floor 9 fails | 9 executed, 9 declared |
+| AC-6: declaration deleted | mutate.sh probe | AC-6 decl assertion and AC-2-shaped cases red | 27 red: AC-6 1, AC-2 cases 16, AC-5 8, HARNESS-115 AC-1 2; restored |
+| DV-1 (GATES), DV-2 (GATES) | not run here | as the story says | **Not run in RED.** Both are GATES-owned and left to that phase |
+
+**Discovered.**
+
+- A whole path in a comment is a mention. The rewritten header of
+  `selftest.test.sh` first named `.claude/tests/floors.test.sh` in full,
+  which would have made every `COUNTS` edit select `selftest` again. It now
+  names the suite bare; C-3 is amended to say so. Worth a line in the
+  floors.conf convention if this recurs.
+- The AC-6 assertions read `selftest.test.sh` through a composed path, so a
+  `selftest.test.sh`-only diff does not select `selftest-needed` and the
+  pre-PR run would not run them; AC-2's not-selected line (which does run on
+  every floors.conf diff) and CI's full run cover that gap.
+- bash reads a script lazily: a run started before the AC-6 block was
+  appended still executed it (a void run, superseded, reported 1165). Not a
+  defect, but a reason never to edit a suite while it runs.
 
 ## Regressions
 
