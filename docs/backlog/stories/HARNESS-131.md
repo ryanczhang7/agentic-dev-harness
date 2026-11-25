@@ -5,7 +5,7 @@ slug: a-floor-edit-or-a-claude-md-edit-selects
 epic: 
 type: chore
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-131-a-floor-edit-or-a-claude-md-edit-selects
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/floors.test.sh, .claude/tests/selftest.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/attest.test.sh, .claude/tests/lib.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/plan.test.sh, .claude/tests/refresh.test.sh, .claude/tests/rules-trim.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/worktree.test.sh, .claude/harness/VERSION]         # files this story expects to write; `plan.sh conflicts` reads it
