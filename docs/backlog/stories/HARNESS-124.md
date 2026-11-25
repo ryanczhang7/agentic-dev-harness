@@ -4,8 +4,8 @@ title: check-boundaries reads a suppression diff with colour forced
 slug: check-boundaries-reads-a-suppression-dif
 epic: 
 type: fix
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-124-check-boundaries-reads-a-suppression-dif
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .github/workflows/gates.yml, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -354,6 +354,8 @@ name, below the table.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Orchestrator checked both attest records `fresh` itself (`boundaries: 694 passed, 9 failed`, exit 1, all 9 FAILs HARNESS-124 cases; `--fast` exit 0, vacuous) and ran neither command again.
 - GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Orchestrator checked both attest records `fresh` itself on tree `ab2d4df` (`boundaries: 703 passed, 0 failed`, exit 0, no FAIL line in the log; `--fast` exit 0, vacuous), confirmed `mutate.sh --check` clean, and ran neither command again.
 - GATES, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Ran `bash scripts/gates.sh` only: exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, not queued. Orchestrator checked the record `fresh` itself. DV-1 to DV-3 were run by the orchestrator, results under `## Deferred verifications`.
+- DIFF-REVIEW, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override. Round 1, no findings, `Verdict: Ship.`
+- GATES self-test, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`: exit 0, `15 harness suite(s) passed.`, 3735 s, not queued; orchestrator checked the record `fresh`.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
