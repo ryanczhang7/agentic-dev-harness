@@ -764,7 +764,10 @@ NEEDLES
 }
 
 # suppression_hits   stdin: the needle table, a `--8<-- diff` line, then one
-# file's `git show --unified=0` diff. Prints `<line no>|<rule id>|<line, trimmed>`
+# file's `git show --unified=0` diff. The diff is asked for with `--no-color`,
+# because every anchor below (`^diff --git `, `^@@ `, `^\+`) is a start-of-line
+# match and a colour escape sits before the first character of each of those
+# lines. Prints `<line no>|<rule id>|<line, trimmed>`
 # per rule id an ADDED line matches, in table order; a second row of an id
 # already printed for the line prints nothing more. Only lines after the
 # first `@@` are hunk lines, so the `+++` header is skipped as a header and an
@@ -1109,7 +1112,7 @@ for c in $(git rev-list "$BASE"..HEAD 2>/dev/null); do
       done <<< "$sup_hits"
       continue
     fi
-    if ! git show --format= --unified=0 "$c" -- "$f" > "$dp" 2>/dev/null; then
+    if ! git show --no-color --format= --unified=0 "$c" -- "$f" > "$dp" 2>/dev/null; then
       sup_refused=1
       problem "story $sid: commit $c7 ($ph_at) changed '$f', and its diff could not be read, so nothing can say the lines it added are not suppressions."
       continue

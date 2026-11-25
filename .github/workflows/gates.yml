@@ -80,7 +80,7 @@ jobs:
 
       # NOT ON EVERY PULL REQUEST, and the reason is what this step is FOR.
       #
-      # It re-runs all 17 suites with every colour-capable tool forced to
+      # It re-runs every suite with every colour-capable tool forced to
       # colour. Measured: 61 s of the job's 147 s - 43% of the bill - to
       # exercise one property.
       #
@@ -98,10 +98,15 @@ jobs:
       # a guard reading `vitest`, `pytest` or `cargo test` output is exposed on
       # every run.
       #
-      # So: weekly and on demand here, where nothing has ever regressed and the
-      # tool surface is one program; MOVE IT BACK INTO THE PULL_REQUEST PATH in
-      # a project whose runner colours, where it is cheap insurance against the
-      # defect above. Deleting it is the wrong saving in both cases.
+      # IT HAS CAUGHT ONE HERE. A guard in check-boundaries.sh read a coloured
+      # `git show` patch, matched no added line and refused nothing. This step
+      # went red from its first scheduled run after that guard merged, and
+      # stayed red for four weeks before anyone read it.
+      #
+      # So: weekly and on demand here, where the tool surface is one program;
+      # MOVE IT BACK INTO THE PULL_REQUEST PATH in a project whose runner
+      # colours, where it is cheap insurance against the defect above. Deleting
+      # it is the wrong saving in both cases.
       #
       # `ci-local.sh` still reads this step out of this file and runs it
       # locally, where it is free - so a local run keeps full coverage and
