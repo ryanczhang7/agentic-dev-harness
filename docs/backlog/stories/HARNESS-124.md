@@ -5,7 +5,7 @@ slug: check-boundaries-reads-a-suppression-dif
 epic: 
 type: fix
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-124-check-boundaries-reads-a-suppression-dif
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .github/workflows/gates.yml, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -309,6 +309,7 @@ name, below the table.
 
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override reported. Planned by `/plan-story` in a batch of four (HARNESS-124 to 127). The oracle partition is in `## Contract`: AC-1 to AC-3 mechanical, AC-4 run at GATES (DV-2, DV-3).
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Orchestrator checked both attest records `fresh` itself (`boundaries: 694 passed, 9 failed`, exit 1, all 9 FAILs HARNESS-124 cases; `--fast` exit 0, vacuous) and ran neither command again.
+- GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Orchestrator checked both attest records `fresh` itself on tree `ab2d4df` (`boundaries: 703 passed, 0 failed`, exit 0, no FAIL line in the log; `--fast` exit 0, vacuous), confirmed `mutate.sh --check` clean, and ran neither command again.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -667,3 +668,16 @@ the new cases; whether DV-2's whole suite reads `0 failed` is DV-2's to show.
 
 ## Notes
 
+
+GREEN, 2026-11-25 (feature-developer, resolved model: Opus 5.5, `claude-opus-5-5`).
+C-1, C-5 and the VERSION bump (143) landed as the handoff listed; nothing
+else changed. `boundaries: 703 passed, 0 failed`, exit 0, tree
+`ab2d4dfa35df`, log `.claude/state/attest-logs/20261125T161321Z.778466.log`.
+Every control in the handoff's table (3199, 3202, 3263, 3265, 3288, 3289) is
+green against the shipped change, and the log has no `FAIL` line, so each one
+measured the value RED expected. The one surprise was the duration: 5416 s,
+against RED's 2126 s. Another tree's `gates.sh` held the machine queue for
+the whole run (pid 777573, `/d/fantasy-world-builder`), so host load
+explains it. Nothing points at the change. The added comment lines in
+`check-boundaries.sh` sit below line 630, so the `sigpipe` suite's pinned
+line numbers (399, 438, 630) still hold.
