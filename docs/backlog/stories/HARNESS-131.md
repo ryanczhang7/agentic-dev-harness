@@ -5,7 +5,7 @@ slug: a-floor-edit-or-a-claude-md-edit-selects
 epic: 
 type: chore
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-131-a-floor-edit-or-a-claude-md-edit-selects
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/floors.test.sh, .claude/tests/selftest.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/attest.test.sh, .claude/tests/lib.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/plan.test.sh, .claude/tests/refresh.test.sh, .claude/tests/rules-trim.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/worktree.test.sh, .claude/harness/VERSION]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -697,6 +697,7 @@ name, below the table.
      another — what that changed. A choice with no verdict is folklore. -->
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override reported. Planned by `/plan-story` in a batch of five (HARNESS-128 to 132).
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Orchestrator checked all four attest records `fresh` itself on tree `655c422` (`selftest-needed: 1165 passed, 0 failed`, `floors: 9 passed, 0 failed`, `selftest: 357 passed, 0 failed`, `--fast` exit 0, vacuous), read the step-1 watched failure (`selftest-needed: 1110 passed, 50 failed`, every FAIL in a HARNESS-131 or changed HARNESS-115 case) and ran none of them again.
+- GREEN: no dispatch; a verified no-op by the orchestrator (C-1), recorded under `## Notes`.
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -1124,3 +1125,20 @@ one line appended to the named file, `bash scripts/selftest-needed.sh
 **Planning.** Planned by a `lead-po` dispatch on `fable`, resolved
 `claude-fable-5-2`, 2026-11-25; no override.
 
+
+**GREEN, 2026-11-25: a verified no-op, done by the orchestrator, no dispatch.**
+Contract C-1 makes GREEN a no-op: RED wrote every path and the selection
+rules do not change. Nothing was written in GREEN. `git diff origin/main...HEAD`
+touches no path under `scripts/`, `.claude/hooks/`, `CLAUDE.md` or
+`.claude/tests/_lib.sh`. Every changed path classifies `harness` or `docs`.
+RED's four passing records still answer `fresh` against this tree, so none
+was re-run:
+
+    bash .claude/tests/selftest-needed.test.sh: fresh  (exit 0, selftest-needed: 1165 passed, 0 failed)
+    bash .claude/tests/floors.test.sh: fresh           (exit 0, floors: 9 passed, 0 failed)
+    bash .claude/tests/selftest.test.sh: fresh         (exit 0, selftest: 357 passed, 0 failed)
+    bash scripts/gates.sh --fast: fresh                (exit 0, 0 ran, 5 unconfigured)
+
+The negative controls in this story are mechanical pins checked by RED's
+step-1 run (red, 1110/50) and its passing run. There is no threshold value
+for GREEN to confirm.
