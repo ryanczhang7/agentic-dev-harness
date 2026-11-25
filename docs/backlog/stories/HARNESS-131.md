@@ -1,0 +1,615 @@
+---
+id: HARNESS-131
+title: A floor edit or a CLAUDE.md edit selects only the suites that read them
+slug: a-floor-edit-or-a-claude-md-edit-selects
+epic: 
+type: chore
+status: todo
+phase: PLANNED
+branch: story/HARNESS-131-a-floor-edit-or-a-claude-md-edit-selects
+depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
+touches: [.claude/tests/floors.test.sh, .claude/tests/selftest.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/attest.test.sh, .claude/tests/lib.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/plan.test.sh, .claude/tests/refresh.test.sh, .claude/tests/rules-trim.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/worktree.test.sh, .claude/harness/VERSION]         # files this story expects to write; `plan.sh conflicts` reads it
+required_gates: []  # gate ids that are optional for the repo but binding for THIS story
+---
+
+## Context
+
+<!-- Why this story exists. Link the epic and any wiki pages that constrain it.
+     Name the REQUIRED gate that would fail if this story's artifact broke. If
+     only an optional gate can, put it in required_gates above before RED:
+     every required gate once passed over a story none of them exercised. -->
+
+Before a PR, a story runs only the suites its diff can break
+(`SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`, chosen by
+`bash scripts/selftest-needed.sh --suites`). A suite is chosen when its
+source mentions a changed path, unless it declares on a line of its own,
+`# fixture-only: <path>`, that it only writes its own copy (HARNESS-115).
+The audit `docs/wiki/audits/runtime-cut-2026-11-25.md` found two places
+where that selection picks suites that cannot be broken by the change
+(findings **ST-3** and **ST-4**, decision 8).
+
+**ST-3, the floor table.** A story that adds assertions raises its suite's
+floor in `.claude/tests/floors.conf` and in the hand-copied table that
+guards it, which lives in `.claude/tests/selftest.test.sh` (the `COUNTS`
+heredoc, `:518-570` at main `d495ae7`). So nearly every story edits
+`selftest.test.sh` and selects the whole `selftest` suite, 51 s on CI and
+far longer on a loaded host, for a one-number change. The audit counted 28
+of the last 30 merged PRs.
+
+**ST-4, `CLAUDE.md`.** Fourteen suites mention `CLAUDE.md`. Five read the
+real file. Nine name it only in a comment, write a fixture's own copy, or
+use the name as a classification input.
+
+**The decision is settled; the numbers are not.** Re-measured at PLANNED in
+a scratch clone of main `d495ae7` (`## Notes` has the output):
+
+| Diff | Selected today | After this story |
+|---|---|---|
+| `CLAUDE.md` only | 14 of 35 | 5 of 36 |
+| `.claude/tests/floors.conf` only | `selftest` (366 assertions) | `floors` (9 assertions) |
+
+Each of the nine suites was read at PLANNED, mention by mention (Contract
+C-2), not taken from the audit's list. The audit's "28 of 30" and "93 s of
+CI time" were not re-measured and are not criteria; the criteria pin the
+selection itself.
+
+**What a wrong declaration costs.** A suite that declares a path
+`fixture-only` and does read the real file is silently left out of the
+pre-PR run when that file changes. CI's full run is the backstop, but the
+point of the local run is not to need it. So the declarations are checked
+against the real tree, not only against fixtures (Deferred verifications
+DV-2).
+
+No assertion is deleted, skipped or loosened: nine assertions move from one
+suite to a new one, word for word, and the two floors sum to today's.
+
+**The gate that judges it.** Every gate is unconfigured in this repository.
+The artifact is judged by the `selftest-needed` suite (the selection pins),
+the new `floors` suite and the `selftest` suite, each under its floor, and
+by the full self-test's own audit that every suite has a floor. CI runs the
+full self-test on the PR.
+
+## Acceptance criteria
+
+<!-- Each AC is independently testable and phrased as observable behaviour.
+     The Test Developer writes at least one failing test per AC.
+     An AC that names a statistic, a metric or a threshold names a NEGATIVE
+     CONTROL too: the deliberately broken input the metric must reject, and
+     roughly what it should score. A criterion can be perfectly testable and
+     still be blind to the defect it exists to catch, and that is more
+     dangerous than a vague one - it survives review and goes green. -->
+
+
+"Over the real suites" means the fixture `h115_real` builds in
+`.claude/tests/selftest-needed.test.sh`: a repository whose `main` holds a
+copy of every shipped suite, on a story branch, with the named paths then
+changed. Each case is run from the root and from a subdirectory, and
+`<m>` is the number of shipped suites, counted by the suite, not written
+down. stdout and stderr are compared as that suite's `h115_expect` compares
+them: stdout whole, the header exactly, each reason line exactly once, the
+not-selected line exactly and last.
+
+- **AC-1 (a `CLAUDE.md` edit selects the five suites that read it)** —
+  Given only `CLAUDE.md` changed over the real suites, when
+  `bash scripts/selftest-needed.sh --suites` runs, then it exits 0; stdout
+  is exactly the five lines `mutate`, `reporting`, `run-queue`,
+  `selftest-needed`, `story`; stderr's first line is the header for 5 of
+  `<m>` from 1 harness path; each of the five has the reason line
+  `CLAUDE.md (mentioned)`; and stderr's last line is exactly
+  `  not selected (fixture-only): attest lib phase-guard plan refresh rules-trim shipped-docs sigpipe worktree`.
+  *Control:* today the same case prints 14 names and no not-selected line.
+
+- **AC-2 (a floor edit selects the floors suite, not the selftest suite)**
+  — Given only `.claude/tests/floors.conf` changed over the real suites,
+  then stdout is exactly `floors`; the header says 1 of `<m>` from 1
+  harness path; the reason line is `floors` with
+  `.claude/tests/floors.conf (mentioned)`; and the last line is exactly
+  `  not selected (fixture-only): host-load refresh run-lock run-queue selftest`.
+  *Control:* today the same case prints `selftest`.
+
+- **AC-3 (a suite that reads the real file is selected whatever it
+  declares)** — Given a copy of the real `mutate.test.sh` with the line
+  `# fixture-only: CLAUDE.md` appended on `main`, and `CLAUDE.md` then
+  changed, then `mutate` is still printed, with the reason
+  `CLAUDE.md (mentioned under $REPO_ROOT, despite fixture-only)`. Given a
+  copy of the real `floors.test.sh` with `# fixture-only:
+  .claude/tests/floors.conf` appended, and `floors.conf` then changed, then
+  `floors` is still printed with the same kind of reason.
+  *Control:* these are the two files AC-1 and AC-2 leave selected, so a
+  script that honoured every declaration fails here.
+
+- **AC-4 (the nine assertions move whole, and the floors add up)** — Given
+  the tree after this story, then `.claude/tests/floors.test.sh` exists and
+  `bash scripts/selftest.sh floors` reports the nine assertions that
+  `selftest.test.sh` held at `:416-576` on main (the real tree has a floor
+  for every suite; the five HARNESS-021 cases of `suites_without_floor`;
+  each floor equals the hand-copied count; `profiles` and `lib` by name),
+  with their descriptions unchanged; `bash scripts/selftest.sh selftest`
+  reports nine fewer than it did on main; `floors.conf` floors `floors` at
+  9 and `selftest` at 357, which sum to today's 366; and the hand-copied
+  table, now in `floors.test.sh`, holds a row for every suite, `floors`
+  included.
+  *Control:* the full self-test fails a suite with no floor line, and the
+  table's own assertion fails on a row that disagrees with `floors.conf`,
+  so a moved assertion that was dropped shows as a count below its floor.
+
+- **AC-5 (the selection pins that already exist still hold)** — Given the
+  existing cases of `selftest-needed.test.sh` that run over the real
+  suites, then each still passes, with its expected list changed only as
+  this story's two effects require: `floors` is listed where
+  `floors.conf` is among the changed paths; `selftest` is listed only where
+  its own file is among them, with the reason `(itself)`; and the case that
+  shows a declaration being overridden uses the suite that now reads the
+  real `floors.conf`. No case is removed, and the suite's executed count
+  does not fall.
+
+- **AC-6 (the selftest suite no longer names the real floors file as its
+  own input)** — Given `selftest.test.sh` after this story, then it holds
+  the line `# fixture-only: .claude/tests/floors.conf` at column 0, and its
+  source holds that path nowhere directly after `$REPO_ROOT/` or
+  `${REPO_ROOT}/`, and it does not call `suites_without_floor` on the real
+  tree.
+  *Control:* AC-2's not-selected line names `selftest`; with the path left
+  after `$REPO_ROOT/` the script prints `selftest` with a `despite` reason
+  instead, and AC-2 fails.
+
+## Contract
+
+<!-- Written by the Lead PO BEFORE RED, and AMENDABLE BY RED IN PLACE with a
+     reason - GREEN then builds what the amended block says. This is where "RED
+     tested one shape and GREEN built another" is prevented, and it is not the
+     acceptance criteria: the criteria are frozen and change only through
+     ## Amendments; this is a working agreement RED is expected to sharpen.
+     One block per thing the story touches:
+       * the files it WRITES, on one line at column 0 that starts
+         `**Writes:**`, each path backticked and repository-relative:
+           **Writes:** `src/core/world.ts`, `tests/world.test.ts`
+         `bash scripts/plan.sh conflicts` compares it with `touches:` and prints
+         DRIFT for a written file `touches:` does not cover. Without the line
+         there is no DRIFT at all, and files the prose merely cites never count
+       * module paths and exported names, exactly
+       * exact signatures, and the types the assertions will destructure
+       * THE SEMANTICS BEHIND EACH NUMBER - not clamp(latitude) but "latitude
+         clamps at +/-85, and dragging DOWN brings the north into view". One
+         sentence per number settles a sign error in one line
+       * the accessible markup for anything user-facing: roles, labels, what is
+         a sibling of what
+       * the oracle partition of the criteria (settled / oracle-free /
+         mechanical - see story-authoring)
+       * baseline measurements the story may read out rather than re-derive,
+         each with what it was measured on
+       * TEST-ONLY DEPENDENCIES this story is likely to need, by name. RED
+         may add them itself, but only inside the dev block - so a library
+         production will ALSO use is a GREEN change and is better decided
+         here than discovered mid-phase. Where the ecosystem has no dev
+         block at all (go.mod, requirements.txt, *.csproj), RED cannot
+         declare one and the phase round trip is yours to plan for
+       * FOR EVERY EXISTING EXPORT WHOSE SIGNATURE THIS STORY CHANGES: every
+         caller, source and test, grep-listed here before dispatch. RED cannot
+         find these itself - the old signature still exists during RED, so a
+         caller of it still compiles and is absent from RED's typecheck. One
+         such file went missing and took 25 tests with it, silently, at GREEN. -->
+
+**Writes:** `.claude/tests/floors.test.sh`, `.claude/tests/selftest.test.sh`, `.claude/tests/selftest-needed.test.sh`, `.claude/tests/floors.conf`, `.claude/tests/attest.test.sh`, `.claude/tests/lib.test.sh`, `.claude/tests/phase-guard.test.sh`, `.claude/tests/plan.test.sh`, `.claude/tests/refresh.test.sh`, `.claude/tests/rules-trim.test.sh`, `.claude/tests/shipped-docs.test.sh`, `.claude/tests/sigpipe.test.sh`, `.claude/tests/worktree.test.sh`, `.claude/harness/VERSION`
+
+RED may amend any block below, in place, with a reason. The acceptance
+criteria are not amendable this way. No function changes signature.
+
+**C-1. Who writes which, and in what order.** Every path above classifies
+as `harness`, and all but `VERSION` are suites or the floors file, so the
+test-developer writes them, in RED, in this order:
+
+1. the new and changed pins in `selftest-needed.test.sh` (AC-1, AC-2, AC-3,
+   AC-5), run against the unchanged suites and **watched to fail** (AC-1
+   prints 14 names, AC-2 prints `selftest`); the failure output goes in the
+   handoff;
+2. the nine declaration lines (C-2), `floors.test.sh` and the cut from
+   `selftest.test.sh` (C-3), the floors (C-4);
+3. the same suites run again, now passing.
+
+GREEN is a verified no-op (the handoff says so, with the passing run);
+GATES writes `VERSION`. **Not written: `scripts/selftest-needed.sh`,
+`scripts/selftest.sh`, `.claude/tests/_lib.sh`, `CLAUDE.md`.** The selection
+rules do not change; only what the suites declare does. `_lib.sh` untouched
+keeps this story's own pre-PR run from resolving to every suite.
+
+**C-2. The nine declarations.** Each suite gets, in its header comment, at
+column 0, the line `# fixture-only: CLAUDE.md`, followed by an indented
+comment line saying why, as the five existing declarations do.
+`refresh.test.sh` already has a declaration line (`:19`); `CLAUDE.md` is
+added to it or given a line of its own. Each mention, read at PLANNED on
+main `d495ae7`:
+
+| Suite | Every mention of `CLAUDE.md` | Kind |
+|---|---|---|
+| `attest` | `:28`, `:324`, `:336`, `:513` comments; `:206`, `:338`, `:350`, `:521` write `$FIX/` or `$WFIX/CLAUDE.md`; `:351`, `:352`, `:524`, `:527` labels and `git -C` on those fixtures | fixture copy |
+| `lib` | `:30`, the string `CLAUDE.md=harness` in a table of paths to classify | a name, never a file |
+| `phase-guard` | `:8`, `:152` | comments |
+| `plan` | `:2180` | comment |
+| `refresh` | `:45`, `:91` write `$UP/` and `$PROJ/CLAUDE.md`; `:200-217` read those two | fixture copy |
+| `rules-trim` | `:4` | comment |
+| `shipped-docs` | `:46`, `:324` comments; `:328` writes `$d/CLAUDE.md`; `:329` label | fixture copy |
+| `sigpipe` | `:294`, `:639` | comments |
+| `worktree` | `:57` | comment |
+
+The five that are not declared, because they read the real file: `mutate`
+(`:953`, `$REPO_ROOT/CLAUDE.md`), `reporting` (`:31`), `run-queue`
+(`:1609`), `selftest-needed` (`:872`), `story` (`:290`).
+
+RED re-reads every mention before writing a declaration, on the tree as it
+is then: a suite added or changed by a story merged since PLANNED is
+classified by the same rule, a suite that turns out to read the real file
+is left undeclared, and either changes AC-1's list only through
+`## Amendments`. A line shifted by a merged story is not a finding; a new
+kind of mention is.
+
+**C-3. `floors.test.sh`.** A new suite, `summary "floors"`. Its body is
+`selftest.test.sh:416-576` at main `d495ae7`, moved, not rewritten: from the
+`describe "AC-6/AC-7  the shipped floors file covers every suite, at its
+count"` line to the assertion that `lib` is floored at its executed count,
+with the helpers `floor_of`, `suites_without_floor` and `floor_root` and
+their comments. That is nine executed assertions. Changes allowed inside
+the moved text, and no others:
+
+- `floor_root` builds under the new suite's own scratch directory
+  (`mktemp -d`, removed on exit) instead of `$FIX/floor-roots`; the new
+  suite needs no `make_project_fixture`;
+- the `COUNTS` rows this story changes (C-4);
+- nothing else: descriptions, needles, helper bodies and comments are
+  byte-identical, and DV-3 shows it.
+
+`selftest.test.sh` loses exactly those lines; its header (`:36-38`, "The
+one real-tree assertion block reads ...") is rewritten to say the block
+lives in `floors.test.sh`; it gains the declaration of AC-6. The comment in
+`floors.conf` that says where the hand-copied table lives (`:33`) is
+updated to name `floors.test.sh`. Both tree guards scan the new file
+(`check-sigpipe.sh`, `check-grep-count.sh`); the moved text already passes
+them where it is.
+
+**C-4. The floors.** `floors.conf`: a new line `floor | floors | 9`;
+`selftest` 366 to 357; `selftest-needed` raised to whatever RED measures
+after C-5 (1099 today); a dated note for each, in the file's own style. The
+`COUNTS` table carries the same three changes. 9 + 357 = 366: the sum is a
+criterion (AC-4), so if RED measures a different executed count for either
+suite on its host, it reports that before changing a number. No other floor
+moves: the nine edited suites gain a comment line and no assertion.
+
+**C-5. The existing pins in `selftest-needed.test.sh`, and what each
+becomes.** Read from `scripts/selftest-needed.sh` (`:291-296` for the
+reason words, `:337-341` for the not-selected line, which leaves out any
+suite that was selected by another rule):
+
+- *HARNESS-115 AC-1* (VERSION, `floors.conf`, `selftest.test.sh` and
+  `shipped-docs.test.sh` changed): 7 suites become 8. `floors` is added
+  with reason `.claude/tests/floors.conf (mentioned)`; `selftest` stays,
+  its reason now `.claude/tests/selftest.test.sh (itself)`; the
+  not-selected line is unchanged.
+- *HARNESS-115 AC-2* (VERSION and `floors.conf`): `doctor`, `floors`,
+  `lib`, `worktree`; the not-selected line gains `selftest` at its end.
+- *HARNESS-115 AC-5, second case* (a copy of the real `selftest.test.sh`
+  declaring `floors.conf` is still printed, `despite`): its subject no
+  longer reads the real file, so the case is pointed at the copy of
+  `floors.test.sh`, which does. This is AC-3's second half. The claim is
+  the same; the first case (`doctor` and VERSION) is untouched.
+- Descriptions and the describe headings of those cases are updated to say
+  what they now hold. Every other case in the suite is untouched.
+- New: AC-1's case, AC-2's case, AC-3's first half.
+
+That suite spells no changed path whole on purpose (its "names none of
+AC-1's four paths whole" block); the new cases keep to that, building
+`floors.test.sh`'s path the way `H115_ST` is built.
+
+**C-6. Oracle partition.** Mechanical, pinned exactly: every list, reason
+line and not-selected line in AC-1, AC-2, AC-3 and C-5. Settled, read out:
+9, 357 and 366. Nothing is oracle-free.
+
+**C-7. Baselines** (scratch clone of main `d495ae7`, 2026-11-25): a
+`CLAUDE.md`-only diff selects 14 of 35 (`attest lib mutate phase-guard plan
+refresh reporting rules-trim run-queue selftest-needed shipped-docs sigpipe
+story worktree`), no not-selected line; a `floors.conf`-only diff selects
+`selftest`, with `not selected (fixture-only): host-load refresh run-lock
+run-queue`.
+
+## Deferred verifications
+
+<!-- REQUIRED when a verification this story depends on provably cannot run in
+     the phase that wants it; omit the section otherwise. Written by the Lead PO
+     at PLANNED, and the phase that owns it pastes the result in.
+     The case this exists for: a negative control for a round trip, a threshold
+     or a codec has to break the real implementation to mean anything, and in
+     RED there is no implementation to break. RED naming the control and saying
+     it could not run it is the honest answer; RED claiming a verification it
+     did not do is the failure. One block per entry:
+       * what it verifies, as a falsifiable condition - "with one field dropped
+         from the encoder, AC-1's property test MUST fail"
+       * why the phase that wants it cannot run it
+       * THE PHASE THAT OWNS IT, declared as `Owner: GATES` (or RED, GREEN,
+         REVIEW). check-boundaries.sh refuses a PR
+         whose block names no phase
+       * the RESULT, pasted, once that phase runs it: what was mutated, what
+         failed, and that the file was restored - or the word WAIVED with the
+         reason. check-boundaries.sh refuses a PR that has neither. A result
+         counts only as a block: a line beginning with three backticks or
+         three tildes (a fence), or a line indented by exactly four spaces.
+         Prose does not count, nor inline code in backticks, nor a tab, nor
+         anything inside an HTML comment
+     Schedule it into GATES rather than RED where you can: source is writable
+     there, and a story that bounced back to RED mid-cycle gets its corrected
+     assertions earned by the same mutation, for free. How many entries is the
+     budget in rules.md, `Mutation work per story`: by default ONE
+     "defect put back" entry for the story's central claim, run against the one
+     suite that holds its assertion. A format or codec story may add one wrong VALUE
+     mutation - a codec that is uniformly wrong round-trips through itself
+     perfectly. Exhaustive earning of assertions that passed on arrival is not
+     an entry here; it goes to `/audit-mutations`. -->
+
+The budget is `rules.md`, "Mutation work per story". Three entries: the
+"defect put back"; the probe against the real tree, which this story owes
+because a declaration is a claim about a real suite that no fixture can
+check; and the proof that the move was a move.
+
+- **DV-1 (defect put back: a declaration removed).** Through `bash
+  scripts/mutate.sh .claude/tests/attest.test.sh '<expression deleting its
+  fixture-only line for CLAUDE.md>' -- bash scripts/selftest.sh
+  selftest-needed`, AC-1's case **must** fail: stdout gains `attest` (six
+  lines), the header says 6, and the not-selected line loses `attest`.
+  AC-2's case still passes. Paste the failing assertions with expected and
+  actual, the summary line and the restore line. The case copies the real
+  suites when it runs, so the mutation of the real file reaches it.
+  **Owner: GATES.**
+
+- **DV-2 (the declarations are true of the real suites).** In a throwaway
+  clone of the story branch (under `.claude/state/` or the OS temp
+  directory, never the checkout itself), delete `CLAUDE.md` and run each of
+  the nine declared suites from the clone (`bash
+  <clone>/.claude/tests/<name>.test.sh`): every one **must** end `0 failed`
+  at a count not below its floor. As the control, `mutate` run the same way
+  **must** fail. Then, in the same clone with `CLAUDE.md` restored, replace
+  `.claude/tests/floors.conf` with a file holding the single line `floor |
+  nothing | 1` and run `selftest` and `floors`: `selftest` **must** end `0
+  failed` at 357 or more, and `floors` **must** fail. Paste the eleven
+  summary lines and the two failing ones. A declared suite that fails here
+  reads the real file after all: its declaration comes out, and AC-1's list
+  changes through `## Amendments`. **Owner: GATES.**
+
+- **DV-3 (the move changed nothing it was not allowed to).** Compare
+  `git show main:.claude/tests/selftest.test.sh` lines 416-576 with the
+  moved text in `.claude/tests/floors.test.sh`, and paste the whole diff:
+  it **must** consist only of the `floor_root` directory and the `COUNTS`
+  rows of Contract C-3 and C-4. And `git diff main --
+  .claude/tests/selftest.test.sh` **must** show only those lines removed,
+  the header rewritten and the declaration added. **Owner: RED.**
+
+## Amendments
+
+<!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
+     out to be wrong or unsatisfiable, stop, put it to the product owner, and
+     record the change here: which AC, what it said, what it says now, who
+     approved it and why. check-boundaries.sh fails a PR whose criteria differ
+     from their last committed PLANNED state (else the base branch) without an
+     entry here. Omit the section if unused.
+     Head each entry AM-<n> (`- **AM-1 (AC-2).** ...`), and give it its
+     adjudication record, a line of its own in this section, outside any
+     comment or fence - check-boundaries.sh refuses a new entry without one:
+       - **Adjudicated AM-<n>:** `fable` (resolved <name>), <date>, <what it reproduced>
+     A claim that a criterion is wrong is also what an agent says when it
+     wants to stop failing, so it is judged by a fresh `fable` dispatch - a
+     `lead-po` on the ADJUDICATE row of models.conf, on different inputs, not
+     the claimant's code - and that dispatch writes the judgement and the
+     record line; the judgement is never the orchestrator's. An entry that
+     follows a diff-review or PR-feedback finding routed RED or AMEND was
+     judged by that review, so the orchestrator writes its record, naming the
+     round and finding (or the PR-feedback item) and the model the review was
+     planned on and resolved to:
+       - **Adjudicated AM-<n>:** `fable` (resolved <name>), <date>, diff review round <r>, finding <f>
+     Its being upheld does not replace the user's approval; both go in the
+     entry. A change
+     the user asked for unprompted is not a claim: `- **Adjudicated AM-<n>:**
+     requested by the user, <date>`. -->
+
+## Suppressions
+
+<!-- One line per suppression this story's GREEN or GATES deliberately added:
+     the path, the rule id in brackets, `approved by <who>`, and why that line
+     and not a fix. check-boundaries.sh refuses any lint, type, coverage or
+     mutation suppression a GREEN or GATES commit adds to source or config
+     unless one line here names it. Omit the section if unused. -->
+
+## Model guidance
+
+Planned by `bash scripts/plan.sh write HARNESS-131` from `.claude/harness/models.conf`.
+A PLAN, not a record: a session setting or an explicit override can beat both
+this and the agent's own `model:` field, and nothing here can see which won.
+The orchestrator still writes down the model each dispatch **resolved** to, by
+name, below the table.
+
+| Phase | Agent | Planned | Why |
+|---|---|---|---|
+| PLANNED | `lead-po` | `fable` | planning is the judgement phase - decomposition, the oracle partition, the contract - and planning is what fable is judged best at |
+| RED | `test-developer` | `opus` | writing the failing tests, the negative controls and the handoff is development work, and opus is judged the stronger model for it |
+| GREEN | `feature-developer` | `opus` | the failure mode of a weaker model here is reaching green by weakening a test, which is the one thing this harness exists to prevent |
+| GATES | `feature-developer` | `opus` | same risk as GREEN, and a gate failure is where "make it stop complaining" is most tempting |
+| DIFF-REVIEW | `lead-po` | `fable` | reading a whole diff for the defect no test was written for is judgement against the contract, and it is where a wrong call ships; a finding it labels goes back to GATES or RED, on opus |
+| REVIEW | `lead-po` | `fable` | reading review feedback against the contract is orchestration judgement, and a wrong call here ships; a fix it finds goes back to GATES or RED, on opus |
+| SCAFFOLD | `lead-po` | `opus` | source, tests and config in one indivisible derivation - code, with no failing test in front of any of it, so the stronger development model |
+| ADJUDICATE | `lead-po` | `fable` | a claim that an acceptance criterion, a threshold or a frozen test is wrong is judged against the contract by a fresh dispatch on different inputs, never by the orchestrator that wants the answer; needed in any phase, so it is last |
+
+**Resolved:**
+
+<!-- One line per dispatch, as it happened: phase, agent, the model that
+     actually ran, and — if a phase was planned for one model and ran on
+     another — what that changed. A choice with no verdict is folklore. -->
+- PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override reported. Planned by `/plan-story` in a batch of five (HARNESS-128 to 132).
+## Out of scope
+
+<!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
+
+- **The selection rules.** `scripts/selftest-needed.sh` is not edited: no
+  new rule, no change to what a declaration means, no checking that a
+  declaration is true (that stays "the declaring suite's to know", and DV-2
+  is this story's one check of it).
+- **The five suites that read the real `CLAUDE.md`.** `run-queue` among
+  them, the longest suite; it reads the file's Running things section and
+  stays selected. Narrowing what those five read is not this story.
+- **Other over-selection.** `.claude/harness/VERSION`, the three confs
+  `make_fixture` copies, `_lib.sh` and `lib.sh` (which select every suite
+  by rule), and any other path.
+- **Removing the hand-copied table.** It moves; it is not merged into
+  `floors.conf` or dropped. A floor is still recorded in two places.
+- **Consuming projects.** `floors.test.sh` reaches them by the next refresh
+  like any other suite. No refresh is run here.
+- **CI.** CI runs every suite whatever is selected. This story changes the
+  local pre-PR run only.
+- Any change to an assertion's needle, description or expected value other
+  than the ones Contract C-5 lists.
+
+## Design notes
+
+<!-- Filled by the Lead Designer for user-facing stories: layout, states,
+     tokens, accessibility requirements. Omit for non-UI stories. -->
+
+## Test plan
+
+<!-- Filled by the Test Developer during RED: which tests, at which level,
+     and which AC each one covers. -->
+
+## Handoff: RED -> GREEN
+
+<!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
+     to the Feature Developer, whose context is fresh. Must contain:
+       * the exact command that runs the new tests
+       * the failure output, and why it is the RIGHT failure
+       * every file touched, and which AC each test covers
+       * the EXPORT SHAPE the tests already pin: every module they import, the
+         exact exported names and signatures, and the types the assertions
+         destructure. Not a suggestion - a test already imports them, so a
+         wrong guess is a compile error. Say what the tests do NOT constrain
+         too, so it stays the implementer's choice.
+       * any test that passed on arrival, and the probe or negative control
+         that earns it
+       * the EXPECTED VALUE of every negative control, as a table: threshold,
+         candidate range, and the number the control measured. In RED the
+         suite fails at import, so no assertion in it has run - the controls
+         are claims until GREEN confirms them against the shipped module
+       * anything discovered that changes the approach -->
+
+## Regressions
+
+<!-- REQUIRED if this story ever returned to RED after GREEN or GATES; omit
+     otherwise. A test that is wrong is never edited into passing, and the
+     return is not a footnote - it is the story failing to be one clean cycle,
+     and the next person needs to know why. One block per return, headed
+     R-<n> (`### R-1 (the count test)`), and carrying its adjudication
+     record - a line of its own, outside any comment or fence, written by
+     the fresh `fable` dispatch (a `lead-po` on the ADJUDICATE row of
+     models.conf) that judged the claim the test is wrong; the judgement is
+     never the orchestrator's. check-boundaries.sh refuses a new entry
+     without one:
+       - **Adjudicated R-<n>:** `fable` (resolved <name>), <date>, <what it reproduced>
+     A return that follows a diff-review or PR-feedback finding routed RED
+     or AMEND was judged by that review, so the orchestrator writes the
+     record, naming the round and finding (or the PR-feedback item) and the
+     model the review was planned on and resolved to:
+       - **Adjudicated R-<n>:** `fable` (resolved <name>), <date>, diff review round <r>, finding <f>
+     Then:
+       * which test, what it asserted, and what was wrong with it
+       * how the defect was found
+       * what it asserts now
+       * what earns it, since "watched it fail" cannot apply once the
+         implementation exists - the corrected assertion passes on its first
+         run and every run after, whether or not it asserts anything: either a
+         PROBE (mutate the specific behaviour the test pins, paste the red,
+         confirm the revert) or, where the defect was cost rather than
+         correctness, a BEFORE/AFTER measurement taken under the gate command -
+         not the plain test command, which is the faster one.
+         PASTE THE OUTPUT. check-boundaries.sh refuses a PR whose Regressions
+         or Gate probes section describes a failure without showing one.
+         A result counts only as a block: a line beginning with three
+         backticks or three tildes (a fence), or a line indented by exactly
+         four spaces. Prose does not count, nor inline code in backticks, nor
+         a tab, nor anything inside an HTML comment
+       * whether GREEN was a no-op, and the command output proving the source
+         was untouched and still passes -->
+
+## Gate results
+
+<!-- Written by scripts/gates.sh itself on every full run, stamped with the
+     commit and a hash of the code it ran against. Do not paste or edit it:
+     check-boundaries.sh refuses a PR whose recorded run does not match the
+     code being merged. -->
+
+## Gate probes
+
+<!-- REQUIRED if this story adds or changes a gate, its command, or its
+     evidence line. Omit the section entirely otherwise.
+     A gate that has never been observed to fail is not a gate: break the thing
+     it guards, run the gate, paste the failure, revert. A result counts
+     only as a block: a line beginning with three backticks or three tildes
+     (a fence), or a line indented by exactly four spaces. Prose does not
+     count, nor inline code in backticks, nor a tab, nor anything inside an
+     HTML comment. One block per gate:
+       * what was broken, and where
+       * the gate output proving it failed
+       * confirmation the probe was reverted -->
+
+## Scaffold inventory
+
+<!-- REQUIRED for a bootstrap or chore story that writes production code under
+     SCAFFOLD, where nothing forces a test to exist first, and for a spike that
+     commits its throwaway code. Omit otherwise.
+     One line per production file written, and for anything with behaviour
+     rather than configuration, the test that covers it:
+       src/core/palette.ts        - src/core/palette.test.ts
+       vite.config.ts             - configuration, no behaviour
+     check-boundaries.sh refuses the PR if any changed source file is not
+     named here. -->
+
+## Notes
+
+
+**Measured at PLANNED** (2026-11-25, a scratch clone of main `d495ae7`,
+one line appended to the named file, `bash scripts/selftest-needed.sh
+--suites main`):
+
+    --- CLAUDE.md only
+    selftest-needed: suites — 14 of 35 selected from 1 harness path(s) changed against main (merge-base d495ae7)
+      attest           CLAUDE.md (mentioned)
+      lib              CLAUDE.md (mentioned)
+      mutate           CLAUDE.md (mentioned)
+      phase-guard      CLAUDE.md (mentioned)
+      plan             CLAUDE.md (mentioned)
+      refresh          CLAUDE.md (mentioned)
+      reporting        CLAUDE.md (mentioned)
+      rules-trim       CLAUDE.md (mentioned)
+      run-queue        CLAUDE.md (mentioned)
+      selftest-needed  CLAUDE.md (mentioned)
+      shipped-docs     CLAUDE.md (mentioned)
+      sigpipe          CLAUDE.md (mentioned)
+      story            CLAUDE.md (mentioned)
+      worktree         CLAUDE.md (mentioned)
+    --- floors.conf only
+    selftest-needed: suites — 1 of 35 selected from 1 harness path(s) changed against main (merge-base d495ae7)
+      selftest  .claude/tests/floors.conf (mentioned)
+      not selected (fixture-only): host-load refresh run-lock run-queue
+
+- The audit names nine suites for the declaration. All nine held up when
+  each mention was read (Contract C-2). None of them reads the real file
+  through a glob, a file list or a copy of the tree: `sigpipe` lists
+  harness `*.sh` files only, `shipped-docs` scans commands, agents and
+  skills and pins that `CLAUDE.md` is not scanned, `attest`'s real-tree
+  check loads three named procedure files.
+- The block that moves is `selftest.test.sh:416-576`, nine executed
+  assertions: one at `:457`, five between `:475` and `:512`, the `COUNTS`
+  loop's one, and two at `:573-576`. `floor_of`, `suites_without_floor` and
+  `floor_root` are used nowhere else in that suite.
+- The real-tree assertion at `:457` reads the real `floors.conf` through a
+  helper (`suites_without_floor "$REPO_ROOT"`), which the selection rule
+  cannot see. If it stayed behind, the declaration of AC-6 would be false
+  and nothing would say so. It moves with the rest.
+- Other planners were writing HARNESS-124 to 127 and 133 to 136 in the
+  same checkout at PLANNED. A suite one of them adds or edits is classified
+  in RED by C-2's rule.
+
+**Planning.** Planned by a `lead-po` dispatch on `fable`, resolved
+`claude-fable-5-2`, 2026-11-25; no override.
+
