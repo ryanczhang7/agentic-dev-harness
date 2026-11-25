@@ -4,8 +4,8 @@ title: check-boundaries reads a suppression diff with colour forced
 slug: check-boundaries-reads-a-suppression-dif
 epic: 
 type: fix
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-124-check-boundaries-reads-a-suppression-dif
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .github/workflows/gates.yml, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -758,3 +758,4 @@ the whole run (pid 777573, `/d/fantasy-world-builder`), so host load
 explains it. Nothing points at the change. The added comment lines in
 `check-boundaries.sh` sit below line 630, so the `sigpipe` suite's pinned
 line numbers (399, 438, 630) still hold.
+- **Merged 2026-11-25** as PR #214 (merge commit 0e6d2de). CI on the PR: `boundaries` passed (8 s); `gates` passed in 6m1s, its full self-test `35 harness suite(s) passed.`, with `boundaries: 703 passed, 0 failed` on CI Linux. https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/45708974120
