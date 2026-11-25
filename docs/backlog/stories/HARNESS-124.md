@@ -677,6 +677,26 @@ the new cases; whether DV-2's whole suite reads `0 failed` is DV-2's to show.
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
 
+## Diff review
+
+Round 1, 2026-11-25. Fresh `lead-po` on the DIFF-REVIEW row: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. No file changed. No findings.
+
+What this change does: Block 3j of `scripts/check-boundaries.sh` (the rule that refuses a lint or type suppression added in GREEN or GATES) now asks git for its one-file patch with `--no-color`. Before, a forced `color.ui=always` put a colour escape in front of every `diff --git`, `@@` and `+` line, so the rule matched nothing and passed every commit. Sixteen new cases in `boundaries.test.sh` force colour for a single `check-boundaries.sh` run each; the floor moves 687 to 703, the `gates.yml` comment is corrected, and VERSION goes to 143.
+
+What was checked, with no findings:
+
+- **Contract C-2 (no other colour-exposed git call) holds.** Every git call in `scripts/*.sh` and `.claude/hooks/*.sh` that reads output was run in its shape under `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always`, counting lines with an escape byte. All zero: `diff --name-only`, `diff-tree --name-only -r`, `status --porcelain`, `branch --show-current`, `worktree list --porcelain`, `ls-files -s`, `show <rev>:<path>`, `for-each-ref --format=`, `rev-list`. The one shape that did colour (`git branch --merged`, 14 escape lines) is not used anywhere; `tidy.sh` uses `for-each-ref` and `merge-base --is-ancestor`. A grep for `--stat`, `--name-status`, `--numstat`, `-p`, `--patch`, `--unified`, `-U<n>` across `scripts`, `.claude/hooks` and `.github` finds line 1115 alone.
+- **The one-line fix.** `--no-color` on the command line beats `color.ui=always` from the environment; the suite's own premise assertion pins this. Nothing else in block 3j changed. The comment above `suppression_hits` says what C-1 asks.
+- **No variable leak in the new cases.** The three `GIT_CONFIG_*` variables appear only as prefix assignments on one command inside a `$( ... )` subshell (lines 3182, 3198, 3201). They are never exported, so fixture commits and later cases do not see them. `check-boundaries.sh` makes no commits. The block ends by checking the fixture back out to `main`, like its neighbours.
+- **The cases can fail.** DV-1 shows the defect put back through `mutate.sh`: exactly 9 of the 16 go red; the 7 that pass on arrival are declared as controls in the test comments. Expected lines are whole-line and literal. The suite's attested run is `fresh` on this tree: `boundaries: 703 passed, 0 failed`, exit 0. DV-2 and DV-3 (runner run 45676157091, 35 suites passed) are pasted under `## Deferred verifications`.
+- **Floors.** 703 in both `floors.conf` and `selftest.test.sh`; nothing lowered.
+- **The `gates.yml` comment is now true.** The step's `run:` and `if:` lines are unchanged. "Every suite" replaces the stale "17". The guard merged 2026-10-29 (PR #169), the cron is Mondays 06:00, and the story lists red scheduled runs from 2026-11-02; "first scheduled run after that guard merged" matches. "Four weeks" is four consecutive weekly runs (23 days to the fix), which is what C-5 specifies.
+- `docs/wiki/audits/runtime-cut-2026-11-25.md` rides in on the PLANNED commit and is not on the `**Writes:**` line. It is a docs path the story's Context cites, writable in PLANNED; not a finding.
+
+Not checked: the reviewer did not re-run the boundaries suite or the full self-test (limits of the dispatch); it relied on the fresh attestation and the pasted DV-1 to DV-3 output. It did not read the runner logs for the four red runs or run 45676157091 directly. Two untouched lines of the same `gates.yml` comment ("61 s of the job's 147 s", "five suites capture git output") were outside the diff and were not re-measured.
+
+Verdict: Ship.
+
 ## Gate results
 
 <!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
