@@ -4,8 +4,8 @@ title: check-boundaries reads a suppression diff with colour forced
 slug: check-boundaries-reads-a-suppression-dif
 epic: 
 type: fix
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-124-check-boundaries-reads-a-suppression-dif
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/check-boundaries.sh, .claude/tests/boundaries.test.sh, .claude/tests/floors.conf, .claude/tests/selftest.test.sh, .github/workflows/gates.yml, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -308,6 +308,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override reported. Planned by `/plan-story` in a batch of four (HARNESS-124 to 127). The oracle partition is in `## Contract`: AC-1 to AC-3 mechanical, AC-4 run at GATES (DV-2, DV-3).
+- RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Orchestrator checked both attest records `fresh` itself (`boundaries: 694 passed, 9 failed`, exit 1, all 9 FAILs HARNESS-124 cases; `--fast` exit 0, vacuous) and ran neither command again.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -341,6 +342,47 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+Level: integration, one level only - each case builds a real two-branch fixture
+repository with HARNESS-081's helpers (`source_story`, `_src_branch`,
+`_src_story`, `want_3j`, `want_3j_ok`, `sup_nfail`, `sup_fails`, `sup_count`,
+`whole_line`) and runs the real `scripts/check-boundaries.sh` over it. The
+defect lives in how that script reads git's output, so nothing cheaper can
+falsify it. No new fixture: AC-1 and AC-3 reuse HARNESS-081's spike-at-REVIEW
+premise and its AC-1 line, AC-2 (a) is HARNESS-081 A-1 (b), (b) is HARNESS-082
+AC-3's first row, (c) is HARNESS-082's abstract-method control row.
+
+Colour is forced by one helper, `run_boundaries_coloured`
+(`.claude/tests/boundaries.test.sh:3181`): `run_boundaries` with
+`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always` as a
+prefix assignment on the one `check-boundaries.sh` invocation, so the fixture's
+own `git commit` calls never see them and no later case inherits them (C-3).
+Every expected value is literal (HARNESS-081's `want_3j` strings).
+
+All 16 new assertions sit in four describes at
+`.claude/tests/boundaries.test.sh:3161-3293`, after HARNESS-082's baseline
+removal and before HARNESS-083's fixture. None is in a loop or conditional.
+
+| Line | Asserts | AC |
+|---|---|---|
+| 3199 | premise: under the three variables, the AC-1 commit's `git show --format= --unified=0` of `src/main.ts` has 0 lines matching `^+` | C-2 (the cases exercise the coloured path) |
+| 3202 | premise: same, with `--no-color`, has exactly 1 whole line `+// eslint-disable-next-line @typescript-eslint/no-explicit-any` | C-2 (the fix's own mechanism) |
+| 3212 | coloured: the whole refusal line, `want_3j <c> GREEN src/main.ts 2 eslint-disable <AC-1 line>` | AC-1 |
+| 3214 | coloured: exactly 1 `added a suppression to` line | AC-1 (DV-1's assertion) |
+| 3215 | coloured: exit status 1 | AC-1 |
+| 3216 | coloured: 0 `GREEN/GATES added no suppression` lines | AC-1 |
+| 3227 | coloured: the whole refusal of `// @ts-ignore` at line 4, the third of three added lines | AC-2 (a) |
+| 3229 | coloured: rc\|refusals\|summary = `1\|1\|0` | AC-2 (a) |
+| 3243 | coloured: the whole `empty-handler` refusal at the opener's line 2, quoting `} catch (e) {` | AC-2 (b) |
+| 3245 | coloured: rc\|refusals\|summary = `1\|1\|0` (refused once) | AC-2 (b) |
+| 3263 | coloured: no line naming `'src/shapes.py' line` for an abstract method, all three lines added | AC-2 (c) |
+| 3265 | coloured: rc\|FAIL lines\|summary(1) = `0\|\|1` | AC-2 (c) |
+| 3279 | coloured, declared in `## Suppressions`: rc\|refusals = `0\|` | AC-3 |
+| 3280 | coloured, declared: the whole line `ok    suppression [eslint-disable] in 'src/main.ts' is declared in ## Suppressions` | AC-3 (makes "no refusal" mean the hit was found and discharged) |
+| 3288 | coloured, a clean GREEN commit: rc\|FAIL lines = `0\|` | AC-3 |
+| 3289 | coloured, clean: the whole summary line `ok    GREEN/GATES added no suppression (1 commit(s) judged)` | AC-3 |
+
+AC-4 is deliberately not a case (oracle partition): it is DV-2 and DV-3 at GATES.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -360,6 +402,197 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the test-developer, RED, 2026-11-25.
+
+**Command.** From the worktree:
+
+    bash scripts/attest.sh -- bash .claude/tests/boundaries.test.sh
+
+Recorded run (Windows host, local, 2126 s), tree `53b9f9825e0083a13fe916dbd3debe240e4b524c`:
+
+    last:     boundaries: 694 passed, 9 failed
+    log:      .claude/state/attest-logs/20261125T140405Z.707204.log
+
+Fast gates (`bash scripts/attest.sh -- bash scripts/gates.sh --fast`): every
+gate UNCONFIGURED in this repository (BOOTSTRAPPED=no), so nothing judges the
+tests but the suite itself; no gate failed on a timeout, config or lint rule.
+
+    last:     All required gates passed (0 ran, 5 unconfigured, 0 known).
+    log:      .claude/state/attest-logs/20261125T140424Z.708001.log
+
+**The failure, verbatim from the log** (all 9 `FAIL` lines in the run; none
+outside the HARNESS-124 describes):
+
+```
+    FAIL HARNESS-124 AC-1: under forced colour the refusal names eslint-disable, src/main.ts, line 2, the commit and GREEN, by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-124 AC-1: under forced colour it is the only refusal this rule prints (refusals)
+         expected: 1
+         actual:   0
+    FAIL HARNESS-124 AC-1: under forced colour the run exits 1, where the same branch without the line exits 0
+         expected: 1
+         actual:   0
+    FAIL HARNESS-124 AC-1: under forced colour no summary line claims the commit was clean beside the refusal
+         expected: 0
+         actual:   1
+    FAIL HARNESS-124 AC-2 (a): under forced colour the third of three lines added in one hunk is refused by ITS line number, 4
+         expected: 1
+         actual:   0
+    FAIL HARNESS-124 AC-2 (a): under forced colour - rc|refusals|summary (refused once, exit 1, nothing calls it clean)
+         expected: 1|1|0
+         actual:   0|0|1
+    FAIL HARNESS-124 AC-2 (b): under forced colour '} catch (e) {' then '}' is refused as empty-handler at the opener's line, 2, by its whole line
+         expected: 1
+         actual:   0
+    FAIL HARNESS-124 AC-2 (b): under forced colour - rc|refusals|summary (refused once, exit 1, nothing calls it clean)
+         expected: 1|1|0
+         actual:   0|0|1
+    FAIL HARNESS-124 AC-3: under forced colour the rule says the path is declared
+         expected: 1
+         actual:   0
+
+boundaries: 694 passed, 9 failed
+```
+
+**C-2 confirmed: every new case that fails, fails with ZERO refusals.** AC-1,
+AC-2 (a) and (b) each read `0` refusal lines (`sup_nfail`), exit 0, and print
+the `GREEN/GATES added no suppression` summary - the rule judged the commit and
+saw no added line. No case fails with a differently worded refusal, and no FAIL
+from any other block appears on these branches (exit 0 with a spike premise
+means no `problem` was raised anywhere). AC-3's declared case reads 0 `is
+declared` lines for the same reason: no hit was found to discharge. The cause
+in `## Context` is therefore not shown incomplete by anything RED saw.
+
+**Fix preview, run through `mutate.sh` on a scratch subset** (the suite's
+prelude, HARNESS-081's fixture describe, and the four HARNESS-124 describes;
+17 assertions; restore verified). With `--no-color` added to line 1112 all 17
+pass, uncoloured and again under the weekly step's five variables (C-3's
+"identically on both paths"):
+
+```
+=== mutate: scripts/check-boundaries.sh (1 line(s) changed by s/git show --format= --unified=0 "\$c"/git show --no-color --format= --unified=0 "$c"/) ===
+boundaries-h124-subset: 17 passed, 0 failed
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/adh-HARNESS-124/.claude/state/mutations/scripts_check-boundaries.sh.20261125T135643Z.697165.bak) ===
+# and with FORCE_COLOR=1 CLICOLOR_FORCE=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always exported:
+boundaries-h124-subset: 17 passed, 0 failed
+=== mutate: command exited 0; restored (verified byte-for-byte against /d/adh-HARNESS-124/.claude/state/mutations/scripts_check-boundaries.sh.20261125T140302Z.705571.bak) ===
+```
+
+**Passed on arrival, and what earns each.** Seven of the 16:
+
+- 3199, 3202 (premise) - claims about git, not 3j; each half is the other's
+  control (the same diff reads 0 `^+` lines without `--no-color` and 1 with it,
+  under the same variables). The first goes red if git ever stops colouring a
+  patch written to a file, which would make every case below vacuous.
+- 3279 (AC-3 declared, rc|refusals) - vacuous today by construction; its
+  partner 3280 is red today and is what makes it mean something.
+- 3263, 3265 (AC-2 (c)) and 3288, 3289 (AC-3 clean) - controls against the
+  FIX, vacuous today because 3j under colour judges nothing. Earned by two
+  compound mutations through `mutate.sh` on the scratch subset, each adding
+  `--no-color` (the fix) and breaking the one behaviour the control pins:
+
+```
+=== mutate: scripts/check-boundaries.sh (2 line(s) changed by s/git show --format= --unified=0 "\$c"/git show --no-color --format= --unified=0 "$c"/;s/id\[k\] == "stub-raise" \&\& p1/id[k] == "stub-raiseX" \&\& p1/) ===
+    FAIL HARNESS-124 AC-2 (c): under forced colour an abstract method, all three lines added (src/shapes.py), is not refused
+         expected: 
+         actual:   FAIL  story T-1: commit f0a01aa (GREEN) added a suppression to 'src/shapes.py' line 4 [stub-raise]: raise NotImplementedError. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.
+    FAIL HARNESS-124 AC-2 (c): under forced colour - rc|FAIL lines|summary(1)
+         expected: 0||1
+         actual:   1|FAIL  story T-1: commit f0a01aa (GREEN) added a suppression to 'src/shapes.py' line 4 [stub-raise]: raise NotImplementedError. GREEN and GATES may not silence a tool to reach green; if this one is needed, declare it in ## Suppressions - one line carrying the path, the rule id and 'approved by <who>', with the reason - and say why in that line.|0
+boundaries-h124-subset: 15 passed, 2 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-124/.claude/state/mutations/scripts_check-boundaries.sh.20261125T135731Z.699105.bak) ===
+
+=== mutate: scripts/check-boundaries.sh (2 line(s) changed by s/git show --format= --unified=0 "\$c"/git show --no-color --format= --unified=0 "$c"/;s/(id\[k\] in seen) || s !~ re\[k\]/(id[k] in seen)/) ===
+    FAIL fixture: a spike branch whose GREEN commit adds a clean line exits 0, and nothing objects
+    FAIL HARNESS-124 AC-1: under forced colour it is the only refusal this rule prints (refusals)
+    FAIL HARNESS-124 AC-2 (a): under forced colour - rc|refusals|summary (refused once, exit 1, nothing calls it clean)
+    FAIL HARNESS-124 AC-2 (b): under forced colour - rc|refusals|summary (refused once, exit 1, nothing calls it clean)
+    FAIL HARNESS-124 AC-2 (c): under forced colour an abstract method, all three lines added (src/shapes.py), is not refused
+    FAIL HARNESS-124 AC-2 (c): under forced colour - rc|FAIL lines|summary(1)
+    FAIL HARNESS-124 AC-3: under forced colour a declared suppression - rc|refusals
+    FAIL HARNESS-124 AC-3: under forced colour a commit adding no directive - rc|FAIL lines
+    FAIL HARNESS-124 AC-3: under forced colour the summary says the one GREEN commit added no suppression
+boundaries-h124-subset: 8 passed, 9 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-124/.claude/state/mutations/scripts_check-boundaries.sh.20261125T135826Z.701171.bak) ===
+```
+
+  The first breaks the abstract-method window: exactly (c)'s two go red. The
+  second makes every added line hit every rule ("colour turns the rule into one
+  that refuses everything"): both AC-3 controls go red. `mutate.sh --check`
+  is clean after all four runs.
+
+**Negative controls - expected values.** These are mechanical, no thresholds:
+
+| Control | Expected after GREEN | Today (measured, full suite) | Under the fix (measured, subset) |
+|---|---|---|---|
+| 3199 `^+` lines, coloured, no `--no-color` | 0 | 0 | 0 |
+| 3202 `+<AC-1 line>` whole lines, coloured, `--no-color` | 1 | 1 | 1 |
+| 3263 lines naming `'src/shapes.py' line` | empty | empty | empty (2 refusal lines with the window broken) |
+| 3265 rc\|FAIL\|summary(1) | `0\|\|1` | `0\|\|1` | `0\|\|1` |
+| 3288 rc\|FAIL lines, clean commit | `0\|` | `0\|` | `0\|` (`1\|FAIL ...` with every line a hit) |
+| 3289 summary `(1 commit(s) judged)` | 1 | 1 | 1 |
+
+GREEN confirms these against the shipped change in the full suite.
+
+**DV-1 expectation (GATES owns it).** With `--no-color` removed again from the
+`git show` of C-1, through one `mutate.sh` expression against
+`bash .claude/tests/boundaries.test.sh`: 3214 reads `actual: 0` where
+`expected: 1` (with 3212, 3215, 3216 and the other five above red beside it,
+exactly the 9 of this RED run), while HARNESS-081's uncoloured
+`AC-1 (GREEN): it is the only refusal this rule prints` and its whole-line
+refusal still pass. This RED run already shows both halves on the unfixed
+script: those 9 red, and every HARNESS-081 AC-1 assertion green (694 passed).
+RED cannot run DV-1 as a mutation: the flag does not exist yet.
+
+**What GREEN must change (C-1, C-5; RED touched neither).**
+
+1. `scripts/check-boundaries.sh` line 1112:
+   `git show --format= --unified=0 "$c" -- "$f" > "$dp"` becomes
+   `git show --no-color --format= --unified=0 "$c" -- "$f" > "$dp"`. The
+   subset preview above used exactly that spelling, `--no-color` first.
+   Nothing else in block 3j changes.
+2. The comment above `suppression_hits` (around line 767, "file's
+   `git show --unified=0` diff") gains C-1's one sentence: the diff is asked
+   for without colour, because every anchor in the awk (`^diff --git `, `^@@ `,
+   `^\+`) is a start-of-line match and a colour escape sits before the first
+   character of each.
+3. `.github/workflows/gates.yml`, the comment above the colour-forced step, per
+   C-5. No trigger, `if:`, `run:` or step changes.
+4. `.claude/harness/VERSION` bump (in `touches:`), as every harness change.
+
+**Export shape.** No module is imported; the tests drive
+`bash scripts/check-boundaries.sh main` as a process and read its stdout and
+exit status. No existing export or function changes signature, so no callers
+list is needed. Not constrained: where the flag sits among `git show`'s options,
+and the exact wording of C-1's comment sentence.
+
+**Floors (C-4).** `boundaries` 687 -> 703 in `.claude/tests/floors.conf:40`
+and the hand copy `.claude/tests/selftest.test.sh:531`, with a history entry
+at the end of `floors.conf`. 703 is the EXECUTED count of the recorded run
+(694 passed + 9 failed = 687 before + 16 new), following earlier REDs
+(HARNESS-089, HARNESS-097): until GREEN lands, boundaries sits 9 below its
+floor, expected in RED.
+
+**Files touched.**
+
+- `.claude/tests/boundaries.test.sh` - +133 lines at 3161-3293 (four describes,
+  one helper, 16 assertions); nothing else in the file changed.
+- `.claude/tests/floors.conf` - line 40 (687 -> 703); +14 lines appended at the
+  end (1433-1446).
+- `.claude/tests/selftest.test.sh` - line 531 (687 -> 703).
+- `docs/backlog/stories/HARNESS-124.md` - `## Test plan`, this section.
+
+**Timings.** All local, Windows host under load: full suite 2126 s; the subset
+36 s. No test timeout exists in this bash suite; nothing is budgeted. Each
+coloured case is one `check-boundaries.sh` run, the same cost as its
+uncoloured twin.
+
+**Discovered.** Nothing that changes the approach. What RED did not measure:
+the other 160 HARNESS-081/082 assertions under the weekly variables with the
+fix in place. The subset preview covers only HARNESS-081's fixture premise and
+the new cases; whether DV-2's whole suite reads `0 failed` is DV-2's to show.
 
 ## Regressions
 

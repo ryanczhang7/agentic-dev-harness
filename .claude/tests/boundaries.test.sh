@@ -3159,6 +3159,139 @@ rm -f "$FIX/src/handler.ts" "$FIX/src/handler.py" "$FIX/src/twohunk.ts" "$FIX/sr
 commit_all "HARNESS-082 baseline removed"
 
 # ---------------------------------------------------------------------------
+describe "HARNESS-124: block 3j reads its diff under forced git colour - the forcing, and the premise"
+
+# The weekly step `Harness self-test, with colour forced` sets
+# GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always, and
+# under it every HARNESS-081 and HARNESS-082 case above failed on every
+# scheduled run since 3j merged: `git show` colours a patch written to a file
+# as to a terminal, so no line begins with `diff --git `, `@@ ` or `+`, the
+# awk in suppression_hits sees no added line, and the rule passes with nothing
+# judged (HARNESS-124 ## Context). The pull request path never forces colour,
+# so nothing above could see it. The cases below force it themselves (C-3).
+#
+# run_boundaries_coloured   run_boundaries, with the three variables set for
+# this ONE check-boundaries.sh invocation and nothing else: a prefix
+# assignment, so the fixture's own git calls never see them and the next case
+# does not inherit them. Under the weekly step they are already in the
+# environment and this sets them again, to the same values - so every case
+# below passes identically on both paths, and expects LITERAL text: a second,
+# "uncoloured" run in the same process would be coloured there too, so it is
+# no baseline (C-3).
+run_boundaries_coloured() { # sets $out and $rc
+  out="$( cd "$FIX" && GITHUB_HEAD_REF= PR_HEAD_SHA= GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always bash scripts/check-boundaries.sh main 2>&1 )"
+  rc=$?
+}
+
+# The AC-1 fixture: HARNESS-081's, unchanged - a spike whose GREEN commit
+# appends the AC-1 line to the one-line src/main.ts, so it is line 2.
+source_story GREEN src/main.ts "$AC1_LINE" </dev/null
+
+# The premise, two halves, each the other's control. PASSES ON ARRIVAL: it is a
+# claim about git, not about 3j, and it is what makes the cases below exercise
+# the coloured path rather than assume it. Under the three variables the AC-1
+# commit's diff, read the way block 3j reads it today, has NO line beginning
+# with `+`; with `--no-color` added under the same variables it has the added
+# line again, byte for byte (C-2, first bullet). If git ever stops colouring a
+# patch written to a file, the first half goes red and says the cases below
+# have stopped testing anything.
+h124_dp="$(cd "$FIX" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always git show --format= --unified=0 "$sup_c" -- src/main.ts 2>&1)"
+assert_eq "HARNESS-124 premise: under forced colour the AC-1 commit's --unified=0 diff of src/main.ts has no line beginning with '+'" \
+  0 "$(grep -c '^+' <<< "$h124_dp")"
+h124_dp="$(cd "$FIX" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=color.ui GIT_CONFIG_VALUE_0=always git show --no-color --format= --unified=0 "$sup_c" -- src/main.ts 2>&1)"
+assert_eq "HARNESS-124 premise: under forced colour the same diff with --no-color carries the added line as '+<line>', once" \
+  1 "$(grep -cxF -- "+$AC1_LINE" <<< "$h124_dp")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-124 AC-1: under forced git colour, a suppression added in GREEN is still refused, by path, line, commit and phase"
+
+# The four claims HARNESS-081 AC-1 makes of this branch uncoloured, with the
+# same literal refusal. Today: no refusal, exit 0, and the summary line printed
+# over a commit that added a directive.
+run_boundaries_coloured </dev/null
+whole_line "HARNESS-124 AC-1: under forced colour the refusal names eslint-disable, src/main.ts, line 2, the commit and GREEN, by its whole line" \
+  "$(want_3j "$sup_c" GREEN src/main.ts 2 eslint-disable "$AC1_LINE")"
+assert_eq "HARNESS-124 AC-1: under forced colour it is the only refusal this rule prints (refusals)" 1 "$(sup_nfail)"
+assert_eq "HARNESS-124 AC-1: under forced colour the run exits 1, where the same branch without the line exits 0" 1 "$rc"
+assert_eq "HARNESS-124 AC-1: under forced colour no summary line claims the commit was clean beside the refusal" 0 \
+  "$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-124 AC-2: under forced git colour, the shapes that depend on the diff's structure are judged as uncoloured"
+
+# (a) HARNESS-081's A-1 (b) fixture: three lines appended in one GREEN commit,
+# the needle third, so it is line 4 - the line counter reads the hunk header
+# and every `+` line.
+source_story GREEN src/main.ts $'export const a = 1\nexport const b = 2\n// @ts-ignore' </dev/null
+run_boundaries_coloured </dev/null
+whole_line "HARNESS-124 AC-2 (a): under forced colour the third of three lines added in one hunk is refused by ITS line number, 4" \
+  "$(want_3j "$sup_c" GREEN src/main.ts 4 ts-ignore '// @ts-ignore')"
+assert_eq "HARNESS-124 AC-2 (a): under forced colour - rc|refusals|summary (refused once, exit 1, nothing calls it clean)" \
+  "1|1|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+
+# (b) HARNESS-082 AC-3's first row: `} catch (e) {` then `}` appended to the
+# one-line src/main.ts in one GREEN commit - the previous-added-line window.
+# Refused once, as empty-handler, at the opener's line, 2.
+_src_branch
+_src_story GREEN src/main.ts
+printf '%s\n%s\n' '} catch (e) {' '}' >> "$FIX/src/main.ts"
+commit_all "T-1 GREEN adds an empty handler to src/main.ts"
+h124_eh="$(_short)"
+_src_story REVIEW src/main.ts
+commit_all "T-1 to review"
+run_boundaries_coloured </dev/null
+whole_line "HARNESS-124 AC-2 (b): under forced colour '} catch (e) {' then '}' is refused as empty-handler at the opener's line, 2, by its whole line" \
+  "$(want_3j "$h124_eh" GREEN src/main.ts 2 empty-handler '} catch (e) {')"
+assert_eq "HARNESS-124 AC-2 (b): under forced colour - rc|refusals|summary (refused once, exit 1, nothing calls it clean)" \
+  "1|1|0" "$rc|$(sup_nfail)|$(grep -cF -- 'GREEN/GATES added no suppression' <<< "$out")"
+
+# (c) HARNESS-082's control row: an abstract method, all three lines added in
+# one GREEN commit, is not refused as stub-raise - the two-previous-added-lines
+# window. The claims the uncoloured control makes: nothing refused on the path,
+# exit 0, no FAIL from anywhere, and the summary over the one judged commit.
+# PASSES ON ARRIVAL, by construction: today under colour 3j judges nothing, so
+# it refuses nothing here either. It is a control against the FIX - a reading
+# of a coloured diff that recovers the `+` lines but loses the window - and is
+# earned by the probe recorded in the story's handoff.
+_src_branch
+_src_story GREEN src/shapes.py
+printf 'class Shape(ABC):\n    @abstractmethod\n    def area(self):\n        raise NotImplementedError\n' >> "$FIX/src/shapes.py"
+commit_all "T-1 GREEN: an abstract method, all three lines added"
+_src_story REVIEW src/shapes.py
+commit_all "T-1 to review"
+run_boundaries_coloured </dev/null
+assert_eq "HARNESS-124 AC-2 (c): under forced colour an abstract method, all three lines added (src/shapes.py), is not refused" "" \
+  "$(grep -F -- "'src/shapes.py' line" <<< "$out")"
+assert_eq "HARNESS-124 AC-2 (c): under forced colour - rc|FAIL lines|summary(1)" \
+  "0||1" "$rc|$(grep '^FAIL' <<< "$out")|$(sup_count "$(want_3j_ok 1)")"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-124 AC-3: under forced git colour the rule does not refuse everything - a declared suppression and a clean commit"
+
+# The AC-1 fixture with HARNESS-081 AC-5's first declaration on the REVIEW
+# story. No refusal and exit 0 - which a rule that judges nothing also gives,
+# so the `is declared` line is pinned too: it is printed only for a hit the
+# rule found and then discharged. A here-string, not a pipe: source_story sets
+# $sup_c in THIS shell.
+source_story GREEN src/main.ts "$AC1_LINE" \
+  <<< $'## Suppressions\n\n- `src/main.ts` [eslint-disable] approved by ryan: the generated client types this as any; replacing the generator is its own story.'
+run_boundaries_coloured </dev/null
+assert_eq "HARNESS-124 AC-3: under forced colour a declared suppression - rc|refusals" "0|" "$rc|$(sup_fails)"
+whole_line "HARNESS-124 AC-3: under forced colour the rule says the path is declared" \
+  "ok    suppression [eslint-disable] in 'src/main.ts' is declared in ## Suppressions"
+
+# HARNESS-081's premise branch: a GREEN commit adding a clean line. PASSES ON
+# ARRIVAL, by construction (a rule judging nothing prints the same): it is the
+# control that the fix does not turn colour into a refusal of every commit.
+source_story GREEN src/main.ts 'export const y = 2' </dev/null
+run_boundaries_coloured </dev/null
+assert_eq "HARNESS-124 AC-3: under forced colour a commit adding no directive - rc|FAIL lines" "0|" "$rc|$(grep '^FAIL' <<< "$out")"
+whole_line "HARNESS-124 AC-3: under forced colour the summary says the one GREEN commit added no suppression" "$(want_3j_ok 1)"
+
+# Leave the fixture on main, as the describes above leave it.
+git -C "$FIX" checkout -q main 2>/dev/null
+
+# ---------------------------------------------------------------------------
 describe "HARNESS-083: a gate loosened in project.conf during GREEN or GATES - the fixture"
 
 # Issue #132, third family. 3j walks GREEN and GATES commits and reads what they
