@@ -4,8 +4,8 @@ title: A floor edit or a CLAUDE.md edit selects only the suites that read them
 slug: a-floor-edit-or-a-claude-md-edit-selects
 epic: 
 type: chore
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-131-a-floor-edit-or-a-claude-md-edit-selects
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/floors.test.sh, .claude/tests/selftest.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/attest.test.sh, .claude/tests/lib.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/plan.test.sh, .claude/tests/refresh.test.sh, .claude/tests/rules-trim.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/worktree.test.sh, .claude/harness/VERSION]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -1244,3 +1244,5 @@ was re-run:
 The negative controls in this story are mechanical pins checked by RED's
 step-1 run (red, 1110/50) and its passing run. There is no threshold value
 for GREEN to confirm.
+
+- **Merged 2026-11-25** as PR #215 (merge commit fe2db30). CI on the PR: `boundaries` passed; `gates` passed in 7m21s, its full self-test `36 harness suite(s) passed.`, with `floors: 9 passed, 0 failed` and `selftest-needed: 1219 passed, 0 failed` on CI Linux. https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/45746506110
