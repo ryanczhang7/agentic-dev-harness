@@ -636,6 +636,65 @@ index 0e47053..c7a764b 100644
  # .claude/tests/project-floors.conf, which upstream never ships and the refresh
 ```
 
+
+**Results, GATES, 2026-11-25, run by the orchestrator on commit `0b9dc12`.**
+
+DV-1, the defect put back: `attest.test.sh`'s `# fixture-only: CLAUDE.md`
+line deleted through `mutate.sh`, against `bash scripts/selftest.sh
+selftest-needed`. AC-1's case fails both from the root and from a
+subdirectory: `attest` is added to stdout (six lines), the header reads 6,
+and the not-selected line loses `attest`. AC-2's case passes (it has no FAIL
+line). AC-3's first half fails too. That is expected: it also changes
+`CLAUDE.md` over the real suites, so its pinned list gains `attest` in the
+same way. Restored and verified; `mutate.sh --check` is clean.
+
+```
+=== mutate: .claude/tests/attest.test.sh (1 line(s) changed by /^# fixture-only: CLAUDE.md$/d) ===
+=== mutate: running bash scripts/selftest.sh selftest-needed ===
+selftest-needed: 1149 passed, 16 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against .claude/state/mutations/.claude_tests_attest.test.sh.20261125T235600Z.1299127.bak) ===
+      8     FAIL AC-1: CLAUDE.md changed over the real suites prints mutate, reporting, run-queue, selftest-needed and story, and names the nine that declare it [root x4, subdir x4]
+      8     FAIL AC-3: a copy of the real mutate.test.sh declaring CLAUDE.md is still printed when CLAUDE.md changes, saying why [root x4, subdir x4]
+    FAIL AC-1: ... [from root]: stdout is exactly the pinned list
+         expected: mutate / reporting / run-queue / selftest-needed / story
+         actual:   attest / mutate / reporting / run-queue / selftest-needed / story
+    FAIL AC-1: ... [from root]: stderr's first line is exactly the pinned header
+         expected: selftest-needed: suites — 5 of 36 selected from 1 harness path(s) changed against main (merge-base 80621cd)
+         actual:   selftest-needed: suites — 6 of 36 selected from 1 harness path(s) changed against main (merge-base 80621cd)
+    FAIL AC-1: ... [from root]: stderr's last line is exactly the not-selected line
+         expected:   not selected (fixture-only): attest lib phase-guard plan refresh rules-trim shipped-docs sigpipe worktree
+         actual:     not selected (fixture-only): lib phase-guard plan refresh rules-trim shipped-docs sigpipe worktree
+mutate: no stranded mutation; nothing of a previous run is in the tree.
+```
+
+DV-2, run in a throwaway clone of `0b9dc12` under `.claude/state/dv2-clone`.
+With `CLAUDE.md` deleted, each of the nine declared suites ends `0 failed`,
+each exactly at its floor. The control, `mutate`, fails on the assertion
+that reads the real `CLAUDE.md`. With `CLAUDE.md` restored and
+`floors.conf` replaced by `floor | nothing | 1`, `selftest` ends `0 failed`
+at 357 and `floors` fails:
+
+```
+--- CLAUDE.md deleted
+attest rc=0: attest: 179 passed, 0 failed
+lib rc=0: lib: 332 passed, 0 failed
+phase-guard rc=0: phase-guard: 388 passed, 0 failed
+plan rc=0: plan: 287 passed, 0 failed
+refresh rc=0: refresh: 215 passed, 0 failed
+rules-trim rc=0: rules-trim: 50 passed, 0 failed
+shipped-docs rc=0: shipped-docs: 24 passed, 0 failed
+sigpipe rc=0: sigpipe: 91 passed, 0 failed
+worktree rc=0: worktree: 73 passed, 0 failed
+mutate rc=1: mutate: 327 passed, 1 failed
+    FAIL AC-7: CLAUDE.md's Running things block lists bash scripts/mutate.sh --check
+--- CLAUDE.md restored, floors.conf replaced
+selftest rc=0: selftest: 357 passed, 0 failed
+floors rc=1: floors: 5 passed, 4 failed
+    FAIL every suite in .claude/tests has a floor
+    FAIL and each records the executed count measured on this tree
+    FAIL profiles is floored at its 132 executed assertions, not its call-site count
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -698,6 +757,7 @@ name, below the table.
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override reported. Planned by `/plan-story` in a batch of five (HARNESS-128 to 132).
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Orchestrator checked all four attest records `fresh` itself on tree `655c422` (`selftest-needed: 1165 passed, 0 failed`, `floors: 9 passed, 0 failed`, `selftest: 357 passed, 0 failed`, `--fast` exit 0, vacuous), read the step-1 watched failure (`selftest-needed: 1110 passed, 50 failed`, every FAIL in a HARNESS-131 or changed HARNESS-115 case) and ran none of them again.
 - GREEN: no dispatch; a verified no-op by the orchestrator (C-1), recorded under `## Notes`.
+- GATES, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Ran `bash scripts/gates.sh` only: exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, not queued; orchestrator checked the record `fresh`. DV-1 and DV-2 were run by the orchestrator, results under `## Deferred verifications`; VERSION 144.
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -1045,10 +1105,21 @@ AC-2 fails"), in its declaration-missing form.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-26T01:16:12Z
+    commit: 0b9dc12
+    tree:   da28aa0922d39c76a83fcbf20820c9db3318e5a0
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
