@@ -4,8 +4,8 @@ title: A floor edit or a CLAUDE.md edit selects only the suites that read them
 slug: a-floor-edit-or-a-claude-md-edit-selects
 epic: 
 type: chore
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-131-a-floor-edit-or-a-claude-md-edit-selects
 depends_on: []      # story ids; phase.sh refuses to start this story until they are DONE
 touches: [.claude/tests/floors.test.sh, .claude/tests/selftest.test.sh, .claude/tests/selftest-needed.test.sh, .claude/tests/floors.conf, .claude/tests/attest.test.sh, .claude/tests/lib.test.sh, .claude/tests/phase-guard.test.sh, .claude/tests/plan.test.sh, .claude/tests/refresh.test.sh, .claude/tests/rules-trim.test.sh, .claude/tests/shipped-docs.test.sh, .claude/tests/sigpipe.test.sh, .claude/tests/worktree.test.sh, .claude/harness/VERSION]         # files this story expects to write; `plan.sh conflicts` reads it
@@ -759,6 +759,7 @@ name, below the table.
 - GREEN: no dispatch; a verified no-op by the orchestrator (C-1), recorded under `## Notes`.
 - GATES, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Ran `bash scripts/gates.sh` only: exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, not queued; orchestrator checked the record `fresh`. DV-1 and DV-2 were run by the orchestrator, results under `## Deferred verifications`; VERSION 144.
 - DIFF-REVIEW, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-26; no override. Round 1, one Should-fix routed RED (a pre-existing hole in the moved loop), declined here and recorded; `Verdict: Ship.`
+- GATES self-test, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. `SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`: exit 0, `16 harness suite(s) passed.`, 3034 s of which 34m51s queued behind another tree; orchestrator checked the record `fresh`.
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
