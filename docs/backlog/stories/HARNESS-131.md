@@ -758,6 +758,7 @@ name, below the table.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Orchestrator checked all four attest records `fresh` itself on tree `655c422` (`selftest-needed: 1165 passed, 0 failed`, `floors: 9 passed, 0 failed`, `selftest: 357 passed, 0 failed`, `--fast` exit 0, vacuous), read the step-1 watched failure (`selftest-needed: 1110 passed, 50 failed`, every FAIL in a HARNESS-131 or changed HARNESS-115 case) and ran none of them again.
 - GREEN: no dispatch; a verified no-op by the orchestrator (C-1), recorded under `## Notes`.
 - GATES, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-25; no override. Ran `bash scripts/gates.sh` only: exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, not queued; orchestrator checked the record `fresh`. DV-1 and DV-2 were run by the orchestrator, results under `## Deferred verifications`; VERSION 144.
+- DIFF-REVIEW, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-26; no override. Round 1, one Should-fix routed RED (a pre-existing hole in the moved loop), declined here and recorded; `Verdict: Ship.`
 ## Out of scope
 
 <!-- Explicit non-goals. Prevents the Feature Developer from over-building. -->
@@ -1102,6 +1103,35 @@ AC-2 fails"), in its declaration-missing form.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+## Diff review
+
+Round 1, 2026-11-26. Fresh `lead-po` on the DIFF-REVIEW row: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`); no override. No file changed.
+
+What this change does: Nine suites that only name `CLAUDE.md` in a comment, a fixture copy or a table of names now declare it `fixture-only`, so a `CLAUDE.md` edit picks 5 suites before a PR instead of 14. The nine assertions that read the real `floors.conf` moved, word for word, out of `selftest.test.sh` into a new `floors.test.sh`, so a floor edit picks that 9-assertion suite and not the 357-assertion `selftest` suite. No script changes; floors and VERSION follow.
+
+### Should fix
+
+1. **A suite with no row in the hand-copied table can have its floor lowered unnoticed** (`.claude/tests/floors.test.sh:137-180`)
+   - **What this is:** The `COUNTS` table, the second record of every floor, and the loop that compares each of its rows with `floors.conf`.
+   - **Problem:** The loop walks the table's rows only, so nothing fails when a suite in `floors.conf` has no row. Probed in a scratch copy: with the `floors 9` row deleted the suite still ends `floors: 9 passed, 0 failed`, and still does with `floor | floors | 1` in `floors.conf` as well. AC-4 says the table "holds a row for every suite, `floors` included"; that is true today and no assertion would go red if it stopped being true. The hole was already there on main in the moved block; this story did not make it, but it restates the claim.
+   - **Fix:** In `.claude/tests/floors.test.sh`, have the same loop also add to `wrong` every suite floored in the real `floors.conf` that has no `COUNTS` row (floors.conf's names, not the files on disk). The assertion count stays 9. Contract C-3's "byte-identical" block would need a RED amendment. Earn it by deleting one row through `mutate.sh`.
+   - **If we skip it:** A later story that adds a suite and forgets the row leaves that suite's floor guarded by a reviewer only. Reasonable to decline here and cut as its own story, since this story's contract is "moved, not rewritten".
+   - **Route:** RED
+
+   **Orchestrator: declined in this story, 2026-11-26.** The path classifies `harness`, so the RED label can be followed. It is declined because the hole predates this story: it is the same loop on main at `5f0de59`. Contract C-3 and DV-3 make this story a byte-for-byte move. Changing the loop here would make DV-3's diff show more than the move, and the move would no longer be provable. The fix goes to a story of its own. The verdict is `Ship.` with this finding declined, not fixed.
+
+### What was checked and found clean
+
+- **The nine declarations and `selftest.test.sh`'s are true.** Every `CLAUDE.md`, `floors.conf`, `REPO_ROOT`, `TESTS_DIR`, glob, `find`, `git clone`, `ls-files` and `cp -r` in the ten suites and in `_lib.sh` was read. `make_project_fixture` copies `scripts/` and `.claude/hooks/` only, never `CLAUDE.md` or `floors.conf`. The three real-tree scanners among the nine read named files: `attest_problems` loads five named agent and command files, `rules_trim_problems` and `pointer_list` read `rules.md`, `cases.md` and the tdd-cycle `SKILL.md`, `sigpipe` lists harness `*.sh`. `lib.test.sh:461` greps `*.sh` only. None of the ten uses `$TESTS_DIR` or `../..` to reach the real tree. This agrees with DV-2.
+- **Wiring.** `scripts/selftest.sh` finds suites by glob (`:348`, `:625`); both CI jobs run the bare `bash scripts/selftest.sh`; `ci-local.sh` and `refresh-harness.sh` hold no suite list. No command, agent, skill, `CLAUDE.md` or README names the table's old home; `floors.conf:33` was updated. `selftest-needed.sh --suites` on this branch selects 16 of 36, `floors` among them.
+- **The moved block outside its old fixture.** `bash .claude/tests/floors.test.sh` ends `floors: 9 passed, 0 failed`; the temp-directory count was 870 before and after, so the `EXIT` trap cleans up. `check-sigpipe.sh` and `check-grep-count.sh` both exit 0 over the tree with the new file. DV-3's diff matches: only three `COUNTS` rows differ.
+- **The new pins can fail.** AC-1 and AC-3 compare stdout whole, the header and the not-selected line, over copies of the real suites; DV-1 shows 16 reds with one declaration removed. AC-2 and the retargeted HARNESS-115 cases pin `floors` in and `selftest` out, and RED watched AC-2 print `selftest`. AC-6's needles sit behind a precondition that the real file was read, so they cannot pass on an empty read.
+- **Numbers.** 9 + 357 = 366; 1149 + 16 = 1165 in DV-1's run; nothing else pins release 143.
+
+Not checked: the full self-test, and the `selftest-needed`, `selftest` and `run-queue` suites, were not re-run by the reviewer; their passing counts are read from the story's pasted records. How a consuming project's refresh receives `floors.test.sh` was read, not run.
+
+Verdict: Ship.
 
 ## Gate results
 
