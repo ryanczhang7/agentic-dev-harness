@@ -239,6 +239,56 @@ byte comparison must still pass. Run against
 `bash .claude/tests/selftest.test.sh` only. RED cannot run it: the ordering
 does not exist until GREEN. **Owner: GATES.**
 
+**DV-1 result (GATES, 2026-11-26): PASS.** Run by the orchestrator:
+`bash scripts/mutate.sh scripts/selftest.sh 's/start_suite "\${ORDER\[\$started\]}"/start_suite "$started"/' -- bash .claude/tests/selftest.test.sh`.
+AC-1's three start-order assertions went red; AC-1's control, AC-2 and AC-5
+stayed green; AC-3's byte comparison stayed green (only its start-order
+precondition, which exists to make that comparison non-vacuous, went red); AC-4
+went red. 396 passed, 8 failed, the same eight RED watched fail. The file was
+restored and verified byte-for-byte.
+
+```
+=== mutate: scripts/selftest.sh (1 line(s) changed by s/start_suite "\${ORDER\[\$started\]}"/start_suite "$started"/) ===
+  717 -       if start_suite "${ORDER[$started]}"; then
+  717 +       if start_suite "$started"; then
+  HARNESS-125 AC-1  the largest suite files start first: four suites whose sizes run against glob order
+    FAIL AC-1: the two largest, s3-more and s4-most, are the first two started: neither saw a smaller suite started
+         expected: s3-more saw [] s4-most saw []
+         actual:   s3-more saw [s1-least s2-less] s4-most saw [s1-least s2-less]
+    FAIL AC-1: s2-less, third in size, is started third: it saw exactly the two largest started
+         expected: s3-more s4-most
+         actual:   
+    FAIL AC-1: s1-least, the smallest, is started last: it saw every other suite started
+         expected: s2-less s3-more s4-most
+         actual:   
+  HARNESS-125 AC-1  control: the same four suites, padded so that size order is glob order, start in glob order
+  HARNESS-125 AC-2  suites of equal size start in glob order among themselves
+  HARNESS-125 AC-3  print order is glob order whatever the start order: SELFTEST_JOBS=2 prints SELFTEST_JOBS=1's bytes
+    FAIL precondition: at SELFTEST_JOBS=2, s5-exits3, fifth in glob order and largest, is among the first two started
+         expected: 
+         actual:   s1-least s2-less s3-more
+  HARNESS-125 AC-4  TERM while the two largest run: the first two in glob order are named never started
+    FAIL precondition: and s1-least and s2-less have not been started
+         expected: s1-least=absent s2-less=absent
+         actual:   s1-least=present s2-less=present
+    FAIL AC-4: only the two largest ran (the TERM started no more)
+         expected: s3-more s4-most
+         actual:   s1-least s2-less s3-more s4-most
+    FAIL AC-4: every started suite's block is printed, once each, in glob order
+         expected: s3-more s4-most
+         actual:   s1-least s2-less s3-more s4-most
+    FAIL AC-4: the run ends with the ended-before line and a never-started line naming exactly s1-least s2-less
+         expected: 
+         selftest: ended before its summary: 2 of 4 suite(s) reported (status 143).
+         selftest: never started: s1-least s2-less
+         actual:   s4-most: 2 passed, 0 failed
+         selftest: ended before its summary: 4 of 4 suite(s) reported (status 143).
+  HARNESS-125 AC-5  one at a time is unchanged: the reversed fixture starts and prints in glob order
+selftest: 396 passed, 8 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-125/.claude/state/mutations/scripts_selftest.sh.20261126T214354Z.1651247.bak) ===
+  717:       if start_suite "${ORDER[$started]}"; then
+```
+
 **DV-2. One manual run on a runner, before the PR opens.** Push the story
 branch and start the workflow on it by hand
 (`gh workflow run gates.yml --ref <branch>`; a manual run executes both
@@ -255,6 +305,31 @@ that is the timing sensitivity the audit says "would have to be true"
 without the user's decision. If the step takes 215 s or more, the story
 says so and does not claim the saving. RED and GREEN cannot run it: it
 needs the finished workflow file on a pushed branch. **Owner: GATES.**
+
+**DV-2 result (GATES, 2026-11-26): PASS.** Run by the orchestrator: the story
+branch pushed at `680f6ae`, then `gh workflow run gates.yml --ref
+story/HARNESS-125-the-ci-self-test-runs-four-suites-at-a-t`, run
+45900075305 (`workflow_dispatch`, `ubuntu-latest`), job `gates` success.
+https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/45900075305
+
+| Step | Mode | Started | Ended | Duration | Suites | Floors line |
+|---|---|---|---|---|---|---|
+| `Harness self-test` | `SELFTEST_JOBS=4` | 21:43:35Z | 21:46:09Z | **154 s** | 36 passed | 7951 executed, 7853 declared |
+| `Harness self-test, with colour forced` | one at a time | 21:46:09Z | 21:53:30Z | 441 s | 36 passed | 7951 executed, 7853 declared |
+
+    gates	Harness self-test	assertion floors: all 36 suite(s) met their declared floor (7951 assertions executed, 7853 declared).
+    gates	Harness self-test	36 harness suite(s) passed.
+    gates	Harness self-test, with colour forced	assertion floors: all 36 suite(s) met their declared floor (7951 assertions executed, 7853 declared).
+    gates	Harness self-test, with colour forced	36 harness suite(s) passed.
+
+Every condition holds: both steps end `36 harness suite(s) passed.`; the
+executed totals are equal as numbers (7951 = 7951); the four-at-a-time step
+took 154 s, under the 215 s threshold and 35% of the 441 s the one-at-a-time
+step took in the same job (the story's baseline was 429 s, on 35 suites). No
+suite failed in either step. The step's simulated optimum was 108-112 s; the
+measured 154 s is above it, and the saving is claimed at the measured value
+only. The whole job, with both steps, took 601 s; a pull-request run executes
+only the first step.
 
 At REVIEW, not as a verification: record in `## Notes` the duration of the
 `Harness self-test` step and of the whole `gates` job on the PR's own run,
@@ -320,6 +395,7 @@ name, below the table.
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override reported. Planned by `/plan-story` in a batch of four (HARNESS-124 to 127). The oracle partition is in `## Contract`: AC-1 to AC-5 mechanical, AC-6 and AC-7 read at REVIEW.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Orchestrator checked all three attest records `fresh` itself on tree `c45cf62` (`selftest: 396 passed, 8 failed` exit 1, `floors: 9 passed, 0 failed`, `--fast` exit 0, vacuous), read the eight FAIL lines in the log (AC-1 x3, the AC-3 start-order precondition x2, AC-4 x3; every one shows glob start order), checked that every removed line of selftest.test.sh comes back with only `PAD=` added, and ran none of them again.
 - GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Orchestrator checked all three attest records `fresh` itself on tree `8d1e060` (`selftest: 404 passed, 0 failed`, `ci-local: 52 passed, 0 failed`, `--fast` exit 0, vacuous), read the selftest.sh and workflow diffs against C-1 to C-4, and ran none of them again.
+- GATES, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Ran `bash scripts/gates.sh` only: exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, 16 s, not queued; orchestrator checked the record `fresh`. DV-1 (local, mutate.sh) and DV-2 (run 45900075305) were run by the orchestrator, results under `## Deferred verifications`; VERSION 145.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -678,10 +754,21 @@ expected in RED.
 
 ## Gate results
 
-<!-- Written by scripts/gates.sh itself on every full run, stamped with the
-     commit and a hash of the code it ran against. Do not paste or edit it:
-     check-boundaries.sh refuses a PR whose recorded run does not match the
-     code being merged. -->
+<!-- gates.sh: written by bash scripts/gates.sh; do not edit or paste by hand -->
+
+    run:    2026-11-26T21:56:31Z
+    commit: 680f6ae
+    tree:   f123d67a201e75657645458651029238d3c1ff39
+    result: pass (0 ran, 7 unconfigured, 0 known)
+
+    UNCONFIGURED format
+    UNCONFIGURED lint
+    UNCONFIGURED typecheck
+    UNCONFIGURED unit
+    UNCONFIGURED coverage
+    UNCONFIGURED integration
+    UNCONFIGURED build
+    ON REQUEST   mutation (not run: per-story cost the user declined (HARNESS-015); run it with /audit-mutations; bash scripts/gates.sh --gate mutation)
 
 ## Gate probes
 
