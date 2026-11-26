@@ -4,8 +4,8 @@ title: The CI self-test runs four suites at a time, largest first
 slug: the-ci-self-test-runs-four-suites-at-a-t
 epic: 
 type: feature
-status: todo
-phase: PLANNED
+status: in-progress
+phase: RED
 branch: story/HARNESS-125-the-ci-self-test-runs-four-suites-at-a-t
 depends_on: [HARNESS-124]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .github/workflows/gates.yml, .github/workflows/boundaries.yml, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -318,6 +318,7 @@ name, below the table.
 **Resolved:**
 
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override reported. Planned by `/plan-story` in a batch of four (HARNESS-124 to 127). The oracle partition is in `## Contract`: AC-1 to AC-5 mechanical, AC-6 and AC-7 read at REVIEW.
+- RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Orchestrator checked all three attest records `fresh` itself on tree `c45cf62` (`selftest: 396 passed, 8 failed` exit 1, `floors: 9 passed, 0 failed`, `--fast` exit 0, vacuous), read the eight FAIL lines in the log (AC-1 x3, the AC-3 start-order precondition x2, AC-4 x3; every one shows glob start order), checked that every removed line of selftest.test.sh comes back with only `PAD=` added, and ran none of them again.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -350,6 +351,42 @@ name, below the table.
 <!-- Filled by the Test Developer during RED: which tests, at which level,
      and which AC each one covers. -->
 
+One level: fixture runs of the real `scripts/selftest.sh` in
+`.claude/tests/selftest.test.sh`, on the throwaway tree the suite already
+builds, with the `held` synthetic suites. That is where the contract lives
+(the scheduler's start and print order, the EXIT handler's lines); no unit
+level exists for a bash script's main loop, and an end-to-end run over the
+real 35 suites is DV-2's.
+
+**Observing start order (C-6).** Every new suite carries `SEEN_REC` ahead of
+`_held.sh`, so its first act lists `mk/started/` into `mk/seen/<name>` before
+its own start marker exists. The first two suites started in one pass race
+to write markers, so only the pair is pinned ("neither saw a third suite
+started"). Every later start is forced by a hold: with two slots, a third
+suite starts only when a slot frees, and one of the first two holds
+(`WAIT_START`) until the suite meant to start third has started. None of the
+holds can deadlock under glob order or size order, so a wrong order fails an
+assertion rather than timing out. No hook was added to `selftest.sh`.
+
+**Fixtures.** `order_fixture <pad1..pad4>` builds `s1-least s2-less s3-more
+s4-most`; `0 2 4 6` is the reversed fixture (sizes 268 < 329 < 429 < 567
+bytes), `6 4 2 0` its control (568 > 429 > 329 > 267). The holds are the same
+in both: `s1-least` waits for `s3-more` to start, `s4-most` for `s2-less`.
+Each fixture states its size order as a precondition with `h_rank`, which
+reads `wc -c` exactly as C-1 does.
+
+| Case (describe) | AC | Asserts |
+|---|---|---|
+| `HARNESS-125 AC-1  the largest suite files start first...` | AC-1 | sizes grow in glob order; rc 0, no timeouts; `s3-more`/`s4-most` saw no smaller suite started; `s2-less` saw exactly `s3-more s4-most`; `s1-least` saw `s2-less s3-more s4-most`; blocks printed in glob order |
+| `HARNESS-125 AC-1  control: ...start in glob order` | AC-1 control | sizes shrink in glob order; rc 0; `s1-least`/`s2-less` first pair; `s3-more` saw `s1-least s2-less`; `s4-most` saw `s1-least s2-less s3-more` |
+| `HARNESS-125 AC-2  suites of equal size...` | AC-2 | four 265-byte files (`h_rank equal`); rc 0; `q1-tie`/`q2-tie` first pair; `q3-tie` third; `q4-tie` last |
+| `HARNESS-125 AC-3  print order is glob order...` | AC-3 | reversed fixture plus `s5-exits3` (741 bytes, exits 3, floor met) and `s6-short` (below its floor); precondition that `s5-exits3` was among the first two started at JOBS=2; equal exit status (1, 1); stdout and stderr byte-identical between JOBS=1 and JOBS=2 (`h_same`, `cmp`); six blocks in glob order; `2 of 6 harness suite(s) FAILED.` |
+| `HARNESS-125 AC-4  TERM while the two largest run...` | AC-4 | sizes grow; `s3-more`/`s4-most` running and held; `s1-least`/`s2-less` not started; rc 143; started set `s3-more s4-most`; blocks `s3-more s4-most`; each block's summary line; the whole 3-line tail ending `selftest: never started: s1-least s2-less`; no `unreported:` line; no buffers or lock left |
+| `HARNESS-125 AC-5  one at a time is unchanged...` | AC-5 | for SELFTEST_JOBS unset and 1: rc 0; start order (by seen-count) `s1-least s2-less s3-more s4-most`; print order the same |
+| 7 C-5 preconditions in existing cases | C-5, AC-6 | `precondition (HARNESS-125 C-5): <fixture> are padded so that size order is glob order` - `h_rank down` over b, c, the HARNESS-090 e, k, g and the R-1 d, h fixtures |
+
+AC-6 and AC-7 have no suite, per the oracle partition: they are read at REVIEW.
+
 ## Handoff: RED -> GREEN
 
 <!-- Filled by the Test Developer at the end of RED. This is the ONLY channel
@@ -369,6 +406,236 @@ name, below the table.
          suite fails at import, so no assertion in it has run - the controls
          are claims until GREEN confirms them against the shipped module
        * anything discovered that changes the approach -->
+
+Written by the Test Developer (dispatched as `opus`; ran as Claude Opus 5.5,
+`claude-opus-5-5`, no override).
+
+### Commands
+
+    bash scripts/attest.sh -- bash .claude/tests/selftest.test.sh
+    bash scripts/attest.sh -- bash .claude/tests/floors.test.sh
+    bash scripts/attest.sh -- bash scripts/gates.sh --fast
+
+The selftest suite took 7 to 23 minutes on this Windows host (local), depending
+on host load: 978 s for the final run, and 1382 s for a run that overlapped
+the floors suite.
+
+### Result, on the final tree
+
+    selftest.test.sh   tree: c45cf62d56ff78d7fa99cb3d1498051e6f017bfe  status: ok  exit: 1
+                       last: selftest: 396 passed, 8 failed
+                       log:  .claude/state/attest-logs/20261126T062829Z.1609414.log
+    floors.test.sh     tree: c45cf62d56ff78d7fa99cb3d1498051e6f017bfe  status: ok  exit: 0
+                       last: floors: 9 passed, 0 failed
+                       log:  .claude/state/attest-logs/20261126T061204Z.1602482.log
+    gates.sh --fast    tree: c45cf62d56ff78d7fa99cb3d1498051e6f017bfe  status: ok  exit: 0
+                       last: All required gates passed (0 ran, 5 unconfigured, 0 known).
+                       log:  .claude/state/attest-logs/20261126T061122Z.1601854.log
+
+`gates.sh --fast` is vacuous, as expected: every gate in this repository
+is unconfigured (BOOTSTRAPPED=no).
+
+The 8 failures (verbatim from the log), each the right one: today's
+scheduler starts in glob order.
+
+```
+  HARNESS-125 AC-1  the largest suite files start first: four suites whose sizes run against glob order
+    FAIL AC-1: the two largest, s3-more and s4-most, are the first two started: neither saw a smaller suite started
+         expected: s3-more saw [] s4-most saw []
+         actual:   s3-more saw [s1-least s2-less] s4-most saw [s1-least s2-less]
+    FAIL AC-1: s2-less, third in size, is started third: it saw exactly the two largest started
+         expected: s3-more s4-most
+         actual:   
+    FAIL AC-1: s1-least, the smallest, is started last: it saw every other suite started
+         expected: s2-less s3-more s4-most
+         actual:   
+
+  HARNESS-125 AC-3  print order is glob order whatever the start order: SELFTEST_JOBS=2 prints SELFTEST_JOBS=1's bytes
+    FAIL precondition: at SELFTEST_JOBS=2, s5-exits3, fifth in glob order and largest, is among the first two started
+         expected: 
+         actual:   s1-least s2-less s3-more
+
+  HARNESS-125 AC-4  TERM while the two largest run: the first two in glob order are named never started
+    FAIL precondition: and s1-least and s2-less have not been started
+         expected: s1-least=absent s2-less=absent
+         actual:   s1-least=present s2-less=present
+    FAIL AC-4: only the two largest ran (the TERM started no more)
+         expected: s3-more s4-most
+         actual:   s1-least s2-less s3-more s4-most
+    FAIL AC-4: every started suite's block is printed, once each, in glob order
+         expected: s3-more s4-most
+         actual:   s1-least s2-less s3-more s4-most
+    FAIL AC-4: the run ends with the ended-before line and a never-started line naming exactly s1-least s2-less
+         expected: 
+         selftest: ended before its summary: 2 of 4 suite(s) reported (status 143).
+         selftest: never started: s1-least s2-less
+         actual:   s4-most: 2 passed, 0 failed
+         
+         selftest: ended before its summary: 4 of 4 suite(s) reported (status 143).
+```
+
+- AC-1 x3: `s1-least` and `s2-less` (smallest) were started first and saw
+  nothing (empty `actual`); `s3-more` and `s4-most` started after them. That
+  is glob order, the thing C-1 removes.
+- AC-3 precondition: `s5-exits3`, the largest file, started fifth. It is
+  the precondition that keeps AC-3's byte comparison from passing on a run
+  whose start order was glob order anyway; the byte comparison itself passes
+  (as it must, and as DV-1 requires after GREEN).
+- AC-4 x4: under glob order both slots went to `s1-least` and `s2-less`
+  first, so by the time `s3-more`/`s4-most` held, all four had started, and
+  the handler reported `4 of 4` with no never-started line. Under C-1 the two
+  held suites take both slots and the first two in glob order wait; that is
+  also the case the old handler (index below `${#PIDS[@]}` = started) gets
+  wrong, which is C-3.
+
+No other assertion fails: every pre-existing case passes with its padding,
+which is what C-5 required.
+
+### Passed on arrival, and what earns each
+
+| Case | Why it passes today | What earns it, and who |
+|---|---|---|
+| AC-1 control (5) | today's order is glob order, and the control's size order equals it | The reversed fixture is its pair: the same four suites and holds, only PAD differs, and the reversed one fails today. After GREEN, DV-1 (glob order put back) must leave the control green and turn AC-1 red: owner GATES. |
+| AC-2 ties (5) | glob order today | A GATES mutation that reverses the tie-break in GREEN's sort (for example, a secondary key on the glob index sorted descending, or a reversed sort of the whole size+index list): AC-2's three "started first/third/last" assertions must go red. The exact expression depends on GREEN's code; owner GATES. |
+| AC-3 byte comparison, block order, exit status, last line (5) | print order is glob order today, and so is start order | After GREEN, the precondition makes the comparison non-vacuous (start order is not glob order). A mutation of GREEN's print loop that prints in start order instead of glob order must turn the byte comparison and the block-order line red. Budget: not in DV-1; `/audit-mutations` if wanted. |
+| AC-5 (6) | the one-at-a-time loop iterates the glob | After GREEN: `bash scripts/mutate.sh scripts/selftest.sh 's/if \[ "\$JOBS" -lt 2 \] || \[ "\$NSUITES" -lt 2 \]; then/if false; then/' -- bash .claude/tests/selftest.test.sh` sends SELFTEST_JOBS=1 down the concurrent path, which then starts largest first one at a time; AC-5's start-order assertion must go red (`s4-most s3-more s2-less s1-least`). Not owed by the budget; offered. |
+| The 7 C-5 preconditions | the paddings are correct | Their failing branch was probed outside the suite, against scratch copies of the fixtures written by a copy of `held()` (the function extracted from the test file with awk); output below. The probe found that a missing file read as size 0 and could satisfy `down`; `h_rank` now reports `<name>=missing` and fails. |
+
+The `h_rank` probe (scratch fixtures; `sz3` holds the padded files, `sz` the
+pre-story ones):
+
+```
+glob: down
+missing last: not down: b1-last=690 nosuch=missing
+missing first: not down: nosuch=missing b6-plain=122
+reversed: not down: b6-plain=122 b5-stderr=241
+b unpadded: not down: b1-last=190 b2-exits3=161 b3-short=122 b4-silent=127 b5-stderr=141 b6-plain=122
+```
+
+The last line is the pre-story `b` fixture: without its padding, the new
+precondition fails by name.
+
+### Padded fixtures (C-5; the only change to existing fixtures is an added `PAD=`)
+
+| Fixture | PAD per suite, glob order | Bytes after, glob order | Why it needed it |
+|---|---|---|---|
+| HARNESS-036 AC-2 `b1`..`b6` | 10 8 6 4 2 0 | 690 561 422 327 241 122 | `b5-stderr` (141) outsized `b3`/`b4` (122/127), so size order started it before them |
+| HARNESS-036 AC-2 `c1`..`c4` | 6 4 2 0 | 470 322 241 122 | `c3-stderr` (141) outsized `c2-plain` (122) |
+| HARNESS-090 `e1`..`e5` | 8 6 4 2 0 | 541 459 341 223 123 | `e2-done` (159) outsized `e1-held` (141), so it would start first |
+| HARNESS-090 `k1`..`k5` | 8 6 4 2 0 | 496 and down to 123 | `k4-held` (141) outsized `k3-later` (122): it would have taken `k3-later`'s turn, and `k3-later` is the suite the case is about |
+| HARNESS-090 `g1`..`g4` | 6 4 2 0 | 422 324 222 122 | `g2-nostart` (124) outsized `g1-first` (122), so the failed start would come first rather than between |
+| HARNESS-090 R-1 `d1`..`d4` | 6 4 2 0 | 441 359 241 123 | `d2-done` (159) outsized `d1-held` (141) |
+| HARNESS-090 R-1 `h1`..`h4` | 6 4 2 0 | 441 324 241 123 | `h3-held` (141) outsized `h2-nostart` (124): `h2-nostart`'s failed slot would have gone to `h4-queued`, breaking "h4-queued never started" |
+
+One PAD line is 50 bytes, so a step of 2 is 100 bytes, more than any two
+unpadded files of one fixture differ by (largest: 74). Each padded fixture
+gained one `precondition (HARNESS-125 C-5): ... size order is glob order`
+assertion; no assertion was removed and no expected value changed.
+
+Not padded, and why:
+- HARNESS-036 AC-1 `a1`..`a5`: sizes 153 141 133 122 127. Only `a4`/`a5`
+  differ from glob, and at JOBS=3 the first three are `a1 a2 a3` either way;
+  nothing it asserts depends on `a4`/`a5` order (peak >= 2, buffer seen, exit
+  1). The golden is a sequential run.
+- `d1-quick d2-held d3-held`, `f1..f3` (both variants): three suites at JOBS=3,
+  all start in the first pass.
+- `peak_case` `e1..e5`: identical sizes, so ties keep glob order.
+- `work_case`: already padded (40/10/10/0); `w2`/`w3` tie.
+- `t1-held t2-held t3-queued`: already 147 147 123.
+- refusal cases (`h1`, `h2`), `c5-nofloor` and the HARNESS-094 cases: nothing
+  runs concurrently, or one suite.
+
+### What GREEN must build (Contract C-1 to C-3; nothing is amended)
+
+- **C-1.** On the concurrent path only, start suites in descending order of
+  `wc -c` of `.claude/tests/<name>.test.sh`; equal sizes keep glob order; a
+  size that cannot be read counts as 0. Sizes read once, before the first
+  start, in a bounded number of processes (one `wc -c` over all selected
+  files). Keep `suite_status() { wait "$1"; }` on one line, the slot refill
+  on any exit, the poll delays.
+- **C-2.** `NAMES`/`PIDS`/`RCS`/`STARTERR` stay indexed by glob position. The
+  scheduler keeps its own start order; the print loop walks glob indices and
+  stops at the first index with neither a collected status nor a start error,
+  whether or not it has started. (Today's `while [ "$i" -lt "$started" ]`
+  collect loop and `while [ "$printed" -lt "$started" ]` print loop both
+  assume "started" is a glob prefix; both have to change.)
+- **C-3.** `selftest_exit`: "started" means `start_suite` was entered for it.
+  Today it treats every index below `${#PIDS[@]}` as started. In AC-4's run
+  under C-1, `start_suite` has set `PIDS[3]` and `PIDS[2]` (`s4-most`,
+  `s3-more`); bash's `${#PIDS[@]}` counts set elements, so it is 2, and the
+  handler as written would treat indices 0 and 1 (`s1-least`, `s2-less`) as
+  started and name `s3-more s4-most` never started - exactly reversed. The
+  handler prints started suites' blocks in glob
+  order, names unprintable started ones under `selftest: unreported:`, and
+  every never-entered one under `selftest: never started:`, both in glob
+  order. AC-4 pins the whole tail:
+
+      (empty line)
+      selftest: ended before its summary: 2 of 4 suite(s) reported (status 143).
+      selftest: never started: s1-least s2-less
+
+  The `N of M reported` count is the printed blocks (2), M the selected
+  suites (4). Wording of every line unchanged; `SELFTEST_FAIL_START`
+  unchanged (the existing `g` and R-1 `h` cases pin it, now padded).
+- The one-at-a-time path is untouched (AC-5).
+
+Not constrained by the tests: how the order is held (an array of glob
+indices, a sorted list), how sizes are parsed out of `wc -c`, where the
+sort happens, the 0-for-unreadable mechanism (no case makes a size
+unreadable; it is in C-1 only), and the header comment wording (C-4).
+
+### Export shape
+
+No module is imported. The tests drive `scripts/selftest.sh` as a command:
+`SELFTEST_JOBS=<n>` (or unset), `VERBOSE=` empty, `SELFTEST_FAIL_START`
+(existing). They read stdout, stderr and exit status, and the files the held
+suites write. No new environment variable, flag or output line is expected.
+
+### Expected values of the controls
+
+The suite did not fail at import: every assertion ran in RED, against the
+shipped (glob-order) `selftest.sh`. So the "measured" column is a real run,
+local, Windows host.
+
+| Control | Expected after GREEN | Measured in RED |
+|---|---|---|
+| AC-1 control, first pair | `s1-least saw [] s2-less saw []` | the same (passed) |
+| AC-1 control, third | `s1-least s2-less` | the same (passed) |
+| AC-1 control, last | `s1-least s2-less s3-more` | the same (passed) |
+| AC-1 control sizes | `down` (568 429 329 267) | `down` |
+| AC-1 reversed sizes | `up` (268 329 429 567) | `up` |
+| AC-2 ties sizes | `equal` (265 x4) | `equal` |
+| AC-3 status, JOBS=1 vs 2 | `jobs1=1 jobs2=1` | the same (passed) |
+| AC-5 start order, unset and 1 | `s1-least s2-less s3-more s4-most` | the same (passed) |
+| DV-1 (GATES), glob order put back | AC-1's three assertions red, AC-1 control and AC-3 byte comparison green; also AC-3's precondition and AC-4's four red (this RED run is that state) | not runnable in RED: the size ordering does not exist yet |
+
+### Timings
+
+All local, this Windows host: the whole suite 7 to 23 minutes. New cases add
+no hold that waits on a timeout in a correct run; each bounded hold is
+BOUND=60 / LONELY=30, as the HARNESS-090 cases use. Nothing here comes from
+CI.
+
+### Deferred verifications
+
+DV-1 and DV-2 are GATES's. I cannot run DV-1: it mutates the size ordering,
+which does not exist until GREEN. I cannot run DV-2: it needs the finished
+workflow file on a pushed branch.
+
+### Files touched
+
+- `.claude/tests/selftest.test.sh` - `h_rank`, the `held` comment, the C-5
+  paddings and their 7 preconditions, the HARNESS-125 block (`SEEN_REC`,
+  `h_besides`, `h_seen`, `h_order`, `order_fixture`, AC-1 to AC-5).
+- `.claude/tests/floors.conf` - selftest 357 -> 404, with a note at the foot.
+- `.claude/tests/floors.test.sh` - the COUNTS row `selftest 404`.
+- This story: `## Test plan`, this handoff.
+
+### Floor
+
+selftest 404 (357 + 47: 7 C-5 preconditions, 40 AC-1..AC-5). Until GREEN
+lands, `selftest.sh` reads 396 passes and the suite sits 8 below its floor -
+expected in RED.
 
 ## Regressions
 

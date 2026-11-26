@@ -834,6 +834,10 @@ HELD
 # lines, which changes nothing but the file's size: C-2 lets GREEN start the
 # largest file first, and the cases whose meaning depends on WHICH suites
 # start first are padded so that size order and glob order agree.
+# HARNESS-125 C-1 makes that the concurrent path's order. A padded fixture
+# steps PAD by 2 per glob position (100 bytes, more than any two of its
+# unpadded files differ by), and states the result with h_rank as a
+# precondition, so an argument edit that breaks the order fails by name.
 held() {
   local n="$1" kv p
   shift
@@ -978,6 +982,32 @@ h_same() {
   else printf 'differ:\n%s' "$(diff "$1" "$2" 2>&1 | awk 'NR <= 12')"; fi
 }
 
+# h_rank <down|up|equal> <name>...   Whether the fixture suites' file sizes,
+# taken in the order given, run strictly down, strictly up, or are all equal:
+# the word itself when they do, else `not <word>:` and every name=bytes. The
+# size is what HARNESS-125 C-1 schedules by - `wc -c` of the suite file - so a
+# case whose meaning depends on start order states its own precondition.
+h_rank() {
+  local want="$1" n sz prev="" ok=1 all=""
+  shift
+  for n in "$@"; do
+    if [ ! -f "$FIX/.claude/tests/$n.test.sh" ]; then
+      all="$all $n=missing"; ok=0; prev=""; continue
+    fi
+    sz=$(( $(wc -c < "$FIX/.claude/tests/$n.test.sh") ))
+    all="$all $n=$sz"
+    if [ -n "$prev" ]; then
+      case "$want" in
+        down)  [ "$sz" -lt "$prev" ] || ok=0 ;;
+        up)    [ "$sz" -gt "$prev" ] || ok=0 ;;
+        equal) [ "$sz" -eq "$prev" ] || ok=0 ;;
+      esac
+    fi
+    prev="$sz"
+  done
+  if [ "$ok" = 1 ]; then printf '%s' "$want"; else printf 'not %s:%s' "$want" "$all"; fi
+}
+
 # ---------------------------------------------------------------------------
 describe "HARNESS-036 AC-1  SELFTEST_JOBS unset, empty or 1 runs today's sequential loop, byte for byte"
 
@@ -1084,11 +1114,11 @@ describe "HARNESS-036 AC-2  concurrent output is the serial output, failures inc
 # glob order. b3 is below its floor, b4 prints no summary line, b5 writes
 # stderr and ends in blank lines.
 reset_suites
-held b1-last   N=1 "WAIT_FIN='b2-exits3 b3-short b4-silent b5-stderr b6-plain'" LONELY=30
-held b2-exits3 N=2 EXIT_RC=3 WAIT_FIN=b3-short LONELY=30
-held b3-short  N=1
-held b4-silent NOSUM=1
-held b5-stderr N=1 ERRLINE=1 TRAIL=1
+held b1-last   N=1 "WAIT_FIN='b2-exits3 b3-short b4-silent b5-stderr b6-plain'" LONELY=30 PAD=10
+held b2-exits3 N=2 EXIT_RC=3 WAIT_FIN=b3-short LONELY=30 PAD=8
+held b3-short  N=1 PAD=6
+held b4-silent NOSUM=1 PAD=4
+held b5-stderr N=1 ERRLINE=1 TRAIL=1 PAD=2
 held b6-plain  N=1
 floors <<'FLOORS'
 floor | b1-last   | 2
@@ -1098,6 +1128,9 @@ floor | b4-silent | 1
 floor | b5-stderr | 2
 floor | b6-plain  | 2
 FLOORS
+
+assert_eq "precondition (HARNESS-125 C-5): b1..b6 are padded so that size order is glob order" down \
+  "$(h_rank down b1-last b2-exits3 b3-short b4-silent b5-stderr b6-plain)"
 
 mk_reset; release b1-last b2-exits3
 jrun 1; keep ac2f-1; rc1="$JRC"
@@ -1122,9 +1155,9 @@ assert_eq "control: and b2-exits3 was neither the first nor the last to finish" 
 describe "HARNESS-036 AC-2  an all-passing fixture: the same totals, the same verdict"
 
 reset_suites
-held c1-last   N=2 "WAIT_FIN='c2-plain c3-stderr c4-plain'" LONELY=30
-held c2-plain  N=1
-held c3-stderr N=3 ERRLINE=1 TRAIL=1
+held c1-last   N=2 "WAIT_FIN='c2-plain c3-stderr c4-plain'" LONELY=30 PAD=6
+held c2-plain  N=1 PAD=4
+held c3-stderr N=3 ERRLINE=1 TRAIL=1 PAD=2
 held c4-plain  N=2
 floors <<'FLOORS'
 floor | c1-last   | 3
@@ -1132,6 +1165,8 @@ floor | c2-plain  | 2
 floor | c3-stderr | 4
 floor | c4-plain  | 3
 FLOORS
+assert_eq "precondition (HARNESS-125 C-5): c1..c4 are padded so that size order is glob order" down \
+  "$(h_rank down c1-last c2-plain c3-stderr c4-plain)"
 mk_reset; release c1-last
 jrun 1; keep ac2p-1; rc1="$JRC"
 mk_reset
@@ -1452,10 +1487,10 @@ describe "HARNESS-090 AC-1 AC-2 AC-4  TERM with a finished, unprinted suite: eve
 # as soon as e1-held has started and waits, unprinted, behind it; its slot
 # goes to e3-held, which holds. e4-queued and e5-queued are never started.
 reset_suites
-held e1-held   N=1 WAIT_REL=1 BOUND=60
-held e2-done   N=1 WAIT_START=e1-held LONELY=30 BOUND=60
-held e3-held   N=1 WAIT_REL=1 BOUND=60
-held e4-queued N=1
+held e1-held   N=1 WAIT_REL=1 BOUND=60 PAD=8
+held e2-done   N=1 WAIT_START=e1-held LONELY=30 BOUND=60 PAD=6
+held e3-held   N=1 WAIT_REL=1 BOUND=60 PAD=4
+held e4-queued N=1 PAD=2
 held e5-queued N=1
 floors <<'FLOORS'
 floor | e1-held   | 2
@@ -1464,6 +1499,8 @@ floor | e3-held   | 2
 floor | e4-queued | 2
 floor | e5-queued | 2
 FLOORS
+assert_eq "precondition (HARNESS-125 C-5): e1..e5 are padded so that size order is glob order" down \
+  "$(h_rank down e1-held e2-done e3-held e4-queued e5-queued)"
 mk_reset
 jstart 2
 assert_eq "precondition: e2-done has finished and e3-held has started in its slot" yes \
@@ -1520,10 +1557,10 @@ describe "HARNESS-090 AC-4 AC-2  a started suite whose buffer is not a readable 
 # and its buffer is a directory. Its slot goes to k4-held, which holds.
 reset_suites
 held k1-held   N=1 WAIT_REL=1 BOUND=60 \
-  'for d in "$REPO_ROOT"/.claude/state/selftest.*/; do mkdir "${d}k3-later.out"; done'
-held k2-done   N=1 WAIT_START=k1-held LONELY=30 BOUND=60
-held k3-later  N=1
-held k4-held   N=1 WAIT_REL=1 BOUND=60
+  'for d in "$REPO_ROOT"/.claude/state/selftest.*/; do mkdir "${d}k3-later.out"; done' PAD=8
+held k2-done   N=1 WAIT_START=k1-held LONELY=30 BOUND=60 PAD=6
+held k3-later  N=1 PAD=4
+held k4-held   N=1 WAIT_REL=1 BOUND=60 PAD=2
 held k5-queued N=1
 floors <<'FLOORS'
 floor | k1-held   | 2
@@ -1532,6 +1569,8 @@ floor | k3-later  | 2
 floor | k4-held   | 2
 floor | k5-queued | 2
 FLOORS
+assert_eq "precondition (HARNESS-125 C-5): k1..k5 are padded so that size order is glob order" down \
+  "$(h_rank down k1-held k2-done k3-later k4-held k5-queued)"
 mk_reset
 jstart 2
 KBUF="$FIX/.claude/state/selftest.$HP"
@@ -1563,9 +1602,9 @@ describe "HARNESS-090 AC-3  SELFTEST_FAIL_START: the named suite is reported not
 # Four passing suites at SELFTEST_JOBS=2, the hook naming the second in glob
 # order. No holds: nothing here waits on anything.
 reset_suites
-held g1-first   N=1
-held g2-nostart N=1
-held g3-after   N=1
+held g1-first   N=1 PAD=6
+held g2-nostart N=1 PAD=4
+held g3-after   N=1 PAD=2
 held g4-after   N=1
 floors <<'FLOORS'
 floor | g1-first   | 2
@@ -1573,6 +1612,8 @@ floor | g2-nostart | 2
 floor | g3-after   | 2
 floor | g4-after   | 2
 FLOORS
+assert_eq "precondition (HARNESS-125 C-5): g1..g4 are padded so that size order is glob order" down \
+  "$(h_rank down g1-first g2-nostart g3-after g4-after)"
 mk_reset
 jrun_env 2 SELFTEST_FAIL_START=g2-nostart --
 assert_eq "AC-3: a suite whose start failed makes the run exit 1" 1 "$JRC"
@@ -1638,9 +1679,9 @@ describe "HARNESS-090 AC-1 (R-1)  a second TERM while the handler drains does no
 # slot; d4-queued never starts. The first TERM puts the run in its EXIT
 # handler, waiting on d1-held; the second arrives during that wait.
 reset_suites
-held d1-held   N=1 WAIT_REL=1 BOUND=60
-held d2-done   N=1 WAIT_START=d1-held LONELY=30 BOUND=60
-held d3-held   N=1 WAIT_REL=1 BOUND=60
+held d1-held   N=1 WAIT_REL=1 BOUND=60 PAD=6
+held d2-done   N=1 WAIT_START=d1-held LONELY=30 BOUND=60 PAD=4
+held d3-held   N=1 WAIT_REL=1 BOUND=60 PAD=2
 held d4-queued N=1
 floors <<'FLOORS'
 floor | d1-held   | 2
@@ -1648,6 +1689,8 @@ floor | d2-done   | 2
 floor | d3-held   | 2
 floor | d4-queued | 2
 FLOORS
+assert_eq "precondition (HARNESS-125 C-5): d1..d4 are padded so that size order is glob order" down \
+  "$(h_rank down d1-held d2-done d3-held d4-queued)"
 mk_reset
 jstart 2
 assert_eq "precondition: d2-done has finished and d3-held has started in its slot" yes \
@@ -1690,9 +1733,9 @@ describe "HARNESS-090 AC-3 (R-1)  a TERM after a failed start: the handler print
 # main loop cannot print h2-nostart's block while h1-held, before it, is
 # unprinted, so the TERM leaves that block to the handler's STARTERR branch.
 reset_suites
-held h1-held    N=1 WAIT_REL=1 BOUND=60
-held h2-nostart N=1
-held h3-held    N=1 WAIT_REL=1 BOUND=60
+held h1-held    N=1 WAIT_REL=1 BOUND=60 PAD=6
+held h2-nostart N=1 PAD=4
+held h3-held    N=1 WAIT_REL=1 BOUND=60 PAD=2
 held h4-queued  N=1
 floors <<'FLOORS'
 floor | h1-held    | 2
@@ -1700,6 +1743,8 @@ floor | h2-nostart | 2
 floor | h3-held    | 2
 floor | h4-queued  | 2
 FLOORS
+assert_eq "precondition (HARNESS-125 C-5): h1..h4 are padded so that size order is glob order" down \
+  "$(h_rank down h1-held h2-nostart h3-held h4-queued)"
 mk_reset
 jstart_env 2 SELFTEST_FAIL_START=h2-nostart --
 assert_eq "precondition: h1-held and h3-held have both started, h3-held in the slot h2-nostart failed to take" yes \
@@ -1728,6 +1773,241 @@ assert_eq "AC-2: a failed start is not named unreported" 0 \
   "$(h_count_re '^selftest: unreported:' "$HW/out")"
 assert_eq "AC-4: every block printed, so the buffer directory and the lock are gone" "" "$(h_left)"
 h_scrub
+
+# ===========================================================================
+# HARNESS-125: the concurrent path starts the largest suite FILE first (C-1),
+# equal sizes in glob order, and still prints in glob order (C-2); the EXIT
+# handler names as never started exactly the suites start_suite was never
+# entered for (C-3). The one-at-a-time path is unchanged.
+#
+# START ORDER is observed as C-6 gives it, with no hook in selftest.sh. Every
+# suite below carries SEEN_REC ahead of _held.sh, so its FIRST act lists
+# mk/started/ into mk/seen/<name> - before its own start marker exists. Two
+# suites started in the same scheduler pass race to write those markers, so
+# of the first two started only the PAIR is pinned: neither saw a third suite
+# started. Every later start is decided by a hold, not a race: with two slots
+# a third suite starts only when a slot frees, and one of the first two holds
+# (WAIT_START) until the suite meant to start third has started. The holds
+# are bounded (BOUND=60, LONELY=30), and none of them can deadlock under glob
+# order or under size order, so a wrong order fails an assertion rather than
+# timing out.
+#
+# THE RED SHAPE. Today's scheduler starts in glob order. So the reversed
+# fixture's AC-1 assertions, AC-3's start-order precondition and AC-4's
+# precondition, started set, block order and trailer fail; AC-1's control,
+# AC-2 (ties in glob order), AC-3's byte comparison and AC-5 hold today.
+# Every assertion executes unconditionally, and the two loops have fixed
+# lists, so the executed count is the same in RED and GREEN.
+# ===========================================================================
+
+SEEN_REC='mkdir -p "$REPO_ROOT/mk/started" "$REPO_ROOT/mk/seen"; ls "$REPO_ROOT/mk/started" > "$REPO_ROOT/mk/seen/$S"'
+
+# h_besides <name> [allowed...]   The suites <name> saw started as its first
+# act, less the allowed names, space-joined in name order; `<no record>` when
+# it never ran. h_seen <name> is the whole set.
+h_besides() {
+  local n="$1" s="" l a skip
+  shift
+  [ -f "$MK/seen/$n" ] || { printf '<no record>'; return; }
+  while IFS= read -r l; do
+    skip=0
+    for a in "$@"; do [ "$l" = "$a" ] && skip=1; done
+    [ "$skip" = 1 ] || s="$s $l"
+  done < "$MK/seen/$n"
+  printf '%s' "${s# }"
+}
+h_seen() { h_besides "$1"; }
+
+# h_order <name>...   The names in the order they started, by how many suites
+# each saw started; ties keep the order given. Only meaningful where no two
+# start together - the one-at-a-time path.
+h_order() {
+  local n
+  for n in "$@"; do printf '%s %s\n' "$(h_lines "$MK/seen/$n")" "$n"; done \
+    | sort -s -n -k1,1 | awk '{ s = s (s == "" ? "" : " ") $2 } END { print s }'
+}
+
+# order_fixture <pad1> <pad2> <pad3> <pad4>   s1-least..s4-most, glob order,
+# each padded by the PAD given. `0 2 4 6` is THE REVERSED FIXTURE (sizes grow
+# in glob order), `6 4 2 0` its control (sizes shrink in glob order). The
+# holds are the same in both: s1-least holds until s3-more has started, and
+# s4-most until s2-less has. Each executes 2 assertions; floor 2.
+order_fixture() {
+  reset_suites
+  held s1-least N=1 "$SEEN_REC" WAIT_START=s3-more LONELY=30 BOUND=60 PAD="$1"
+  held s2-less  N=1 "$SEEN_REC" PAD="$2"
+  held s3-more  N=1 "$SEEN_REC" PAD="$3"
+  held s4-most  N=1 "$SEEN_REC" WAIT_START=s2-less LONELY=30 BOUND=60 PAD="$4"
+  floors <<'FLOORS'
+floor | s1-least | 2
+floor | s2-less  | 2
+floor | s3-more  | 2
+floor | s4-most  | 2
+FLOORS
+}
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-125 AC-1  the largest suite files start first: four suites whose sizes run against glob order"
+
+# Expected at SELFTEST_JOBS=2: s4-most and s3-more start; s3-more exits and
+# its slot goes to s2-less (s4-most holds until it has); then s1-least, last.
+order_fixture 0 2 4 6
+assert_eq "precondition: the reversed fixture's sizes grow in glob order" up \
+  "$(h_rank up s1-least s2-less s3-more s4-most)"
+mk_reset
+jrun 2
+assert_eq "SELFTEST_JOBS=2 over the reversed fixture exits 0 with no hold timed out" "rc=0 timeouts=0" \
+  "rc=$JRC timeouts=$(h_count timeout)"
+assert_eq "AC-1: the two largest, s3-more and s4-most, are the first two started: neither saw a smaller suite started" \
+  "s3-more saw [] s4-most saw []" \
+  "s3-more saw [$(h_besides s3-more s4-most)] s4-most saw [$(h_besides s4-most s3-more)]"
+assert_eq "AC-1: s2-less, third in size, is started third: it saw exactly the two largest started" \
+  "s3-more s4-most" "$(h_seen s2-less)"
+assert_eq "AC-1: s1-least, the smallest, is started last: it saw every other suite started" \
+  "s2-less s3-more s4-most" "$(h_seen s1-least)"
+assert_eq "AC-1: and the blocks are still printed in glob order" "s1-least s2-less s3-more s4-most" \
+  "$(h_heads "$HW/out")"
+
+describe "HARNESS-125 AC-1  control: the same four suites, padded so that size order is glob order, start in glob order"
+
+order_fixture 6 4 2 0
+assert_eq "control precondition: the control fixture's sizes shrink in glob order" down \
+  "$(h_rank down s1-least s2-less s3-more s4-most)"
+mk_reset
+jrun 2
+assert_eq "control: SELFTEST_JOBS=2 exits 0 with no hold timed out" "rc=0 timeouts=0" \
+  "rc=$JRC timeouts=$(h_count timeout)"
+assert_eq "control: s1-least and s2-less, the two largest here, are the first two started" \
+  "s1-least saw [] s2-less saw []" \
+  "s1-least saw [$(h_besides s1-least s2-less)] s2-less saw [$(h_besides s2-less s1-least)]"
+assert_eq "control: s3-more is started third: it saw exactly s1-least and s2-less started" \
+  "s1-least s2-less" "$(h_seen s3-more)"
+assert_eq "control: s4-most, the smallest here, is started last" \
+  "s1-least s2-less s3-more" "$(h_seen s4-most)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-125 AC-2  suites of equal size start in glob order among themselves"
+
+# Four files of identical size: the same-length names and the same lines.
+# q1-tie holds until q3-tie has started; the others "wait" on themselves,
+# which clears at once and keeps the sizes equal.
+reset_suites
+held q1-tie N=1 "$SEEN_REC" WAIT_START=q3-tie LONELY=30 BOUND=60
+held q2-tie N=1 "$SEEN_REC" WAIT_START=q2-tie LONELY=30 BOUND=60
+held q3-tie N=1 "$SEEN_REC" WAIT_START=q3-tie LONELY=30 BOUND=60
+held q4-tie N=1 "$SEEN_REC" WAIT_START=q4-tie LONELY=30 BOUND=60
+floors <<'FLOORS'
+floor | q1-tie | 2
+floor | q2-tie | 2
+floor | q3-tie | 2
+floor | q4-tie | 2
+FLOORS
+assert_eq "precondition: q1-tie..q4-tie are all the same size" equal \
+  "$(h_rank equal q1-tie q2-tie q3-tie q4-tie)"
+mk_reset
+jrun 2
+assert_eq "SELFTEST_JOBS=2 over four equal sizes exits 0 with no hold timed out" "rc=0 timeouts=0" \
+  "rc=$JRC timeouts=$(h_count timeout)"
+assert_eq "AC-2: q1-tie and q2-tie, first in glob order, are the first two started" \
+  "q1-tie saw [] q2-tie saw []" \
+  "q1-tie saw [$(h_besides q1-tie q2-tie)] q2-tie saw [$(h_besides q2-tie q1-tie)]"
+assert_eq "AC-2: q3-tie is started third" "q1-tie q2-tie" "$(h_seen q3-tie)"
+assert_eq "AC-2: q4-tie, last in glob order, is started last" "q1-tie q2-tie q3-tie" "$(h_seen q4-tie)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-125 AC-3  print order is glob order whatever the start order: SELFTEST_JOBS=2 prints SELFTEST_JOBS=1's bytes"
+
+# The reversed fixture plus s5-exits3 (exits 3, floor met), the largest file
+# of all, and s6-short (below its floor). At SELFTEST_JOBS=2, s5-exits3 is
+# started first and printed fifth.
+order_fixture 0 2 4 6
+held s5-exits3 N=2 "$SEEN_REC" EXIT_RC=3 PAD=10
+held s6-short  N=1 "$SEEN_REC"
+floors <<'FLOORS'
+floor | s1-least  | 2
+floor | s2-less   | 2
+floor | s3-more   | 2
+floor | s4-most   | 2
+floor | s5-exits3 | 3
+floor | s6-short  | 3
+FLOORS
+assert_eq "precondition: s1-least..s4-most grow in size in glob order, and s5-exits3 is larger still" up \
+  "$(h_rank up s1-least s2-less s3-more s4-most s5-exits3)"
+mk_reset; release s1-least s4-most
+jrun 1; keep ac3-1; rc1="$JRC"
+mk_reset
+jrun 2; keep ac3-2; rc2="$JRC"
+assert_eq "precondition: at SELFTEST_JOBS=2, s5-exits3, fifth in glob order and largest, is among the first two started" \
+  "" "$(h_besides s5-exits3 s4-most)"
+assert_eq "AC-3: both runs exit 1, the same status" "jobs1=1 jobs2=1" "jobs1=$rc1 jobs2=$rc2"
+assert_eq "AC-3: SELFTEST_JOBS=2's stdout is byte-identical to SELFTEST_JOBS=1's" identical \
+  "$(h_same "$HW/out.ac3-1" "$HW/out.ac3-2")"
+assert_eq "AC-3: SELFTEST_JOBS=2's stderr is byte-identical to SELFTEST_JOBS=1's" identical \
+  "$(h_same "$HW/err.ac3-1" "$HW/err.ac3-2")"
+assert_eq "AC-3: SELFTEST_JOBS=2 prints the six blocks in glob order" \
+  "s1-least s2-less s3-more s4-most s5-exits3 s6-short" "$(h_heads "$HW/out.ac3-2")"
+assert_eq "AC-3: and counts the exit-3 suite and the under-floor suite as its two failures" \
+  "2 of 6 harness suite(s) FAILED." "$(h_last ac3-2)"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-125 AC-4  TERM while the two largest run: the first two in glob order are named never started"
+
+# The reversed sizes again, with the two largest holding until released. At
+# SELFTEST_JOBS=2 both slots stay full, so s1-least and s2-less - first in
+# glob order - cannot have been started when the TERM arrives.
+reset_suites
+held s1-least N=1 "$SEEN_REC"
+held s2-less  N=1 "$SEEN_REC" PAD=2
+held s3-more  N=1 "$SEEN_REC" WAIT_REL=1 BOUND=60 PAD=4
+held s4-most  N=1 "$SEEN_REC" WAIT_REL=1 BOUND=60 PAD=6
+floors <<'FLOORS'
+floor | s1-least | 2
+floor | s2-less  | 2
+floor | s3-more  | 2
+floor | s4-most  | 2
+FLOORS
+assert_eq "precondition: the sizes grow in glob order" up "$(h_rank up s1-least s2-less s3-more s4-most)"
+mk_reset
+jstart 2
+assert_eq "precondition: s3-more and s4-most, the two largest, are both running and held" yes \
+  "$(yn h_wait "$MK/started/s3-more" "$MK/started/s4-most")"
+assert_eq "precondition: and s1-least and s2-less have not been started" \
+  "s1-least=absent s2-less=absent" \
+  "s1-least=$(present "$MK/started/s1-least") s2-less=$(present "$MK/started/s2-less")"
+kill -TERM "$HP" 2>/dev/null
+sleep 2
+release all
+wait "$HP"; rc="$?"
+h_wait "$MK/finished/s3-more" "$MK/finished/s4-most" || :
+assert_eq "AC-4: the TERM ends the run with 143" 143 "$rc"
+assert_eq "AC-4: only the two largest ran (the TERM started no more)" "s3-more s4-most" "$(h_names started)"
+assert_eq "AC-4: every started suite's block is printed, once each, in glob order" "s3-more s4-most" \
+  "$(h_heads "$HW/out")"
+for s in s3-more s4-most; do
+  assert_eq "AC-4: $s's block carries its own summary line" 1 "$(h_exact "$s: 2 passed, 0 failed" "$HW/out")"
+done
+assert_eq "AC-4: the run ends with the ended-before line and a never-started line naming exactly s1-least s2-less" \
+  "
+selftest: ended before its summary: 2 of 4 suite(s) reported (status 143).
+selftest: never started: s1-least s2-less" "$(h_tail 3 "$HW/out")"
+assert_eq "AC-4: no unreported line, since every started block was printed" 0 \
+  "$(h_count_re '^selftest: unreported:' "$HW/out")"
+assert_eq "AC-4: every started block printed, so the buffer directory and the lock are gone" "" "$(h_left)"
+h_scrub
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-125 AC-5  one at a time is unchanged: the reversed fixture starts and prints in glob order"
+
+order_fixture 0 2 4 6
+for mode in unset 1; do
+  mk_reset; release s1-least s4-most
+  if [ "$mode" = unset ]; then jrun -; else jrun 1; fi
+  assert_eq "SELFTEST_JOBS $mode over the reversed fixture exits 0" 0 "$JRC"
+  assert_eq "AC-5: SELFTEST_JOBS $mode starts the suites in glob order, not by size" \
+    "s1-least s2-less s3-more s4-most" "$(h_order s1-least s2-less s3-more s4-most)"
+  assert_eq "AC-5: SELFTEST_JOBS $mode prints them in glob order" \
+    "s1-least s2-less s3-more s4-most" "$(h_heads "$HW/out")"
+done
 
 # ---------------------------------------------------------------------------
 describe "HARNESS-036 AC-6  state, suite and portability hygiene, in this repository"
