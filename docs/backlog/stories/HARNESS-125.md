@@ -5,7 +5,7 @@ slug: the-ci-self-test-runs-four-suites-at-a-t
 epic: 
 type: feature
 status: in-progress
-phase: GREEN
+phase: GATES
 branch: story/HARNESS-125-the-ci-self-test-runs-four-suites-at-a-t
 depends_on: [HARNESS-124]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .github/workflows/gates.yml, .github/workflows/boundaries.yml, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
