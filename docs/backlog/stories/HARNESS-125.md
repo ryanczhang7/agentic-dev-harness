@@ -5,7 +5,7 @@ slug: the-ci-self-test-runs-four-suites-at-a-t
 epic: 
 type: feature
 status: in-progress
-phase: RED
+phase: GREEN
 branch: story/HARNESS-125-the-ci-self-test-runs-four-suites-at-a-t
 depends_on: [HARNESS-124]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .github/workflows/gates.yml, .github/workflows/boundaries.yml, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -319,6 +319,7 @@ name, below the table.
 
 - PLANNED, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-25; no override reported. Planned by `/plan-story` in a batch of four (HARNESS-124 to 127). The oracle partition is in `## Contract`: AC-1 to AC-5 mechanical, AC-6 and AC-7 read at REVIEW.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Orchestrator checked all three attest records `fresh` itself on tree `c45cf62` (`selftest: 396 passed, 8 failed` exit 1, `floors: 9 passed, 0 failed`, `--fast` exit 0, vacuous), read the eight FAIL lines in the log (AC-1 x3, the AC-3 start-order precondition x2, AC-4 x3; every one shows glob start order), checked that every removed line of selftest.test.sh comes back with only `PAD=` added, and ran none of them again.
+- GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Orchestrator checked all three attest records `fresh` itself on tree `8d1e060` (`selftest: 404 passed, 0 failed`, `ci-local: 52 passed, 0 failed`, `--fast` exit 0, vacuous), read the selftest.sh and workflow diffs against C-1 to C-4, and ran none of them again.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -709,4 +710,79 @@ expected in RED.
      named here. -->
 
 ## Notes
+
+### GREEN
+
+Feature Developer, dispatched as `opus`; ran as Claude Opus 5.5
+(`claude-opus-5-5`), no override.
+
+What was built:
+
+- `scripts/selftest.sh`, concurrent path only (C-1, C-2). After `NAMES` is
+  built, one `wc -c -- <every selected file>` runs inside a `cd` to the tests
+  directory, so there is one subshell and one `wc` whatever the suite count.
+  Its lines are matched back to glob indices by file name into `SIZES`,
+  which starts every suite at 0. A file wc cannot read prints no line and
+  stays 0, and the `total` line matches no file. `ORDER`, a list of glob
+  indices, comes from a stable insertion sort: a suite moves ahead only of
+  a strictly smaller one, so ties keep glob order. The scheduler starts
+  `ORDER[$started]`. The collect loop now walks glob indices from `printed`
+  to `NSUITES`. The print loop walks glob indices to `NSUITES` and stops at
+  the first one with neither a collected status nor a start error.
+  `suite_status() { wait "$1"; }` is still on one line, and the poll delays
+  and slot refill are unchanged.
+- `selftest_exit` (C-3). "Started" now means `${PIDS[$i]+set}`.
+  `start_suite` now sets `PIDS[$1]=""` as its first act, before its
+  `local`s. The handler walks every glob index below `NSUITES`. A suite
+  `start_suite` was never entered for goes on the `never started:` list.
+  The other suites are judged as before: a start error, a printable block,
+  or `unreported`. Both lists come out in glob order, and every printed
+  wording is unchanged.
+- The header comment (C-4). "CI leaves it unset" and "Suites start in suite
+  order, so the slowest one (phase-guard) still sets the floor" are
+  replaced: CI's `Harness self-test` step sets 4, and the colour-forced
+  step and ci-local's replay leave it unset. The concurrent path starts
+  largest file first, and one at a time is unchanged. The comments on the
+  EXIT handler and the concurrent loop are updated to match.
+- The workflows (C-4). `gates.yml` gets the `concurrency:` block after `on:`
+  and `env: SELFTEST_JOBS: 4` on `Harness self-test`, with its `run:`
+  still `bash scripts/selftest.sh`. `boundaries.yml` gets its `concurrency:`
+  block. Apart from that, both files change only in comments. The
+  colour-forced step is untouched.
+- The one-at-a-time path is not touched.
+
+Controls confirmed against the shipped code:
+
+- I regenerated the fixtures in a scratch directory with the test file's
+  own `held()`, extracted with awk, and measured them with `wc -c`. They
+  match RED's numbers exactly:
+  - AC-1 control: 568 429 329 267 (`down`).
+  - AC-1 reversed: 268 329 429 567 (`up`).
+  - AC-2 ties: 265 x4 (`equal`).
+  - AC-3 extras: s5-exits3 741, larger than every s1..s4, and s6-short 230.
+- `selftest.test.sh` on the final tree: 404 passed, 0 failed. So every
+  control in the handoff's table held at its recorded expected value:
+  - AC-1 control: first pair `s1-least saw [] s2-less saw []`, third
+    `s1-least s2-less`, last `s1-least s2-less s3-more`.
+  - AC-2 ties: in glob order.
+  - AC-3: `jobs1=1 jobs2=1`, and the stdout and stderr byte comparisons
+    pass.
+  - AC-5: start order `s1-least s2-less s3-more s4-most` for both unset
+    and 1.
+  - The 8 RED failures (AC-1 x3, the AC-3 precondition, AC-4 x4) all pass.
+    AC-4's tail is exactly `2 of 4 suite(s) reported (status 143)` /
+    `never started: s1-least s2-less`.
+- The handoff's claim about today's handler holds. In bash, with
+  `PIDS[3]=""; PIDS[2]=""`, `${#PIDS[@]}` is 2, and
+  `${PIDS[0]+set}`/`${PIDS[1]+set}` are empty while `[2]`/`[3]` are `set`.
+  So the old bound (index < 2 means started) would have named indices 0
+  and 1 as started, the reverse of the truth. The new handler reads the
+  set element instead.
+- `bash scripts/ci-local.sh --dry-run`: I captured the output before the
+  workflow edits and again after, and `cmp` says the two are identical
+  (AC-7's dry-run clause).
+- DV-1 and DV-2 are not run here; GATES owns them. For DV-1, a single
+  expression that puts glob order back is `s/start_suite "\${ORDER\[\$started\]}"/start_suite "$started"/`
+  on `scripts/selftest.sh`. It starts glob index `$started` again, while
+  the print, collect and handler changes stay in.
 

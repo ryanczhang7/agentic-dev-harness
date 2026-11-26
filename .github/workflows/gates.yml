@@ -24,6 +24,15 @@ on:
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
+# A new push to a pull request cancels that pull request's run still in flight
+# (HARNESS-125): only the newest tree's verdict is read. The group is per pull
+# request, so two pull requests never cancel each other. On `schedule` and
+# `workflow_dispatch` the group is the branch, and a second run must not cancel
+# the first, so cancelling is for pull requests only.
+concurrency:
+  group: gates-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   gates:
     runs-on: ubuntu-latest
@@ -75,7 +84,16 @@ jobs:
       # (AC-4) run each one over this checkout and assert zero findings - so a
       # finding fails this step, and the failing suite prints the guard's
       # `<path>:<line>:` lines. A separate step could only repeat that verdict.
+      #
+      # FOUR SUITES AT A TIME (HARNESS-125), largest first: 4 is the vCPU count
+      # of `ubuntu-latest`, and above it the schedule gains nothing, because the
+      # longest suite alone is most of the optimum. It is a step-level `env:`
+      # and not part of `run:`, because ci-local.sh replays `run:` lines only:
+      # the local replay stays one suite at a time unless its caller sets
+      # SELFTEST_JOBS, and ci-local.test.sh's derivation is untouched.
       - name: Harness self-test
+        env:
+          SELFTEST_JOBS: 4
         run: bash scripts/selftest.sh
 
       # NOT ON EVERY PULL REQUEST, and the reason is what this step is FOR.
