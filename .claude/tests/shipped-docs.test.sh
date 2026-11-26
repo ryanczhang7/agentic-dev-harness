@@ -31,6 +31,10 @@
 # docs/backlog/epics/ or docs/backlog/stories/ is invisible to this rule.
 #
 # Portable awk only (CI runs mawk): no gensub, no --re-interval, no \<.
+#
+# fixture-only: CLAUDE.md
+#   writes its fixture's own copy, to pin that it is not scanned; never reads
+#   the real one.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

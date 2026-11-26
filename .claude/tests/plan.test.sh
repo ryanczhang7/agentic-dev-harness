@@ -27,6 +27,9 @@
 #     "the weaker model" means that fixture's base row and "the stronger"
 #     its exception rows; it is a statement about the fixture, not about the
 #     models.
+#
+# fixture-only: CLAUDE.md
+#   names it only in a comment; never reads the file.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 

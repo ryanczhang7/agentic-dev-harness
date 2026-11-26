@@ -1123,6 +1123,9 @@ H115_V=".claude/harness/""VERSION"
 H115_F=".claude/tests/""floors.conf"
 H115_ST=".claude/tests/""selftest.test.sh"
 H115_SD=".claude/tests/""shipped-docs.test.sh"
+# HARNESS-131: the floors suite, built from two halves like H115_ST, so this
+# suite's copy in the real-tree fixtures does not mention it either.
+H131_FT=".claude/tests/""floors.test.sh"
 H115_P1='.claude/harness/h115-one.conf'
 H115_P2='.claude/harness/h115-two.conf'
 H115_P3='.claude/harness/h115-three.conf'
@@ -1207,45 +1210,48 @@ assert_eq "this suite's source holds the whole VERSION path on no line" 0 "$(h09
 assert_eq "this suite's source holds the whole floors.conf path on no line" 0 "$(h096_lines_holding "$H115_F")"
 assert_eq "this suite's source holds the whole selftest.test.sh path on no line" 0 "$(h096_lines_holding "$H115_ST")"
 assert_eq "this suite's source holds the whole shipped-docs.test.sh path on no line" 0 "$(h096_lines_holding "$H115_SD")"
+assert_eq "this suite's source holds the whole floors.test.sh path on no line (HARNESS-131)" 0 "$(h096_lines_holding "$H131_FT")"
 assert_eq "precondition: the real tree holds the suites AC-1 counts (m > 0)" yes "$([ "$H115_M" -gt 0 ] && printf yes || printf no)"
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-115 AC-1: HARNESS-114's four paths select 7 real suites, not 11"
+describe "HARNESS-115 AC-1: HARNESS-114's four paths select 8 real suites, not 11 (HARNESS-131: floors reads floors.conf, selftest is selected as itself)"
 
 h115_real
 h115_edit "$H115_V" "$H115_F" "$H115_ST" "$H115_SD"
-h115_expect "AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the seven suites that read or scan them" \
+h115_expect "AC-1: VERSION, floors.conf, selftest.test.sh and shipped-docs.test.sh changed over the real suites print the eight suites that read, scan or are them" \
   "doctor
+floors
 grep-count
 lib
 selftest
 shipped-docs
 sigpipe
-worktree" first "$(hdr 7 "$H115_M" 4)" \
+worktree" first "$(hdr 8 "$H115_M" 4)" \
   "${H115_NS}boundaries host-load refresh run-lock run-queue" \
   "doctor|$H115_V|mentioned" \
+  "floors|$H115_F|mentioned" \
   "grep-count|$H115_ST|scans *.sh" \
   "lib|$H115_V|mentioned" \
-  "selftest|$H115_F|mentioned" \
+  "selftest|$H115_ST|itself" \
   "shipped-docs|$H115_ST|scans .claude/tests/*.sh" \
   "sigpipe|$H115_ST|scans *.sh" \
   "worktree|$H115_V|mentioned"
 
 # ---------------------------------------------------------------------------
-describe "HARNESS-115 AC-2 (control): the suites that read the real VERSION and floors.conf stay selected"
+describe "HARNESS-115 AC-2 (control): the suites that read the real VERSION and floors.conf stay selected (HARNESS-131: floors, not selftest, reads floors.conf)"
 
 h115_real
 h115_edit "$H115_V" "$H115_F"
-h115_expect "AC-2: VERSION and floors.conf changed over the real suites print doctor, lib, selftest and worktree" \
+h115_expect "AC-2: VERSION and floors.conf changed over the real suites print doctor, floors, lib and worktree, and leave selftest out" \
   "doctor
+floors
 lib
-selftest
 worktree" first "$(hdr 4 "$H115_M" 2)" \
-  "${H115_NS}boundaries host-load refresh run-lock run-queue" \
+  "${H115_NS}boundaries host-load refresh run-lock run-queue selftest" \
   "doctor|$H115_V|mentioned" \
   "lib|$H115_V|mentioned" \
   "worktree|$H115_V|mentioned" \
-  "selftest|$H115_F|mentioned"
+  "floors|$H115_F|mentioned"
 
 # ---------------------------------------------------------------------------
 # The synthetic cases. Two stub suites in a fixture of their own (C-5), so
@@ -1352,7 +1358,9 @@ h115_expect "C-2 (2): \"\$REPO_ROOT/P1.bak\" is a longer path, not P1, so it doe
 # The real spellings: the copies in the fixture, never the real files, get
 # the line, on main, so the copy is not itself a changed path.
 h115_decl_doctor() { printf '# fixture-only: %s\n' "$H115_V" >> "$d/.claude/tests/doctor.test.sh"; }
-h115_decl_selftest() { printf '# fixture-only: %s\n' "$H115_F" >> "$d/$H115_ST"; }
+# HARNESS-131 (C-5): the floors.conf half points at floors.test.sh, which now
+# holds the real-tree read selftest.test.sh used to (`$REPO_ROOT/` + the path).
+h115_decl_floors() { printf '# fixture-only: %s\n' "$H115_F" >> "$d/$H131_FT"; }
 
 h115_real h115_decl_doctor
 h115_edit "$H115_V"
@@ -1362,11 +1370,11 @@ lib
 worktree" first "$(hdr 3 "$H115_M" 1)" "${H115_NS}boundaries refresh" \
   "doctor|$H115_V|$H115_DESPITE" "lib|$H115_V|mentioned" "worktree|$H115_V|mentioned"
 
-h115_real h115_decl_selftest
+h115_real h115_decl_floors
 h115_edit "$H115_F"
-h115_expect "AC-5: a copy of the real selftest.test.sh declaring floors.conf is still printed when floors.conf changes" \
-  "selftest" first "$(hdr 1 "$H115_M" 1)" "${H115_NS}host-load refresh run-lock run-queue" \
-  "selftest|$H115_F|$H115_DESPITE"
+h115_expect "AC-5 / HARNESS-131 AC-3: a copy of the real floors.test.sh declaring floors.conf is still printed when floors.conf changes" \
+  "floors" first "$(hdr 1 "$H115_M" 1)" "${H115_NS}host-load refresh run-lock run-queue selftest" \
+  "floors|$H115_F|$H115_DESPITE"
 
 # ---------------------------------------------------------------------------
 describe "HARNESS-115 AC-6: a path that only declaring suites name answers all"
@@ -1658,5 +1666,103 @@ assert_eq "step 2 says every suite is chosen when the library or a fixture conf 
   "$(h115_occ 'every suite when a path cannot be placed or the library or a fixture conf changed;')"
 assert_eq "step 2 no longer says only \`or the library changed;\`" 0 \
   "$(h115_occ 'or the library changed;')"
+
+# ===========================================================================
+# HARNESS-131. Two selections narrowed by declaration, not by rule: nine
+# suites that name CLAUDE.md only in a comment, a fixture copy or a table of
+# names declare it `fixture-only`, and the floor table's assertions moved out
+# of selftest.test.sh into floors.test.sh, which reads the real floors.conf.
+# Every list, reason line and not-selected line below is MECHANICAL (C-6),
+# read out of the story and compared whole by h115_expect; `m` is counted.
+#
+# THE RED SHAPE. Run against the suites as they stood before the story: the
+# CLAUDE.md case prints fourteen names and no not-selected line, the
+# floors.conf case prints `selftest`. The declarations and floors.test.sh
+# then land in the same phase (C-1), and the handoff holds both runs.
+# ===========================================================================
+
+H131_CM='CLAUDE.md'
+H131_NS_CM="${H115_NS}attest lib phase-guard plan refresh rules-trim shipped-docs sigpipe worktree"
+
+# Before the commit on main: a tracked CLAUDE.md, so the change is an edit.
+h131_claude() { put "$H131_CM" '# house rules'; }
+# AC-3's first half: the copy of the real mutate.test.sh declares CLAUDE.md.
+h131_decl_mutate() { h131_claude; printf '# fixture-only: %s\n' "$H131_CM" >> "$d/.claude/tests/mutate.test.sh"; }
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-131 AC-1: a CLAUDE.md edit over the real suites selects the five suites that read it"
+
+h115_real h131_claude
+h115_edit "$H131_CM"
+h115_expect "AC-1: CLAUDE.md changed over the real suites prints mutate, reporting, run-queue, selftest-needed and story, and names the nine that declare it" \
+  "mutate
+reporting
+run-queue
+selftest-needed
+story" first "$(hdr 5 "$H115_M" 1)" "$H131_NS_CM" \
+  "mutate|$H131_CM|mentioned" \
+  "reporting|$H131_CM|mentioned" \
+  "run-queue|$H131_CM|mentioned" \
+  "selftest-needed|$H131_CM|mentioned" \
+  "story|$H131_CM|mentioned"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-131 AC-2: a floors.conf edit over the real suites selects floors, not selftest"
+
+h115_real
+h115_edit "$H115_F"
+h115_expect "AC-2: floors.conf changed over the real suites prints floors alone, and names selftest among the suites that declare it" \
+  "floors" first "$(hdr 1 "$H115_M" 1)" "${H115_NS}host-load refresh run-lock run-queue selftest" \
+  "floors|$H115_F|mentioned"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-131 AC-3: a suite that reads the real CLAUDE.md is selected whatever it declares"
+
+# The second half (floors.test.sh declaring floors.conf) is HARNESS-115 AC-5's
+# second case above, pointed at floors.test.sh by this story (C-5).
+h115_real h131_decl_mutate
+h115_edit "$H131_CM"
+h115_expect "AC-3: a copy of the real mutate.test.sh declaring CLAUDE.md is still printed when CLAUDE.md changes, saying why" \
+  "mutate
+reporting
+run-queue
+selftest-needed
+story" first "$(hdr 5 "$H115_M" 1)" "$H131_NS_CM" \
+  "mutate|$H131_CM|$H115_DESPITE" \
+  "reporting|$H131_CM|mentioned" \
+  "run-queue|$H131_CM|mentioned" \
+  "selftest-needed|$H131_CM|mentioned" \
+  "story|$H131_CM|mentioned"
+
+# ---------------------------------------------------------------------------
+describe "HARNESS-131 AC-6: selftest.test.sh declares floors.conf and no longer reads the real one"
+
+# The real file, through a composed path (H115_ST is two halves), so this
+# suite still names it nowhere whole. That read is invisible to the selection
+# rule - a selftest.test.sh-only diff does not choose this suite - which is
+# the declared limit of the rule ("a composed path is the declaring suite's to
+# know"); CI's full run is the backstop. AC-2's not-selected line is the
+# behavioural half of this criterion and runs on every floors.conf diff.
+H131_ST_TEXT="$(tr -d '\r' < "$REPO_ROOT/$H115_ST" 2>/dev/null)"
+h131_st_equal() {   # <line>   lines of the real selftest suite exactly <line>
+  awk -v l="$1" '$0 == l { c++ } END { print c + 0 }' <<H131_ST
+$H131_ST_TEXT
+H131_ST
+}
+h131_st_holding() {   # <needle>   lines of the real selftest suite holding it
+  awk -v n="$1" 'index($0, n) { c++ } END { print c + 0 }' <<H131_ST
+$H131_ST_TEXT
+H131_ST
+}
+assert_eq "precondition: the real selftest suite was read (its summary line, exactly once)" 1 \
+  "$(h131_st_equal 'summary "selftest"')"
+assert_eq "AC-6: the real selftest suite holds \`# fixture-only: <floors.conf>\` at column 0, exactly once" 1 \
+  "$(h131_st_equal "# fixture-only: $H115_F")"
+assert_eq "AC-6: the real selftest suite holds floors.conf directly after \$REPO_ROOT/ on no line" 0 \
+  "$(h131_st_holding "\$REPO_ROOT/$H115_F")"
+assert_eq "AC-6: the real selftest suite holds floors.conf directly after \${REPO_ROOT}/ on no line" 0 \
+  "$(h131_st_holding "\${REPO_ROOT}/$H115_F")"
+assert_eq "AC-6: the real selftest suite names suites_without_floor on no line, so it cannot call it on the real tree" 0 \
+  "$(h131_st_holding 'suites_without_floor')"
 
 summary "selftest-needed"

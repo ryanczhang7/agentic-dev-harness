@@ -38,6 +38,9 @@
 # from a fixture must judge the fixture whatever the session's variable says,
 # and pinning the variable to a different tree is what makes that observable
 # on every host rather than only on the ones that happen to set it.
+#
+# fixture-only: CLAUDE.md
+#   writes its fixtures' own copies to hash and edit; never reads the real one.
 
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 
