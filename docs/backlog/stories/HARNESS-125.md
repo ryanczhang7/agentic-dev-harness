@@ -336,6 +336,34 @@ At REVIEW, not as a verification: record in `## Notes` the duration of the
 beside the 429 s and 7.5 min they replace, and, if a second push happened
 while a run was in progress, whether the first run was cancelled.
 
+**DV-3. Ties reversed (diff review round 1, finding 1).** With the sort's
+`-lt` made `-le`, so that an equal-sized suite moves ahead of the one before
+it, AC-2's three start-order assertions **must** fail. Added at GATES on the
+diff review's GATES finding; it earns AC-2, which passed on arrival in RED.
+**Owner: GATES.**
+
+**DV-3 result (GATES, 2026-11-26): PASS.** Run by the orchestrator against
+`bash .claude/tests/selftest.test.sh`: exactly AC-2's three assertions went
+red, nothing else; 401 passed, 3 failed. The file was restored and verified
+byte-for-byte.
+
+```
+=== mutate: scripts/selftest.sh (1 line(s) changed by s/-lt "\${SIZES\[\$i\]}" \]; do/-le "${SIZES[$i]}" ]; do/) ===
+  699 -     while [ "$j" -gt 0 ] && [ "${SIZES[${ORDER[$((j-1))]}]}" -lt "${SIZES[$i]}" ]; do
+  699 +     while [ "$j" -gt 0 ] && [ "${SIZES[${ORDER[$((j-1))]}]}" -le "${SIZES[$i]}" ]; do
+    FAIL AC-2: q1-tie and q2-tie, first in glob order, are the first two started
+         expected: q1-tie saw [] q2-tie saw []
+         actual:   q1-tie saw [q3-tie q4-tie] q2-tie saw [q3-tie q4-tie]
+    FAIL AC-2: q3-tie is started third
+         expected: q1-tie q2-tie
+         actual:   
+    FAIL AC-2: q4-tie, last in glob order, is started last
+         expected: q1-tie q2-tie q3-tie
+         actual:   
+selftest: 401 passed, 3 failed
+=== mutate: command exited 1; restored (verified byte-for-byte against /d/adh-HARNESS-125/.claude/state/mutations/scripts_selftest.sh.20261126T221210Z.1672115.bak) ===
+```
+
 ## Amendments
 
 <!-- Acceptance criteria are frozen once the story leaves PLANNED. If one turns
@@ -396,6 +424,7 @@ name, below the table.
 - RED, `test-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Orchestrator checked all three attest records `fresh` itself on tree `c45cf62` (`selftest: 396 passed, 8 failed` exit 1, `floors: 9 passed, 0 failed`, `--fast` exit 0, vacuous), read the eight FAIL lines in the log (AC-1 x3, the AC-3 start-order precondition x2, AC-4 x3; every one shows glob start order), checked that every removed line of selftest.test.sh comes back with only `PAD=` added, and ran none of them again.
 - GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Orchestrator checked all three attest records `fresh` itself on tree `8d1e060` (`selftest: 404 passed, 0 failed`, `ci-local: 52 passed, 0 failed`, `--fast` exit 0, vacuous), read the selftest.sh and workflow diffs against C-1 to C-4, and ran none of them again.
 - GATES, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Ran `bash scripts/gates.sh` only: exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, 16 s, not queued; orchestrator checked the record `fresh`. DV-1 (local, mutate.sh) and DV-2 (run 45900075305) were run by the orchestrator, results under `## Deferred verifications`; VERSION 145.
+- DIFF-REVIEW, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-26; no override. Round 1: one Should-fix routed GATES (run as DV-3, passed), one Should-fix routed RED and one Nice-to-have routed AMEND, both declined and recorded; `Verdict: Ship.`
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -751,6 +780,109 @@ expected in RED.
          a tab, nor anything inside an HTML comment
        * whether GREEN was a no-op, and the command output proving the source
          was untouched and still passes -->
+
+## Diff review
+
+### Round 1
+
+Reviewer: fresh `lead-po` on the DIFF-REVIEW row, planned `fable`, resolved
+Fable 5.2 (`claude-fable-5-2`), 2026-11-26; no override. No file in the
+worktree was changed. Experiments ran on a scratch copy of `scripts/` in the
+reviewer's scratchpad.
+
+What this change does: when the self-test runs several suites at once, it now
+starts the largest suite files first (one `wc -c` over all selected files, a
+stable sort, a separate start-order list) while still printing blocks in
+file-name order. The exit handler decides "started" per suite instead of by
+position. CI's `Harness self-test` step runs four suites at a time, and both
+workflows cancel a pull request's older run when a new push arrives.
+
+Load assumed: 36 suites, `SELFTEST_JOBS=4` on a hosted runner, and the
+Windows host at 1 to 4 jobs.
+
+Checked and found sound:
+
+- **Size read.** One subshell and one `wc`, whatever the suite count. On Git
+  Bash a scratch fixture with suites named `a b`, `-dash`, `c[1]`, `e`,
+  `total` and a directory `zdir.test.sh` started at `SELFTEST_JOBS=2` in the
+  order `total e c[1] -dash "a b"`, then zdir (size 0, last), and printed in
+  glob order. The `--` guards the leading dash, the match is a literal string
+  compare, wc's `total` line cannot equal a `*.test.sh` name, right-aligned
+  padding is trimmed, a CR is stripped, and `wc -c` prints plain digits in any
+  locale. `set -e` is not on, so wc's non-zero exit on an unreadable file does
+  nothing.
+- **Collect loop.** A pid is non-empty only between a successful start and its
+  collection, and is emptied in the same step that collects it, so walking
+  `printed..NSUITES` can neither skip nor double-collect.
+- **EXIT handler.** TERM at 3 s on five reversed-size suites with
+  `SELFTEST_FAIL_START` naming the largest gave: blocks r3, r4, then r5's
+  `not started: fork: simulated`, `3 of 5 suite(s) reported (status 143)`,
+  `never started: r1 r2`, buffer directory removed. A signal before
+  `PIDS[$1]=""` lists the suite as never started; one between that line and
+  the fork lists it as unreported and keeps the buffers, as HARNESS-090 did.
+- **`SELFTEST_FAIL_START`.** A failed start takes a position in the start
+  order and no slot; its block prints at its glob position. Unchanged.
+- **Other callers.** Nothing else reads `${#PIDS[@]}`. `--changed` reaches the
+  same scheduler. No document still says CI leaves the variable unset.
+- **AC-6: holds.** `floors.conf` changes one floor, 357 to 404 (up). Every
+  removed line of `selftest.test.sh` (24 `held` lines across the b, c, e, k,
+  g, d, h fixtures) returns identical with only `PAD=<n>` added.
+- **AC-7: holds as text.** Both `concurrency:` blocks and the step-level
+  `env:` match C-4 character for character; the `run:` line is still
+  `bash scripts/selftest.sh`; the colour-forced step is not in the diff;
+  everything else changed in the two files is comment.
+
+**Should fix:**
+
+1. **The tie rule has never been seen to fail** (`.claude/tests/selftest.test.sh:1889-1915`, `scripts/selftest.sh:699`)
+   - **What this is:** AC-2's three assertions that equal-sized suites start in file-name order, and the `-lt` in the sort that makes it so.
+   - **Problem:** Those assertions passed in RED and pass now, and DV-1 leaves them green. The RED handoff assigned a tie-break mutation to GATES; none is recorded. On a scratch copy, `-lt` to `-le` started four equal suites as `t4 t3 t2 t1`.
+   - **Fix:** Run one mutation and paste its output in the story: `bash scripts/mutate.sh scripts/selftest.sh 's/-lt "\${SIZES\[\$i\]}" \]; do/-le "${SIZES[$i]}" ]; do/' -- bash .claude/tests/selftest.test.sh`. AC-2's three start-order assertions must go red. No test or source file changes.
+   - **If we skip it:** AC-2 rests on assertions nobody has seen red.
+   - **Route:** GATES
+
+2. **"An unreadable size counts as 0" has no test** (`scripts/selftest.sh:669-692`)
+   - **What this is:** The C-1 clause that a suite whose size wc cannot give starts last and is not an error.
+   - **Problem:** No case makes a size unreadable. If the `SIZES[$i]=0` default were dropped, the sort would hit an unset variable under `set -u` and the run would end in the exit handler with no summary. Seen to work by hand (a directory `zdir.test.sh` read as 0 and started last), but nothing in the suite would notice it break.
+   - **Fix:** One case in `.claude/tests/selftest.test.sh` with a selected `*.test.sh` wc gives no size for, asserting it starts last and the run still prints its summary; earn it with one mutation; raise the floor in `.claude/tests/floors.conf` and the row in `.claude/tests/floors.test.sh`.
+   - **If we skip it:** A contract clause ships unpinned. Low stakes: a suite file that cannot be read fails its own run anyway.
+   - **Route:** RED
+
+**Nice to have:**
+
+3. **Manual and scheduled runs on one branch now queue, and a third cancels the waiting second** (`.github/workflows/gates.yml:32-34`)
+   - **What this is:** The `concurrency` group for non-PR runs, which falls back to the branch name.
+   - **Problem:** With `cancel-in-progress: false`, GitHub keeps one running and one pending run per group, and a newer pending run cancels the older pending one. Case: the Monday scheduled run is in progress; two `workflow_dispatch` runs on `main` start; the first of them is cancelled without running. Before this change all three ran side by side.
+   - **Fix:** C-4's exact text, which AC-7 requires, so it is a question about AC-7: accept it and say so in the comment, or use `github.run_id` as the fallback so non-PR runs never share a group.
+   - **If we skip it:** A manual run started twice in quick succession on one branch loses its first copy. Rare, and nothing wrong is reported as right.
+   - **Route:** AMEND
+
+Not checked by the reviewer: the runner's vCPU count (hosted runners give 4
+to public repositories, 2 to private), a Linux `wc` (read only from DV-2's
+passing run), and `concurrency` on a live second push.
+
+Verdict: Ship.
+
+**Orchestrator's disposition, round 1:**
+
+- Labels checked with `classify.sh`: finding 1's Fix names only
+  `docs/backlog/stories/HARNESS-125.md` (`docs`) and a mutate.sh run, so
+  GATES is followable; finding 2 names `.claude/tests/selftest.test.sh`
+  (`harness`, a test file); finding 3 names AC-7. All three labels stand.
+- **Finding 1: done in GATES**, result pasted under `## Deferred
+  verifications` as DV-3. No file changed, so the tree and the gate record
+  are unchanged and the review need not be re-run.
+- **Finding 2: declined in this story.** It is a Should-fix, the verdict is
+  Ship, the reviewer saw the clause hold by hand, and a return to RED costs a
+  full cycle for a clause whose failure is loud (the run ends without a
+  summary, which fails CI). Left for a story of its own.
+- **Finding 3: declined, AC-7 unchanged.** A Nice-to-have; the only lost run
+  is a pending duplicate on one branch, and changing it means amending AC-7.
+  Reported to the user, who may ask for the `github.run_id` fallback as its
+  own story.
+- **Runner vCPUs:** the repository is `PUBLIC`
+  (`gh repo view --json visibility`), so `ubuntu-latest` gives it 4 vCPUs;
+  the value of C-4 stands.
 
 ## Gate results
 
