@@ -18,11 +18,17 @@
 # it and every suite before it have finished. Anything but a whole number of 1
 # or more is refused with exit 2 before anything runs. The self-test is
 # spawn-bound, and two spawn-heavy runs on one Windows machine is what hung
-# issue #97, so choose a value for a machine you know; CI leaves it unset.
+# issue #97, so choose a value for a machine you know. CI's `Harness self-test`
+# step sets SELFTEST_JOBS=4, the vCPU count of its runner (HARNESS-125), in a
+# step-level `env:`; its colour-forced step, and scripts/ci-local.sh's replay of
+# the workflow's `run:` lines, still leave it unset.
 # Measured once on the Windows/Git Bash host this was built on (HARNESS-036
 # DV-2, 2026-10-05): the full self-test took 1,135 s with it unset and 336 s
-# with SELFTEST_JOBS=4, with identical per-suite results. Suites start in suite
-# order, so the slowest one (phase-guard) still sets the floor.
+# with SELFTEST_JOBS=4, with identical per-suite results. Since HARNESS-125
+# suites start largest file first (`wc -c`, read once before the first start;
+# equal sizes keep suite order, an unreadable size counts as 0), so that the
+# longest suites do not start last and set the floor; output is still printed
+# in suite order. One at a time, suites start in suite order, as they always did.
 #
 # A parallel run that ends before its summary (HARNESS-090) - a signal, a fork
 # bash does not return from, an error in the scheduler - still prints, from the
@@ -444,9 +450,13 @@ fi
 # it waits for, prints each started suite's block it can, names what is missing,
 # keeps the buffer directory if any block could not be printed, and exits
 # non-zero. It prints no summary. Every array element is read with a default.
-# It covers every suite start_suite was entered for - every index below
-# ${#PIDS[@]}, which start_suite extends as its first act - not only those
+# It covers every suite start_suite was entered for - every glob index whose
+# PIDS element is set, which start_suite does as its first act - not only those
 # `started` counts, because `started` moves only after start_suite returns.
+# Since suites start largest first (HARNESS-125 C-3), the started ones are not
+# a prefix of the glob order, so "started" is that set element, never an index
+# below ${#PIDS[@]}: bash counts set elements, and with indices 2 and 3 set it
+# is 2.
 # Its second statement ignores INT and TERM, so a second signal cannot end it
 # before it has printed and released the lock.
 BUF="$ROOT/.claude/state/selftest.$$"
@@ -458,7 +468,7 @@ STARTERR=() # by suite index; non-empty when that suite's start failed
 selftest_exit() {
   local st=$?
   trap '' INT TERM
-  local i=0 n="${#PIDS[@]}" pid name f kept=0 unreported="" never=""
+  local i=0 n="${NSUITES:-0}" pid name f kept=0 unreported="" never=""
   while [ "$i" -lt "$n" ]; do
     pid="${PIDS[$i]-}"
     if [ -n "$pid" ]; then
@@ -478,7 +488,9 @@ selftest_exit() {
   while [ "$i" -lt "$n" ]; do
     name="${NAMES[$i]-}"
     f="$BUF/$name.out"
-    if [ -n "${STARTERR[$i]-}" ]; then
+    if [ -z "${PIDS[$i]+set}" ]; then
+      never="${never:+$never }$name"
+    elif [ -n "${STARTERR[$i]-}" ]; then
       report_unstarted "$name" "${STARTERR[$i]}"
       printed=$((printed+1))
     elif [ -n "${RCS[$i]-}" ] && [ -f "$f" ] && [ -r "$f" ] && out="$(cat "$f" 2>/dev/null)"; then
@@ -489,11 +501,6 @@ selftest_exit() {
       unreported="${unreported:+$unreported }$name"
       kept=1
     fi
-    i=$((i+1))
-  done
-  i="$n"
-  while [ "$i" -lt "${NSUITES:-0}" ]; do
-    never="${never:+$never }${NAMES[$i]-}"
     i=$((i+1))
   done
   printf '\n'
@@ -589,9 +596,12 @@ suite_status() { wait "$1"; }
 # suite's stderr still goes into its `.out`.
 LASTPID=""
 start_suite() {
+  # Setting PIDS[index] is the first act: it is what the EXIT handler reads as
+  # "start_suite was entered for this suite" (HARNESS-125 C-3).
+  PIDS[$1]=""
   local i="$1" name rc pid first=""
   name="${NAMES[$i]}"
-  PIDS[$i]=""; RCS[$i]=""; STARTERR[$i]=""
+  RCS[$i]=""; STARTERR[$i]=""
   case " ${FAIL_START//[[:space:]]/ } " in
     *" $name "*)
       STARTERR[$i]="fork: simulated by SELFTEST_FAIL_START"
@@ -636,11 +646,13 @@ if [ "$JOBS" -lt 2 ] || [ "$NSUITES" -lt 2 ]; then
   done
 else
   # Concurrently (HARNESS-036 C-2). Up to $JOBS suites alive at once, started
-  # in glob order; a slot is refilled when ANY of them exits. bash 3.2 has no
-  # way to wait for whichever job ends first, so the running pids are polled
-  # with `kill -0` and a gone one's status is collected with suite_status.
-  # Printing is in glob order: a suite's block goes out as soon as it and every
-  # suite before it have finished.
+  # largest file first (HARNESS-125 C-1); a slot is refilled when ANY of them
+  # exits. bash 3.2 has no way to wait for whichever job ends first, so the
+  # running pids are polled with `kill -0` and a gone one's status is collected
+  # with suite_status. Printing is in glob order: a suite's block goes out as
+  # soon as it and every suite before it in glob order have finished or failed
+  # to start (C-2). NAMES, PIDS, RCS and STARTERR are indexed by glob position;
+  # ORDER holds the start order, as glob indices.
   mkdir -p "$BUF" 2>/dev/null || {
     printf "selftest: cannot create .claude/state/selftest.%s for the suites' output; nothing was run.\n" "$$" >&2
     exit 2
@@ -654,6 +666,45 @@ else
 $SUITES
 SUITE_LIST
 
+  # The sizes, read once and before the first start, by ONE `wc -c` over every
+  # selected file, never a process per suite. A file wc cannot read prints no
+  # line, so its size stays 0 and it starts last; that is not an error. wc's
+  # `total` line names no selected file and matches nothing.
+  SIZES=(); FILES=()
+  i=0
+  while [ "$i" -lt "$NSUITES" ]; do
+    FILES[$i]="${NAMES[$i]}.test.sh"; SIZES[$i]=0
+    i=$((i+1))
+  done
+  wc_out="$(cd "$TESTS_DIR" 2>/dev/null && wc -c -- "${FILES[@]}" 2>/dev/null)"
+  while IFS= read -r line; do
+    line="${line%$CR}"
+    trim "$line"; line="$TRIMMED"
+    size="${line%% *}"; file="${line#* }"
+    case "$size" in ''|*[!0-9]*) continue ;; esac
+    i=0
+    while [ "$i" -lt "$NSUITES" ]; do
+      [ "${FILES[$i]}" != "$file" ] || SIZES[$i]="$size"
+      i=$((i+1))
+    done
+  done <<WC_SIZES
+$wc_out
+WC_SIZES
+  # Largest first, by a stable insertion sort: a suite moves ahead only of a
+  # strictly smaller one, so equal sizes keep glob order.
+  ORDER=()
+  i=0
+  while [ "$i" -lt "$NSUITES" ]; do
+    j="${#ORDER[@]}"
+    while [ "$j" -gt 0 ] && [ "${SIZES[${ORDER[$((j-1))]}]}" -lt "${SIZES[$i]}" ]; do
+      ORDER[$j]="${ORDER[$((j-1))]}"
+      j=$((j-1))
+    done
+    ORDER[$j]="$i"
+    i=$((i+1))
+  done
+
+  # started counts positions of ORDER; printed counts glob indices.
   started=0; printed=0; running=0
   # Each `sleep` is a fork, so back off while nothing changes and start again
   # from the shortest interval whenever something does. The ceiling stays at
@@ -663,14 +714,14 @@ SUITE_LIST
   while [ "$printed" -lt "$NSUITES" ]; do
     changed=0
     while [ "$running" -lt "$JOBS" ] && [ "$started" -lt "$NSUITES" ]; do
-      if start_suite "$started"; then
+      if start_suite "${ORDER[$started]}"; then
         running=$((running+1))
       fi
       started=$((started+1))
     done
 
     i="$printed"
-    while [ "$i" -lt "$started" ]; do
+    while [ "$i" -lt "$NSUITES" ]; do
       if [ -n "${PIDS[$i]-}" ] && ! kill -0 "${PIDS[$i]}" 2>/dev/null; then
         suite_status "${PIDS[$i]}"; RCS[$i]=$?
         PIDS[$i]=""
@@ -679,7 +730,9 @@ SUITE_LIST
       i=$((i+1))
     done
 
-    while [ "$printed" -lt "$started" ]; do
+    # Stops at the first glob index with neither a collected status nor a start
+    # error, whether or not it has been started.
+    while [ "$printed" -lt "$NSUITES" ]; do
       name="${NAMES[$printed]}"
       if [ -n "${STARTERR[$printed]-}" ]; then
         report_unstarted "$name" "${STARTERR[$printed]}"

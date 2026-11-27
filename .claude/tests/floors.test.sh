@@ -167,7 +167,7 @@ rules-trim 50
 run-lock 141
 run-queue 901
 security-audit 52
-selftest 357
+selftest 404
 selftest-needed 1165
 settings 70
 shipped-docs 24
