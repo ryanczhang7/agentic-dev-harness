@@ -4,8 +4,8 @@ title: The CI self-test runs four suites at a time, largest first
 slug: the-ci-self-test-runs-four-suites-at-a-t
 epic: 
 type: feature
-status: in-progress
-phase: GATES
+status: in-review
+phase: REVIEW
 branch: story/HARNESS-125-the-ci-self-test-runs-four-suites-at-a-t
 depends_on: [HARNESS-124]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .github/workflows/gates.yml, .github/workflows/boundaries.yml, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -425,6 +425,7 @@ name, below the table.
 - GREEN, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Orchestrator checked all three attest records `fresh` itself on tree `8d1e060` (`selftest: 404 passed, 0 failed`, `ci-local: 52 passed, 0 failed`, `--fast` exit 0, vacuous), read the selftest.sh and workflow diffs against C-1 to C-4, and ran none of them again.
 - GATES, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26; no override. Ran `bash scripts/gates.sh` only: exit 0, `All required gates passed (0 ran, 7 unconfigured, 0 known).`, 16 s, not queued; orchestrator checked the record `fresh`. DV-1 (local, mutate.sh) and DV-2 (run 45900075305) were run by the orchestrator, results under `## Deferred verifications`; VERSION 145.
 - DIFF-REVIEW, `lead-po`: planned `fable`, resolved Fable 5.2 (`claude-fable-5-2`), 2026-11-26; no override. Round 1: one Should-fix routed GATES (run as DV-3, passed), one Should-fix routed RED and one Nice-to-have routed AMEND, both declined and recorded; `Verdict: Ship.`
+- GATES self-test, `feature-developer`: planned `opus`, resolved Opus 5.5 (`claude-opus-5-5`), 2026-11-26 and 2026-11-27; no override. Run 1 exit 1 (one run-queue case), run 2 exit 0, `36 harness suite(s) passed.`; orchestrator checked run 2 `fresh`. Both under `## Notes`.
 
 <!-- One line per dispatch, as it happened: phase, agent, the model that
      actually ran, and — if a phase was planned for one model and ran on
@@ -1036,3 +1037,15 @@ suites at `SELFTEST_JOBS=4` on the runner (DV-2). The two `cat: ... gate-logs:
 Is a directory` lines after it appear in the passing run too. The cause of the
 failure is not known: the evidence is one failure under load, not reproduced
 alone.
+
+### Self-test before REVIEW, run 2 (2026-11-27)
+
+The same command, re-run at the user's request, dispatched to a
+`feature-developer` on the GATES row (Opus 5.5, `claude-opus-5-5`, no
+override), same tree `0e1d860`: **exit 0**, `36 harness suite(s) passed.`,
+`assertion floors: all 36 suite(s) met their declared floor (7886 assertions
+executed, 7853 declared).`, `run-queue: 901 passed, 0 failed`. 11425 s, of
+which 30m21s queued behind two other trees' `gates.sh`. Log:
+`.claude/state/attest-logs/20261127T011414Z.1990746.log`. Orchestrator checked
+the record `fresh`. Run 1's run-queue failure did not recur; its cause is
+still not known.
