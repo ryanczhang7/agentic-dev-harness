@@ -4,8 +4,8 @@ title: The CI self-test runs four suites at a time, largest first
 slug: the-ci-self-test-runs-four-suites-at-a-t
 epic: 
 type: feature
-status: in-review
-phase: REVIEW
+status: done
+phase: DONE
 branch: story/HARNESS-125-the-ci-self-test-runs-four-suites-at-a-t
 depends_on: [HARNESS-124]  # story ids; phase.sh refuses to start this story until they are DONE
 touches: [scripts/selftest.sh, .claude/tests/selftest.test.sh, .claude/tests/floors.conf, .github/workflows/gates.yml, .github/workflows/boundaries.yml, .claude/harness/VERSION]  # files this story expects to write; `plan.sh conflicts` reads it
@@ -1049,3 +1049,16 @@ which 30m21s queued behind two other trees' `gates.sh`. Log:
 `.claude/state/attest-logs/20261127T011414Z.1990746.log`. Orchestrator checked
 the record `fresh`. Run 1's run-queue failure did not recur; its cause is
 still not known.
+
+### On the PR's own run (REVIEW, as `## Deferred verifications` asks)
+
+Run 45940127771 (`pull_request`, head `93a551a`): the `Harness self-test` step
+at `SELFTEST_JOBS=4` took **119 s** (04:28:26Z to 04:30:25Z), against the 429 s
+measured one at a time; the whole `gates` job took **2m5s**, against the 7.5
+min it replaces (HARNESS-124's PR job, one at a time: 6m1s). `36 harness
+suite(s) passed.`, `7951 assertions executed`. The colour-forced step was
+skipped, as on every pull request. Only one push reached the PR, so whether a
+second push cancels the first run was not observed.
+https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/45940127771
+
+- **Merged 2026-11-27** as PR #216 (merge commit a026d1b). CI on the PR: `boundaries` passed; `gates` passed in 2m5s, its self-test `36 harness suite(s) passed.` at four suites at a time on CI Linux. https://github.com/ryanczhang7/agentic-dev-harness/actions/runs/45940127771
