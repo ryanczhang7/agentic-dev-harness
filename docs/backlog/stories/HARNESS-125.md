@@ -1005,3 +1005,34 @@ Controls confirmed against the shipped code:
   on `scripts/selftest.sh`. It starts glob index `$started` again, while
   the print, collect and handler changes stay in.
 
+
+### Self-test before REVIEW, run 1 (2026-11-26)
+
+`bash scripts/attest.sh -- SELFTEST_JOBS=4 bash scripts/selftest.sh --changed`
+(resolves to all: `scripts/selftest.sh` is read by every suite), dispatched to a
+`feature-developer` on the GATES row (Opus 5.5, `claude-opus-5-5`, no
+override), tree `0e1d860`, not queued, 8836 s, with two other trees'
+`gates.sh --fast` live on the host. **exit 1**: `1 of 36 harness suite(s)
+FAILED.` Log: `.claude/state/attest-logs/20261126T223202Z.1685855.log`.
+
+    HARNESS-120 C-1  a waiter that goes on without the queue takes its marker with it (R-1)
+      FAIL HARNESS-120 C-1 R-1: precondition: with the queue lock a directory, B prints the cannot-use line once and starts its work
+           expected: 1 yes
+           actual:   0 yes
+    run-queue: 900 passed, 1 failed
+    FAIL run-queue  did 900 units of work, below the floor of 901 in .claude/tests/floors.conf
+
+The same suite alone on the same tree, by the orchestrator, passed:
+
+    bash scripts/attest.sh -- bash .claude/tests/run-queue.test.sh
+    exit:     0
+    duration: 636s
+    last:     run-queue: 901 passed, 0 failed
+    log:      .claude/state/attest-logs/20261127T010012Z.1971082.log
+
+The case does not reach the scheduler this story changes (it drives
+`scripts/gates.sh` through `run-lock.sh`), and the same code passed all 36
+suites at `SELFTEST_JOBS=4` on the runner (DV-2). The two `cat: ... gate-logs:
+Is a directory` lines after it appear in the passing run too. The cause of the
+failure is not known: the evidence is one failure under load, not reproduced
+alone.
